@@ -1,0 +1,49 @@
+{
+  "cli": {
+    "version": ">= 12.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "ios": {
+        "simulator": true
+      },
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://wcvqxzqqwcxlcgrjyunf.supabase.co",
+        "EXPO_PUBLIC_RAZORPAY_KEY_ID": "rzp_test_SaAGRu9UhPaeqz"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "ios": {
+        "simulator": false
+      },
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://wcvqxzqqwcxlcgrjyunf.supabase.co",
+        "EXPO_PUBLIC_RAZORPAY_KEY_ID": "rzp_test_SaAGRu9UhPaeqz"
+      }
+    },
+    "production": {
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://wcvqxzqqwcxlcgrjyunf.supabase.co",
+        "EXPO_PUBLIC_RAZORPAY_KEY_ID": "rzp_live_REPLACE_WITH_LIVE_KEY"
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "appleId": "REPLACE_WITH_APPLE_ID",
+        "ascAppId": "REPLACE_WITH_ASC_APP_ID",
+        "appleTeamId": "REPLACE_WITH_TEAM_ID"
+      },
+      "android": {
+        "serviceAccountKeyPath": "./google-services.json",
+        "track": "internal"
+      }
+    }
+  }
+}

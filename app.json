@@ -1,0 +1,42 @@
+{
+  "expo": {
+    "name": "1stOne",
+    "slug": "1stOne-F1",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#151515"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.1stone.f1"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#151515"
+      },
+      "package": "com.stone1st.f1"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-splash-screen",
+      "expo-location",
+      "expo-asset"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "placeholder"
+      }
+    }
+  }
+}

@@ -1,0 +1,52 @@
+# Dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+
+# Native builds
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# iOS
+ios/
+*.xcodeproj/
+*.xcworkspace/
+Pods/
+
+# Android
+android/
+*.apk
+*.aab
+
+# Environment
+.env
+.env.local
+.env.production
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# EAS
+google-services.json
+GoogleService-Info.plist
+
+# TypeScript
+*.tsbuildinfo
+
+# Metro
+.metro-health-check*
