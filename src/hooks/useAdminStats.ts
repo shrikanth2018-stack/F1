@@ -21,6 +21,7 @@ export interface DashboardStats {
   activeSubscriptions: number;
   pendingExpenses: number;
   totalStaff: number;
+  staffPresentToday: number;
 }
 
 export function useAdminStats() {
@@ -29,8 +30,7 @@ export function useAdminStats() {
   return useQuery({
     queryKey: ['admin_stats', today],
     queryFn: async (): Promise<DashboardStats> => {
-      // Run all queries in parallel
-      const [ordersRes, subsRes, expensesRes, staffRes] = await Promise.all([
+      const [ordersRes, subsRes, expensesRes, staffRes, presentRes] = await Promise.all([
         supabase
           .from('orders')
           .select('id, status, total_amount')
@@ -47,7 +47,17 @@ export function useAdminStats() {
           .from('profiles')
           .select('id', { count: 'exact', head: true })
           .eq('role', 'staff'),
+        supabase
+          .from('staff_attendance')
+          .select('id', { count: 'exact', head: true })
+          .eq('date', today)
+          .not('clock_in_time', 'is', null),
       ]);
+
+      // Surface any API-level error so React Query sets isError
+      const apiError = ordersRes.error || subsRes.error || expensesRes.error
+        || staffRes.error || presentRes.error;
+      if (apiError) throw new Error(apiError.message);
 
       const orders = ordersRes.data ?? [];
       const todayRevenue = orders.reduce((sum, o) => sum + (o.total_amount || 0), 0);
@@ -62,8 +72,10 @@ export function useAdminStats() {
         activeSubscriptions: subsRes.count ?? 0,
         pendingExpenses: expensesRes.count ?? 0,
         totalStaff: staffRes.count ?? 0,
+        staffPresentToday: presentRes.count ?? 0,
       };
     },
     staleTime: QUERY_STALE_TIME,
+    retry: 1,
   });
 }

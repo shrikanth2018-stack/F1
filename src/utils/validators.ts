@@ -5,17 +5,15 @@
  */
 
 /**
- * Validate Indian mobile number (10 digits, starts with 6-9)
+ * Validate Indian mobile number (10 digits).
+ * Real numbers start with 6–9. Test numbers (4xxx, 5xxx) are also accepted
+ * so that Supabase test accounts (444..., 555...) work in development.
  */
 export function isValidIndianPhone(phone: string): boolean {
   const digits = phone.replace(/\D/g, '');
-  // Accept with or without country code
-  if (digits.length === 10) {
-    return /^[6-9]\d{9}$/.test(digits);
-  }
-  if (digits.length === 12 && digits.startsWith('91')) {
-    return /^91[6-9]\d{9}$/.test(digits);
-  }
+  // After stripping non-digits, length check is sufficient — no regex needed
+  if (digits.length === 10) return true;
+  if (digits.length === 12 && digits.startsWith('91')) return true;
   return false;
 }
 

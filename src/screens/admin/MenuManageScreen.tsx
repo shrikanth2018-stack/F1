@@ -1,382 +1,265 @@
 /**
- * 1stOne F1 — Admin Menu Management Screen
+ * 1stOne F1 — Menu Manager
  *
- * View all menu items (including inactive).
- * Add new items, edit price/name, toggle active.
- * Filter by cycle.
+ * Lists menus per cycle (toggle tap cycles through Breakfast → Lunch → …).
+ * Each row: menu name | tap-to-edit price | enable/disable switch.
+ * Footer: "+ Add new item" → CreateMenuScreen.
+ *
+ * Sub-items (kitchen prep components) are stored as JSON in menu_items.ingredients.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   FlatList,
   TouchableOpacity,
-  ScrollView,
   TextInput,
   Switch,
-  Alert,
   StyleSheet,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
-import { ThemedButton } from '../../components/ThemedButton';
 import { EmptyState } from '../../components/EmptyState';
 import {
   useAllMenuItems,
-  useAddMenuItem,
   useUpdateMenuItem,
   useToggleMenuItem,
   useAllDeliveryCycles,
 } from '../../hooks/useMenuManagement';
 import type { MenuItem } from '../../types';
 
+const B = Theme.typography.sizes.body + 2;
+const S = Theme.typography.sizes.small + 2;
+const P = Theme.typography.sizes.body + 4;   // price text
+
+/** Parse components stored as JSON in ingredients field */
+function parseComponents(raw?: string | null): { name: string; qty: string }[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed;
+  } catch {
+    // legacy plain-text ingredients — show as single entry
+    return [{ name: raw, qty: '' }];
+  }
+  return [];
+}
+
+const MEAL_CYCLES = ['Breakfast', 'Lunch', 'Snacks', 'Dinner'];
+
 export function MenuManageScreen({ navigation }: { navigation: any }) {
-  const [cycleFilter, setCycleFilter] = useState<number | undefined>(undefined);
-  const [showAddForm, setShowAddForm] = useState(false);
+  const { data: rawCycles = [] } = useAllDeliveryCycles();
+  // Only the 4 meal cycles — essentials has its own screen
+  const cycleOptions = useMemo(
+    () => rawCycles.filter((c: any) =>
+      MEAL_CYCLES.some((m) => c.cycle_name?.toLowerCase().includes(m.toLowerCase()))
+    ),
+    [rawCycles]
+  );
+  const [cycleIdx, setCycleIdx] = useState(0);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [priceInput, setPriceInput] = useState('');
 
-  // Add form state
-  const [newName, setNewName] = useState('');
-  const [newPrice, setNewPrice] = useState('');
-  const [newIngredients, setNewIngredients] = useState('');
-  const [newCycleId, setNewCycleId] = useState<number>(0);
-
-  // Edit form state
-  const [editName, setEditName] = useState('');
-  const [editPrice, setEditPrice] = useState('');
-
-  const { data: cycles } = useAllDeliveryCycles();
-  const { data: items, isLoading } = useAllMenuItems(cycleFilter);
-  const addItem = useAddMenuItem();
   const updateItem = useUpdateMenuItem();
   const toggleItem = useToggleMenuItem();
 
-  const handleAdd = () => {
-    if (!newName.trim() || !newPrice || !newCycleId) {
-      Alert.alert('Error', 'Name, price, and cycle are required');
-      return;
-    }
-    addItem.mutate(
-      {
-        cycle_id: newCycleId,
-        name: newName.trim(),
-        price: parseFloat(newPrice),
-        ingredients: newIngredients.trim() || undefined,
-      },
-      {
-        onSuccess: () => {
-          setShowAddForm(false);
-          setNewName('');
-          setNewPrice('');
-          setNewIngredients('');
-          setNewCycleId(0);
-        },
-      }
-    );
+  const selected = cycleOptions[cycleIdx] ?? cycleOptions[0];
+  const { data: items = [], isLoading } = useAllMenuItems(selected?.id);
+
+  const cycleLabel = selected ? `${selected.cycle_name} Menu` : 'Loading…';
+
+  const handleCycleToggle = () => {
+    setCycleIdx((p) => (p + 1) % cycleOptions.length);
   };
 
-  const handleStartEdit = (item: MenuItem) => {
+  const handlePriceTap = (item: MenuItem) => {
     setEditingId(item.id);
-    setEditName(item.name);
-    setEditPrice(String(item.price));
+    setPriceInput(String(item.price));
   };
 
-  const handleSaveEdit = (id: number) => {
-    if (!editName.trim() || !editPrice) return;
-    updateItem.mutate(
-      { id, name: editName.trim(), price: parseFloat(editPrice) },
-      { onSuccess: () => setEditingId(null) }
-    );
+  const commitPrice = (id: number) => {
+    const price = parseFloat(priceInput);
+    if (!isNaN(price) && price >= 0) {
+      updateItem.mutate({ id, price });
+    }
+    setEditingId(null);
   };
 
-  const handleToggle = (id: number, currentActive: boolean) => {
-    toggleItem.mutate({ id, is_active: !currentActive });
+  const handleToggle = (id: number, current: boolean) => {
+    toggleItem.mutate({ id, is_active: !current });
   };
 
   const renderItem = ({ item }: { item: MenuItem }) => {
-    const isEditing = editingId === item.id;
+    const components = parseComponents(item.ingredients);
+    const isEditingPrice = editingId === item.id;
 
     return (
-      <View style={[styles.card, !item.is_active && styles.cardInactive]}>
-        {isEditing ? (
-          <View>
+      <View style={[styles.row, !item.is_active && styles.rowDim]}>
+        <View style={styles.rowLeft}>
+          <ThemedText variant="body" color="primary" style={styles.rowText} numberOfLines={1}>
+            {item.name}
+          </ThemedText>
+
+          {components.length > 0 && (
+            <ThemedText variant="small" color="muted" style={styles.components} numberOfLines={1}>
+              {components.map((c) => `${c.name}${c.qty ? ` ×${c.qty}` : ''}`).join('  ·  ')}
+            </ThemedText>
+          )}
+
+          {isEditingPrice ? (
             <TextInput
-              style={styles.input}
-              value={editName}
-              onChangeText={setEditName}
-              placeholder="Item name"
-              placeholderTextColor={Theme.colors.text.muted}
-            />
-            <TextInput
-              style={styles.input}
-              value={editPrice}
-              onChangeText={setEditPrice}
-              placeholder="Price"
-              placeholderTextColor={Theme.colors.text.muted}
+              style={styles.priceInput}
+              value={priceInput}
+              onChangeText={setPriceInput}
               keyboardType="numeric"
+              autoFocus
+              onBlur={() => commitPrice(item.id)}
+              onSubmitEditing={() => commitPrice(item.id)}
+              returnKeyType="done"
             />
-            <View style={styles.editActions}>
-              <TouchableOpacity
-                style={styles.saveBtn}
-                onPress={() => handleSaveEdit(item.id)}
-              >
-                <ThemedText variant="small" color="primary">
-                  Save
-                </ThemedText>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => setEditingId(null)}>
-                <ThemedText variant="small" color="subtitle">
-                  Cancel
-                </ThemedText>
-              </TouchableOpacity>
-            </View>
-          </View>
-        ) : (
-          <View>
-            <View style={styles.cardHeader}>
-              <View style={styles.cardInfo}>
-                <ThemedText variant="body" color="primary">
-                  {item.name}
-                </ThemedText>
-                <ThemedText variant="small" color="subtitle">
-                  {'\u20B9'}{item.price} — Cycle {item.cycle_id}
-                </ThemedText>
-                {item.ingredients && (
-                  <ThemedText variant="small" color="muted">
-                    {item.ingredients}
-                  </ThemedText>
-                )}
-              </View>
-              <View style={styles.cardActions}>
-                <Switch
-                  value={item.is_active}
-                  onValueChange={() => handleToggle(item.id, item.is_active)}
-                  trackColor={{
-                    true: Theme.colors.status.success,
-                    false: Theme.colors.background.tertiary,
-                  }}
-                />
-                <TouchableOpacity onPress={() => handleStartEdit(item)}>
-                  <ThemedText variant="small" color="accent">
-                    Edit
-                  </ThemedText>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        )}
+          ) : (
+            <TouchableOpacity onPress={() => handlePriceTap(item)} activeOpacity={0.7}>
+              <ThemedText variant="small" color="mint" style={styles.price}>
+                ₹{item.price > 0 ? item.price : '—'}{'  ✎'}
+              </ThemedText>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        <Switch
+          value={item.is_active}
+          onValueChange={() => handleToggle(item.id, item.is_active)}
+          trackColor={{
+            true: Theme.colors.status.success,
+            false: Theme.colors.background.tertiary,
+          }}
+          thumbColor={Theme.colors.text.primary}
+        />
       </View>
     );
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
-          <ThemedText variant="body" color="accent">
-            {'< Back'}
-          </ThemedText>
+          <ThemedText variant="body" color="accent" style={styles.back}>‹ Back</ThemedText>
         </TouchableOpacity>
-        <ThemedText variant="header" color="primary">
-          Menu Items
+        <ThemedText variant="header" color="primary" style={styles.title}>
+          Menu Manager
         </ThemedText>
-        <TouchableOpacity onPress={() => setShowAddForm(!showAddForm)}>
-          <ThemedText variant="body" color="accent">
-            {showAddForm ? 'Cancel' : '+ Add'}
-          </ThemedText>
-        </TouchableOpacity>
+        <View style={styles.spacer} />
       </View>
 
-      {/* Cycle Filter */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.filterBar}
-        contentContainerStyle={styles.filterContent}
-      >
-        <TouchableOpacity
-          style={[styles.chip, !cycleFilter && styles.chipActive]}
-          onPress={() => setCycleFilter(undefined)}
-        >
-          <ThemedText variant="small" color={!cycleFilter ? 'primary' : 'subtitle'}>
-            All
-          </ThemedText>
-        </TouchableOpacity>
-        {(cycles ?? []).map((c: any) => (
-          <TouchableOpacity
-            key={c.id}
-            style={[styles.chip, cycleFilter === c.id && styles.chipActive]}
-            onPress={() => setCycleFilter(c.id)}
-          >
-            <ThemedText
-              variant="small"
-              color={cycleFilter === c.id ? 'primary' : 'subtitle'}
-            >
-              {c.cycle_name}
-            </ThemedText>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      {/* Cycle toggle — tap the text to cycle */}
+      <TouchableOpacity style={styles.cycleRow} onPress={handleCycleToggle} activeOpacity={0.7}>
+        <ThemedText variant="body" color="mint" style={styles.cycleText}>
+          {cycleLabel}{'  ›'}
+        </ThemedText>
+      </TouchableOpacity>
 
-      {/* Add Form */}
-      {showAddForm && (
-        <View style={styles.addForm}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.cyclePicker}
-            contentContainerStyle={styles.cyclePickerContent}
-          >
-            {(cycles ?? []).map((c: any) => (
-              <TouchableOpacity
-                key={c.id}
-                style={[styles.chip, newCycleId === c.id && styles.chipActive]}
-                onPress={() => setNewCycleId(c.id)}
-              >
-                <ThemedText
-                  variant="small"
-                  color={newCycleId === c.id ? 'primary' : 'subtitle'}
-                >
-                  {c.cycle_name}
-                </ThemedText>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-          <TextInput
-            style={styles.input}
-            value={newName}
-            onChangeText={setNewName}
-            placeholder="Item name"
-            placeholderTextColor={Theme.colors.text.muted}
-          />
-          <TextInput
-            style={styles.input}
-            value={newPrice}
-            onChangeText={setNewPrice}
-            placeholder="Price (INR)"
-            placeholderTextColor={Theme.colors.text.muted}
-            keyboardType="numeric"
-          />
-          <TextInput
-            style={styles.input}
-            value={newIngredients}
-            onChangeText={setNewIngredients}
-            placeholder="Ingredients (optional)"
-            placeholderTextColor={Theme.colors.text.muted}
-          />
-          <ThemedButton
-            title="Add Item"
-            variant="primary"
-            onPress={handleAdd}
-            loading={addItem.isPending}
-          />
-        </View>
-      )}
-
-      {/* Items List */}
+      {/* Menu list */}
       <FlatList
-        data={items ?? []}
+        data={items}
         keyExtractor={(item) => String(item.id)}
         renderItem={renderItem}
         ListEmptyComponent={
-          !isLoading ? <EmptyState message="No menu items" /> : null
+          !isLoading ? (
+            <EmptyState title="No menus for this cycle" subtitle={'Tap "+ Add new item" below'} />
+          ) : null
         }
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       />
-    </View>
+
+      {/* Footer */}
+      <View style={styles.footerRow}>
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={() => navigation.navigate('ImportItems', { type: 'menu' })}
+        >
+          <ThemedText variant="body" color="muted" style={styles.rowText}>
+            Import CSV{'  ›'}
+          </ThemedText>
+        </TouchableOpacity>
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={() =>
+            navigation.navigate('CreateMenu', {
+              cycleId: selected?.id,
+              cycleName: selected?.cycle_name,
+            })
+          }
+        >
+          <ThemedText variant="body" color="mint" style={styles.rowText}>
+            + Add new item{'  ›'}
+          </ThemedText>
+        </TouchableOpacity>
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Theme.colors.background.primary,
-  },
+  container: { flex: 1, backgroundColor: Theme.colors.background.primary },
+
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: Theme.spacing.md,
-    paddingTop: Theme.spacing.xl + Theme.spacing.md,
-    paddingBottom: Theme.spacing.sm,
+    paddingVertical: Theme.spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Theme.colors.layout.divider,
   },
-  filterBar: {
-    maxHeight: 40,
-    marginBottom: Theme.spacing.sm,
-  },
-  filterContent: {
+  back: { fontSize: B, minWidth: 60 },
+  title: { flex: 1, textAlign: 'center' },
+  spacer: { minWidth: 60 },
+
+  cycleRow: {
     paddingHorizontal: Theme.spacing.md,
-    gap: Theme.spacing.xs,
+    paddingVertical: Theme.spacing.sm + 2,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Theme.colors.text.mint,
+    alignSelf: 'flex-start',
   },
-  chip: {
-    paddingHorizontal: Theme.spacing.sm,
-    paddingVertical: Theme.spacing.xs,
-    borderRadius: 20,
-    backgroundColor: Theme.colors.background.tertiary,
+  cycleText: { fontSize: B },
+
+  list: { paddingBottom: Theme.spacing.xl },
+
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.md + 2,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Theme.colors.layout.divider,
   },
-  chipActive: {
-    backgroundColor: Theme.colors.action.primary,
-  },
-  addForm: {
-    backgroundColor: Theme.colors.background.secondary,
-    marginHorizontal: Theme.spacing.md,
-    borderRadius: Theme.components.inputRadius,
-    padding: Theme.spacing.md,
-    marginBottom: Theme.spacing.sm,
-  },
-  cyclePicker: {
-    maxHeight: 36,
-    marginBottom: Theme.spacing.sm,
-  },
-  cyclePickerContent: {
-    gap: Theme.spacing.xs,
-  },
-  input: {
-    backgroundColor: Theme.colors.background.input,
-    borderRadius: Theme.components.inputRadius,
-    padding: Theme.spacing.sm,
-    color: Theme.colors.text.primary,
+  rowDim: { opacity: 0.45 },
+  rowLeft: { flex: 1, marginRight: Theme.spacing.sm },
+  rowText: { fontSize: B },
+  components: { fontSize: S, marginTop: 2 },
+  price: { fontSize: P, marginTop: 6 },
+  priceInput: {
+    marginTop: 6,
+    color: Theme.colors.text.mint,
     fontFamily: Theme.typography.fontFamily,
-    fontSize: Theme.typography.sizes.body,
-    marginBottom: Theme.spacing.sm,
+    fontSize: P,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Theme.colors.text.mint,
+    paddingVertical: 2,
+    minWidth: 80,
   },
-  list: {
-    padding: Theme.spacing.md,
-    paddingBottom: Theme.spacing.xl,
-  },
-  card: {
-    backgroundColor: Theme.colors.background.secondary,
-    borderRadius: Theme.components.inputRadius,
-    padding: Theme.spacing.md,
-    marginBottom: Theme.spacing.sm,
-  },
-  cardInactive: {
-    opacity: 0.5,
-  },
-  cardHeader: {
+
+  footerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-  },
-  cardInfo: {
-    flex: 1,
-    marginRight: Theme.spacing.sm,
-  },
-  cardActions: {
-    alignItems: 'flex-end',
-    gap: Theme.spacing.xs,
-  },
-  editActions: {
-    flexDirection: 'row',
-    gap: Theme.spacing.md,
     alignItems: 'center',
-    marginTop: Theme.spacing.sm,
-  },
-  saveBtn: {
-    backgroundColor: Theme.colors.action.primary,
     paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.xs,
-    borderRadius: 6,
+    paddingVertical: Theme.spacing.sm + 2,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Theme.colors.text.mint,
   },
 });

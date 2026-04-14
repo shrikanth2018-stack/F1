@@ -1,13 +1,7 @@
 /**
  * 1stOne F1 — Checkout Screen
  *
- * Flow:
- * 1. Select/add delivery address
- * 2. Review order summary (server-recalculated)
- * 3. Choose payment: Wallet / Razorpay / Split
- * 4. Place order → if Razorpay, open payment gateway
- * 5. On payment success → server webhook confirms → navigate to order detail
- *
+ * Handles food items, essentials items, or both in one order.
  * RULE: Client NEVER confirms payment. Razorpay webhook does.
  */
 
@@ -17,9 +11,11 @@ import {
   ScrollView,
   Alert,
   StyleSheet,
-  SafeAreaView,
   TouchableOpacity,
+  ActivityIndicator,
+  Text,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import RazorpayCheckout from 'react-native-razorpay';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
@@ -27,33 +23,46 @@ import { ThemedButton } from '../../components/ThemedButton';
 import { Divider } from '../../components/Divider';
 import { DispatchBadge } from '../../components/DispatchBadge';
 import { useCartStore } from '../../store/cartStore';
+import { useEssentialsCartStore } from '../../store/essentialsCartStore';
 import { useUIStore } from '../../store/uiStore';
 import { useAddresses } from '../../hooks/useAddresses';
 import { useStoreConfig } from '../../hooks/useStoreConfig';
+import { useWalletBalance } from '../../hooks/useWallet';
 import { useSmartCart } from '../../hooks/useSmartCart';
 import { useAuth } from '../../hooks/useAuth';
-import { formatPriceShort, formatPhone } from '../../utils/formatters';
+import { formatPriceShort } from '../../utils/formatters';
 import { supabase } from '../../api/supabaseClient';
-import { SUPABASE_URL, RAZORPAY_KEY_ID } from '../../utils/env';
+import { RAZORPAY_KEY_ID } from '../../utils/env';
 
 type PaymentChoice = 'razorpay' | 'wallet';
 
-export function CheckoutScreen({ navigation }: any) {
+export function CheckoutScreen({ navigation, route }: any) {
+  const cartType: 'food' | 'essentials' = route?.params?.cartType ?? 'food';
   const { session } = useAuth();
-  const items = useCartStore((s) => s.items);
-  const clearCart = useCartStore((s) => s.clearCart);
-  const displayTotal = useCartStore((s) => s.getDisplayTotal());
-  const setGlobalLoading = useUIStore((s) => s.setGlobalLoading);
 
+  const foodItems = useCartStore((s) => s.items);
+  const clearFood = useCartStore((s) => s.clearCart);
+  const foodTotal = useCartStore((s) => s.getDisplayTotal());
+
+  const essItems = useEssentialsCartStore((s) => s.items);
+  const clearEss = useEssentialsCartStore((s) => s.clearCart);
+  const essTotal = useEssentialsCartStore((s) => s.getDisplayTotal());
+
+  const activeItems = cartType === 'food' ? foodItems : essItems;
+  const displayTotal = cartType === 'food' ? foodTotal : essTotal;
+  const totalItemCount = activeItems.length;
+
+  const setGlobalLoading = useUIStore((s) => s.setGlobalLoading);
   const { data: addresses } = useAddresses();
   const { data: config } = useStoreConfig();
+  const { data: wallet } = useWalletBalance();
   const { evaluations } = useSmartCart();
 
+  const insets = useSafeAreaInsets();
   const [selectedAddressId, setSelectedAddressId] = useState<number | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<PaymentChoice>('razorpay');
   const [isPlacing, setIsPlacing] = useState(false);
 
-  // Auto-select default address
   React.useEffect(() => {
     if (addresses && addresses.length > 0 && !selectedAddressId) {
       const defaultAddr = addresses.find((a) => a.is_default) ?? addresses[0];
@@ -66,13 +75,16 @@ export function CheckoutScreen({ navigation }: any) {
   const estimatedTax = displayTotal * (taxRate / 100);
   const estimatedTotal = displayTotal + estimatedTax + deliveryFee;
 
+  const walletBalance = wallet?.balance ?? 0;
+  const walletLoaded = wallet !== undefined;
+  const walletInsufficient = paymentMethod === 'wallet' && walletLoaded && walletBalance < estimatedTotal;
+
   const handlePlaceOrder = useCallback(async () => {
     if (!selectedAddressId) {
       Alert.alert('Address Required', 'Please select a delivery address');
       return;
     }
-
-    if (items.length === 0) {
+    if (totalItemCount === 0) {
       Alert.alert('Empty Cart', 'Add items to your cart first');
       return;
     }
@@ -81,11 +93,9 @@ export function CheckoutScreen({ navigation }: any) {
     setGlobalLoading(true, 'Placing order...');
 
     try {
-      // Determine dispatch date from first item's evaluation
       const firstEval = evaluations[0];
       const today = new Date();
       let dispatchDate: string;
-
       if (firstEval?.scenario === 'B') {
         const tomorrow = new Date(today);
         tomorrow.setDate(tomorrow.getDate() + 1);
@@ -94,14 +104,20 @@ export function CheckoutScreen({ navigation }: any) {
         dispatchDate = today.toISOString().split('T')[0];
       }
 
-      // Call Edge Function to place order
+      const { data: { session: rawSession } } = await supabase.auth.getSession();
+
       const { data, error } = await supabase.functions.invoke('place-order', {
+        headers: { Authorization: `Bearer ${rawSession?.access_token}` },
         body: {
-          items: items.map((i) => ({
+          food_items: cartType === 'food' ? foodItems.map((i) => ({
             menu_item_id: i.menu_item_id,
             quantity: i.quantity,
-          })),
-          cycle_id: items[0].cycle_id,
+          })) : [],
+          essentials_items: cartType === 'essentials' ? essItems.map((i) => ({
+            essential_item_id: i.essential_item_id,
+            quantity: i.quantity,
+          })) : [],
+          cycle_id: foodItems[0]?.cycle_id ?? null,
           delivery_address_id: selectedAddressId,
           payment_method: paymentMethod,
           dispatch_date: dispatchDate,
@@ -109,41 +125,39 @@ export function CheckoutScreen({ navigation }: any) {
       });
 
       if (error) {
-        throw new Error(error.message || 'Failed to place order');
+        let message = 'Failed to place order';
+        try {
+          const ctx = (error as any).context;
+          if (ctx) {
+            const text = await (ctx.clone ? ctx.clone() : ctx).text();
+            const parsed = JSON.parse(text);
+            if (parsed?.error) message = parsed.error;
+          }
+        } catch {}
+        throw new Error(message);
       }
 
       const order = data;
 
-      // If Razorpay, open payment gateway
       if (paymentMethod === 'razorpay' && order.razorpay_order_id) {
         const options = {
-          description: '1stOne Food Order',
+          description: '1stOne Order',
           currency: 'INR',
           key: RAZORPAY_KEY_ID,
-          amount: Math.round(order.total_amount * 100), // Razorpay expects paise
+          amount: Math.round(order.total_amount * 100),
           order_id: order.razorpay_order_id,
           name: '1stOne',
-          prefill: {
-            contact: session?.user.phone ?? '',
-          },
+          prefill: { contact: session?.user.phone ?? '' },
           theme: { color: Theme.colors.action.primary },
         };
-
         try {
           await RazorpayCheckout.open(options);
-          // Payment success on client side
-          // But we DON'T confirm here — webhook handles it
-        } catch (paymentError: any) {
-          // Payment cancelled or failed
-          Alert.alert(
-            'Payment Cancelled',
-            'Your order has been saved. You can pay later from your orders.'
-          );
+        } catch {
+          Alert.alert('Payment Cancelled', 'Your order has been saved. You can pay later from your orders.');
         }
       }
 
-      // Clear cart and navigate to order
-      clearCart();
+      if (cartType === 'food') clearFood(); else clearEss();
       setGlobalLoading(false);
       navigation.navigate('Orders');
     } catch (err: any) {
@@ -153,17 +167,9 @@ export function CheckoutScreen({ navigation }: any) {
       setGlobalLoading(false);
     }
   }, [
-    items,
-    selectedAddressId,
-    paymentMethod,
-    evaluations,
-    session,
-    clearCart,
-    navigation,
-    setGlobalLoading,
+    foodItems, essItems, selectedAddressId, paymentMethod,
+    evaluations, session, clearFood, clearEss, navigation, setGlobalLoading,
   ]);
-
-  const selectedAddress = addresses?.find((a) => a.id === selectedAddressId);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -171,17 +177,13 @@ export function CheckoutScreen({ navigation }: any) {
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
-            <ThemedText variant="body" color="accent">
-              ‹ Back
-            </ThemedText>
+            <ThemedText variant="body" color="accent">‹ Back</ThemedText>
           </TouchableOpacity>
-          <ThemedText variant="header" color="primary">
-            Checkout
-          </ThemedText>
+          <ThemedText variant="header" color="primary">Checkout</ThemedText>
           <View style={{ width: 40 }} />
         </View>
 
-        {/* Address Selection */}
+        {/* Address */}
         <View style={styles.section}>
           <ThemedText variant="small" color="muted" style={styles.sectionLabel}>
             DELIVERY ADDRESS
@@ -190,22 +192,13 @@ export function CheckoutScreen({ navigation }: any) {
             addresses.map((addr) => (
               <TouchableOpacity
                 key={addr.id}
-                style={[
-                  styles.addressCard,
-                  addr.id === selectedAddressId && styles.addressSelected,
-                ]}
+                style={[styles.addressCard, addr.id === selectedAddressId && styles.addressSelected]}
                 onPress={() => setSelectedAddressId(addr.id)}
               >
-                <ThemedText variant="body" color="primary">
-                  {addr.label}
-                </ThemedText>
-                <ThemedText variant="small" color="subtitle">
-                  {addr.address_line}
-                </ThemedText>
+                <ThemedText variant="body" color="primary">{addr.label}</ThemedText>
+                <ThemedText variant="small" color="subtitle">{addr.address_line}</ThemedText>
                 {addr.landmark && (
-                  <ThemedText variant="micro" color="muted">
-                    {addr.landmark}
-                  </ThemedText>
+                  <ThemedText variant="micro" color="muted">{addr.landmark}</ThemedText>
                 )}
               </TouchableOpacity>
             ))
@@ -225,10 +218,9 @@ export function CheckoutScreen({ navigation }: any) {
           <ThemedText variant="small" color="muted" style={styles.sectionLabel}>
             ORDER SUMMARY
           </ThemedText>
-          {items.map((item) => {
-            const dispatch = evaluations.find(
-              (e) => e.menu_item_id === item.menu_item_id
-            );
+
+          {cartType === 'food' && foodItems.map((item) => {
+            const dispatch = evaluations.find((e) => e.menu_item_id === item.menu_item_id);
             return (
               <View key={item.menu_item_id} style={styles.summaryRow}>
                 <View style={styles.summaryLeft}>
@@ -248,6 +240,17 @@ export function CheckoutScreen({ navigation }: any) {
               </View>
             );
           })}
+
+          {cartType === 'essentials' && essItems.map((item) => (
+            <View key={item.essential_item_id} style={styles.summaryRow}>
+              <ThemedText variant="body" color="primary">
+                {item.name} x{item.quantity}
+              </ThemedText>
+              <ThemedText variant="body" color="subtitle">
+                {formatPriceShort(item.display_price * item.quantity)}
+              </ThemedText>
+            </View>
+          ))}
         </View>
 
         <Divider />
@@ -255,98 +258,83 @@ export function CheckoutScreen({ navigation }: any) {
         {/* Price Breakdown */}
         <View style={styles.section}>
           <View style={styles.priceRow}>
-            <ThemedText variant="small" color="subtitle">
-              Subtotal
-            </ThemedText>
-            <ThemedText variant="small" color="subtitle">
-              {formatPriceShort(displayTotal)}
-            </ThemedText>
+            <ThemedText variant="small" color="subtitle">Subtotal</ThemedText>
+            <ThemedText variant="small" color="subtitle">{formatPriceShort(displayTotal)}</ThemedText>
           </View>
           <View style={styles.priceRow}>
-            <ThemedText variant="small" color="subtitle">
-              Tax ({taxRate}%)
-            </ThemedText>
-            <ThemedText variant="small" color="subtitle">
-              {formatPriceShort(estimatedTax)}
-            </ThemedText>
+            <ThemedText variant="small" color="subtitle">Tax ({taxRate}%)</ThemedText>
+            <ThemedText variant="small" color="subtitle">{formatPriceShort(estimatedTax)}</ThemedText>
           </View>
           <View style={styles.priceRow}>
-            <ThemedText variant="small" color="subtitle">
-              Delivery
-            </ThemedText>
+            <ThemedText variant="small" color="subtitle">Delivery</ThemedText>
             <ThemedText variant="small" color="subtitle">
               {deliveryFee === 0 ? 'Free' : formatPriceShort(deliveryFee)}
             </ThemedText>
           </View>
           <View style={[styles.priceRow, styles.totalRow]}>
-            <ThemedText variant="subtitle" color="primary">
-              Estimated Total
-            </ThemedText>
-            <ThemedText variant="subtitle" color="accent">
-              {formatPriceShort(estimatedTotal)}
-            </ThemedText>
+            <ThemedText variant="subtitle" color="primary">Estimated Total</ThemedText>
+            <ThemedText variant="subtitle" color="accent">{formatPriceShort(estimatedTotal)}</ThemedText>
           </View>
-          <ThemedText variant="micro" color="muted">
-            Server recalculates final amount
-          </ThemedText>
+          <ThemedText variant="micro" color="muted">Server recalculates final amount</ThemedText>
         </View>
 
         <Divider />
 
-        {/* Payment Method */}
+        {/* Payment */}
         <View style={styles.section}>
-          <ThemedText variant="small" color="muted" style={styles.sectionLabel}>
-            PAYMENT
-          </ThemedText>
+          <ThemedText variant="small" color="muted" style={styles.sectionLabel}>PAYMENT</ThemedText>
           <TouchableOpacity
-            style={[
-              styles.paymentOption,
-              paymentMethod === 'razorpay' && styles.paymentSelected,
-            ]}
+            style={[styles.paymentOption, paymentMethod === 'razorpay' && styles.paymentSelected]}
             onPress={() => setPaymentMethod('razorpay')}
           >
-            <ThemedText variant="body" color="primary">
-              Pay Online (Razorpay)
-            </ThemedText>
-            <ThemedText variant="micro" color="muted">
-              UPI, Card, Net Banking
-            </ThemedText>
+            <ThemedText variant="body" color="primary">Pay Online (Razorpay)</ThemedText>
+            <ThemedText variant="micro" color="muted">UPI, Card, Net Banking</ThemedText>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[
-              styles.paymentOption,
-              paymentMethod === 'wallet' && styles.paymentSelected,
-            ]}
+            style={[styles.paymentOption, paymentMethod === 'wallet' && styles.paymentSelected]}
             onPress={() => setPaymentMethod('wallet')}
           >
-            <ThemedText variant="body" color="primary">
-              Wallet Balance
-            </ThemedText>
+            <View style={styles.paymentRow}>
+              <ThemedText variant="body" color="primary">Wallet Balance</ThemedText>
+              <ThemedText variant="body" color={walletBalance >= estimatedTotal ? 'accent' : 'subtitle'}>
+                {formatPriceShort(walletBalance)}
+              </ThemedText>
+            </View>
+            {paymentMethod === 'wallet' && walletInsufficient && (
+              <View style={styles.paymentRow}>
+                <ThemedText variant="small" color="muted">
+                  Need {formatPriceShort(estimatedTotal - walletBalance)} more
+                </ThemedText>
+                <TouchableOpacity onPress={() => navigation.navigate('Wallet')}>
+                  <ThemedText variant="small" color="accent">Top Up ›</ThemedText>
+                </TouchableOpacity>
+              </View>
+            )}
           </TouchableOpacity>
         </View>
       </ScrollView>
 
-      {/* Place Order Button */}
-      <View style={styles.footer}>
-        <ThemedButton
-          title={`Pay ${formatPriceShort(estimatedTotal)}`}
-          onPress={handlePlaceOrder}
-          loading={isPlacing}
-          disabled={!selectedAddressId || items.length === 0}
-        />
-      </View>
+      <TouchableOpacity
+        style={[styles.floatBtn, { bottom: insets.bottom + 16 }]}
+        activeOpacity={0.85}
+        onPress={handlePlaceOrder}
+        disabled={!selectedAddressId || totalItemCount === 0 || isPlacing}
+      >
+        {isPlacing
+          ? <ActivityIndicator color={Theme.colors.text.mint} />
+          : <>
+              <Text style={styles.floatBtnText}>Pay {formatPriceShort(estimatedTotal)}</Text>
+              <Text style={styles.floatBtnText}>›</Text>
+            </>
+        }
+      </TouchableOpacity>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Theme.colors.background.primary,
-  },
-  content: {
-    paddingBottom: 100,
-  },
+  container: { flex: 1, backgroundColor: Theme.colors.background.primary },
+  content: { paddingBottom: 100 },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -354,41 +342,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: Theme.spacing.md,
     paddingVertical: Theme.spacing.sm,
   },
-  section: {
-    padding: Theme.spacing.md,
-  },
-  sectionLabel: {
-    letterSpacing: 1,
-    marginBottom: Theme.spacing.sm,
-  },
+  section: { padding: Theme.spacing.md },
+  sectionLabel: { letterSpacing: 1, marginBottom: Theme.spacing.sm },
+  subSectionLabel: { letterSpacing: 1, marginTop: Theme.spacing.sm, marginBottom: Theme.spacing.xs },
   addressCard: {
-    backgroundColor: Theme.colors.background.card,
+    backgroundColor: Theme.colors.background.secondary,
     borderRadius: Theme.components.inputRadius,
     padding: Theme.spacing.sm,
     marginBottom: Theme.spacing.xs,
     borderWidth: 1,
     borderColor: 'transparent',
   },
-  addressSelected: {
-    borderColor: Theme.colors.action.primary,
-  },
+  addressSelected: { borderColor: Theme.colors.action.primary },
   summaryRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: Theme.spacing.xs,
   },
-  summaryLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flex: 1,
-  },
-  priceRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 6,
-  },
+  summaryLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
+  priceRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
   totalRow: {
     marginTop: Theme.spacing.xs,
     paddingTop: Theme.spacing.xs,
@@ -396,20 +369,36 @@ const styles = StyleSheet.create({
     borderTopColor: Theme.colors.layout.divider,
   },
   paymentOption: {
-    backgroundColor: Theme.colors.background.card,
+    backgroundColor: Theme.colors.background.secondary,
     borderRadius: Theme.components.inputRadius,
     padding: Theme.spacing.sm,
     marginBottom: Theme.spacing.xs,
     borderWidth: 1,
     borderColor: 'transparent',
   },
-  paymentSelected: {
-    borderColor: Theme.colors.action.primary,
+  paymentSelected: { borderColor: Theme.colors.action.primary },
+  paymentRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  floatBtn: {
+    position: 'absolute',
+    left: Theme.spacing.md,
+    right: Theme.spacing.md,
+    backgroundColor: Theme.colors.background.secondary,
+    borderRadius: Theme.components.inputRadius,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 8,
   },
-  footer: {
-    padding: Theme.spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: Theme.colors.layout.divider,
-    backgroundColor: Theme.colors.background.card,
+  floatBtnText: {
+    color: Theme.colors.text.mint,
+    fontFamily: Theme.typography.fontFamily,
+    fontSize: Theme.typography.sizes.body,
+    fontWeight: '600',
   },
 });

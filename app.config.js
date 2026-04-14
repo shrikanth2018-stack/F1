@@ -27,6 +27,9 @@ export default ({ config }) => ({
         '1stOne needs your location to record attendance check-in.',
       NSCameraUsageDescription:
         '1stOne needs camera access for profile photos.',
+      NSPhotoLibraryUsageDescription:
+        '1stOne needs photo library access to upload offer banners.',
+      ITSAppUsesNonExemptEncryption: false,
     },
   },
   android: {
@@ -63,17 +66,23 @@ export default ({ config }) => ({
       },
     ],
     'expo-asset',
+    [
+      'expo-image-picker',
+      {
+        photosPermission: '1stOne needs photo library access to upload offer banners.',
+      },
+    ],
   ],
   extra: {
     supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL,
     supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
     razorpayKeyId: process.env.EXPO_PUBLIC_RAZORPAY_KEY_ID,
     eas: {
-      projectId: process.env.EAS_PROJECT_ID || 'placeholder',
+      projectId: '81ff7f3c-8f25-4acc-9a4f-605bff80bdd2',
     },
   },
   updates: {
-    url: 'https://u.expo.dev/placeholder',
+    url: 'https://u.expo.dev/81ff7f3c-8f25-4acc-9a4f-605bff80bdd2',
   },
   runtimeVersion: {
     policy: 'sdkVersion',

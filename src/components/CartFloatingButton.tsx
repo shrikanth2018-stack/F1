@@ -1,44 +1,42 @@
 /**
  * 1stOne F1 — CartFloatingButton
- *
- * Floating action button showing cart item count + total.
- * Tapping opens the CartSheet. Only visible when cart has items.
+ * Solid green pill, white text, floats above the bottom bar.
  */
 
 import React from 'react';
-import { TouchableOpacity, View, StyleSheet } from 'react-native';
+import { TouchableOpacity, StyleSheet, Text } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Theme } from '../theme';
-import { ThemedText } from './ThemedText';
 import { useCartStore } from '../store/cartStore';
+import { useEssentialsCartStore } from '../store/essentialsCartStore';
 import { formatPriceShort } from '../utils/formatters';
 
 interface CartFloatingButtonProps {
   onPress: () => void;
+  cartType?: 'food' | 'essentials';
 }
 
-export function CartFloatingButton({ onPress }: CartFloatingButtonProps) {
-  const itemCount = useCartStore((s) => s.getItemCount());
-  const displayTotal = useCartStore((s) => s.getDisplayTotal());
+export function CartFloatingButton({ onPress, cartType = 'food' }: CartFloatingButtonProps) {
+  const insets = useSafeAreaInsets();
+  const foodCount = useCartStore((s) => s.getItemCount());
+  const foodTotal = useCartStore((s) => s.getDisplayTotal());
+  const essCount = useEssentialsCartStore((s) => s.getItemCount());
+  const essTotal = useEssentialsCartStore((s) => s.getDisplayTotal());
+
+  const itemCount = cartType === 'food' ? foodCount : essCount;
+  const displayTotal = cartType === 'food' ? foodTotal : essTotal;
 
   if (itemCount === 0) return null;
 
   return (
     <TouchableOpacity
-      style={styles.fab}
-      activeOpacity={0.85}
+      style={[styles.fab, { bottom: insets.bottom + 58 }]}
+      activeOpacity={0.88}
       onPress={onPress}
     >
-      <View style={styles.left}>
-        <ThemedText variant="body" color="primary">
-          {itemCount} {itemCount === 1 ? 'item' : 'items'}
-        </ThemedText>
-        <ThemedText variant="small" color="primary">
-          {formatPriceShort(displayTotal)}
-        </ThemedText>
-      </View>
-      <ThemedText variant="body" color="primary">
-        View Cart ›
-      </ThemedText>
+      <Text style={styles.text}>{itemCount} {itemCount === 1 ? 'item' : 'items'}</Text>
+      <Text style={styles.text}>{formatPriceShort(displayTotal)}</Text>
+      <Text style={styles.text}>View Cart ›</Text>
     </TouchableOpacity>
   );
 }
@@ -46,23 +44,27 @@ export function CartFloatingButton({ onPress }: CartFloatingButtonProps) {
 const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
-    bottom: 16,
     left: Theme.spacing.md,
     right: Theme.spacing.md,
-    backgroundColor: Theme.colors.action.primary,
+    backgroundColor: Theme.colors.background.secondary,
     borderRadius: Theme.components.inputRadius,
+    borderWidth: 1,
+    borderColor: Theme.colors.text.mint,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 14,
     paddingHorizontal: 20,
+    shadowColor: Theme.colors.text.mint,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
     elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
   },
-  left: {
-    flexDirection: 'column',
+  text: {
+    color: Theme.colors.text.mint,
+    fontFamily: Theme.typography.fontFamily,
+    fontSize: Theme.typography.sizes.body,
+    fontWeight: '600',
   },
 });

@@ -12,6 +12,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface EssentialsCartItem {
   essential_item_id: number;
+  cycle_id: number;
   name: string;
   display_price: number;
   unit: string;

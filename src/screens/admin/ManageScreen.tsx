@@ -32,7 +32,7 @@ export function ManageScreen() {
       contentContainerStyle={styles.content}
     >
       <ThemedText variant="header" color="primary" style={styles.header}>
-        Manage
+        Settings Hub
       </ThemedText>
 
       <ThemedText variant="small" color="muted" style={styles.section}>
@@ -46,12 +46,12 @@ export function ManageScreen() {
       <SettingsRow
         label="Delivery Cycles"
         showChevron
-        onPress={() => navigation.navigate('MenuManage')}
+        onPress={() => navigation.navigate('CyclesManage')}
       />
       <SettingsRow
         label="Subscription Plans"
         showChevron
-        onPress={() => navigation.navigate('MenuManage')}
+        onPress={() => navigation.navigate('PlansManage')}
       />
 
       <Divider />

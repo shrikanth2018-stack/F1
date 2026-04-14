@@ -54,7 +54,7 @@ export function useMySubscriptions() {
     () =>
       supabase
         .from('user_subscriptions')
-        .select('*, subscription_plans(plan_name, duration_days, cycle_id, price)')
+        .select('*, subscription_plans(plan_name, duration_days, cycle_id, price, plan_type)')
         .eq('user_id', session?.user.id ?? '')
         .order('created_at', { ascending: false }),
     { enabled: !!session?.user.id }
@@ -62,6 +62,18 @@ export function useMySubscriptions() {
 }
 
 // ── Cancelled/Skipped Days ──
+
+export function useAllCancelledDays(subscriptionIds: number[]) {
+  return useSupabaseQuery<CancelledSubscriptionDay>(
+    ['cancelled_days_all', ...subscriptionIds],
+    () =>
+      supabase
+        .from('cancelled_subscription_days')
+        .select('*')
+        .in('subscription_id', subscriptionIds.length > 0 ? subscriptionIds : [-1]),
+    { enabled: subscriptionIds.length > 0 }
+  );
+}
 
 export function useCancelledDays(subscriptionId: number) {
   return useSupabaseQuery<CancelledSubscriptionDay>(

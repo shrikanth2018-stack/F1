@@ -26,11 +26,11 @@ export function useWalletBalance() {
   return useQuery({
     queryKey: [...QUERY_KEYS.WALLET, 'balance', session?.user.id],
     queryFn: async () => {
-      if (!session) return 0;
+      if (!session) return { balance: 0, loyaltyPoints: 0, fullName: '' };
 
       const { data, error } = await supabase
         .from('profiles')
-        .select('wallet_balance, loyalty_points')
+        .select('wallet_balance, loyalty_points, full_name')
         .eq('id', session.user.id)
         .single();
 
@@ -38,6 +38,7 @@ export function useWalletBalance() {
       return {
         balance: data?.wallet_balance ?? 0,
         loyaltyPoints: data?.loyalty_points ?? 0,
+        fullName: data?.full_name ?? '',
       };
     },
     enabled: !!session,

@@ -225,6 +225,113 @@ export function useStaffAttendanceReport(startDate: string, endDate: string) {
   });
 }
 
+/** Orders detail: cycle-wise and menu-wise day-level rows */
+export function useOrdersDetailReport(startDate: string, endDate: string) {
+  return useQuery({
+    queryKey: ['report_orders_detail', startDate, endDate],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('orders')
+        .select('id, dispatch_date, cycle_id, delivery_cycles(cycle_name), order_items(item_name, quantity)')
+        .gte('dispatch_date', startDate)
+        .lte('dispatch_date', endDate)
+        .neq('status', 'Cancelled')
+        .order('dispatch_date', { ascending: false });
+
+      if (error) throw error;
+      const orders = (data ?? []) as any[];
+
+      const cycleMap: Record<string, { date: string; cycleName: string; count: number }> = {};
+      const menuMap: Record<string, { date: string; itemName: string; qty: number }> = {};
+
+      for (const o of orders) {
+        const cycleName = o.delivery_cycles?.cycle_name ?? `Cycle ${o.cycle_id}`;
+        const ck = `${o.dispatch_date}__${cycleName}`;
+        if (!cycleMap[ck]) cycleMap[ck] = { date: o.dispatch_date, cycleName, count: 0 };
+        cycleMap[ck].count++;
+
+        for (const oi of (o.order_items ?? []) as any[]) {
+          const mk = `${o.dispatch_date}__${oi.item_name}`;
+          if (!menuMap[mk]) menuMap[mk] = { date: o.dispatch_date, itemName: oi.item_name, qty: 0 };
+          menuMap[mk].qty += oi.quantity;
+        }
+      }
+
+      return {
+        totalOrders: orders.length,
+        cycleRows: Object.values(cycleMap).sort((a, b) => b.date.localeCompare(a.date)),
+        menuRows: Object.values(menuMap).sort((a, b) => b.date.localeCompare(a.date)),
+      };
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+/** Revenue detail: day-level rows with orders, revenue, tax */
+export function useRevenueDetailReport(startDate: string, endDate: string) {
+  return useQuery({
+    queryKey: ['report_revenue_detail', startDate, endDate],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('orders')
+        .select('id, dispatch_date, total_amount, tax_amount')
+        .gte('dispatch_date', startDate)
+        .lte('dispatch_date', endDate)
+        .neq('status', 'Cancelled')
+        .order('dispatch_date', { ascending: false });
+
+      if (error) throw error;
+      const orders = (data ?? []) as any[];
+
+      const dayMap: Record<string, { date: string; orders: number; revenue: number; tax: number }> = {};
+      for (const o of orders) {
+        if (!dayMap[o.dispatch_date])
+          dayMap[o.dispatch_date] = { date: o.dispatch_date, orders: 0, revenue: 0, tax: 0 };
+        dayMap[o.dispatch_date].orders++;
+        dayMap[o.dispatch_date].revenue += o.total_amount ?? 0;
+        dayMap[o.dispatch_date].tax += o.tax_amount ?? 0;
+      }
+
+      const rows = Object.values(dayMap).sort((a, b) => b.date.localeCompare(a.date));
+      const totals = rows.reduce(
+        (acc, r) => ({ orders: acc.orders + r.orders, revenue: acc.revenue + r.revenue, tax: acc.tax + r.tax }),
+        { orders: 0, revenue: 0, tax: 0 }
+      );
+
+      return { rows, totals };
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+/** Subscription plan-wise breakdown */
+export function useSubscriptionPlanReport() {
+  return useQuery({
+    queryKey: ['report_subscription_plans'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('user_subscriptions')
+        .select('id, is_active, is_paused, plan_id, subscription_plans(plan_name)');
+
+      if (error) throw error;
+      const all = (data ?? []) as any[];
+
+      const planMap: Record<string, { planName: string; active: number; paused: number; cancelled: number }> = {};
+      for (const s of all) {
+        const planName = s.subscription_plans?.plan_name ?? `Plan ${s.plan_id}`;
+        const key = String(s.plan_id);
+        if (!planMap[key]) planMap[key] = { planName, active: 0, paused: 0, cancelled: 0 };
+        if (s.is_active && !s.is_paused) planMap[key].active++;
+        else if (s.is_paused) planMap[key].paused++;
+        else planMap[key].cancelled++;
+      }
+
+      return Object.values(planMap);
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
 /** Expense claims summary for a date range */
 export function useExpenseReport(startDate: string, endDate: string) {
   return useQuery({

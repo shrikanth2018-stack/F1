@@ -13,7 +13,11 @@ import {
   Alert,
   StyleSheet,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
+
+const B = Theme.typography.sizes.body + 2;
+const S = Theme.typography.sizes.small + 2;
 import { ThemedText } from '../../components/ThemedText';
 import { EmptyState } from '../../components/EmptyState';
 import {
@@ -79,14 +83,14 @@ export function StaffManageScreen({ navigation }: { navigation: any }) {
 
   const renderStaffItem = ({ item }: { item: any }) => (
     <View style={styles.card}>
-      <ThemedText variant="body" color="primary">
+      <ThemedText variant="body" color="primary" style={styles.txt}>
         {item.full_name || 'Unnamed'}
       </ThemedText>
-      <ThemedText variant="small" color="subtitle">
+      <ThemedText variant="small" color="subtitle" style={styles.sub}>
         {item.phone_number}
       </ThemedText>
       {item.assigned_hub_id && (
-        <ThemedText variant="small" color="muted">
+        <ThemedText variant="small" color="muted" style={styles.sub}>
           Hub: {item.assigned_hub_id}
         </ThemedText>
       )}
@@ -95,14 +99,14 @@ export function StaffManageScreen({ navigation }: { navigation: any }) {
 
   const renderAttendanceItem = ({ item }: { item: any }) => (
     <View style={styles.card}>
-      <ThemedText variant="body" color="primary">
+      <ThemedText variant="body" color="primary" style={styles.txt}>
         {item.profiles?.full_name || item.profiles?.phone_number || 'Staff'}
       </ThemedText>
       <View style={styles.timeRow}>
-        <ThemedText variant="small" color="subtitle">
+        <ThemedText variant="small" color="subtitle" style={styles.sub}>
           In: {formatTime(item.clock_in_time)}
         </ThemedText>
-        <ThemedText variant="small" color="subtitle">
+        <ThemedText variant="small" color="subtitle" style={styles.sub}>
           Out: {formatTime(item.clock_out_time)}
         </ThemedText>
       </View>
@@ -113,13 +117,13 @@ export function StaffManageScreen({ navigation }: { navigation: any }) {
     <View style={styles.card}>
       <View style={styles.cardRow}>
         <View style={styles.cardInfo}>
-          <ThemedText variant="body" color="primary">
+          <ThemedText variant="body" color="primary" style={styles.txt}>
             {item.profiles?.full_name || 'Staff'}
           </ThemedText>
-          <ThemedText variant="small" color="subtitle">
-            {item.category} — {'\u20B9'}{item.amount}
+          <ThemedText variant="small" color="subtitle" style={styles.sub}>
+            {item.category} — {'₹'}{item.amount}
           </ThemedText>
-          <ThemedText variant="small" color="muted">
+          <ThemedText variant="small" color="muted" style={styles.sub}>
             {item.description}
           </ThemedText>
         </View>
@@ -128,17 +132,13 @@ export function StaffManageScreen({ navigation }: { navigation: any }) {
             style={styles.approveBtn}
             onPress={() => handleExpenseReview(item.id, 'Approved')}
           >
-            <ThemedText variant="small" color="primary">
-              Approve
-            </ThemedText>
+            <ThemedText variant="small" color="primary" style={styles.sub}>Approve</ThemedText>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.rejectBtn}
             onPress={() => handleExpenseReview(item.id, 'Rejected')}
           >
-            <ThemedText variant="small" color="primary">
-              Reject
-            </ThemedText>
+            <ThemedText variant="small" color="primary" style={styles.sub}>Reject</ThemedText>
           </TouchableOpacity>
         </View>
       </View>
@@ -149,14 +149,14 @@ export function StaffManageScreen({ navigation }: { navigation: any }) {
     <View style={styles.card}>
       <View style={styles.cardRow}>
         <View style={styles.cardInfo}>
-          <ThemedText variant="body" color="primary">
+          <ThemedText variant="body" color="primary" style={styles.txt}>
             {item.profiles?.full_name || 'Staff'}
           </ThemedText>
-          <ThemedText variant="small" color="subtitle">
+          <ThemedText variant="small" color="subtitle" style={styles.sub}>
             {item.start_date} to {item.end_date}
           </ThemedText>
           {item.reason && (
-            <ThemedText variant="small" color="muted">
+            <ThemedText variant="small" color="muted" style={styles.sub}>
               {item.reason}
             </ThemedText>
           )}
@@ -166,17 +166,13 @@ export function StaffManageScreen({ navigation }: { navigation: any }) {
             style={styles.approveBtn}
             onPress={() => handleLeaveReview(item.id, 'Approved')}
           >
-            <ThemedText variant="small" color="primary">
-              Approve
-            </ThemedText>
+            <ThemedText variant="small" color="primary" style={styles.sub}>Approve</ThemedText>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.rejectBtn}
             onPress={() => handleLeaveReview(item.id, 'Rejected')}
           >
-            <ThemedText variant="small" color="primary">
-              Reject
-            </ThemedText>
+            <ThemedText variant="small" color="primary" style={styles.sub}>Reject</ThemedText>
           </TouchableOpacity>
         </View>
       </View>
@@ -195,18 +191,18 @@ export function StaffManageScreen({ navigation }: { navigation: any }) {
   const listConfig = getListData();
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
-          <ThemedText variant="body" color="accent">
-            {'< Back'}
+          <ThemedText variant="body" color="accent" style={styles.txt}>
+            ‹ Back
           </ThemedText>
         </TouchableOpacity>
-        <ThemedText variant="header" color="primary">
+        <ThemedText variant="header" color="primary" style={styles.headerTitle}>
           Team
         </ThemedText>
-        <View style={{ width: 50 }} />
+        <View style={{ minWidth: 60 }} />
       </View>
 
       {/* Tabs */}
@@ -220,6 +216,7 @@ export function StaffManageScreen({ navigation }: { navigation: any }) {
             <ThemedText
               variant="small"
               color={activeTab === t.key ? 'primary' : 'subtitle'}
+              style={styles.tabTxt}
             >
               {t.label} ({t.count})
             </ThemedText>
@@ -232,11 +229,11 @@ export function StaffManageScreen({ navigation }: { navigation: any }) {
         data={listConfig.data}
         keyExtractor={(item: any) => String(item.id)}
         renderItem={listConfig.render}
-        ListEmptyComponent={<EmptyState message={listConfig.empty} />}
+        ListEmptyComponent={<EmptyState title={listConfig.empty} />}
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
       />
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -247,12 +244,13 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: Theme.spacing.md,
-    paddingTop: Theme.spacing.xl + Theme.spacing.md,
-    paddingBottom: Theme.spacing.sm,
+    paddingVertical: Theme.spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Theme.colors.layout.divider,
   },
+  headerTitle: { flex: 1, textAlign: 'center' },
   tabBar: {
     flexDirection: 'row',
     paddingHorizontal: Theme.spacing.sm,
@@ -309,4 +307,7 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     alignItems: 'center',
   },
+  txt: { fontSize: B },
+  sub: { fontSize: S },
+  tabTxt: { fontSize: S },
 });

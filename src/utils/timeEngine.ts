@@ -77,9 +77,12 @@ export function getDispatchLabel(scenario: 'A' | 'B'): string {
 
 /**
  * Format "HH:MM:SS" or "HH:MM" (24h) to "h:mm AM/PM"
+ * Returns '—' if timeStr is null/undefined/empty (DB column not populated).
  */
-export function formatTime12h(timeStr: string): string {
+export function formatTime12h(timeStr: string | null | undefined): string {
+  if (!timeStr) return '—';
   const { hours, minutes } = parseTime(timeStr);
+  if (isNaN(hours) || isNaN(minutes)) return '—';
   const period = hours >= 12 ? 'PM' : 'AM';
   const displayHours = hours % 12 || 12;
   const displayMinutes = minutes.toString().padStart(2, '0');

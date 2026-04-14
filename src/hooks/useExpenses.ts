@@ -15,7 +15,7 @@ import { useStaffQueueStore } from '../store/staffQueueStore';
 import { QUERY_KEYS, QUERY_STALE_TIME } from '../utils/constants';
 import type { ExpenseClaim } from '../types';
 
-export type ExpenseCategory = 'Grocery' | 'Vegetable' | 'Stationery' | 'Fuel' | 'Expense';
+export type ExpenseCategory = 'Grocery' | 'Vegetable' | 'Stationery' | 'Fuel' | 'Others';
 
 /** Fetch current staff's expense claims */
 export function useMyExpenses() {

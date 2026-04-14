@@ -64,7 +64,7 @@ export function SubscriptionPlanCard({ plan, onPress }: SubscriptionPlanCardProp
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: Theme.colors.background.card,
+    backgroundColor: Theme.colors.background.secondary,
     borderRadius: Theme.components.inputRadius,
     padding: Theme.spacing.md,
     marginHorizontal: Theme.spacing.md,

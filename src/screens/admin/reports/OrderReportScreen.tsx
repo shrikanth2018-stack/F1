@@ -1,8 +1,10 @@
 /**
  * 1stOne F1 — Order Report Screen
  *
- * Date-range order breakdown by status, cycle, type.
- * Daily order count chart. Cancellation rate.
+ * Period: Weekly | Monthly | Quarterly
+ * View:   Cycle wise | Menu wise
+ * Flat day-level rows. Footer: Print | Download PDF
+ * Requires: npx expo install expo-print expo-sharing
  */
 
 import React, { useState, useMemo } from 'react';
@@ -10,158 +12,246 @@ import {
   View,
   ScrollView,
   TouchableOpacity,
+  Alert,
   StyleSheet,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../../theme';
 import { ThemedText } from '../../../components/ThemedText';
-import { useOrderReport } from '../../../hooks/useReports';
-import { useDeliveryCycles } from '../../../hooks/useDeliveryCycles';
+import { EmptyState } from '../../../components/EmptyState';
+import { useOrdersDetailReport } from '../../../hooks/useReports';
 
-type DateRange = '7d' | '30d' | '90d';
+type Period = 'Weekly' | 'Monthly' | 'Quarterly';
+type ViewMode = 'Cycle wise' | 'Menu wise';
 
-function getRange(range: DateRange): { start: string; end: string } {
+const PERIODS: Period[] = ['Weekly', 'Monthly', 'Quarterly'];
+const VIEWS: ViewMode[] = ['Cycle wise', 'Menu wise'];
+
+const B = Theme.typography.sizes.body + 2;
+const S = Theme.typography.sizes.small + 2;
+
+function getPeriodRange(period: Period) {
   const end = new Date();
   const start = new Date();
-  switch (range) {
-    case '7d': start.setDate(start.getDate() - 7); break;
-    case '30d': start.setDate(start.getDate() - 30); break;
-    case '90d': start.setDate(start.getDate() - 90); break;
-  }
+  if (period === 'Weekly') start.setDate(start.getDate() - 7);
+  else if (period === 'Monthly') start.setDate(start.getDate() - 30);
+  else start.setDate(start.getDate() - 90);
   return { start: start.toISOString().split('T')[0], end: end.toISOString().split('T')[0] };
 }
 
-export function OrderReportScreen({ navigation }: { navigation: any }) {
-  const [range, setRange] = useState<DateRange>('7d');
-  const { start, end } = useMemo(() => getRange(range), [range]);
-  const { data: report } = useOrderReport(start, end);
-  const { data: cycles } = useDeliveryCycles();
+async function handlePrint(html: string) {
+  try {
+    const Print = require('expo-print');
+    await Print.printAsync({ html });
+  } catch {
+    Alert.alert('Print unavailable', 'Run: npx expo install expo-print expo-sharing');
+  }
+}
 
-  const cycleMap = useMemo(() => {
-    const m: Record<number, string> = {};
-    (cycles ?? []).forEach((c) => { m[c.id] = c.cycle_name; });
-    return m;
-  }, [cycles]);
+async function handleDownload(html: string, period: Period) {
+  try {
+    const Print = require('expo-print');
+    const Sharing = require('expo-sharing');
+    const { uri } = await Print.printToFileAsync({ html });
+    await Sharing.shareAsync(uri, { UTI: '.pdf', mimeType: 'application/pdf' });
+  } catch {
+    Alert.alert('PDF unavailable', 'Run: npx expo install expo-print expo-sharing');
+  }
+}
+
+function buildHtml(
+  viewMode: ViewMode,
+  period: Period,
+  cycleRows: { date: string; cycleName: string; count: number }[],
+  menuRows: { date: string; itemName: string; qty: number }[],
+  total: number
+): string {
+  const isCycle = viewMode === 'Cycle wise';
+  const rows = isCycle
+    ? cycleRows.map((r) => `<tr><td>${r.date}</td><td>${r.cycleName}</td><td>${r.count}</td></tr>`).join('')
+    : menuRows.map((r) => `<tr><td>${r.date}</td><td>${r.itemName}</td><td>${r.qty}</td></tr>`).join('');
+  const col2 = isCycle ? 'Cycle' : 'Item';
+  const col3 = isCycle ? 'Orders' : 'Qty';
+
+  return `<!DOCTYPE html><html><head><meta charset="utf-8">
+  <style>body{font-family:sans-serif;font-size:12px;padding:20px}h2{margin-bottom:4px}p{color:#666;margin-bottom:16px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ddd;padding:6px 10px;text-align:left}th{background:#f4f4f4}tfoot td{font-weight:bold;background:#f9f9f9}</style>
+  </head><body>
+  <h2>Orders Report — ${period} (${viewMode})</h2>
+  <p>Generated: ${new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+  <table>
+    <thead><tr><th>Date</th><th>${col2}</th><th>${col3}</th></tr></thead>
+    <tbody>${rows}</tbody>
+    <tfoot><tr><td colspan="2">Total</td><td>${total}</td></tr></tfoot>
+  </table>
+  </body></html>`;
+}
+
+export function OrderReportScreen({ navigation }: { navigation: any }) {
+  const [period, setPeriod] = useState<Period>('Monthly');
+  const [viewMode, setViewMode] = useState<ViewMode>('Cycle wise');
+  const { start, end } = useMemo(() => getPeriodRange(period), [period]);
+  const { data, isLoading } = useOrdersDetailReport(start, end);
+
+  const cycleRows = data?.cycleRows ?? [];
+  const menuRows = data?.menuRows ?? [];
+  const total = data?.totalOrders ?? 0;
+  const displayRows = viewMode === 'Cycle wise' ? cycleRows : menuRows;
+
+  const html = useMemo(
+    () => buildHtml(viewMode, period, cycleRows, menuRows, total),
+    [viewMode, period, cycleRows, menuRows, total]
+  );
+
+  const hasData = displayRows.length > 0;
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
-          <ThemedText variant="body" color="accent">{'< Back'}</ThemedText>
+          <ThemedText variant="body" color="accent" style={styles.txt}>‹ Back</ThemedText>
         </TouchableOpacity>
-        <ThemedText variant="header" color="primary">Order Report</ThemedText>
-        <View style={{ width: 50 }} />
+        <ThemedText variant="header" color="primary" style={styles.title}>Orders</ThemedText>
+        <View style={{ minWidth: 60 }} />
       </View>
 
-      {/* Range */}
-      <View style={styles.rangeBar}>
-        {(['7d', '30d', '90d'] as DateRange[]).map((r) => (
-          <TouchableOpacity
-            key={r}
-            style={[styles.chip, range === r && styles.chipActive]}
-            onPress={() => setRange(r)}
-          >
-            <ThemedText variant="small" color={range === r ? 'primary' : 'subtitle'}>
-              {r === '7d' ? '7 Days' : r === '30d' ? '30 Days' : '90 Days'}
-            </ThemedText>
-          </TouchableOpacity>
+      {/* Period toggle */}
+      <View style={styles.toggleRow}>
+        {PERIODS.map((p, i) => (
+          <React.Fragment key={p}>
+            {i > 0 && <ThemedText variant="body" color="muted" style={styles.pipe}>|</ThemedText>}
+            <TouchableOpacity onPress={() => setPeriod(p)}>
+              <ThemedText variant="body" color={period === p ? 'primary' : 'muted'}
+                style={[styles.txt, period === p && styles.active]}>{p}</ThemedText>
+            </TouchableOpacity>
+          </React.Fragment>
         ))}
       </View>
 
-      {/* Summary */}
-      <View style={styles.summaryCard}>
-        <ThemedText variant="subtitle" color="primary">
-          {report?.total ?? 0} Total Orders
-        </ThemedText>
-        <ThemedText variant="small" color="muted">
-          Cancellation rate: {(report?.cancellationRate ?? 0).toFixed(1)}%
-        </ThemedText>
-      </View>
-
-      {/* By Status */}
-      <View style={styles.section}>
-        <ThemedText variant="subtitle" color="primary" style={styles.sectionTitle}>
-          By Status
-        </ThemedText>
-        {Object.entries(report?.statusBreakdown ?? {}).map(([status, count]) => (
-          <View key={status} style={styles.breakdownRow}>
-            <ThemedText variant="body" color="primary">{status}</ThemedText>
-            <ThemedText variant="body" color="subtitle">{count as number}</ThemedText>
-          </View>
+      {/* View mode toggle */}
+      <View style={[styles.toggleRow, styles.toggleRowBorder]}>
+        {VIEWS.map((v, i) => (
+          <React.Fragment key={v}>
+            {i > 0 && <ThemedText variant="body" color="muted" style={styles.pipe}>|</ThemedText>}
+            <TouchableOpacity onPress={() => setViewMode(v)}>
+              <ThemedText variant="body" color={viewMode === v ? 'primary' : 'muted'}
+                style={[styles.txt, viewMode === v && styles.active]}>{v}</ThemedText>
+            </TouchableOpacity>
+          </React.Fragment>
         ))}
       </View>
 
-      {/* By Cycle */}
-      <View style={styles.section}>
-        <ThemedText variant="subtitle" color="primary" style={styles.sectionTitle}>
-          By Cycle
+      {/* Column header */}
+      <View style={styles.colHeader}>
+        <ThemedText variant="small" color="muted" style={[styles.sub, styles.colDate]}>Date</ThemedText>
+        <ThemedText variant="small" color="muted" style={[styles.sub, { flex: 1 }]}>
+          {viewMode === 'Cycle wise' ? 'Cycle' : 'Item'}
         </ThemedText>
-        {Object.entries(report?.cycleBreakdown ?? {}).map(([cycleId, count]) => (
-          <View key={cycleId} style={styles.breakdownRow}>
-            <ThemedText variant="body" color="primary">
-              {cycleMap[Number(cycleId)] || `Cycle ${cycleId}`}
-            </ThemedText>
-            <ThemedText variant="body" color="subtitle">{count as number}</ThemedText>
-          </View>
-        ))}
+        <ThemedText variant="small" color="muted" style={[styles.sub, styles.colCount]}>
+          {viewMode === 'Cycle wise' ? 'Orders' : 'Qty'}
+        </ThemedText>
       </View>
 
-      {/* By Type */}
-      <View style={styles.section}>
-        <ThemedText variant="subtitle" color="primary" style={styles.sectionTitle}>
-          By Type
-        </ThemedText>
-        {Object.entries(report?.typeBreakdown ?? {}).map(([type, count]) => (
-          <View key={type} style={styles.breakdownRow}>
-            <ThemedText variant="body" color="primary">{type}</ThemedText>
-            <ThemedText variant="body" color="subtitle">{count as number}</ThemedText>
-          </View>
-        ))}
-      </View>
+      {/* Rows */}
+      <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
+        {!isLoading && !hasData && <EmptyState title="No data for this period" />}
 
-      {/* Daily Chart */}
-      {(report?.daily ?? []).length > 0 && (
-        <View style={styles.section}>
-          <ThemedText variant="subtitle" color="primary" style={styles.sectionTitle}>
-            Daily Orders
-          </ThemedText>
-          {(report?.daily ?? []).slice(-14).map((day) => {
-            const max = Math.max(...(report?.daily ?? []).map((d) => d.count));
-            const barW = max > 0 ? (day.count / max) * 100 : 0;
-            return (
-              <View key={day.date} style={styles.chartRow}>
-                <ThemedText variant="micro" color="subtitle" style={styles.chartDate}>
-                  {day.date.slice(5)}
-                </ThemedText>
-                <View style={styles.chartBarBg}>
-                  <View style={[styles.chartBar, { width: `${Math.max(barW, 2)}%` }]} />
-                </View>
-                <ThemedText variant="micro" color="muted" style={styles.chartVal}>
-                  {day.count}
-                </ThemedText>
+        {viewMode === 'Cycle wise'
+          ? cycleRows.map((r, idx) => (
+              <View key={idx} style={styles.dataRow}>
+                <ThemedText variant="body" color="muted" style={[styles.txt, styles.colDate]}>{r.date.slice(5)}</ThemedText>
+                <ThemedText variant="body" color="primary" style={[styles.txt, { flex: 1 }]}>{r.cycleName}</ThemedText>
+                <ThemedText variant="body" color="subtitle" style={[styles.txt, styles.colCount]}>{r.count}</ThemedText>
               </View>
-            );
-          })}
-        </View>
-      )}
-    </ScrollView>
+            ))
+          : menuRows.map((r, idx) => (
+              <View key={idx} style={styles.dataRow}>
+                <ThemedText variant="body" color="muted" style={[styles.txt, styles.colDate]}>{r.date.slice(5)}</ThemedText>
+                <ThemedText variant="body" color="primary" style={[styles.txt, { flex: 1 }]}>{r.itemName}</ThemedText>
+                <ThemedText variant="body" color="subtitle" style={[styles.txt, styles.colCount]}>{r.qty}</ThemedText>
+              </View>
+            ))
+        }
+
+        {hasData && (
+          <View style={[styles.dataRow, styles.totalsRow]}>
+            <ThemedText variant="body" color="muted" style={[styles.txt, styles.colDate]}>Total</ThemedText>
+            <ThemedText variant="body" color="primary" style={[styles.txt, { flex: 1 }]}>{total} orders</ThemedText>
+            <View style={styles.colCount} />
+          </View>
+        )}
+      </ScrollView>
+
+      {/* Footer: Print | Download PDF */}
+      <View style={styles.footer}>
+        <TouchableOpacity onPress={() => handlePrint(html)} disabled={!hasData}>
+          <ThemedText variant="body" color={hasData ? 'mint' : 'muted'} style={styles.txt}>Print  ›</ThemedText>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => handleDownload(html, period)} disabled={!hasData}>
+          <ThemedText variant="body" color={hasData ? 'mint' : 'muted'} style={styles.txt}>Download PDF  ›</ThemedText>
+        </TouchableOpacity>
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
-  content: { padding: Theme.spacing.md, paddingTop: Theme.spacing.xl + Theme.spacing.md, paddingBottom: Theme.spacing.xl },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Theme.spacing.md },
-  rangeBar: { flexDirection: 'row', gap: Theme.spacing.sm, marginBottom: Theme.spacing.md },
-  chip: { flex: 1, paddingVertical: Theme.spacing.sm, borderRadius: 8, backgroundColor: Theme.colors.background.tertiary, alignItems: 'center' },
-  chipActive: { backgroundColor: Theme.colors.action.primary },
-  summaryCard: { backgroundColor: Theme.colors.background.secondary, borderRadius: Theme.components.inputRadius, padding: Theme.spacing.md, marginBottom: Theme.spacing.md, alignItems: 'center' },
-  section: { marginBottom: Theme.spacing.lg },
-  sectionTitle: { marginBottom: Theme.spacing.sm },
-  breakdownRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: Theme.spacing.sm, borderBottomWidth: 1, borderBottomColor: Theme.colors.layout.divider },
-  chartRow: { flexDirection: 'row', alignItems: 'center', marginBottom: Theme.spacing.xs },
-  chartDate: { width: 45 },
-  chartBarBg: { flex: 1, height: 12, backgroundColor: Theme.colors.background.tertiary, borderRadius: 6, marginHorizontal: Theme.spacing.xs, overflow: 'hidden' },
-  chartBar: { height: '100%', backgroundColor: Theme.colors.status.info, borderRadius: 6 },
-  chartVal: { width: 30, textAlign: 'right' },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Theme.colors.layout.divider,
+  },
+  title: { flex: 1, textAlign: 'center' },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Theme.spacing.sm,
+  },
+  toggleRowBorder: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Theme.colors.layout.divider,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Theme.colors.layout.divider,
+  },
+  pipe: { marginHorizontal: Theme.spacing.sm, opacity: 0.4, fontSize: B },
+  active: { fontWeight: '600' },
+  colHeader: {
+    flexDirection: 'row',
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.xs,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Theme.colors.text.mint,
+  },
+  dataRow: {
+    flexDirection: 'row',
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.sm + 2,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Theme.colors.layout.divider,
+  },
+  totalsRow: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Theme.colors.text.mint,
+    borderBottomWidth: 0,
+    marginTop: Theme.spacing.xs,
+  },
+  colDate: { width: 52 },
+  colCount: { width: 52, textAlign: 'right' },
+  list: { paddingBottom: Theme.spacing.xl },
+  footer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.sm + 2,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Theme.colors.text.mint,
+  },
+  txt: { fontSize: B },
+  sub: { fontSize: S },
 });

@@ -13,6 +13,7 @@ import { supabase } from '../api/supabaseClient';
 import { useSupabaseQuery, useSupabaseMutation } from '../api/useSupabaseQuery';
 import { QUERY_KEYS } from '../utils/constants';
 import { useAuth } from './useAuth';
+import { checkAndGrantFirstOrderBonus } from './useReferrals';
 import type { Order } from '../types';
 
 export function useMyOrders() {
@@ -56,15 +57,20 @@ export interface PlaceOrderPayload {
 }
 
 export function usePlaceOrder() {
+  const { session } = useAuth();
   return useSupabaseMutation<PlaceOrderPayload, Order>(
     async (payload) => {
-      // Call Edge Function for server-side order creation
       const { data, error } = await supabase.functions.invoke('place-order', {
         body: payload,
       });
 
       if (error) {
         return { data: null, error, count: null, status: 500, statusText: 'Error' } as any;
+      }
+
+      // Fire-and-forget: grant referral first-order bonus if applicable
+      if (session?.user.id) {
+        checkAndGrantFirstOrderBonus(session.user.id).catch(() => {});
       }
 
       return { data, error: null, count: null, status: 200, statusText: 'OK' } as any;

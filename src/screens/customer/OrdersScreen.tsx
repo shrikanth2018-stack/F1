@@ -1,17 +1,18 @@
 /**
  * 1stOne F1 — Customer Orders Screen
- * Shows order history with status badges. Tap to view detail.
+ * Food and Essentials orders in separate tabs.
+ * Flat list with hairline separators, no cards.
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   FlatList,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
   RefreshControl,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { DispatchBadge } from '../../components/DispatchBadge';
@@ -19,7 +20,7 @@ import { EmptyState } from '../../components/EmptyState';
 import { ErrorRetry } from '../../components/ErrorRetry';
 import { useMyOrders } from '../../hooks/useOrders';
 import { formatPriceShort, formatDateShort, formatRelativeTime } from '../../utils/formatters';
-import type { Order, OrderStatus } from '../../types';
+import type { Order } from '../../types';
 
 const statusVariant: Record<string, 'success' | 'warning' | 'info' | 'error'> = {
   Confirmed: 'info',
@@ -33,33 +34,38 @@ const statusVariant: Record<string, 'success' | 'warning' | 'info' | 'error'> = 
   Cancelled: 'error',
 };
 
+type OrderTab = 'food' | 'essentials';
+
 export function OrdersScreen({ navigation }: any) {
+  const [activeTab, setActiveTab] = useState<OrderTab>('food');
   const { data: orders, isLoading, error, refetch } = useMyOrders();
 
   if (error) {
     return <ErrorRetry message="Could not load orders" onRetry={refetch} />;
   }
 
+  const filtered = (orders ?? []).filter((o) =>
+    activeTab === 'food' ? o.order_type === 'food' : o.order_type === 'essential'
+  );
+
   const renderOrder = ({ item }: { item: Order }) => (
     <TouchableOpacity
-      style={styles.card}
+      style={styles.row}
       activeOpacity={0.7}
       onPress={() => navigation.navigate('OrderDetail', { orderId: item.id })}
     >
-      <View style={styles.cardTop}>
-        <ThemedText variant="body" color="primary">
-          Order #{item.id}
-        </ThemedText>
+      <View style={styles.rowTop}>
+        <ThemedText variant="subtitle" color="primary">Order #{item.id}</ThemedText>
         <DispatchBadge
           label={item.status}
           variant={statusVariant[item.status] ?? 'info'}
         />
       </View>
-      <View style={styles.cardBottom}>
-        <ThemedText variant="small" color="subtitle">
+      <View style={styles.rowMid}>
+        <ThemedText variant="body" color="subtitle">
           {formatDateShort(item.dispatch_date)} · {formatPriceShort(item.total_amount)}
         </ThemedText>
-        <ThemedText variant="micro" color="muted">
+        <ThemedText variant="small" color="muted">
           {formatRelativeTime(item.created_at)}
         </ThemedText>
       </View>
@@ -69,13 +75,43 @@ export function OrdersScreen({ navigation }: any) {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <ThemedText variant="header" color="primary">
-          Orders
-        </ThemedText>
+        <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <ThemedText variant="body" color="accent">‹ Back</ThemedText>
+        </TouchableOpacity>
+        <ThemedText variant="header" color="primary">My Orders</ThemedText>
+        <View style={{ width: 48 }} />
+      </View>
+
+      {/* Tabs */}
+      <View style={styles.tabs}>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'food' && styles.tabActive]}
+          onPress={() => setActiveTab('food')}
+        >
+          <ThemedText
+            variant="body"
+            color={activeTab === 'food' ? 'primary' : 'muted'}
+            style={activeTab === 'food' ? styles.tabTextActive : undefined}
+          >
+            Food
+          </ThemedText>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'essentials' && styles.tabActive]}
+          onPress={() => setActiveTab('essentials')}
+        >
+          <ThemedText
+            variant="body"
+            color={activeTab === 'essentials' ? 'primary' : 'muted'}
+            style={activeTab === 'essentials' ? styles.tabTextActive : undefined}
+          >
+            Essentials
+          </ThemedText>
+        </TouchableOpacity>
       </View>
 
       <FlatList
-        data={orders ?? []}
+        data={filtered}
         keyExtractor={(item) => item.id.toString()}
         renderItem={renderOrder}
         contentContainerStyle={styles.list}
@@ -89,7 +125,7 @@ export function OrdersScreen({ navigation }: any) {
         ListEmptyComponent={
           !isLoading ? (
             <EmptyState
-              title="No orders yet"
+              title={`No ${activeTab} orders yet`}
               subtitle="Your order history will appear here"
             />
           ) : null
@@ -100,34 +136,53 @@ export function OrdersScreen({ navigation }: any) {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Theme.colors.background.primary,
-  },
+  container: { flex: 1, backgroundColor: Theme.colors.background.primary },
   header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: Theme.spacing.md,
     paddingTop: Theme.spacing.md,
     paddingBottom: Theme.spacing.sm,
   },
+  tabs: {
+    flexDirection: 'row',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Theme.colors.text.mint,
+  },
+  tab: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: Theme.spacing.sm,
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  tabActive: {
+    borderBottomColor: Theme.colors.text.mint,
+  },
+  tabTextActive: {
+    fontSize: Theme.typography.sizes.body + 2,
+  },
   list: {
-    paddingHorizontal: Theme.spacing.md,
+    paddingTop: Theme.spacing.xs,
     paddingBottom: Theme.spacing.xl,
   },
-  card: {
-    backgroundColor: Theme.colors.background.card,
-    borderRadius: Theme.components.inputRadius,
-    padding: Theme.spacing.sm,
-    marginBottom: Theme.spacing.sm,
+  row: {
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.sm + 2,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Theme.colors.text.mint,
   },
-  cardTop: {
+  rowTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  rowMid: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 6,
-  },
-  cardBottom: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
   },
 });

@@ -1,47 +1,26 @@
 /**
  * 1stOne F1 — Staff Navigator
  *
- * Stack wrapping bottom tabs for modal screens.
- * Tabs: Dashboard | Attendance | Expenses | Profile
+ * Per blueprint: NO bottom tabs for staff.
+ * StaffDashboard is the main screen with Kitchen/Packing/Delivery
+ * as top tabs built into the dashboard itself.
+ *
+ * Stack pushes:
+ *   - Attendance (from header profile button)
+ *   - Expenses (from footer shortcuts or profile)
+ *   - StaffProfile (from header profile button)
  */
 
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { StaffDashboard } from '../screens/staff/StaffDashboard';
 import { StaffAttendanceScreen } from '../screens/staff/StaffAttendanceScreen';
 import { StaffExpensesScreen } from '../screens/staff/StaffExpensesScreen';
 import { StaffProfileScreen } from '../screens/staff/StaffProfileScreen';
+import { StaffLeaveScreen } from '../screens/staff/StaffLeaveScreen';
 import { Theme } from '../theme';
 
-const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
-
-function StaffTabs() {
-  return (
-    <Tab.Navigator
-      screenOptions={{
-        headerShown: false,
-        tabBarStyle: {
-          backgroundColor: Theme.colors.background.card,
-          borderTopColor: Theme.colors.layout.divider,
-          borderTopWidth: 1,
-        },
-        tabBarActiveTintColor: Theme.colors.action.primary,
-        tabBarInactiveTintColor: Theme.colors.text.muted,
-        tabBarLabelStyle: {
-          fontFamily: Theme.typography.fontFamily,
-          fontSize: Theme.typography.sizes.micro,
-        },
-      }}
-    >
-      <Tab.Screen name="Dashboard" component={StaffDashboard} />
-      <Tab.Screen name="Attendance" component={StaffAttendanceScreen} />
-      <Tab.Screen name="Expenses" component={StaffExpensesScreen} />
-      <Tab.Screen name="Profile" component={StaffProfileScreen} />
-    </Tab.Navigator>
-  );
-}
 
 export function StaffNavigator() {
   return (
@@ -52,7 +31,11 @@ export function StaffNavigator() {
         animation: 'slide_from_right',
       }}
     >
-      <Stack.Screen name="StaffTabs" component={StaffTabs} />
+      <Stack.Screen name="StaffDashboard" component={StaffDashboard} />
+      <Stack.Screen name="Attendance" component={StaffAttendanceScreen} />
+      <Stack.Screen name="StaffExpenses" component={StaffExpensesScreen} />
+      <Stack.Screen name="StaffProfile" component={StaffProfileScreen} />
+      <Stack.Screen name="StaffLeave"   component={StaffLeaveScreen} />
     </Stack.Navigator>
   );
 }

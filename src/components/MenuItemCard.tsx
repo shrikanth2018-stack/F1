@@ -1,15 +1,11 @@
 /**
  * 1stOne F1 — MenuItemCard
- *
- * Displays a single menu item with image, name, description, price,
- * and add-to-cart / quantity stepper.
- *
- * Uses display_price only (server recalculates at checkout).
- * Shows DispatchBadge (Today/Tomorrow) per Smart Cart evaluation.
+ * 3-column text row: Name (flex 3) | Price (flex 2, centred) | ADD/stepper (flex 1.5)
+ * ADD and stepper controls in green. No boxes, no backgrounds.
  */
 
 import React from 'react';
-import { View, Image, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, TouchableOpacity } from 'react-native';
 import { Theme } from '../theme';
 import { ThemedText } from './ThemedText';
 import { DispatchBadge } from './DispatchBadge';
@@ -36,137 +32,77 @@ export function MenuItemCard({
   onDecrement,
 }: MenuItemCardProps) {
   return (
-    <View style={styles.card}>
-      {item.image_url ? (
-        <Image source={{ uri: item.image_url }} style={styles.image} />
-      ) : (
-        <View style={[styles.image, styles.placeholder]} />
-      )}
-
-      <View style={styles.info}>
-        <View style={styles.topRow}>
-          <ThemedText variant="body" color="primary" style={styles.name}>
-            {item.name}
-          </ThemedText>
-          {dispatchLabel && (
-            <DispatchBadge
-              label={dispatchLabel}
-              variant={dispatchScenario === 'A' ? 'today' : 'tomorrow'}
-            />
-          )}
-        </View>
-
+    <View style={styles.row}>
+      <View style={styles.colName}>
+        <ThemedText variant="body" color="primary">{item.name}</ThemedText>
         {item.description ? (
-          <ThemedText variant="small" color="muted" style={styles.desc}>
-            {item.description}
-          </ThemedText>
+          <ThemedText variant="small" color="muted">{item.description}</ThemedText>
         ) : null}
+        {dispatchLabel && (
+          <DispatchBadge
+            label={dispatchLabel}
+            variant={dispatchScenario === 'A' ? 'today' : 'tomorrow'}
+          />
+        )}
+      </View>
 
-        <View style={styles.bottomRow}>
-          <ThemedText variant="subtitle" color="accent">
-            {formatPriceShort(item.price)}
-          </ThemedText>
+      <View style={styles.colPrice}>
+        <ThemedText variant="body" color="mint">{formatPriceShort(item.price)}</ThemedText>
+      </View>
 
-          {quantity === 0 ? (
-            <TouchableOpacity
-              style={styles.addButton}
-              activeOpacity={0.7}
-              onPress={onAdd}
-            >
-              <ThemedText variant="small" color="primary">
-                ADD
-              </ThemedText>
+      <View style={styles.colAction}>
+        {quantity === 0 ? (
+          <TouchableOpacity onPress={onAdd} activeOpacity={0.6} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <ThemedText variant="small" style={styles.green}>ADD</ThemedText>
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.stepper}>
+            <TouchableOpacity style={styles.stepBtn} onPress={onDecrement} activeOpacity={0.6}>
+              <ThemedText variant="body" style={styles.green}>−</ThemedText>
             </TouchableOpacity>
-          ) : (
-            <View style={styles.stepper}>
-              <TouchableOpacity
-                style={styles.stepBtn}
-                onPress={onDecrement}
-                activeOpacity={0.7}
-              >
-                <ThemedText variant="body" color="primary">
-                  −
-                </ThemedText>
-              </TouchableOpacity>
-
-              <ThemedText variant="body" color="primary" style={styles.qty}>
-                {quantity}
-              </ThemedText>
-
-              <TouchableOpacity
-                style={styles.stepBtn}
-                onPress={onIncrement}
-                activeOpacity={0.7}
-              >
-                <ThemedText variant="body" color="primary">
-                  +
-                </ThemedText>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
+            <ThemedText variant="body" color="primary" style={styles.qty}>{quantity}</ThemedText>
+            <TouchableOpacity style={styles.stepBtn} onPress={onIncrement} activeOpacity={0.6}>
+              <ThemedText variant="body" style={styles.green}>+</ThemedText>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
+  row: {
     flexDirection: 'row',
-    backgroundColor: Theme.colors.background.card,
-    borderRadius: Theme.components.inputRadius,
-    marginHorizontal: Theme.spacing.md,
-    marginBottom: Theme.spacing.sm,
-    overflow: 'hidden',
-  },
-  image: {
-    width: 100,
-    height: 100,
-  },
-  placeholder: {
-    backgroundColor: Theme.colors.background.input,
-  },
-  info: {
-    flex: 1,
-    padding: Theme.spacing.sm,
-    justifyContent: 'space-between',
-  },
-  topRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  name: {
-    flex: 1,
-    marginRight: Theme.spacing.xs,
-  },
-  desc: {
-    marginTop: 2,
-  },
-  bottomRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: Theme.spacing.xs,
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.sm + 2,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Theme.colors.layout.divider,
   },
-  addButton: {
-    backgroundColor: Theme.colors.action.primary,
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderRadius: 8,
+  colName: {
+    flex: 3,
+  },
+  colPrice: {
+    flex: 2,
+    alignItems: 'center',
+  },
+  colAction: {
+    flex: 1.5,
+    alignItems: 'flex-end',
+  },
+  green: {
+    color: Theme.colors.status.success,
   },
   stepper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Theme.colors.action.primary,
-    borderRadius: 8,
   },
   stepBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    padding: Theme.spacing.xs,
   },
   qty: {
-    minWidth: 24,
+    minWidth: 22,
     textAlign: 'center',
   },
 });

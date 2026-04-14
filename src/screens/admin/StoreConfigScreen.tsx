@@ -1,8 +1,10 @@
 /**
- * 1stOne F1 — Admin Store Config Screen
+ * 1stOne F1 — Operations Manager
  *
- * Edit store config (singleton id=1) + toggle feature flags.
- * All changes save immediately via mutation.
+ * Flat text layout — no cards or boxes.
+ * Storm Mode label and active toggle are in error red with ⚠ marker.
+ * Cancellation window uses "2 hrs from order time OR cycle cutoff, whichever first" logic.
+ * Feature Flags is a separate screen reachable from the footer.
  */
 
 import React, { useState, useEffect } from 'react';
@@ -11,52 +13,136 @@ import {
   ScrollView,
   TextInput,
   Switch,
+  TouchableOpacity,
   Alert,
   StyleSheet,
+  ActivityIndicator,
 } from 'react-native';
-import { TouchableOpacity } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
-import { ThemedButton } from '../../components/ThemedButton';
 import { Divider } from '../../components/Divider';
 import { useStoreConfig } from '../../hooks/useStoreConfig';
-import { useFeatureFlags } from '../../hooks/useFeatureFlag';
-import { useUpdateStoreConfig, useUpdateFeatureFlag } from '../../hooks/useStaffManagement';
+import { useUpdateStoreConfig } from '../../hooks/useStaffManagement';
 
-function ConfigRow({
+const B = Theme.typography.sizes.body + 2;
+const S = Theme.typography.sizes.small + 2;
+const RED = Theme.colors.status.error;
+
+// ── Flat inline field: label left, plain input right ─────
+function Field({
   label,
+  hint,
   value,
   onChangeText,
   keyboardType = 'default',
+  last = false,
 }: {
   label: string;
+  hint?: string;
   value: string;
   onChangeText: (t: string) => void;
-  keyboardType?: 'default' | 'numeric';
+  keyboardType?: 'default' | 'numeric' | 'phone-pad';
+  last?: boolean;
 }) {
   return (
-    <View style={styles.configRow}>
-      <ThemedText variant="body" color="primary" style={styles.configLabel}>
-        {label}
-      </ThemedText>
+    <View style={[styles.fieldRow, !last && styles.fieldBorder]}>
+      <View style={{ flex: 1 }}>
+        <ThemedText variant="body" color="primary" style={{ fontSize: B }}>
+          {label}
+        </ThemedText>
+        {hint ? (
+          <ThemedText variant="small" color="muted" style={{ fontSize: S, marginTop: 2 }}>
+            {hint}
+          </ThemedText>
+        ) : null}
+      </View>
       <TextInput
-        style={styles.configInput}
+        style={styles.inlineInput}
         value={value}
         onChangeText={onChangeText}
         keyboardType={keyboardType}
         placeholderTextColor={Theme.colors.text.muted}
+        returnKeyType="done"
       />
     </View>
   );
 }
 
+// ── Flat toggle row ──────────────────────────────────────
+function ToggleRow({
+  label,
+  hint,
+  value,
+  onValueChange,
+  danger = false,
+  last = false,
+}: {
+  label: string;
+  hint?: string;
+  value: boolean;
+  onValueChange: (v: boolean) => void;
+  danger?: boolean;
+  last?: boolean;
+}) {
+  return (
+    <View style={[styles.fieldRow, !last && styles.fieldBorder]}>
+      <View style={{ flex: 1 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          {danger && value && (
+            <ThemedText variant="body" color="muted" style={{ fontSize: B, color: RED }}>
+              ⚠
+            </ThemedText>
+          )}
+          <ThemedText
+            variant="body"
+            color="primary"
+            style={[{ fontSize: B }, danger && { color: RED }]}
+          >
+            {label}
+          </ThemedText>
+        </View>
+        {hint ? (
+          <ThemedText
+            variant="small"
+            color="muted"
+            style={[{ fontSize: S, marginTop: 2 }, danger && value && { color: RED }]}
+          >
+            {hint}
+          </ThemedText>
+        ) : null}
+      </View>
+      <Switch
+        value={value}
+        onValueChange={onValueChange}
+        trackColor={{
+          true: danger ? RED : Theme.colors.status.success,
+          false: Theme.colors.background.tertiary,
+        }}
+        thumbColor={danger && value ? RED : undefined}
+      />
+    </View>
+  );
+}
+
+// ── Section label ────────────────────────────────────────
+function SectionLabel({ title }: { title: string }) {
+  return (
+    <ThemedText
+      variant="small"
+      color="muted"
+      style={{ fontSize: S, letterSpacing: 1, paddingHorizontal: Theme.spacing.md, paddingTop: Theme.spacing.md, paddingBottom: Theme.spacing.xs }}
+    >
+      {title.toUpperCase()}
+    </ThemedText>
+  );
+}
+
+// ── Main screen ──────────────────────────────────────────
 export function StoreConfigScreen({ navigation }: { navigation: any }) {
   const { data: config, isLoading } = useStoreConfig();
-  const { data: flags } = useFeatureFlags();
   const updateConfig = useUpdateStoreConfig();
-  const updateFlag = useUpdateFeatureFlag();
 
-  // Editable config fields
   const [taxRate, setTaxRate] = useState('');
   const [deliveryFee, setDeliveryFee] = useState('');
   const [cancelWindow, setCancelWindow] = useState('');
@@ -65,7 +151,6 @@ export function StoreConfigScreen({ navigation }: { navigation: any }) {
   const [whatsappNum, setWhatsappNum] = useState('');
   const [stormMode, setStormMode] = useState(false);
 
-  // Populate form when config loads
   useEffect(() => {
     if (config) {
       setTaxRate(String(config.tax_rate_percentage));
@@ -78,218 +163,164 @@ export function StoreConfigScreen({ navigation }: { navigation: any }) {
     }
   }, [config]);
 
-  const handleSaveConfig = () => {
+  const handleSave = () => {
     updateConfig.mutate(
       {
         tax_rate_percentage: parseFloat(taxRate) || 0,
         delivery_fee: parseFloat(deliveryFee) || 0,
-        cancellation_window_hours: parseInt(cancelWindow, 10) || 2,
+        cancellation_window_hours: parseFloat(cancelWindow) || 2,
         min_wallet_topup: parseFloat(minTopup) || 100,
         loyalty_points_per_rupee: parseFloat(loyaltyRate) || 0.1,
         whatsapp_support_number: whatsappNum || null,
         storm_mode_active: stormMode,
       },
-      {
-        onSuccess: () => Alert.alert('Saved', 'Store config updated.'),
-      }
+      { onSuccess: () => Alert.alert('Saved', 'Operations config updated.') },
     );
   };
 
-  const handleToggleFlag = (flagId: number, currentValue: boolean) => {
-    updateFlag.mutate({ id: flagId, flag_value: !currentValue });
+  const handleStormToggle = (next: boolean) => {
+    if (next) {
+      Alert.alert(
+        '⚠ Enable Storm Mode?',
+        'This will pause all new orders immediately. Existing orders continue processing.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Enable', style: 'destructive', onPress: () => setStormMode(true) },
+        ],
+      );
+    } else {
+      setStormMode(false);
+    }
   };
 
   if (isLoading) {
     return (
-      <View style={styles.center}>
-        <ThemedText variant="body" color="subtitle">
-          Loading config...
-        </ThemedText>
-      </View>
+      <SafeAreaView style={styles.container}>
+        <ActivityIndicator style={{ marginTop: Theme.spacing.xl }} color={Theme.colors.action.primary} />
+      </SafeAreaView>
     );
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
-          <ThemedText variant="body" color="accent">
-            {'< Back'}
-          </ThemedText>
+          <ThemedText variant="body" color="accent" style={{ fontSize: B, minWidth: 60 }}>‹ Back</ThemedText>
         </TouchableOpacity>
-        <ThemedText variant="header" color="primary">
-          Store Config
+        <ThemedText variant="header" color="primary" style={{ flex: 1, textAlign: 'center' }}>
+          Operations Manager
         </ThemedText>
-        <View style={{ width: 50 }} />
+        <TouchableOpacity onPress={handleSave} disabled={updateConfig.isPending} style={{ minWidth: 60, alignItems: 'flex-end' }}>
+          {updateConfig.isPending
+            ? <ActivityIndicator size="small" color={Theme.colors.text.mint} />
+            : <ThemedText variant="body" color="mint" style={{ fontSize: B }}>Save</ThemedText>
+          }
+        </TouchableOpacity>
       </View>
 
-      {/* Config Fields */}
-      <View style={styles.section}>
-        <ThemedText variant="subtitle" color="primary" style={styles.sectionTitle}>
-          Pricing
-        </ThemedText>
-        <ConfigRow
-          label="Tax Rate (%)"
-          value={taxRate}
-          onChangeText={setTaxRate}
-          keyboardType="numeric"
-        />
-        <ConfigRow
-          label="Delivery Fee"
-          value={deliveryFee}
-          onChangeText={setDeliveryFee}
-          keyboardType="numeric"
-        />
-        <ConfigRow
-          label="Min Wallet Top-up"
-          value={minTopup}
-          onChangeText={setMinTopup}
-          keyboardType="numeric"
-        />
-        <ConfigRow
-          label="Loyalty pts/rupee"
-          value={loyaltyRate}
-          onChangeText={setLoyaltyRate}
-          keyboardType="numeric"
-        />
-      </View>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: Theme.spacing.xl * 3 }}>
 
-      <View style={styles.section}>
-        <ThemedText variant="subtitle" color="primary" style={styles.sectionTitle}>
-          Operations
-        </ThemedText>
-        <ConfigRow
-          label="Cancel Window (hrs)"
-          value={cancelWindow}
-          onChangeText={setCancelWindow}
-          keyboardType="numeric"
-        />
-        <ConfigRow
-          label="WhatsApp Number"
-          value={whatsappNum}
-          onChangeText={setWhatsappNum}
-        />
-        <View style={styles.switchRow}>
-          <ThemedText variant="body" color="primary">
-            Storm Mode
-          </ThemedText>
-          <Switch
-            value={stormMode}
-            onValueChange={setStormMode}
-            trackColor={{
-              true: Theme.colors.status.error,
-              false: Theme.colors.background.tertiary,
-            }}
+        {/* PRICING */}
+        <SectionLabel title="Pricing" />
+        <View style={styles.group}>
+          <Field label="Tax Rate (%)" value={taxRate} onChangeText={setTaxRate} keyboardType="numeric" />
+          <Field label="Delivery Fee (₹)" value={deliveryFee} onChangeText={setDeliveryFee} keyboardType="numeric" />
+          <Field label="Min Wallet Top-up (₹)" value={minTopup} onChangeText={setMinTopup} keyboardType="numeric" />
+          <Field label="Loyalty pts / ₹" value={loyaltyRate} onChangeText={setLoyaltyRate} keyboardType="numeric" last />
+        </View>
+
+        <Divider />
+
+        {/* ORDERS */}
+        <SectionLabel title="Orders" />
+        <View style={styles.group}>
+          <Field
+            label="Cancellation Window (hrs)"
+            hint="Applied from order time, or the cycle's cutoff — whichever comes first"
+            value={cancelWindow}
+            onChangeText={setCancelWindow}
+            keyboardType="numeric"
+            last
           />
         </View>
+
+        <Divider />
+
+        {/* SUPPORT */}
+        <SectionLabel title="Support" />
+        <View style={styles.group}>
+          <Field label="WhatsApp Number" value={whatsappNum} onChangeText={setWhatsappNum} keyboardType="phone-pad" last />
+        </View>
+
+        <Divider />
+
+        {/* EMERGENCY */}
+        <SectionLabel title="Emergency" />
+        <View style={styles.group}>
+          <ToggleRow
+            label="Storm Mode"
+            hint={stormMode ? 'All new orders are paused' : 'Pause all new orders instantly'}
+            value={stormMode}
+            onValueChange={handleStormToggle}
+            danger
+            last
+          />
+        </View>
+
+      </ScrollView>
+
+      {/* Footer */}
+      <View style={styles.footer}>
+        <TouchableOpacity onPress={() => navigation.navigate('FeatureFlags')}>
+          <ThemedText variant="body" color="mint" style={{ fontSize: B }}>Feature Flags ›</ThemedText>
+        </TouchableOpacity>
       </View>
-
-      <ThemedButton
-        title="Save Config"
-        variant="primary"
-        onPress={handleSaveConfig}
-        loading={updateConfig.isPending}
-      />
-
-      <Divider />
-
-      {/* Feature Flags */}
-      <View style={styles.section}>
-        <ThemedText variant="subtitle" color="primary" style={styles.sectionTitle}>
-          Feature Flags
-        </ThemedText>
-
-        {(flags ?? []).map((flag: any) => (
-          <View key={flag.id} style={styles.flagRow}>
-            <View style={styles.flagInfo}>
-              <ThemedText variant="body" color="primary">
-                {flag.flag_key}
-              </ThemedText>
-              {flag.description && (
-                <ThemedText variant="small" color="muted">
-                  {flag.description}
-                </ThemedText>
-              )}
-            </View>
-            <Switch
-              value={flag.flag_value}
-              onValueChange={() => handleToggleFlag(flag.id, flag.flag_value)}
-              trackColor={{
-                true: Theme.colors.status.success,
-                false: Theme.colors.background.tertiary,
-              }}
-            />
-          </View>
-        ))}
-      </View>
-    </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Theme.colors.background.primary,
-  },
-  content: {
-    padding: Theme.spacing.md,
-    paddingTop: Theme.spacing.xl + Theme.spacing.md,
-    paddingBottom: Theme.spacing.xl,
-  },
-  center: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: Theme.colors.background.primary,
-  },
+  container: { flex: 1, backgroundColor: Theme.colors.background.primary },
+
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: Theme.spacing.lg,
-  },
-  section: {
-    marginBottom: Theme.spacing.lg,
-  },
-  sectionTitle: {
-    marginBottom: Theme.spacing.sm,
-  },
-  configRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Theme.spacing.sm,
-  },
-  configLabel: {
-    flex: 1,
-  },
-  configInput: {
-    width: 120,
-    backgroundColor: Theme.colors.background.input,
-    borderRadius: Theme.components.inputRadius,
-    padding: Theme.spacing.sm,
-    color: Theme.colors.text.primary,
-    fontFamily: Theme.typography.fontFamily,
-    fontSize: Theme.typography.sizes.body,
-    textAlign: 'right',
-  },
-  switchRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Theme.spacing.sm,
-  },
-  flagRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    paddingHorizontal: Theme.spacing.md,
     paddingVertical: Theme.spacing.sm,
-    borderBottomWidth: 1,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: Theme.colors.layout.divider,
   },
-  flagInfo: {
-    flex: 1,
-    marginRight: Theme.spacing.sm,
+
+  group: {
+    paddingHorizontal: Theme.spacing.md,
+  },
+
+  fieldRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: Theme.spacing.sm + 2,
+    gap: Theme.spacing.sm,
+  },
+  fieldBorder: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Theme.colors.layout.divider,
+  },
+
+  inlineInput: {
+    minWidth: 100,
+    textAlign: 'right',
+    fontSize: B,
+    color: Theme.colors.text.primary,
+    fontFamily: Theme.typography.fontFamily,
+    paddingVertical: 2,
+  },
+
+  footer: {
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Theme.colors.text.mint,
+    alignItems: 'flex-end',
   },
 });

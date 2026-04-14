@@ -41,7 +41,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   box: {
-    backgroundColor: Theme.colors.background.card,
+    backgroundColor: Theme.colors.background.secondary,
     borderRadius: Theme.components.inputRadius,
     padding: Theme.spacing.xl,
     alignItems: 'center',

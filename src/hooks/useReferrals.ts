@@ -1,11 +1,13 @@
 /**
  * 1stOne F1 — useReferrals
  *
- * Referral system hooks:
- * - Get own referral code
- * - Fetch referral history (people I referred)
- * - Fetch referral settings (reward amounts)
- * - Apply referral code (referee side)
+ * Referral program — Earn While They Subscribe model:
+ *
+ * 1. Referee enters referrer's code → referee gets signup_credit immediately
+ * 2. Referee places first order → referrer gets first_order_points + first_order_credit
+ * 3. After 30 days (admin triggers) → referrer gets month_credit bonus
+ *
+ * Milestones: N friends ordered = Star badge, M friends = Ambassador badge.
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -14,21 +16,35 @@ import { useAuth } from './useAuth';
 import { QUERY_KEYS, QUERY_STALE_TIME } from '../utils/constants';
 import type { Referral, ReferralSettings, Profile } from '../types';
 
-/** Get current user's referral code from profile */
+// ── Defaults if columns don't exist in DB yet ──────────────
+export const REFERRAL_DEFAULTS: Partial<ReferralSettings> = {
+  is_active: false,
+  referee_signup_credit: 50,
+  referee_reward_points: 0,
+  referrer_first_order_points: 100,
+  referrer_first_order_credit: 30,
+  referrer_month_credit: 100,
+  milestone_star_count: 3,
+  milestone_ambassador_count: 5,
+};
+
+export function mergedSettings(raw: Partial<ReferralSettings> | null): ReferralSettings {
+  return { ...REFERRAL_DEFAULTS, ...raw } as ReferralSettings;
+}
+
+// ── Customer hooks ───────────────────────────────────────────
+
 export function useMyReferralCode() {
   const { session } = useAuth();
-
   return useQuery({
     queryKey: [...QUERY_KEYS.PROFILE, 'referral_code', session?.user.id],
     queryFn: async () => {
       if (!session) return null;
-
       const { data, error } = await supabase
         .from('profiles')
         .select('referral_code')
         .eq('id', session.user.id)
         .single();
-
       if (error) throw error;
       return data?.referral_code as string | null;
     },
@@ -37,7 +53,6 @@ export function useMyReferralCode() {
   });
 }
 
-/** Fetch referral settings (reward config) */
 export function useReferralSettings() {
   return useQuery({
     queryKey: ['referral_settings'],
@@ -47,110 +62,286 @@ export function useReferralSettings() {
         .select('*')
         .limit(1)
         .maybeSingle();
-
       if (error) throw error;
-      return data as ReferralSettings | null;
+      return mergedSettings(data);
     },
     staleTime: QUERY_STALE_TIME,
   });
 }
 
-/** Fetch my referral history (people I referred) */
 export function useMyReferrals() {
   const { session } = useAuth();
-
   return useQuery({
     queryKey: [...QUERY_KEYS.REFERRALS, session?.user.id],
     queryFn: async () => {
       if (!session) return [];
-
       const { data, error } = await supabase
         .from('referrals')
         .select('*, profiles!referrals_referee_id_fkey(full_name, phone_number)')
         .eq('referrer_id', session.user.id)
         .order('created_at', { ascending: false });
-
       if (error) throw error;
-      return (data ?? []) as (Referral & { profiles: any })[];
+      return (data ?? []) as (Referral & { profiles: Pick<Profile, 'full_name' | 'phone_number'> | null })[];
     },
     enabled: !!session,
     staleTime: QUERY_STALE_TIME,
   });
 }
 
-/** Generate a referral code for current user if they don't have one */
 export function useGenerateReferralCode() {
   const { session } = useAuth();
   const queryClient = useQueryClient();
-
   return useMutation({
     mutationFn: async () => {
       if (!session) throw new Error('Not authenticated');
-
-      // Generate a short code from user ID
       const code = '1ST' + session.user.id.slice(0, 6).toUpperCase();
-
       const { error } = await supabase
         .from('profiles')
         .update({ referral_code: code })
         .eq('id', session.user.id);
-
       if (error) throw error;
       return code;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.PROFILE });
-    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: QUERY_KEYS.PROFILE }),
   });
 }
 
-/** Apply a referral code (referee enters referrer's code) */
+/** Apply referral code — credits referee signup credit immediately */
 export function useApplyReferralCode() {
   const { session } = useAuth();
   const queryClient = useQueryClient();
-
   return useMutation({
     mutationFn: async (code: string) => {
       if (!session) throw new Error('Not authenticated');
 
-      // Find the referrer by code
+      // Get referrer
       const { data: referrer, error: findErr } = await supabase
         .from('profiles')
         .select('id')
         .eq('referral_code', code.toUpperCase())
         .single();
-
       if (findErr || !referrer) throw new Error('Invalid referral code');
       if (referrer.id === session.user.id) throw new Error('Cannot use your own code');
 
-      // Check if already referred
+      // Check already referred
       const { data: existing } = await supabase
         .from('referrals')
         .select('id')
         .eq('referee_id', session.user.id)
         .limit(1);
-
       if (existing && existing.length > 0) throw new Error('You have already used a referral code');
+
+      // Get settings for signup credit amount
+      const { data: rawSettings } = await supabase
+        .from('referral_settings')
+        .select('*')
+        .limit(1)
+        .maybeSingle();
+      const settings = mergedSettings(rawSettings);
+      if (!settings.is_active) throw new Error('Referral program is currently inactive');
 
       // Create referral record
       const { error: refErr } = await supabase.from('referrals').insert({
         referrer_id: referrer.id,
         referee_id: session.user.id,
-        status: 'completed',
+        status: 'pending',
         reward_given: false,
+        first_order_reward_given: false,
+        month_reward_given: false,
       });
-
       if (refErr) throw refErr;
 
-      // Update profile with referred_by
+      // Update referee's profile with referred_by
       await supabase
         .from('profiles')
         .update({ referred_by: referrer.id })
         .eq('id', session.user.id);
+
+      // Credit referee signup wallet credit
+      if (settings.referee_signup_credit > 0) {
+        await creditWallet(
+          session.user.id,
+          settings.referee_signup_credit,
+          `Referral signup bonus (code: ${code.toUpperCase()})`
+        );
+      }
+
+      // Credit referee loyalty points
+      if (settings.referee_reward_points > 0) {
+        await creditLoyaltyPoints(session.user.id, settings.referee_reward_points);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.REFERRALS });
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.PROFILE });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.WALLET });
     },
   });
+}
+
+/**
+ * Call after a customer places their first order.
+ * Checks if they were referred; if so, credits the referrer's first-order bonus.
+ * Safe to call on every order — checks reward_given flag.
+ */
+export async function checkAndGrantFirstOrderBonus(userId: string): Promise<void> {
+  // Get user's referred_by
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('referred_by')
+    .eq('id', userId)
+    .single();
+  if (!profile?.referred_by) return;
+
+  // Find the referral record
+  const { data: referral } = await supabase
+    .from('referrals')
+    .select('id, status, first_order_reward_given')
+    .eq('referee_id', userId)
+    .eq('referrer_id', profile.referred_by)
+    .maybeSingle();
+  if (!referral || referral.first_order_reward_given) return;
+
+  // Get settings
+  const { data: rawSettings } = await supabase
+    .from('referral_settings')
+    .select('*').limit(1).maybeSingle();
+  const settings = mergedSettings(rawSettings);
+  if (!settings.is_active) return;
+
+  // Count referee's orders
+  const { count } = await supabase
+    .from('orders')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .neq('status', 'Cancelled');
+  if ((count ?? 0) !== 1) return; // only trigger on first order
+
+  // Credit referrer
+  if (settings.referrer_first_order_credit > 0) {
+    await creditWallet(
+      profile.referred_by,
+      settings.referrer_first_order_credit,
+      `Referral bonus — your friend placed their first order`
+    );
+  }
+  if (settings.referrer_first_order_points > 0) {
+    await creditLoyaltyPoints(profile.referred_by, settings.referrer_first_order_points);
+  }
+
+  // Update referral record
+  await supabase
+    .from('referrals')
+    .update({ status: 'first_order_done', first_order_reward_given: true, reward_given: true })
+    .eq('id', referral.id);
+}
+
+// ── Admin hooks ──────────────────────────────────────────────
+
+export function useAllReferrals() {
+  return useQuery({
+    queryKey: ['admin_referrals'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('referrals')
+        .select(`
+          *,
+          referrer:profiles!referrals_referrer_id_fkey(full_name, phone_number),
+          referee:profiles!referrals_referee_id_fkey(full_name, phone_number)
+        `)
+        .order('created_at', { ascending: false });
+      if (error) throw new Error(error.message);
+      return (data ?? []) as any[];
+    },
+    staleTime: QUERY_STALE_TIME,
+  });
+}
+
+export function useUpdateReferralSettings() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (settings: Partial<ReferralSettings>) => {
+      // Upsert — referral_settings is a single-row config table
+      const { data: existing } = await supabase
+        .from('referral_settings')
+        .select('id')
+        .limit(1)
+        .maybeSingle();
+
+      if (existing?.id) {
+        const { error } = await supabase
+          .from('referral_settings')
+          .update({ ...settings, updated_at: new Date().toISOString() })
+          .eq('id', existing.id);
+        if (error) throw new Error(error.message);
+      } else {
+        const { error } = await supabase
+          .from('referral_settings')
+          .insert({ ...REFERRAL_DEFAULTS, ...settings });
+        if (error) throw new Error(error.message);
+      }
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['referral_settings'] }),
+  });
+}
+
+/** Admin manually issues the month completion bonus for a referral */
+export function useIssueMonthBonus() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ referralId, referrerId }: { referralId: number; referrerId: string }) => {
+      const { data: rawSettings } = await supabase
+        .from('referral_settings')
+        .select('*').limit(1).maybeSingle();
+      const settings = mergedSettings(rawSettings);
+
+      if (settings.referrer_month_credit > 0) {
+        await creditWallet(
+          referrerId,
+          settings.referrer_month_credit,
+          'Referral bonus — friend completed first month'
+        );
+      }
+      const { error } = await supabase
+        .from('referrals')
+        .update({ status: 'month_complete', month_reward_given: true })
+        .eq('id', referralId);
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin_referrals'] }),
+  });
+}
+
+// ── Helpers ──────────────────────────────────────────────────
+
+async function creditWallet(userId: string, amount: number, description: string): Promise<void> {
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('wallet_balance')
+    .eq('id', userId)
+    .single();
+  const current = profile?.wallet_balance ?? 0;
+  await supabase
+    .from('profiles')
+    .update({ wallet_balance: current + amount })
+    .eq('id', userId);
+  await supabase.from('wallet_transactions').insert({
+    user_id: userId,
+    type: 'credit',
+    amount,
+    description,
+  });
+}
+
+async function creditLoyaltyPoints(userId: string, points: number): Promise<void> {
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('loyalty_points')
+    .eq('id', userId)
+    .single();
+  const current = profile?.loyalty_points ?? 0;
+  await supabase
+    .from('profiles')
+    .update({ loyalty_points: current + points })
+    .eq('id', userId);
 }

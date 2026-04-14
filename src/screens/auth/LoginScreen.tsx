@@ -1,23 +1,27 @@
 /**
  * 1stOne F1 — Login Screen
- * Phone number input → sends OTP via Supabase Auth.
- * Clean, minimal design per blueprint UX.
+ * Logo, underline phone field, mint-outline LOGIN | REGISTER button, 2-line footer terms.
  */
 
 import React, { useState } from 'react';
 import {
   View,
+  Image,
+  Text,
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
   Alert,
+  Linking,
+  ScrollView,
+  ActivityIndicator,
+  TouchableOpacity,
 } from 'react-native';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { ThemedInput } from '../../components/ThemedInput';
-import { ThemedButton } from '../../components/ThemedButton';
-import { useAuth } from '../../hooks/useAuth';
 import { isValidIndianPhone, normalizePhone } from '../../utils/validators';
+import { useAuth } from '../../hooks/useAuth';
 
 interface LoginScreenProps {
   onOTPSent: (phone: string) => void;
@@ -28,7 +32,7 @@ export function LoginScreen({ onOTPSent }: LoginScreenProps) {
   const [loading, setLoading] = useState(false);
   const { signInWithPhone } = useAuth();
 
-  const handleSendOTP = async () => {
+  const handleContinue = async () => {
     if (!isValidIndianPhone(phone)) {
       Alert.alert('Invalid Number', 'Please enter a valid 10-digit mobile number');
       return;
@@ -36,15 +40,16 @@ export function LoginScreen({ onOTPSent }: LoginScreenProps) {
 
     setLoading(true);
     const normalized = normalizePhone(phone);
-    const { error } = await signInWithPhone(normalized);
-    setLoading(false);
 
-    if (error) {
-      Alert.alert('Error', error.message);
-      return;
+    try {
+      const { error } = await signInWithPhone(normalized);
+      if (error) { Alert.alert('Error', error.message); return; }
+      onOTPSent(normalized);
+    } catch {
+      Alert.alert('Error', 'Something went wrong. Please try again.');
+    } finally {
+      setLoading(false);
     }
-
-    onOTPSent(normalized);
   };
 
   return (
@@ -52,61 +57,130 @@ export function LoginScreen({ onOTPSent }: LoginScreenProps) {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <View style={styles.inner}>
-        <ThemedText variant="title" color="primary" style={styles.brand}>
-          1stOne
-        </ThemedText>
-        <ThemedText variant="body" color="subtitle" style={styles.tagline}>
-          Pure Vegetarian
-        </ThemedText>
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        keyboardShouldPersistTaps="handled"
+        bounces={false}
+      >
+        <View style={styles.body}>
+          {/* Logo from Supabase storage */}
+          <Image
+            source={{ uri: `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/public/assets/logo.png` }}
+            style={styles.logo}
+            resizeMode="contain"
+          />
 
-        <View style={styles.form}>
+          {/* Phone field — underline, centred */}
           <ThemedInput
-            label="Mobile Number"
-            placeholder="Enter 10-digit number"
+            mode="underline"
+            placeholder="10-digit mobile number"
             keyboardType="phone-pad"
             maxLength={10}
             value={phone}
             onChangeText={setPhone}
             autoFocus
+            style={styles.phoneInput}
           />
 
-          <ThemedButton
-            title="Send OTP"
-            onPress={handleSendOTP}
-            loading={loading}
-            disabled={phone.length < 10}
-            style={styles.button}
-          />
+          {/* LOGIN | REGISTER button */}
+          <TouchableOpacity
+            style={styles.loginBtn}
+            activeOpacity={0.85}
+            onPress={handleContinue}
+            disabled={loading || phone.length < 10}
+          >
+            {loading ? (
+              <ActivityIndicator color={Theme.colors.text.mint} />
+            ) : (
+              <Text style={[styles.loginBtnText, phone.length < 10 && styles.loginBtnDisabled]}>
+                LOGIN  |  REGISTER
+              </Text>
+            )}
+          </TouchableOpacity>
         </View>
-      </View>
+
+        {/* Footer terms — 2 lines, pushed toward bottom */}
+        <View style={styles.footer}>
+          <Text style={styles.footLine}>By continuing, you agree to our</Text>
+          <Text style={styles.footLine}>
+            <Text
+              style={styles.footLink}
+              onPress={() => Linking.openURL('https://1stone.in/terms')}
+            >
+              Terms of Service
+            </Text>
+            {'  and  '}
+            <Text
+              style={styles.footLink}
+              onPress={() => Linking.openURL('https://1stone.in/privacy')}
+            >
+              Privacy Policy
+            </Text>
+          </Text>
+        </View>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Theme.colors.background.primary,
+  container: { flex: 1, backgroundColor: Theme.colors.background.primary },
+  scroll: { flexGrow: 1 },
+  body: {
+    alignItems: 'center',
+    paddingHorizontal: Theme.spacing.xl,
+    paddingTop: Theme.spacing.xl * 2,
   },
-  inner: {
-    flex: 1,
-    justifyContent: 'center',
-    padding: Theme.spacing.xl,
+  logo: {
+    width: 220,
+    height: 220,
+    marginBottom: Theme.spacing.xl + Theme.spacing.lg,
   },
-  brand: {
+  phoneInput: {
     textAlign: 'center',
-    letterSpacing: Theme.typography.letterSpacing.wide,
-  },
-  tagline: {
-    textAlign: 'center',
-    marginTop: Theme.spacing.xs,
-    marginBottom: Theme.spacing.xl * 2,
-  },
-  form: {
     width: '100%',
+    marginBottom: Theme.spacing.xl,
+    fontSize: Theme.typography.sizes.body + 2,
   },
-  button: {
-    marginTop: Theme.spacing.md,
+  loginBtn: {
+    width: '100%',
+    backgroundColor: Theme.colors.background.secondary,
+    borderRadius: Theme.components.inputRadius,
+    borderWidth: 1,
+    borderColor: Theme.colors.text.mint,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    shadowColor: Theme.colors.text.mint,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  loginBtnText: {
+    color: Theme.colors.text.mint,
+    fontFamily: Theme.typography.fontFamily,
+    fontSize: Theme.typography.sizes.body,
+    fontWeight: '600',
+  },
+  loginBtnDisabled: {
+    opacity: 0.4,
+  },
+  footer: {
+    alignItems: 'center',
+    marginTop: Theme.spacing.xl,
+    marginBottom: Theme.spacing.xl,
+    paddingHorizontal: Theme.spacing.lg,
+    gap: 4,
+  },
+  footLine: {
+    fontFamily: Theme.typography.fontFamily,
+    fontSize: Theme.typography.sizes.small + 1,
+    color: Theme.colors.text.muted,
+    textAlign: 'center',
+  },
+  footLink: {
+    color: Theme.colors.text.accent,
   },
 });

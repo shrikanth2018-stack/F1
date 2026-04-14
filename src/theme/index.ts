@@ -10,7 +10,6 @@ export const Theme = {
       primary: '#151515',
       secondary: '#1C1C1E',
       tertiary: '#28282A',
-      card: '#1C1C1E',
       input: '#1e293b',
     },
     text: {
@@ -18,6 +17,7 @@ export const Theme = {
       subtitle: '#86868B',
       muted: '#94a3b8',
       accent: '#0A84FF',
+      mint: '#4ECDC4',
     },
     action: {
       primary: '#38bdf8',
@@ -41,12 +41,12 @@ export const Theme = {
   typography: {
     fontFamily: 'Tahoma',
     sizes: {
-      micro: 10,
-      small: 12,
-      body: 14,
-      subtitle: 16,
-      header: 20,
-      title: 24,
+      micro: 12,
+      small: 14,
+      body: 16,
+      subtitle: 18,
+      header: 22,
+      title: 26,
     },
     letterSpacing: {
       normal: 0,

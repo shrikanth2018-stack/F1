@@ -13,9 +13,9 @@ import {
   ScrollView,
   Alert,
   StyleSheet,
-  SafeAreaView,
   TouchableOpacity,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { ThemedButton } from '../../components/ThemedButton';
@@ -216,7 +216,7 @@ const styles = StyleSheet.create({
     paddingVertical: Theme.spacing.sm,
   },
   statusCard: {
-    backgroundColor: Theme.colors.background.card,
+    backgroundColor: Theme.colors.background.secondary,
     borderRadius: Theme.components.inputRadius,
     padding: Theme.spacing.md,
     margin: Theme.spacing.md,

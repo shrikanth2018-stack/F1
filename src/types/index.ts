@@ -18,6 +18,13 @@ export interface Profile {
   loyalty_points: number;
   referral_code: string | null;
   referred_by: string | null;
+  // Staff-only fields
+  employee_id: string | null;
+  designation: string | null;
+  joining_date: string | null;
+  shift_timing: string | null;
+  monthly_salary: number | null;
+  benefits: string | null;      // comma-separated: "PF,ESI,Medical"
   created_at: string;
   updated_at: string;
 }
@@ -257,14 +264,29 @@ export interface WalletTransaction {
 export interface ExpenseClaim {
   id: number;
   staff_id: string;
-  category: 'Grocery' | 'Vegetable' | 'Stationery' | 'Fuel' | 'Expense';
+  category: 'Grocery' | 'Vegetable' | 'Stationery' | 'Fuel' | 'Others';
   description: string;
   amount: number;
-  status: 'Pending' | 'Approved' | 'Rejected';
+  status: 'Pending' | 'Approved' | 'Rejected' | 'Paid';
   approved_by: string | null;
+  paid_at: string | null;
   branch_id: number | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface BusinessExpense {
+  id: number;
+  category: string;
+  description: string;
+  amount: number;
+  expense_date: string;
+  vendor: string | null;
+  is_paid: boolean;
+  paid_at: string | null;
+  recorded_by: string | null;
+  branch_id: number | null;
+  created_at: string;
 }
 
 export interface StaffAttendance {
@@ -321,7 +343,7 @@ export interface StaffShift {
 
 export interface AdminNote {
   id: number;
-  target_tab: 'kitchen' | 'packing' | 'delivery' | 'all';
+  target_tab: 'kitchen' | 'packing' | 'delivery' | 'all' | 'hub';
   note_text: string;
   is_active: boolean;
   created_by: string | null;
@@ -347,11 +369,22 @@ export interface Banner {
 
 export interface ReferralSettings {
   id: number;
-  referrer_reward_points: number;
+  is_active: boolean;
+  // Referee (new customer) — credited on code apply
+  referee_signup_credit: number;
   referee_reward_points: number;
+  // Referrer — credited when referee places first order
+  referrer_first_order_points: number;
+  referrer_first_order_credit: number;
+  // Referrer — credited when referee completes first month (30 days)
+  referrer_month_credit: number;
+  // Milestone thresholds
+  milestone_star_count: number;       // friends who ordered to earn Star badge
+  milestone_ambassador_count: number; // friends who ordered to earn Ambassador badge
+  // Legacy fields (kept for compatibility)
+  referrer_reward_points: number;
   referrer_wallet_credit: number;
   referee_wallet_credit: number;
-  is_active: boolean;
   updated_at: string;
 }
 
@@ -359,8 +392,46 @@ export interface Referral {
   id: number;
   referrer_id: string;
   referee_id: string;
-  status: 'pending' | 'completed' | 'expired';
+  status: 'pending' | 'first_order_done' | 'month_complete' | 'expired';
   reward_given: boolean;
+  first_order_reward_given: boolean;
+  month_reward_given: boolean;
+  created_at: string;
+}
+
+// ============ SUPPLY / STOCK ============
+
+export interface SupplyRequest {
+  id: number;
+  request_type: 'Vegetables' | 'Grocery' | 'Stationery';
+  items: { name: string; qty: number }[];
+  status: 'Pending' | 'Approved' | 'Rejected';
+  submitted_by: string | null;
+  approved_by: string | null;
+  branch_id: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SupplyOrderItem {
+  id: number;
+  name: string;
+  qty: number;
+  category: 'Vegetables' | 'Grocery' | 'Stationery';
+  request_id: number | null;   // null = admin-added
+  batch_id: number | null;     // null = active (not yet printed)
+  added_by: string | null;
+  branch_id: number | null;
+  created_at: string;
+}
+
+export interface SupplyBatch {
+  id: number;
+  printed_at: string;
+  printed_by: string | null;
+  note: string | null;
+  items_snapshot: { name: string; qty: number; category: string }[];
+  branch_id: number | null;
   created_at: string;
 }
 

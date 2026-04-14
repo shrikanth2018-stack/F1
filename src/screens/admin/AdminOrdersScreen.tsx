@@ -16,6 +16,8 @@ import {
   Alert,
   StyleSheet,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { EmptyState } from '../../components/EmptyState';
@@ -62,6 +64,7 @@ function statusColor(status: OrderStatus): string {
 }
 
 export function AdminOrdersScreen() {
+  const navigation = useNavigation<any>();
   const [statusFilter, setStatusFilter] = useState<OrderStatus | 'All'>('All');
   const [cycleFilter, setCycleFilter] = useState<number | undefined>(undefined);
 
@@ -162,13 +165,16 @@ export function AdminOrdersScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <ThemedText variant="header" color="primary">
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <ThemedText variant="body" color="accent" style={styles.back}>‹ Back</ThemedText>
+        </TouchableOpacity>
+        <ThemedText variant="header" color="primary" style={styles.headerTitle}>
           All Orders
         </ThemedText>
-        <ThemedText variant="small" color="subtitle">
-          {(orders ?? []).length} orders today
+        <ThemedText variant="small" color="subtitle" style={styles.orderCount}>
+          {(orders ?? []).length} today
         </ThemedText>
       </View>
 
@@ -245,13 +251,13 @@ export function AdminOrdersScreen() {
             />
           }
           ListEmptyComponent={
-            !isLoading ? <EmptyState message="No orders match filters" /> : null
+            !isLoading ? <EmptyState title="No orders match filters" /> : null
           }
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
         />
       )}
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -262,12 +268,16 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'flex-end',
     paddingHorizontal: Theme.spacing.md,
-    paddingTop: Theme.spacing.xl + Theme.spacing.md,
-    paddingBottom: Theme.spacing.sm,
+    paddingVertical: Theme.spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Theme.colors.layout.divider,
   },
+  back: { minWidth: 60 },
+  headerTitle: { flex: 1, textAlign: 'center' },
+  orderCount: { minWidth: 60, textAlign: 'right' },
   filterBar: {
     maxHeight: 40,
   },

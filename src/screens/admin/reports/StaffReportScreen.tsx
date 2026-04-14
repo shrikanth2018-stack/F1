@@ -1,7 +1,10 @@
 /**
  * 1stOne F1 — Staff Report Screen
  *
- * Attendance summary per staff + expense breakdown by category.
+ * Period: Weekly | Monthly | Quarterly
+ * Flat rows: Name | Days Present | Total Hours
+ * Footer: Print | Download PDF
+ * Requires: npx expo install expo-print expo-sharing
  */
 
 import React, { useState, useMemo } from 'react';
@@ -9,156 +12,189 @@ import {
   View,
   ScrollView,
   TouchableOpacity,
+  Alert,
   StyleSheet,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../../theme';
 import { ThemedText } from '../../../components/ThemedText';
 import { EmptyState } from '../../../components/EmptyState';
-import { Divider } from '../../../components/Divider';
-import { useStaffAttendanceReport, useExpenseReport } from '../../../hooks/useReports';
+import { useStaffAttendanceReport } from '../../../hooks/useReports';
 
-type DateRange = '7d' | '30d';
+type Period = 'Weekly' | 'Monthly' | 'Quarterly';
+const PERIODS: Period[] = ['Weekly', 'Monthly', 'Quarterly'];
 
-function getRange(range: DateRange): { start: string; end: string } {
+const B = Theme.typography.sizes.body + 2;
+const S = Theme.typography.sizes.small + 2;
+
+function getPeriodRange(period: Period) {
   const end = new Date();
   const start = new Date();
-  start.setDate(start.getDate() - (range === '7d' ? 7 : 30));
+  if (period === 'Weekly') start.setDate(start.getDate() - 7);
+  else if (period === 'Monthly') start.setDate(start.getDate() - 30);
+  else start.setDate(start.getDate() - 90);
   return { start: start.toISOString().split('T')[0], end: end.toISOString().split('T')[0] };
 }
 
-export function StaffReportScreen({ navigation }: { navigation: any }) {
-  const [range, setRange] = useState<DateRange>('30d');
-  const { start, end } = useMemo(() => getRange(range), [range]);
+function buildHtml(
+  period: Period,
+  staffSummary: { staffId: string; name: string; daysPresent: number; totalHours: number; avgHoursPerDay: number }[]
+): string {
+  const rows = staffSummary
+    .map((s) => `<tr><td>${s.name}</td><td>${s.daysPresent}</td><td>${s.totalHours.toFixed(1)}</td><td>${s.avgHoursPerDay.toFixed(1)}</td></tr>`)
+    .join('');
+  return `<!DOCTYPE html><html><head><meta charset="utf-8">
+  <style>body{font-family:sans-serif;font-size:12px;padding:20px}h2{margin-bottom:4px}p{color:#666;margin-bottom:16px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ddd;padding:6px 10px;text-align:left}th{background:#f4f4f4}</style>
+  </head><body>
+  <h2>Staff Report — ${period}</h2>
+  <p>Generated: ${new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+  <table>
+    <thead><tr><th>Name</th><th>Days Present</th><th>Total Hours</th><th>Avg Hrs/Day</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+  </body></html>`;
+}
 
-  const { data: attendance } = useStaffAttendanceReport(start, end);
-  const { data: expenses } = useExpenseReport(start, end);
+async function handlePrint(html: string) {
+  try {
+    const Print = require('expo-print');
+    await Print.printAsync({ html });
+  } catch {
+    Alert.alert('Print unavailable', 'Run: npx expo install expo-print expo-sharing');
+  }
+}
+
+async function handleDownload(html: string) {
+  try {
+    const Print = require('expo-print');
+    const Sharing = require('expo-sharing');
+    const { uri } = await Print.printToFileAsync({ html });
+    await Sharing.shareAsync(uri, { UTI: '.pdf', mimeType: 'application/pdf' });
+  } catch {
+    Alert.alert('PDF unavailable', 'Run: npx expo install expo-print expo-sharing');
+  }
+}
+
+export function StaffReportScreen({ navigation }: { navigation: any }) {
+  const [period, setPeriod] = useState<Period>('Monthly');
+  const { start, end } = useMemo(() => getPeriodRange(period), [period]);
+  const { data, isLoading } = useStaffAttendanceReport(start, end);
+
+  const staffSummary = data?.staffSummary ?? [];
+  const hasData = staffSummary.length > 0;
+
+  const html = useMemo(() => buildHtml(period, staffSummary), [period, staffSummary]);
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <SafeAreaView style={styles.container}>
+      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
-          <ThemedText variant="body" color="accent">{'< Back'}</ThemedText>
+          <ThemedText variant="body" color="accent" style={styles.txt}>‹ Back</ThemedText>
         </TouchableOpacity>
-        <ThemedText variant="header" color="primary">Staff Report</ThemedText>
-        <View style={{ width: 50 }} />
+        <ThemedText variant="header" color="primary" style={styles.title}>Staff Report</ThemedText>
+        <View style={{ minWidth: 60 }} />
       </View>
 
-      {/* Range */}
-      <View style={styles.rangeBar}>
-        {(['7d', '30d'] as DateRange[]).map((r) => (
-          <TouchableOpacity
-            key={r}
-            style={[styles.chip, range === r && styles.chipActive]}
-            onPress={() => setRange(r)}
-          >
-            <ThemedText variant="small" color={range === r ? 'primary' : 'subtitle'}>
-              {r === '7d' ? '7 Days' : '30 Days'}
-            </ThemedText>
-          </TouchableOpacity>
+      {/* Period toggle */}
+      <View style={styles.toggleRow}>
+        {PERIODS.map((p, i) => (
+          <React.Fragment key={p}>
+            {i > 0 && <ThemedText variant="body" color="muted" style={styles.pipe}>|</ThemedText>}
+            <TouchableOpacity onPress={() => setPeriod(p)}>
+              <ThemedText variant="body" color={period === p ? 'primary' : 'muted'}
+                style={[styles.txt, period === p && styles.active]}>{p}</ThemedText>
+            </TouchableOpacity>
+          </React.Fragment>
         ))}
       </View>
 
-      {/* Attendance Summary */}
-      <View style={styles.section}>
-        <ThemedText variant="subtitle" color="primary" style={styles.sectionTitle}>
-          Attendance Summary
-        </ThemedText>
-
-        {(attendance?.staffSummary ?? []).length === 0 ? (
-          <EmptyState message="No attendance data" />
-        ) : (
-          (attendance?.staffSummary ?? []).map((s) => (
-            <View key={s.staffId} style={styles.staffCard}>
-              <ThemedText variant="body" color="primary">
-                {s.name}
-              </ThemedText>
-              <View style={styles.staffStats}>
-                <View style={styles.staffStat}>
-                  <ThemedText variant="small" color="subtitle">Days</ThemedText>
-                  <ThemedText variant="subtitle" color="primary">{s.daysPresent}</ThemedText>
-                </View>
-                <View style={styles.staffStat}>
-                  <ThemedText variant="small" color="subtitle">Total Hrs</ThemedText>
-                  <ThemedText variant="subtitle" color="primary">{s.totalHours.toFixed(1)}</ThemedText>
-                </View>
-                <View style={styles.staffStat}>
-                  <ThemedText variant="small" color="subtitle">Avg Hrs/Day</ThemedText>
-                  <ThemedText variant="subtitle" color="primary">{s.avgHoursPerDay.toFixed(1)}</ThemedText>
-                </View>
-              </View>
-            </View>
-          ))
-        )}
+      {/* Column header */}
+      <View style={styles.colHeader}>
+        <ThemedText variant="small" color="muted" style={[styles.sub, { flex: 1 }]}>Name</ThemedText>
+        <ThemedText variant="small" color="muted" style={[styles.sub, styles.colDays]}>Days</ThemedText>
+        <ThemedText variant="small" color="muted" style={[styles.sub, styles.colHours]}>Total Hrs</ThemedText>
+        <ThemedText variant="small" color="muted" style={[styles.sub, styles.colAvg]}>Avg/Day</ThemedText>
       </View>
 
-      <Divider />
+      {/* Rows */}
+      <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
+        {!isLoading && !hasData && <EmptyState title="No attendance data for this period" />}
 
-      {/* Expense Summary */}
-      <View style={styles.section}>
-        <ThemedText variant="subtitle" color="primary" style={styles.sectionTitle}>
-          Expense Claims
-        </ThemedText>
+        {staffSummary.map((s) => (
+          <View key={s.staffId} style={styles.dataRow}>
+            <ThemedText variant="body" color="primary" style={[styles.txt, { flex: 1 }]} numberOfLines={1}>
+              {s.name}
+            </ThemedText>
+            <ThemedText variant="body" color="subtitle" style={[styles.txt, styles.colDays]}>{s.daysPresent}</ThemedText>
+            <ThemedText variant="body" color="subtitle" style={[styles.txt, styles.colHours]}>{s.totalHours.toFixed(1)}</ThemedText>
+            <ThemedText variant="body" color="subtitle" style={[styles.txt, styles.colAvg]}>{s.avgHoursPerDay.toFixed(1)}</ThemedText>
+          </View>
+        ))}
+      </ScrollView>
 
-        <View style={styles.expenseOverview}>
-          <View style={styles.expenseItem}>
-            <ThemedText variant="small" color="subtitle">Approved</ThemedText>
-            <ThemedText variant="subtitle" color="primary" style={{ color: Theme.colors.status.success }}>
-              {'\u20B9'}{(expenses?.approvedAmount ?? 0).toFixed(0)}
-            </ThemedText>
-            <ThemedText variant="micro" color="muted">{expenses?.approvedCount ?? 0} claims</ThemedText>
-          </View>
-          <View style={styles.expenseItem}>
-            <ThemedText variant="small" color="subtitle">Pending</ThemedText>
-            <ThemedText variant="subtitle" color="primary" style={{ color: Theme.colors.status.warning }}>
-              {'\u20B9'}{(expenses?.pendingAmount ?? 0).toFixed(0)}
-            </ThemedText>
-            <ThemedText variant="micro" color="muted">{expenses?.pendingCount ?? 0} claims</ThemedText>
-          </View>
-          <View style={styles.expenseItem}>
-            <ThemedText variant="small" color="subtitle">Rejected</ThemedText>
-            <ThemedText variant="subtitle" color="primary" style={{ color: Theme.colors.status.error }}>
-              {'\u20B9'}{(expenses?.rejectedAmount ?? 0).toFixed(0)}
-            </ThemedText>
-            <ThemedText variant="micro" color="muted">{expenses?.rejectedCount ?? 0} claims</ThemedText>
-          </View>
-        </View>
-
-        {/* By Category */}
-        {Object.entries(expenses?.categoryBreakdown ?? {}).length > 0 && (
-          <View style={styles.catSection}>
-            <ThemedText variant="small" color="subtitle" style={styles.catTitle}>
-              By Category
-            </ThemedText>
-            {Object.entries(expenses?.categoryBreakdown ?? {}).map(([cat, amount]) => (
-              <View key={cat} style={styles.catRow}>
-                <ThemedText variant="body" color="primary">{cat}</ThemedText>
-                <ThemedText variant="body" color="subtitle">
-                  {'\u20B9'}{(amount as number).toFixed(0)}
-                </ThemedText>
-              </View>
-            ))}
-          </View>
-        )}
+      {/* Footer */}
+      <View style={styles.footer}>
+        <TouchableOpacity onPress={() => handlePrint(html)} disabled={!hasData}>
+          <ThemedText variant="body" color={hasData ? 'mint' : 'muted'} style={styles.txt}>Print  ›</ThemedText>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => handleDownload(html)} disabled={!hasData}>
+          <ThemedText variant="body" color={hasData ? 'mint' : 'muted'} style={styles.txt}>Download PDF  ›</ThemedText>
+        </TouchableOpacity>
       </View>
-    </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
-  content: { padding: Theme.spacing.md, paddingTop: Theme.spacing.xl + Theme.spacing.md, paddingBottom: Theme.spacing.xl },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Theme.spacing.md },
-  rangeBar: { flexDirection: 'row', gap: Theme.spacing.sm, marginBottom: Theme.spacing.md },
-  chip: { flex: 1, paddingVertical: Theme.spacing.sm, borderRadius: 8, backgroundColor: Theme.colors.background.tertiary, alignItems: 'center' },
-  chipActive: { backgroundColor: Theme.colors.action.primary },
-  section: { marginBottom: Theme.spacing.lg },
-  sectionTitle: { marginBottom: Theme.spacing.sm },
-  staffCard: { backgroundColor: Theme.colors.background.secondary, borderRadius: Theme.components.inputRadius, padding: Theme.spacing.md, marginBottom: Theme.spacing.sm },
-  staffStats: { flexDirection: 'row', justifyContent: 'space-between', marginTop: Theme.spacing.sm },
-  staffStat: { alignItems: 'center' },
-  expenseOverview: { flexDirection: 'row', gap: Theme.spacing.sm, marginBottom: Theme.spacing.md },
-  expenseItem: { flex: 1, backgroundColor: Theme.colors.background.secondary, borderRadius: Theme.components.inputRadius, padding: Theme.spacing.md, alignItems: 'center' },
-  catSection: { marginTop: Theme.spacing.sm },
-  catTitle: { marginBottom: Theme.spacing.xs },
-  catRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: Theme.spacing.sm, borderBottomWidth: 1, borderBottomColor: Theme.colors.layout.divider },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Theme.colors.layout.divider,
+  },
+  title: { flex: 1, textAlign: 'center' },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Theme.spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Theme.colors.layout.divider,
+  },
+  pipe: { marginHorizontal: Theme.spacing.sm, opacity: 0.4, fontSize: B },
+  active: { fontWeight: '600' },
+  colHeader: {
+    flexDirection: 'row',
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.xs,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Theme.colors.text.mint,
+  },
+  dataRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.sm + 2,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Theme.colors.layout.divider,
+  },
+  colDays: { width: 44, textAlign: 'right' },
+  colHours: { width: 64, textAlign: 'right' },
+  colAvg: { width: 52, textAlign: 'right' },
+  list: { paddingBottom: Theme.spacing.xl },
+  footer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.sm + 2,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Theme.colors.text.mint,
+  },
+  txt: { fontSize: B },
+  sub: { fontSize: S },
 });

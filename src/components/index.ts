@@ -18,3 +18,4 @@ export { CartFloatingButton } from './CartFloatingButton';
 export { ErrorBoundary } from './ErrorBoundary';
 export { SubscriptionPlanCard } from './SubscriptionPlanCard';
 export { SubscriptionCalendar } from './SubscriptionCalendar';
+export { ProfilePopup } from './ProfilePopup';

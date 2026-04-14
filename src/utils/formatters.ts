@@ -12,6 +12,9 @@ export function formatPrice(amount: number): string {
   return `₹${amount.toFixed(2)}`;
 }
 
+/** Alias for formatPrice — preferred in UI contexts */
+export const formatCurrency = formatPrice;
+
 /**
  * Format price without decimals (for whole-number displays)
  */

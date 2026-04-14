@@ -16,6 +16,7 @@ interface SettingsRowProps {
   showChevron?: boolean;
   toggleValue?: boolean;
   onToggle?: (value: boolean) => void;
+  labelSize?: number;
 }
 
 export function SettingsRow({
@@ -25,15 +26,21 @@ export function SettingsRow({
   showChevron = false,
   toggleValue,
   onToggle,
+  labelSize,
 }: SettingsRowProps) {
+  const labelStyle = labelSize ? { fontSize: labelSize } : undefined;
+  const subtitleStyle = labelSize
+    ? { fontSize: labelSize - 2 }
+    : undefined;
+
   const content = (
     <View style={styles.row}>
       <View style={styles.left}>
-        <ThemedText variant="body" color="primary">
+        <ThemedText variant="body" color="primary" style={labelStyle}>
           {label}
         </ThemedText>
         {subtitle && (
-          <ThemedText variant="small" color="muted" style={styles.subtitle}>
+          <ThemedText variant="small" color="muted" style={[styles.subtitle, subtitleStyle]}>
             {subtitle}
           </ThemedText>
         )}
@@ -49,7 +56,7 @@ export function SettingsRow({
           thumbColor={Theme.colors.text.primary}
         />
       ) : showChevron ? (
-        <ThemedText variant="body" color="muted">
+        <ThemedText variant="body" color="muted" style={labelStyle}>
           ›
         </ThemedText>
       ) : null}

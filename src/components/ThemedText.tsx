@@ -10,7 +10,7 @@ import { Text, TextProps, StyleSheet } from 'react-native';
 import { Theme } from '../theme';
 
 type TextVariant = 'micro' | 'small' | 'body' | 'subtitle' | 'header' | 'title';
-type TextColor = 'primary' | 'subtitle' | 'muted' | 'accent';
+type TextColor = 'primary' | 'subtitle' | 'muted' | 'accent' | 'mint';
 
 interface ThemedTextProps extends TextProps {
   variant?: TextVariant;

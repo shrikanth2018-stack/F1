@@ -169,7 +169,7 @@ export function EssentialsScreen({ navigation }: { navigation: any }) {
             />
           }
           ListEmptyComponent={
-            !isLoading ? <EmptyState message="No essentials available" /> : null
+            !isLoading ? <EmptyState title="No essentials available" /> : null
           }
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}

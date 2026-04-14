@@ -58,6 +58,9 @@ export const ORDER_STATUSES = [
   'cancelled',
 ] as const;
 
+/** Fallback WhatsApp support number (overridden by store_config.whatsapp_support_number) */
+export const DEFAULT_WHATSAPP_SUPPORT = '9448364017';
+
 /** Max retry for offline queue before flagging */
 export const MAX_QUEUE_RETRIES = 5;
 

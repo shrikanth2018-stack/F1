@@ -2,11 +2,10 @@
  * 1stOne F1 — Staff Expenses Screen
  *
  * Submit and view expense claims.
- * Categories: Grocery, Vegetable, Stationery, Fuel, Expense.
- * Offline-aware submission.
+ * Plain text layout — no cards/boxes. Title centred.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   ScrollView,
@@ -15,10 +14,13 @@ import {
   Alert,
   FlatList,
   StyleSheet,
+  Modal,
+  TouchableWithoutFeedback,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
-import { ThemedButton } from '../../components/ThemedButton';
 import { EmptyState } from '../../components/EmptyState';
 import {
   useMyExpenses,
@@ -31,23 +33,27 @@ const CATEGORIES: ExpenseCategory[] = [
   'Vegetable',
   'Stationery',
   'Fuel',
-  'Expense',
+  'Others',
 ];
+
+const S = Theme.typography.sizes;
+const BODY = S.body + 3;
+const SMALL = S.small + 3;
+const SUBTITLE = S.subtitle + 3;
 
 function statusColor(status: string): string {
   switch (status) {
-    case 'Approved':
-      return Theme.colors.status.success;
-    case 'Rejected':
-      return Theme.colors.status.error;
-    default:
-      return Theme.colors.status.warning;
+    case 'Approved': return Theme.colors.status.success;
+    case 'Rejected': return Theme.colors.status.error;
+    default: return Theme.colors.status.warning;
   }
 }
 
 export function StaffExpensesScreen() {
+  const navigation = useNavigation<any>();
   const [showForm, setShowForm] = useState(false);
   const [category, setCategory] = useState<ExpenseCategory>('Grocery');
+  const [dropdownOpen, setDropdownOpen] = useState(false);
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
 
@@ -64,7 +70,6 @@ export function StaffExpensesScreen() {
       Alert.alert('Error', 'Enter a description');
       return;
     }
-
     submitExpense.mutate(
       { category, description: description.trim(), amount: numAmount },
       {
@@ -87,98 +92,106 @@ export function StaffExpensesScreen() {
     .reduce((sum, e) => sum + e.amount, 0);
 
   const renderExpense = ({ item }: { item: any }) => (
-    <View style={styles.card}>
-      <View style={styles.cardHeader}>
-        <View style={styles.categoryBadge}>
-          <ThemedText variant="micro" color="primary">
-            {item.category}
-          </ThemedText>
-        </View>
-        <View style={[styles.statusBadge, { backgroundColor: statusColor(item.status) }]}>
-          <ThemedText variant="micro" color="primary">
-            {item.status}
-          </ThemedText>
-        </View>
-      </View>
-
-      <ThemedText variant="body" color="primary" style={styles.desc}>
-        {item.description}
-      </ThemedText>
-
-      <View style={styles.cardFooter}>
-        <ThemedText variant="subtitle" color="primary">
-          {'\u20B9'}{item.amount.toFixed(2)}
+    <View style={styles.expenseRow}>
+      <View style={{ flex: 1 }}>
+        <ThemedText variant="body" color="primary" style={styles.rowText}>
+          {item.category}  ·  {item.description}
         </ThemedText>
-        <ThemedText variant="small" color="muted">
+        <ThemedText variant="small" color="muted" style={styles.rowSmall}>
           {new Date(item.created_at).toLocaleDateString('en-IN')}
+        </ThemedText>
+      </View>
+      <View style={{ alignItems: 'flex-end' }}>
+        <ThemedText variant="body" color="primary" style={styles.rowText}>
+          ₹{item.amount.toFixed(0)}
+        </ThemedText>
+        <ThemedText variant="small" style={[styles.rowSmall, { color: statusColor(item.status) }]}>
+          {item.status}
         </ThemedText>
       </View>
     </View>
   );
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <ThemedText variant="header" color="primary">
-          Expenses
-        </ThemedText>
-        <TouchableOpacity onPress={() => setShowForm(!showForm)}>
-          <ThemedText variant="body" color="accent">
-            {showForm ? 'Cancel' : '+ New Claim'}
-          </ThemedText>
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <ThemedText variant="body" color="accent" style={styles.back}>‹ Back</ThemedText>
         </TouchableOpacity>
+        <ThemedText variant="header" color="primary" style={styles.title}>
+          My Expenses
+        </ThemedText>
+        <View style={styles.headerSpacer} />
       </View>
 
-      {/* Summary */}
-      <View style={styles.summaryRow}>
-        <View style={styles.summaryItem}>
-          <ThemedText variant="small" color="subtitle">
-            Pending
-          </ThemedText>
-          <ThemedText variant="subtitle" color="primary">
-            {'\u20B9'}{totalPending.toFixed(0)}
+      {/* Summary rows */}
+      <View style={styles.summarySection}>
+        <View style={styles.summaryRow}>
+          <ThemedText variant="body" color="subtitle" style={styles.rowText}>Pending</ThemedText>
+          <ThemedText variant="body" color="primary" style={[styles.rowText, { color: Theme.colors.status.warning }]}>
+            ₹{totalPending.toFixed(0)}
           </ThemedText>
         </View>
-        <View style={styles.summaryItem}>
-          <ThemedText variant="small" color="subtitle">
-            Approved
-          </ThemedText>
-          <ThemedText variant="subtitle" color="primary">
-            {'\u20B9'}{totalApproved.toFixed(0)}
+        <View style={[styles.summaryRow, styles.summaryLast]}>
+          <ThemedText variant="body" color="subtitle" style={styles.rowText}>Approved</ThemedText>
+          <ThemedText variant="body" color="primary" style={[styles.rowText, { color: Theme.colors.status.success }]}>
+            ₹{totalApproved.toFixed(0)}
           </ThemedText>
         </View>
       </View>
 
-      {/* New Claim Form */}
+      {/* New Claim toggle */}
+      <TouchableOpacity
+        style={styles.newClaimLink}
+        onPress={() => setShowForm(!showForm)}
+      >
+        <ThemedText variant="body" color="mint" style={styles.rowText}>
+          {showForm ? 'Cancel  ×' : 'New Claim  ›'}
+        </ThemedText>
+      </TouchableOpacity>
+
+      {/* Claim form */}
       {showForm && (
-        <View style={styles.form}>
-          <ThemedText variant="subtitle" color="primary" style={styles.formTitle}>
-            New Expense Claim
-          </ThemedText>
-
-          {/* Category Picker */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.catRow}
-            contentContainerStyle={styles.catRowContent}
+        <ScrollView
+          style={styles.formScroll}
+          keyboardShouldPersistTaps="handled"
+          bounces={false}
+        >
+          {/* Category dropdown */}
+          <TouchableOpacity
+            style={styles.dropdownTrigger}
+            onPress={() => setDropdownOpen(true)}
           >
-            {CATEGORIES.map((cat) => (
-              <TouchableOpacity
-                key={cat}
-                style={[styles.catChip, category === cat && styles.catChipActive]}
-                onPress={() => setCategory(cat)}
-              >
-                <ThemedText
-                  variant="small"
-                  color={category === cat ? 'primary' : 'subtitle'}
+            <ThemedText variant="body" color="primary" style={styles.rowText}>{category}</ThemedText>
+            <ThemedText variant="body" color="muted" style={styles.rowText}>  ▾</ThemedText>
+          </TouchableOpacity>
+
+          <Modal visible={dropdownOpen} transparent animationType="fade" onRequestClose={() => setDropdownOpen(false)}>
+            <TouchableWithoutFeedback onPress={() => setDropdownOpen(false)}>
+              <View style={styles.dropdownBackdrop} />
+            </TouchableWithoutFeedback>
+            <View style={styles.dropdownSheet}>
+              {CATEGORIES.map((cat, idx) => (
+                <TouchableOpacity
+                  key={cat}
+                  style={[styles.dropdownOption, idx < CATEGORIES.length - 1 && styles.dropdownOptionBorder]}
+                  onPress={() => { setCategory(cat); setDropdownOpen(false); }}
                 >
-                  {cat}
-                </ThemedText>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+                  <ThemedText
+                    variant="body"
+                    color={category === cat ? 'mint' : 'primary'}
+                    style={styles.rowText}
+                  >
+                    {cat}
+                  </ThemedText>
+                  {category === cat && (
+                    <ThemedText variant="body" color="mint" style={styles.rowText}>✓</ThemedText>
+                  )}
+                </TouchableOpacity>
+              ))}
+            </View>
+          </Modal>
 
           <TextInput
             style={styles.input}
@@ -198,131 +211,146 @@ export function StaffExpensesScreen() {
             multiline
           />
 
-          <ThemedButton
-            title="Submit Claim"
-            variant="primary"
+          <TouchableOpacity
+            style={styles.submitLink}
             onPress={handleSubmit}
-            loading={submitExpense.isPending}
-          />
-        </View>
+            disabled={submitExpense.isPending}
+          >
+            <ThemedText variant="body" color="mint" style={styles.rowText}>
+              {submitExpense.isPending ? 'Submitting...' : 'Submit Claim  ›'}
+            </ThemedText>
+          </TouchableOpacity>
+        </ScrollView>
       )}
 
-      {/* Claims List */}
-      <FlatList
-        data={expenses ?? []}
-        keyExtractor={(item) => String(item.id)}
-        renderItem={renderExpense}
-        ListEmptyComponent={
-          !isLoading ? <EmptyState message="No expense claims yet" /> : null
-        }
-        contentContainerStyle={styles.list}
-        showsVerticalScrollIndicator={false}
-      />
-    </View>
+      {/* Claims list */}
+      {!showForm && (
+        <FlatList
+          data={expenses ?? []}
+          keyExtractor={(item) => String(item.id)}
+          renderItem={renderExpense}
+          ListEmptyComponent={
+            !isLoading ? <EmptyState title="No expense claims yet" /> : null
+          }
+          contentContainerStyle={styles.list}
+          showsVerticalScrollIndicator={false}
+        />
+      )}
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Theme.colors.background.primary,
-  },
+  container: { flex: 1, backgroundColor: Theme.colors.background.primary },
+
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: Theme.spacing.md,
-    paddingTop: Theme.spacing.xl + Theme.spacing.md,
-    paddingBottom: Theme.spacing.sm,
+    paddingVertical: Theme.spacing.sm,
+  },
+  back: { fontSize: BODY, minWidth: 60 },
+  title: { flex: 1, textAlign: 'center', fontSize: SUBTITLE + 2 },
+  headerSpacer: { minWidth: 60 },
+
+  summarySection: {
+    paddingHorizontal: Theme.spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Theme.colors.layout.divider,
   },
   summaryRow: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: Theme.spacing.sm + 2,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Theme.colors.layout.divider,
+  },
+  summaryLast: { borderBottomWidth: 0 },
+
+  newClaimLink: {
     paddingHorizontal: Theme.spacing.md,
-    gap: Theme.spacing.md,
-    marginBottom: Theme.spacing.sm,
+    paddingVertical: Theme.spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Theme.colors.text.mint,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Theme.colors.text.mint,
+    alignSelf: 'flex-end',
+    marginRight: Theme.spacing.md,
+    paddingLeft: 0,
   },
-  summaryItem: {
-    flex: 1,
-    backgroundColor: Theme.colors.background.secondary,
-    borderRadius: Theme.components.inputRadius,
-    padding: Theme.spacing.md,
-    alignItems: 'center',
-  },
-  form: {
-    backgroundColor: Theme.colors.background.secondary,
-    borderRadius: Theme.components.inputRadius,
-    marginHorizontal: Theme.spacing.md,
-    padding: Theme.spacing.md,
-    marginBottom: Theme.spacing.md,
-  },
-  formTitle: {
-    marginBottom: Theme.spacing.sm,
-  },
-  catRow: {
-    maxHeight: 40,
-    marginBottom: Theme.spacing.sm,
-  },
-  catRowContent: {
-    gap: Theme.spacing.sm,
-  },
-  catChip: {
+
+  formScroll: {
     paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.xs,
-    borderRadius: 20,
-    backgroundColor: Theme.colors.background.tertiary,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Theme.colors.layout.divider,
   },
-  catChipActive: {
-    backgroundColor: Theme.colors.action.primary,
-  },
-  input: {
-    backgroundColor: Theme.colors.background.input,
-    borderRadius: Theme.components.inputRadius,
-    padding: Theme.spacing.sm,
-    color: Theme.colors.text.primary,
-    fontFamily: Theme.typography.fontFamily,
-    fontSize: Theme.typography.sizes.body,
-    marginBottom: Theme.spacing.sm,
-  },
-  descInput: {
-    minHeight: 60,
-    textAlignVertical: 'top',
-  },
-  list: {
-    padding: Theme.spacing.md,
-    paddingBottom: Theme.spacing.xl,
-  },
-  card: {
-    backgroundColor: Theme.colors.background.secondary,
-    borderRadius: Theme.components.inputRadius,
-    padding: Theme.spacing.md,
-    marginBottom: Theme.spacing.sm,
-  },
-  cardHeader: {
+  dropdownTrigger: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    paddingVertical: Theme.spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Theme.colors.layout.divider,
     marginBottom: Theme.spacing.xs,
   },
-  categoryBadge: {
-    backgroundColor: Theme.colors.background.tertiary,
-    paddingHorizontal: Theme.spacing.sm,
-    paddingVertical: 2,
-    borderRadius: 6,
+  dropdownBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.4)',
   },
-  statusBadge: {
-    paddingHorizontal: Theme.spacing.sm,
-    paddingVertical: 2,
-    borderRadius: 6,
+  dropdownSheet: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: Theme.colors.background.secondary,
+    borderTopLeftRadius: 14,
+    borderTopRightRadius: 14,
+    paddingBottom: Theme.spacing.xl,
+    paddingTop: Theme.spacing.sm,
   },
-  desc: {
-    marginBottom: Theme.spacing.sm,
-  },
-  cardFooter: {
+  dropdownOption: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    borderTopWidth: 1,
-    borderTopColor: Theme.colors.layout.divider,
-    paddingTop: Theme.spacing.sm,
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.sm + 2,
   },
+  dropdownOptionBorder: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Theme.colors.layout.divider,
+  },
+
+  input: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Theme.colors.layout.divider,
+    color: Theme.colors.text.primary,
+    fontFamily: Theme.typography.fontFamily,
+    fontSize: BODY,
+    paddingVertical: Theme.spacing.sm,
+    marginBottom: Theme.spacing.xs,
+  },
+  descInput: { minHeight: 60, textAlignVertical: 'top' },
+
+  submitLink: {
+    alignSelf: 'flex-end',
+    paddingVertical: Theme.spacing.sm,
+  },
+
+  // Expense rows
+  expenseRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    paddingVertical: Theme.spacing.sm + 2,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Theme.colors.layout.divider,
+  },
+
+  list: {
+    paddingHorizontal: Theme.spacing.md,
+    paddingBottom: Theme.spacing.xl,
+  },
+
+  rowText: { fontSize: BODY },
+  rowSmall: { fontSize: SMALL, marginTop: 2 },
 });
