@@ -13,18 +13,21 @@ import { useStaffQueueStore } from '../store/staffQueueStore';
 import { MAX_QUEUE_RETRIES } from '../utils/constants';
 
 export function useOfflineSync() {
-  // Read these via getState() inside drainQueue to avoid recreating the
-  // callback (and re-subscribing NetInfo) every time the queue changes.
+  // queue + isSyncing kept as reactive subscriptions for the return value
+  const queue = useStaffQueueStore((s) => s.queue);
+  const isSyncing = useStaffQueueStore((s) => s.isSyncing);
   const markSyncing = useStaffQueueStore((s) => s.markSyncing);
   const dequeue = useStaffQueueStore((s) => s.dequeue);
   const incrementRetry = useStaffQueueStore((s) => s.incrementRetry);
 
   const drainQueue = useCallback(async () => {
-    const { queue, isSyncing } = useStaffQueueStore.getState();
-    if (isSyncing || queue.length === 0) return;
+    // Read via getState() so this callback is not re-created on every queue
+    // change — prevents NetInfo from re-subscribing after each dequeue.
+    const { queue: currentQueue, isSyncing: currentlySyncing } = useStaffQueueStore.getState();
+    if (currentlySyncing || currentQueue.length === 0) return;
     markSyncing(true);
 
-    for (const mutation of queue) {
+    for (const mutation of currentQueue) {
       if (mutation.retryCount >= MAX_QUEUE_RETRIES) {
         // Skip permanently failed mutations (admin should investigate)
         continue;
