@@ -72,11 +72,18 @@ export function PlanDetailScreen({ route, navigation }: any) {
   const [paymentMethod, setPaymentMethod] = useState<'razorpay' | 'wallet'>('razorpay');
   const [isSubscribing, setIsSubscribing] = useState(false);
 
-  /** Warn only when the exact same plan is already active */
-  const samePlanSubs = useMemo(() => {
+  /**
+   * Conflict: another active sub with the same cycle_id AND same plan_type
+   * (food vs essential). Multiple cycles on same day = fine. Food + Essentials
+   * on same cycle = fine. Same type on same cycle = blocked.
+   */
+  const conflictingSubs = useMemo(() => {
     if (!plan || !mySubs) return [];
     return (mySubs as any[]).filter(
-      (s) => s.is_active && s.plan_id === plan.id
+      (s) =>
+        s.is_active &&
+        s.subscription_plans?.cycle_id === plan.cycle_id &&
+        s.subscription_plans?.plan_type === plan.plan_type
     );
   }, [plan, mySubs]);
 
@@ -125,8 +132,8 @@ export function PlanDetailScreen({ route, navigation }: any) {
   const handleSubscribe = useCallback(() => {
     if (!plan) return;
 
-    if (samePlanSubs.length > 0) {
-      const existing = samePlanSubs[0];
+    if (conflictingSubs.length > 0) {
+      const existing = conflictingSubs[0];
       const existingPlanName = existing.subscription_plans?.plan_name ?? 'existing plan';
       const duration = existing.subscription_plans?.duration_days ?? 0;
       // Day after last delivery of the existing sub
@@ -135,14 +142,10 @@ export function PlanDetailScreen({ route, navigation }: any) {
 
       Alert.alert(
         'Subscription Conflict',
-        `You already have "${existingPlanName}" on this cycle. What would you like to do?`,
+        `You already have "${existingPlanName}" active on this cycle. You can schedule this plan to start after it ends.`,
         [
           {
-            text: 'Add Multiple (same days)',
-            onPress: () => doSubscribe(startDate),
-          },
-          {
-            text: `Schedule After (from ${formatDateShort(afterDate.toISOString().split('T')[0])})`,
+            text: `Start After (${formatDateShort(afterDate.toISOString().split('T')[0])})`,
             onPress: () => doSubscribe(afterDate),
           },
           { text: 'Cancel', style: 'cancel' },
@@ -152,7 +155,7 @@ export function PlanDetailScreen({ route, navigation }: any) {
     }
 
     doSubscribe(startDate);
-  }, [plan, samePlanSubs, startDate, doSubscribe]);
+  }, [plan, conflictingSubs, startDate, doSubscribe]);
 
   if (!plan) {
     return (
