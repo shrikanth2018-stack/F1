@@ -36,6 +36,14 @@ export interface AuthSession {
   };
   role: UserRole;
   assignedHubId: number | null;
+  branchId: number | null;
+}
+
+export interface Branch {
+  id: number;
+  branch_name: string;
+  is_active: boolean;
+  created_at: string;
 }
 
 // ============ STORE CONFIG ============
@@ -92,6 +100,22 @@ export interface DeliveryHub {
   updated_at: string;
 }
 
+export interface DeliveryHub {
+  id: number;
+  hub_name: string;
+  hub_code: string | null;
+  polygon_geojson: { lat: number; lng: number }[] | null;
+  center_lat: number | null;
+  center_lng: number | null;
+  staff_user_id: string | null;
+  staff_name: string | null;
+  staff_phone: string | null;
+  is_active: boolean;
+  extends_coverage: boolean;
+  branch_id: number | null;
+  created_at: string;
+}
+
 export interface DeliveryZone {
   id: number;
   zone_name: string;
@@ -99,6 +123,8 @@ export interface DeliveryZone {
   delivery_fee_override: number | null;
   is_active: boolean;
   branch_id: number | null;
+  hub_id: number | null;
+  polygon_geojson: { lat: number; lng: number }[] | null;
   created_at: string;
   updated_at: string;
 }
@@ -242,6 +268,10 @@ export interface CustomerAddress {
   pincode: string | null;
   latitude: number | null;
   longitude: number | null;
+  zone_id: number | null;
+  hub_id: number | null;
+  hub_impact_notified_at: string | null;
+  is_serviceable: boolean;
   is_default: boolean;
   is_active: boolean;
   created_at: string;

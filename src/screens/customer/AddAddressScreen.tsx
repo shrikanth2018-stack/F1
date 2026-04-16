@@ -1,7 +1,14 @@
 /**
  * 1stOne F1 — Add Address Screen
- * No cards/boxes. Label tabs, underline fields, location pin with serviceability indicator.
- * Used from both profile (navigation prop) and onboarding (onComplete prop).
+ *
+ * Interactive map pin — drag or tap anywhere to set delivery location.
+ * GPS "Use my location" button centers the pin on current position.
+ * Being away from home is fine — pin wherever you want delivery.
+ *
+ * On save:
+ *   1. Zone check (polygon serviceability)
+ *   2. Hub assignment (if hub_delivery_active)
+ *   3. Non-serviceable addresses saved with notify-when-available note
  */
 
 import React, { useState } from 'react';
@@ -18,9 +25,12 @@ import * as Location from 'expo-location';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { ThemedInput } from '../../components/ThemedInput';
+import { PinMap } from '../../components/PinMap';
 import { useAddAddress } from '../../hooks/useAddresses';
+import { useFeatureFlag } from '../../hooks/useFeatureFlag';
 import { isNonEmpty } from '../../utils/validators';
-import { checkServiceability, ServiceabilityResult } from '../../utils/serviceability';
+import { checkZone, pointInPolygon, ZoneCheckResult } from '../../utils/serviceability';
+import { supabase } from '../../api/supabaseClient';
 
 const LABELS = ['Home', 'Office', 'Other'] as const;
 type LabelType = typeof LABELS[number];
@@ -39,30 +49,40 @@ export function AddAddressScreen({ navigation, onComplete }: Props) {
   const [latitude, setLatitude] = useState<number | undefined>();
   const [longitude, setLongitude] = useState<number | undefined>();
   const [locating, setLocating] = useState(false);
-  const [serviceability, setServiceability] = useState<ServiceabilityResult | null>(null);
+  const [zoneResult, setZoneResult] = useState<ZoneCheckResult | null>(null);
 
   const { mutateAsync: addAddress, isPending } = useAddAddress();
+  const hubDeliveryActive = useFeatureFlag('hub_delivery_active');
 
-  const handlePinLocation = async () => {
+  const runChecks = async (lat: number, lng: number) => {
+    const result = await checkZone(lat, lng);
+    setZoneResult(result);
+  };
+
+  const handleUseMyLocation = async () => {
     setLocating(true);
-    setServiceability(null);
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission Denied', 'Location access is needed to pin your delivery address.');
+        Alert.alert('Permission Denied', 'Location access is needed to use your current position.');
         return;
       }
       const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
       const { latitude: lat, longitude: lng } = loc.coords;
       setLatitude(lat);
       setLongitude(lng);
-      const result = await checkServiceability(lat, lng);
-      setServiceability(result);
+      await runChecks(lat, lng);
     } catch {
-      Alert.alert('Error', 'Could not fetch location. Please try again.');
+      Alert.alert('Error', 'Could not fetch location. Please tap the map to set your delivery pin.');
     } finally {
       setLocating(false);
     }
+  };
+
+  const handleMapPin = async (lat: number, lng: number) => {
+    setLatitude(lat);
+    setLongitude(lng);
+    await runChecks(lat, lng);
   };
 
   const handleAdd = async () => {
@@ -74,8 +94,45 @@ export function AddAddressScreen({ navigation, onComplete }: Props) {
       Alert.alert('Required', 'Please enter address');
       return;
     }
+    if (latitude == null || longitude == null) {
+      Alert.alert('Location Required', 'Please tap the map or use GPS to set your delivery location.');
+      return;
+    }
 
+    if (zoneResult?.result === 'not_serviceable') {
+      Alert.alert(
+        'Outside Delivery Area',
+        "We don't deliver here yet, but we'll notify you when we expand to your area. Save this address anyway?",
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Save Anyway', onPress: () => saveAddress() },
+        ]
+      );
+      return;
+    }
+
+    await saveAddress();
+  };
+
+  const saveAddress = async () => {
     try {
+      // Hub assignment — find which hub polygon this address falls in
+      let hubId: number | null = null;
+      if (hubDeliveryActive && latitude != null && longitude != null) {
+        const { data: hubs } = await supabase
+          .from('delivery_hubs')
+          .select('id, polygon_geojson')
+          .eq('is_active', true);
+
+        const matchingHub = (hubs ?? []).find(
+          (h: any) =>
+            Array.isArray(h.polygon_geojson) &&
+            h.polygon_geojson.length >= 3 &&
+            pointInPolygon(latitude!, longitude!, h.polygon_geojson)
+        );
+        hubId = matchingHub?.id ?? null;
+      }
+
       await addAddress({
         label,
         full_name: fullName.trim(),
@@ -84,6 +141,9 @@ export function AddAddressScreen({ navigation, onComplete }: Props) {
         city: city.trim() || undefined,
         latitude,
         longitude,
+        zone_id: zoneResult?.zoneId ?? null,
+        hub_id: hubId,
+        is_serviceable: zoneResult?.result === 'serviceable',
         is_default: true,
       });
 
@@ -97,18 +157,18 @@ export function AddAddressScreen({ navigation, onComplete }: Props) {
     }
   };
 
-  const serviceabilityColor =
-    serviceability === 'serviceable'
+  const indicatorColor =
+    zoneResult?.result === 'serviceable'
       ? Theme.colors.status.success
-      : serviceability === 'not_serviceable'
+      : zoneResult?.result === 'not_serviceable'
       ? Theme.colors.status.error
       : Theme.colors.text.muted;
 
-  const serviceabilityText =
-    serviceability === 'serviceable'
-      ? 'Area is serviceable'
-      : serviceability === 'not_serviceable'
-      ? 'Outside delivery area — we will notify when available'
+  const indicatorText =
+    zoneResult?.result === 'serviceable'
+      ? `✓  Serviceable${zoneResult.zoneName ? ` · ${zoneResult.zoneName}` : ''}`
+      : zoneResult?.result === 'not_serviceable'
+      ? '✕  Outside delivery area — we will notify you when available'
       : '';
 
   return (
@@ -144,42 +204,44 @@ export function AddAddressScreen({ navigation, onComplete }: Props) {
 
         <View style={styles.hairline} />
 
-        {/* Fields — underline only */}
+        {/* Interactive map pin */}
+        <PinMap
+          latitude={latitude}
+          longitude={longitude}
+          onLocationChange={handleMapPin}
+        />
+
+        {/* GPS helper + zone indicator */}
+        <View style={styles.mapFooter}>
+          <TouchableOpacity
+            onPress={handleUseMyLocation}
+            activeOpacity={0.6}
+            disabled={locating}
+            style={styles.gpsBtn}
+          >
+            {locating ? (
+              <ActivityIndicator color={Theme.colors.text.mint} size="small" />
+            ) : (
+              <ThemedText variant="small" color="mint">⊕  Use my current location</ThemedText>
+            )}
+          </TouchableOpacity>
+
+          {indicatorText !== '' && (
+            <ThemedText variant="small" color="primary" style={[styles.indicator, { color: indicatorColor }]}>
+              {indicatorText}
+            </ThemedText>
+          )}
+        </View>
+
+        <View style={styles.hairline} />
+
         <ThemedInput mode="underline" placeholder="Full name" value={fullName} onChangeText={setFullName} />
         <ThemedInput mode="underline" placeholder="Building, street, area" value={addressLine} onChangeText={setAddressLine} multiline />
         <ThemedInput mode="underline" placeholder="Landmark (optional)" value={landmark} onChangeText={setLandmark} />
         <ThemedInput mode="underline" placeholder="City (optional)" value={city} onChangeText={setCity} />
 
-        {/* Location pin */}
-        <TouchableOpacity
-          style={styles.locationRow}
-          onPress={handlePinLocation}
-          activeOpacity={0.6}
-          disabled={locating}
-        >
-          {locating ? (
-            <ActivityIndicator color={Theme.colors.text.mint} size="small" />
-          ) : (
-            <ThemedText variant="body" color={latitude != null ? 'mint' : 'muted'}>
-              {latitude != null
-                ? `Location pinned · ${latitude.toFixed(4)}, ${longitude?.toFixed(4)}`
-                : '⊕  Pin my location'}
-            </ThemedText>
-          )}
-        </TouchableOpacity>
-
-        {/* Serviceability indicator */}
-        {serviceabilityText !== '' && (
-          <View style={styles.serviceRow}>
-            <ThemedText variant="small" color="primary" style={{ color: serviceabilityColor }}>
-              {serviceability === 'serviceable' ? '✓  ' : '✕  '}{serviceabilityText}
-            </ThemedText>
-          </View>
-        )}
-
         <View style={styles.hairline} />
 
-        {/* Submit — plain text link */}
         <TouchableOpacity
           style={styles.submitRow}
           onPress={handleAdd}
@@ -225,14 +287,13 @@ const styles = StyleSheet.create({
   },
   labelTabActive: { borderBottomColor: Theme.colors.text.mint },
   labelTabTextActive: { fontWeight: '600' },
-  locationRow: {
+  mapFooter: {
     paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm + 2,
+    paddingVertical: Theme.spacing.sm,
+    gap: Theme.spacing.xs,
   },
-  serviceRow: {
-    paddingHorizontal: Theme.spacing.md,
-    paddingBottom: Theme.spacing.sm,
-  },
+  gpsBtn: { alignSelf: 'flex-start' },
+  indicator: { marginTop: 2 },
   submitRow: {
     paddingHorizontal: Theme.spacing.md,
     paddingVertical: Theme.spacing.md,

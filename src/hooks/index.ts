@@ -3,6 +3,17 @@
  */
 
 export { AuthProvider, useAuth } from './useAuth';
+export { useBranchFilter } from './useBranchFilter';
+export { useBranches } from './useBranches';
+export {
+  useDeliveryHubs,
+  useActiveHubs,
+  useAddHub,
+  useUpdateHub,
+  useToggleHub,
+  useHubImpactAddresses,
+  useAssignHubAddresses,
+} from './useDeliveryHubs';
 export { useServerTime } from './useServerTime';
 export { useDeliveryCycles } from './useDeliveryCycles';
 export { useMenuItems } from './useMenuItems';
@@ -14,7 +25,7 @@ export { useFeatureFlags, useFeatureFlag } from './useFeatureFlag';
 export { useRealtimeOrders } from './useRealtimeOrders';
 export { usePushNotifications } from './usePushNotifications';
 export { useAddresses, useAddAddress } from './useAddresses';
-export { useMyOrders, useOrderDetail, usePlaceOrder } from './useOrders';
+export { useMyOrders, useOrderDetail } from './useOrders';
 export {
   useSubscriptionPlans,
   usePlanItems,
@@ -30,8 +41,6 @@ export {
 export {
   useStaffOrders,
   useUpdateOrderStatus,
-  useMarkDelivered,
-  useBatchMarkDelivered,
 } from './useStaffOrders';
 export {
   useTodayAttendance,
@@ -79,7 +88,7 @@ export {
   useWalletTopup,
   useRefreshWallet,
 } from './useWallet';
-export { useEssentialsCatalog, usePlaceEssentialsOrder } from './useEssentials';
+export { useEssentialsCatalog } from './useEssentials';
 
 // Report hooks
 export {

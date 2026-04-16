@@ -14,7 +14,6 @@ import { AdminHome } from '../screens/admin/AdminHome';
 import { MenuManageScreen } from '../screens/admin/MenuManageScreen';
 import { CreateMenuScreen } from '../screens/admin/CreateMenuScreen';
 import { CreatePlanScreen } from '../screens/admin/CreatePlanScreen';
-import { CyclesManageScreen } from '../screens/admin/CyclesManageScreen';
 import { DeliveryManagerScreen } from '../screens/admin/DeliveryManagerScreen';
 import { PlansManageScreen } from '../screens/admin/PlansManageScreen';
 import { ResourceManagerScreen } from '../screens/admin/ResourceManagerScreen';
@@ -31,6 +30,7 @@ import { CustomerFeedbackScreen } from '../screens/admin/CustomerFeedbackScreen'
 import { ReferralSettingsScreen } from '../screens/admin/ReferralSettingsScreen';
 import { ExpenseManagerScreen } from '../screens/admin/ExpenseManagerScreen';
 import { StockManagerScreen } from '../screens/admin/StockManagerScreen';
+import { HubDetailScreen } from '../screens/admin/HubDetailScreen';
 import { OrderReportScreen } from '../screens/admin/reports/OrderReportScreen';
 import { RevenueReportScreen } from '../screens/admin/reports/RevenueReportScreen';
 import { SubscriptionReportScreen } from '../screens/admin/reports/SubscriptionReportScreen';
@@ -99,7 +99,6 @@ export function AdminNavigator() {
       {/* Manage — Menu */}
       <Stack.Screen name="MenuManage" component={MenuManageScreen} />
       <Stack.Screen name="CreateMenu" component={CreateMenuScreen} />
-      <Stack.Screen name="CyclesManage" component={CyclesManageScreen} />
       <Stack.Screen name="CreatePlan" component={CreatePlanScreen} />
       <Stack.Screen name="PlansManage" component={PlansManageScreen} />
       <Stack.Screen name="EssentialsCatalogManage" component={EssentialsCatalogManageScreen} />
@@ -108,6 +107,7 @@ export function AdminNavigator() {
 
       {/* Manage — Delivery */}
       <Stack.Screen name="DeliveryManage" component={DeliveryManagerScreen} />
+      <Stack.Screen name="HubDetail" component={HubDetailScreen} />
 
       {/* Manage — Resource (Staff) */}
       <Stack.Screen name="ResourceManager" component={ResourceManagerScreen} />
@@ -129,7 +129,6 @@ export function AdminNavigator() {
       {/* Manage — Operations */}
       <Stack.Screen name="StoreConfig" component={StoreConfigScreen} />
       <Stack.Screen name="FeatureFlags" component={FeatureFlagsScreen} />
-      <Stack.Screen name="AdvancedSettings" component={PlaceholderScreen} />
     </Stack.Navigator>
   );
 }

@@ -15,6 +15,7 @@
 import React, { useState, useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { useAuth } from '../hooks/useAuth';
+import { usePushNotifications } from '../hooks/usePushNotifications';
 import { CustomerNavigator } from './CustomerNavigator';
 import { StaffNavigator } from './StaffNavigator';
 import { AdminNavigator } from './AdminNavigator';
@@ -46,6 +47,8 @@ const darkTheme = {
 
 export function RootNavigator() {
   const { session, isLoading } = useAuth();
+  // Register push token when signed in; no-ops when session is null
+  usePushNotifications();
   const [step, setStep] = useState<AuthStep>('phone');
   const [pendingPhone, setPendingPhone] = useState('');
   const [pendingName, setPendingName] = useState('');

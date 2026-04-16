@@ -27,7 +27,6 @@ import {
   useAllEssentials,
   useUpdateEssentialPrice,
   useToggleEssential,
-  CYCLE_DISPLAY,
   type EssentialItem,
 } from '../../hooks/useEssentialsCatalog';
 import { useAllDeliveryCycles } from '../../hooks/useMenuManagement';
@@ -36,14 +35,12 @@ const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
 const P = Theme.typography.sizes.body + 4;
 
-const MEAL_CYCLES = ['Breakfast', 'Lunch', 'Snacks', 'Dinner'];
-
 export function EssentialsCatalogManageScreen({ navigation }: { navigation: any }) {
   const { data: rawCycles = [] } = useAllDeliveryCycles();
+  // Use essentials cycles only (is_essentials = true) — these are the actual cycles
+  // used by essentials_catalog items and shown on the customer Essentials tab.
   const cycles = useMemo(
-    () => rawCycles.filter((c: any) =>
-      MEAL_CYCLES.some((m) => c.cycle_name?.toLowerCase().includes(m.toLowerCase()))
-    ),
+    () => rawCycles.filter((c: any) => c.is_essentials),
     [rawCycles]
   );
 
@@ -57,10 +54,7 @@ export function EssentialsCatalogManageScreen({ navigation }: { navigation: any 
   const selectedCycle = cycles[cycleIdx] as any;
   const { data: items = [], isLoading } = useAllEssentials(selectedCycle?.id);
 
-  // Friendly label: Breakfast → "Morning Essentials", Lunch → "Noon Essentials", etc.
-  const displayName = selectedCycle
-    ? (CYCLE_DISPLAY[selectedCycle.cycle_name] ?? selectedCycle.cycle_name)
-    : '…';
+  const displayName = selectedCycle ? selectedCycle.cycle_name : '…';
   const cycleLabel = `${displayName} Essentials`;
 
   const handleCycleToggle = () => {

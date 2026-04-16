@@ -1,12 +1,39 @@
 /**
- * 1stOne F1 — Serviceability Check
+ * 1stOne F1 — Zone-based Serviceability Check
  *
- * Checks if a lat/lng coordinate is within the store's service area.
- * Reads service_center_lat, service_center_lng, service_radius_km from store_config.
- * Returns 'serviceable' | 'not_serviceable' | 'unknown' (if config not set).
+ * Priority: polygon zones from delivery_zones table.
+ * Fallback: radius check from store_config (used before zones are configured).
+ * Returns 'serviceable' | 'not_serviceable' | 'unknown'.
  */
 
 import { supabase } from '../api/supabaseClient';
+
+export type ServiceabilityResult = 'serviceable' | 'not_serviceable' | 'unknown';
+
+export interface ZoneCheckResult {
+  result: ServiceabilityResult;
+  zoneId: number | null;
+  zoneName: string | null;
+}
+
+/** Ray-casting point-in-polygon. Works for geographic coordinates at city scale. */
+export function pointInPolygon(
+  lat: number,
+  lng: number,
+  polygon: { lat: number; lng: number }[]
+): boolean {
+  let inside = false;
+  const n = polygon.length;
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const lati = polygon[i].lat, lngi = polygon[i].lng;
+    const latj = polygon[j].lat, lngj = polygon[j].lng;
+    const intersect =
+      ((lngi > lng) !== (lngj > lng)) &&
+      lat < ((latj - lati) * (lng - lngi)) / (lngj - lngi) + lati;
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
 
 function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6371;
@@ -20,13 +47,31 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-export type ServiceabilityResult = 'serviceable' | 'not_serviceable' | 'unknown';
-
-export async function checkServiceability(
-  lat: number,
-  lng: number
-): Promise<ServiceabilityResult> {
+/**
+ * Check if a coordinate falls inside any active delivery zone.
+ * Returns the matching zone's id/name for storage on the address.
+ */
+export async function checkZone(lat: number, lng: number): Promise<ZoneCheckResult> {
   try {
+    const { data: zones } = await supabase
+      .from('delivery_zones')
+      .select('id, zone_name, polygon_geojson')
+      .eq('is_active', true);
+
+    const polygonZones = (zones ?? []).filter(
+      (z: any) => Array.isArray(z.polygon_geojson) && z.polygon_geojson.length >= 3
+    );
+
+    if (polygonZones.length > 0) {
+      for (const zone of polygonZones) {
+        if (pointInPolygon(lat, lng, zone.polygon_geojson)) {
+          return { result: 'serviceable', zoneId: zone.id, zoneName: zone.zone_name };
+        }
+      }
+      return { result: 'not_serviceable', zoneId: null, zoneName: null };
+    }
+
+    // Fallback: radius-based check (before any polygon zones are defined)
     const { data } = await supabase
       .from('store_config')
       .select('service_center_lat, service_center_lng, service_radius_km')
@@ -37,11 +82,23 @@ export async function checkServiceability(
     const centerLng = (data as any)?.service_center_lng;
     const radiusKm = (data as any)?.service_radius_km;
 
-    if (centerLat == null || centerLng == null || radiusKm == null) return 'unknown';
+    if (centerLat == null || centerLng == null || radiusKm == null) {
+      return { result: 'unknown', zoneId: null, zoneName: null };
+    }
 
     const dist = haversineKm(lat, lng, centerLat, centerLng);
-    return dist <= radiusKm ? 'serviceable' : 'not_serviceable';
+    return {
+      result: dist <= radiusKm ? 'serviceable' : 'not_serviceable',
+      zoneId: null,
+      zoneName: null,
+    };
   } catch {
-    return 'unknown';
+    return { result: 'unknown', zoneId: null, zoneName: null };
   }
+}
+
+/** Legacy shim — keeps existing callers working without change. */
+export async function checkServiceability(lat: number, lng: number): Promise<ServiceabilityResult> {
+  const { result } = await checkZone(lat, lng);
+  return result;
 }

@@ -1,19 +1,13 @@
 /**
  * 1stOne F1 — useOrders
  *
- * Fetches customer order history + provides place-order mutation.
- * Order placement calls Supabase Edge Function that:
- * 1. Recalculates prices server-side
- * 2. Creates Razorpay order (if payment_method != 'wallet')
- * 3. Inserts order + order_items
- * 4. Returns order with razorpay_order_id for client payment
+ * Fetches customer order history and order detail.
  */
 
 import { supabase } from '../api/supabaseClient';
-import { useSupabaseQuery, useSupabaseMutation } from '../api/useSupabaseQuery';
+import { useSupabaseQuery } from '../api/useSupabaseQuery';
 import { QUERY_KEYS } from '../utils/constants';
 import { useAuth } from './useAuth';
-import { checkAndGrantFirstOrderBonus } from './useReferrals';
 import type { Order } from '../types';
 
 export function useMyOrders() {
@@ -44,37 +38,3 @@ export function useOrderDetail(orderId: number) {
   );
 }
 
-export interface PlaceOrderPayload {
-  items: Array<{
-    menu_item_id: number;
-    quantity: number;
-  }>;
-  cycle_id: number;
-  delivery_address_id: number;
-  payment_method: 'wallet' | 'razorpay' | 'split';
-  dispatch_date: string;
-  notes?: string;
-}
-
-export function usePlaceOrder() {
-  const { session } = useAuth();
-  return useSupabaseMutation<PlaceOrderPayload, Order>(
-    async (payload) => {
-      const { data, error } = await supabase.functions.invoke('place-order', {
-        body: payload,
-      });
-
-      if (error) {
-        return { data: null, error, count: null, status: 500, statusText: 'Error' } as any;
-      }
-
-      // Fire-and-forget: grant referral first-order bonus if applicable
-      if (session?.user.id) {
-        checkAndGrantFirstOrderBonus(session.user.id).catch(() => {});
-      }
-
-      return { data, error: null, count: null, status: 200, statusText: 'OK' } as any;
-    },
-    [QUERY_KEYS.MY_ORDERS as unknown as string[], QUERY_KEYS.ORDERS as unknown as string[]]
-  );
-}

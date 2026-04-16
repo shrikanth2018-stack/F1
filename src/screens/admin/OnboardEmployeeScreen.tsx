@@ -30,12 +30,12 @@ import { ThemedText } from '../../components/ThemedText';
 import { Divider } from '../../components/Divider';
 import {
   useOnboardEmployee,
-  useDeliveryHubs,
   generateEmployeeId,
   DESIGNATIONS,
   SHIFTS,
   BENEFIT_OPTIONS,
 } from '../../hooks/useResourceManager';
+import { useDeliveryHubs } from '../../hooks/useDeliveryHubs';
 
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;

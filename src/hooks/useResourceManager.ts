@@ -4,12 +4,14 @@
  * Admin hooks for the Resource Manager (staff onboarding, attendance,
  * leaves, salary). Complements useStaffManagement which handles
  * expense/leave approval flows.
+ * Filtered by branch when branch_management_active is on.
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../api/supabaseClient';
 import { QUERY_STALE_TIME } from '../utils/constants';
 import { useAuth } from './useAuth';
+import { useBranchFilter } from './useBranchFilter';
 import type { Profile, StaffAttendance, StaffLeave, StaffSalary } from '../types';
 
 export const DESIGNATIONS = [
@@ -42,15 +44,23 @@ export const BENEFIT_OPTIONS = [
 /** All staff with today attendance + leave status joined */
 export function useStaffRoster() {
   const today = new Date().toISOString().split('T')[0];
+  const bf = useBranchFilter();
+
   return useQuery({
-    queryKey: ['resource_roster', today],
+    queryKey: ['resource_roster', today, bf.isActive ? bf.branchId ?? 'all' : 'off'],
     queryFn: async () => {
+      let profilesQuery = supabase
+        .from('profiles')
+        .select('*')
+        .eq('role', 'staff')
+        .order('created_at', { ascending: true });
+
+      if (bf.isActive && bf.branchId != null) {
+        profilesQuery = profilesQuery.eq('branch_id', bf.branchId);
+      }
+
       const [profilesRes, attendanceRes, leavesRes] = await Promise.all([
-        supabase
-          .from('profiles')
-          .select('*')
-          .eq('role', 'staff')
-          .order('created_at', { ascending: true }),
+        profilesQuery,
         supabase
           .from('staff_attendance')
           .select('staff_id, clock_in_time, clock_out_time')
@@ -116,6 +126,7 @@ export async function generateEmployeeId(): Promise<string> {
 
 export function useOnboardEmployee() {
   const queryClient = useQueryClient();
+  const bf = useBranchFilter();
   return useMutation({
     mutationFn: async (payload: OnboardPayload & { employee_id: string }) => {
       // Insert profile row — staff member logs in via phone OTP
@@ -134,6 +145,7 @@ export function useOnboardEmployee() {
         benefits: payload.benefits || null,
         wallet_balance: 0,
         loyalty_points: 0,
+        branch_id: bf.isActive ? bf.branchId : null,
       });
       if (profileErr) throw new Error(profileErr.message);
 
@@ -316,15 +328,23 @@ export function useEmployeeSalary(staffId: string) {
 export function usePendingLeaves() {
   const queryClient = useQueryClient();
   const { session } = useAuth();
+  const bf = useBranchFilter();
 
   const query = useQuery({
-    queryKey: ['resource_pending_leaves'],
+    queryKey: ['resource_pending_leaves', bf.isActive ? bf.branchId ?? 'all' : 'off'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let q = supabase
         .from('staff_leaves')
         .select('*, profiles!staff_leaves_staff_id_fkey(full_name, phone_number, employee_id)')
         .eq('status', 'Pending')
         .order('created_at', { ascending: true });
+
+      if (bf.isActive && bf.branchId != null) {
+        // filter by branch via joined profile
+        q = q.eq('profiles.branch_id', bf.branchId);
+      }
+
+      const { data, error } = await q;
       if (error) throw error;
       return (data ?? []) as any[];
     },
@@ -348,20 +368,4 @@ export function usePendingLeaves() {
   return { ...query, review };
 }
 
-// ── Hubs list (for hub assignment picker) ────────────────────
-
-export function useDeliveryHubs() {
-  return useQuery({
-    queryKey: ['delivery_hubs'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('delivery_hubs')
-        .select('id, hub_name')
-        .eq('is_active', true)
-        .order('hub_name');
-      if (error) throw error;
-      return (data ?? []) as { id: number; hub_name: string }[];
-    },
-    staleTime: QUERY_STALE_TIME,
-  });
-}
+// useDeliveryHubs moved to src/hooks/useDeliveryHubs.ts (full CRUD version)

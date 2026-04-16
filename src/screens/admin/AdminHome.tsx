@@ -30,6 +30,9 @@ import { ErrorRetry } from '../../components/ErrorRetry';
 import { useAuth } from '../../hooks/useAuth';
 import { useRealtimeOrders } from '../../hooks/useRealtimeOrders';
 import { useAdminStats } from '../../hooks/useAdminStats';
+import { useBranchFilter } from '../../hooks/useBranchFilter';
+import { useBranches } from '../../hooks/useBranches';
+import { useBranchStore } from '../../store/branchStore';
 
 type AdminTab = 'Reports' | 'Manage';
 
@@ -42,6 +45,39 @@ const MS = Theme.typography.sizes.small + 2;   // manage section label
 /** SettingsRow pre-wired with Manage-tab font size */
 function AdminRow(props: React.ComponentProps<typeof SettingsRow>) {
   return <SettingsRow {...props} labelSize={MR} />;
+}
+
+// ── Branch Row — settings-style row inside Manage tab ───
+function BranchRow() {
+  const { data: branches } = useBranches();
+  const bf = useBranchFilter();
+  const { setSelectedBranch, selectedBranchName } = useBranchStore();
+
+  // Only super-admins (no branch_id in JWT) need this
+  if (!bf.isSuperAdmin) return null;
+
+  const label = selectedBranchName ?? 'All Branches';
+
+  const handlePress = () => {
+    const options: any[] = [
+      { text: 'All Branches', onPress: () => setSelectedBranch(null, null) },
+      ...(branches ?? []).map((b) => ({
+        text: b.branch_name,
+        onPress: () => setSelectedBranch(b.id, b.branch_name),
+      })),
+      { text: 'Cancel', style: 'cancel' },
+    ];
+    Alert.alert('Select Branch', 'Data will be filtered for:', options);
+  };
+
+  return (
+    <AdminRow
+      label="Viewing Branch"
+      subtitle={label}
+      showChevron
+      onPress={handlePress}
+    />
+  );
 }
 
 // ── Reports Tab — clean list, today's number as subtext ──
@@ -99,7 +135,7 @@ function ReportsTab() {
         <ThemedText variant="body" color="muted" style={styles.rowText}>›</ThemedText>
       </TouchableOpacity>
 
-      <TouchableOpacity style={styles.reportRow} onPress={() => navigation.navigate('StaffReport')}>
+      <TouchableOpacity style={[styles.reportRow, styles.reportRowLast]} onPress={() => navigation.navigate('StaffReport')}>
         <View>
           <ThemedText variant="body" color="primary" style={styles.rowText}>Staff</ThemedText>
           <ThemedText variant="small" color="muted" style={[styles.reportSub, styles.subText]}>
@@ -109,13 +145,6 @@ function ReportsTab() {
         <ThemedText variant="body" color="muted" style={styles.rowText}>›</ThemedText>
       </TouchableOpacity>
 
-      <TouchableOpacity style={[styles.reportRow, styles.reportRowLast]} onPress={() => Alert.alert('Coming soon', 'Menu Performance report will be addressed later.')}>
-        <View>
-          <ThemedText variant="body" color="primary" style={styles.rowText}>Menu Performance</ThemedText>
-          <ThemedText variant="small" color="muted" style={[styles.reportSub, styles.subText]}>Best & worst sellers</ThemedText>
-        </View>
-        <ThemedText variant="body" color="muted" style={styles.rowText}>›</ThemedText>
-      </TouchableOpacity>
     </ScrollView>
   );
 }
@@ -130,6 +159,11 @@ function ManageTab() {
       contentContainerStyle={styles.tabScroll}
       showsVerticalScrollIndicator={false}
     >
+      {/* BRANCH — visible to super-admins only */}
+      <BranchRow />
+
+      <Divider />
+
       {/* MENU */}
       <View style={styles.section}>
         <ThemedText variant="small" color="muted" style={styles.sectionLabel}>MENU</ThemedText>
@@ -192,12 +226,6 @@ function ManageTab() {
 
       <Divider />
 
-      {/* ADVANCED */}
-      <View style={styles.section}>
-        <ThemedText variant="small" color="muted" style={styles.sectionLabel}>ADVANCED</ThemedText>
-      </View>
-      <AdminRow label="Raw Settings Editor" showChevron onPress={() => navigation.navigate('AdvancedSettings')} />
-      <AdminRow label="Danger Zone" showChevron onPress={() => navigation.navigate('AdvancedSettings')} />
     </ScrollView>
   );
 }

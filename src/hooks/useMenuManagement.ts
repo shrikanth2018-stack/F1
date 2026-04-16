@@ -6,17 +6,21 @@
  * - Add menu item
  * - Update menu item (price, name, active toggle)
  * - Toggle item active/inactive
+ * Filtered by branch when branch_management_active is on.
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../api/supabaseClient';
 import { QUERY_KEYS, QUERY_STALE_TIME } from '../utils/constants';
+import { useBranchFilter } from './useBranchFilter';
 import type { MenuItem } from '../types';
 
 /** Fetch ALL menu items for admin (including inactive) */
 export function useAllMenuItems(cycleId?: number) {
+  const bf = useBranchFilter();
+
   return useQuery({
-    queryKey: ['admin_menu_items', cycleId ?? 'all'],
+    queryKey: ['admin_menu_items', cycleId ?? 'all', bf.isActive ? bf.branchId ?? 'all' : 'off'],
     queryFn: async () => {
       let query = supabase
         .from('menu_items')
@@ -25,6 +29,9 @@ export function useAllMenuItems(cycleId?: number) {
 
       if (cycleId) {
         query = query.eq('cycle_id', cycleId);
+      }
+      if (bf.isActive && bf.branchId != null) {
+        query = query.eq('branch_id', bf.branchId);
       }
 
       const { data, error } = await query;
@@ -38,6 +45,7 @@ export function useAllMenuItems(cycleId?: number) {
 /** Add a new menu item */
 export function useAddMenuItem() {
   const queryClient = useQueryClient();
+  const bf = useBranchFilter();
 
   return useMutation({
     mutationFn: async (item: {
@@ -51,6 +59,7 @@ export function useAddMenuItem() {
         ...item,
         is_active: true,
         sort_order: item.sort_order ?? 0,
+        branch_id: bf.isActive ? bf.branchId : null,
       });
       if (error) throw error;
     },
@@ -104,13 +113,21 @@ export function useToggleMenuItem() {
 
 /** Admin: manage delivery cycles */
 export function useAllDeliveryCycles() {
+  const bf = useBranchFilter();
+
   return useQuery({
-    queryKey: ['admin_delivery_cycles'],
+    queryKey: ['admin_delivery_cycles', bf.isActive ? bf.branchId ?? 'all' : 'off'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('delivery_cycles')
         .select('*')
         .order('sort_order', { ascending: true });
+
+      if (bf.isActive && bf.branchId != null) {
+        query = query.eq('branch_id', bf.branchId);
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
       return data ?? [];
     },

@@ -16,6 +16,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import RazorpayCheckout from 'react-native-razorpay';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { Divider } from '../../components/Divider';
@@ -27,6 +28,8 @@ import {
   useRefreshWallet,
 } from '../../hooks/useWallet';
 import { useStoreConfig } from '../../hooks/useStoreConfig';
+import { useAuth } from '../../hooks/useAuth';
+import { RAZORPAY_KEY_ID } from '../../utils/env';
 
 const QUICK_AMOUNTS = [500, 1000, 2000];
 
@@ -34,6 +37,7 @@ export function WalletScreen({ navigation }: { navigation: any }) {
   const [customAmount, setCustomAmount] = useState('');
   const insets = useSafeAreaInsets();
 
+  const { session } = useAuth();
   const { data: wallet } = useWalletBalance();
   const { data: transactions, isLoading: txLoading } = useWalletTransactions();
   const { data: config } = useStoreConfig();
@@ -48,12 +52,23 @@ export function WalletScreen({ navigation }: { navigation: any }) {
       return;
     }
     topup.mutate(amount, {
-      onSuccess: (data) => {
-        Alert.alert(
-          'Razorpay Checkout',
-          `Order created: ${data.razorpay_order_id}\nAmount: \u20B9${data.amount}\n\nRazorpay checkout will open here.`,
-          [{ text: 'Done', onPress: () => refreshWallet() }]
-        );
+      onSuccess: async (data) => {
+        try {
+          await RazorpayCheckout.open({
+            description: '1stOne Wallet Top-up',
+            currency: 'INR',
+            key: RAZORPAY_KEY_ID,
+            amount: Math.round(data.amount * 100),
+            order_id: data.razorpay_order_id,
+            name: '1stOne',
+            prefill: { contact: session?.user.phone ?? '' },
+            theme: { color: Theme.colors.action.primary },
+          });
+        } catch {
+          // Payment cancelled or failed — order stays pending, webhook won't fire
+          Alert.alert('Payment Cancelled', 'Your top-up was not completed.');
+        }
+        refreshWallet();
       },
       onError: (err) => Alert.alert('Error', err.message),
     });

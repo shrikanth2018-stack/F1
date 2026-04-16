@@ -6,11 +6,13 @@
  * - Update any order status
  * - Cancel order
  * Realtime via useRealtimeOrders.
+ * Filtered by branch when branch_management_active is on.
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../api/supabaseClient';
 import { QUERY_KEYS, QUERY_STALE_TIME } from '../utils/constants';
+import { useBranchFilter } from './useBranchFilter';
 import type { Order, OrderStatus } from '../types';
 
 interface AdminOrderFilters {
@@ -22,9 +24,10 @@ interface AdminOrderFilters {
 /** Fetch all orders with optional filters */
 export function useAdminOrders(filters: AdminOrderFilters = {}) {
   const date = filters.date ?? new Date().toISOString().split('T')[0];
+  const bf = useBranchFilter();
 
   return useQuery({
-    queryKey: ['admin_orders', date, filters.status, filters.cycleId],
+    queryKey: ['admin_orders', date, filters.status, filters.cycleId, bf.isActive ? bf.branchId ?? 'all' : 'off'],
     queryFn: async () => {
       let query = supabase
         .from('orders')
@@ -37,6 +40,9 @@ export function useAdminOrders(filters: AdminOrderFilters = {}) {
       }
       if (filters.cycleId) {
         query = query.eq('cycle_id', filters.cycleId);
+      }
+      if (bf.isActive && bf.branchId != null) {
+        query = query.eq('branch_id', bf.branchId);
       }
 
       const { data, error } = await query;

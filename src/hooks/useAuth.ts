@@ -29,8 +29,10 @@ function extractRole(session: Session | null): AuthSession | null {
   const jwt = session.access_token;
   try {
     const payload = JSON.parse(atob(jwt.split('.')[1]));
+    console.log('[JWT]', JSON.stringify(payload, null, 2));
     const role: UserRole = payload.user_role || 'customer';
     const assignedHubId: number | null = payload.assigned_hub_id ?? null;
+    const branchId: number | null = payload.branch_id ?? null;
 
     return {
       user: {
@@ -39,6 +41,7 @@ function extractRole(session: Session | null): AuthSession | null {
       },
       role,
       assignedHubId,
+      branchId,
     };
   } catch {
     return {
@@ -48,6 +51,7 @@ function extractRole(session: Session | null): AuthSession | null {
       },
       role: 'customer',
       assignedHubId: null,
+      branchId: null,
     };
   }
 }

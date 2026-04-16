@@ -36,6 +36,9 @@ interface AddAddressPayload {
   pincode?: string;
   latitude?: number;
   longitude?: number;
+  zone_id?: number | null;
+  hub_id?: number | null;
+  is_serviceable?: boolean;
   is_default?: boolean;
 }
 

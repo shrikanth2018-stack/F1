@@ -23,7 +23,11 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#151515"
       },
-      "package": "com.stone1st.f1"
+      "package": "com.stone1st.f1",
+      "permissions": [
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.VIBRATE"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -31,7 +35,15 @@
     "plugins": [
       "expo-splash-screen",
       "expo-location",
-      "expo-asset"
+      "expo-asset",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#151515",
+          "sounds": []
+        }
+      ]
     ],
     "extra": {
       "eas": {

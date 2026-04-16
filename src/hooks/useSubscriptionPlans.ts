@@ -4,15 +4,17 @@
  * Admin CRUD for subscription_plans.
  * Table: subscription_plans {
  *   id, name, cycle_id, type ('food'|'essentials'), duration_days,
- *   price, is_active, plan_items (JSON string)
+ *   price, is_active, plan_items (JSON string), branch_id
  * }
  *
  * plan_items JSON: [{ item_id: number, item_name: string, quantity: number }]
+ * Filtered by branch when branch_management_active is on.
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../api/supabaseClient';
 import { QUERY_STALE_TIME } from '../utils/constants';
+import { useBranchFilter } from './useBranchFilter';
 
 export type PlanType = 'food' | 'essentials';
 
@@ -31,11 +33,14 @@ export interface SubscriptionPlan {
   price: number;
   is_active: boolean;
   plan_items: string; // JSON string of PlanItem[]
+  branch_id: number | null;
 }
 
 export function useAllPlans(cycleId?: number, type?: PlanType) {
+  const bf = useBranchFilter();
+
   return useQuery({
-    queryKey: ['admin_plans', cycleId ?? 'all', type ?? 'all'],
+    queryKey: ['admin_plans', cycleId ?? 'all', type ?? 'all', bf.isActive ? bf.branchId ?? 'all' : 'off'],
     queryFn: async () => {
       let query = supabase
         .from('subscription_plans')
@@ -48,6 +53,9 @@ export function useAllPlans(cycleId?: number, type?: PlanType) {
         // also surface legacy rows that predate the type column
         query = query.or('type.eq.food,type.is.null');
       }
+      if (bf.isActive && bf.branchId != null) {
+        query = query.eq('branch_id', bf.branchId);
+      }
       const { data, error } = await query;
       if (error) throw new Error(error.message);
       return (data ?? []) as SubscriptionPlan[];
@@ -58,6 +66,7 @@ export function useAllPlans(cycleId?: number, type?: PlanType) {
 
 export function useAddPlan() {
   const queryClient = useQueryClient();
+  const bf = useBranchFilter();
   return useMutation({
     mutationFn: async (plan: {
       name: string;
@@ -69,7 +78,11 @@ export function useAddPlan() {
     }) => {
       const { error } = await supabase
         .from('subscription_plans')
-        .insert({ ...plan, is_active: true });
+        .insert({
+          ...plan,
+          is_active: true,
+          branch_id: bf.isActive ? bf.branchId : null,
+        });
       if (error) throw new Error(error.message);
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin_plans'] }),

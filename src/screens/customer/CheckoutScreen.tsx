@@ -15,6 +15,7 @@ import {
   ActivityIndicator,
   Text,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import RazorpayCheckout from 'react-native-razorpay';
 import { Theme } from '../../theme';
@@ -33,6 +34,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { formatPriceShort } from '../../utils/formatters';
 import { supabase } from '../../api/supabaseClient';
 import { RAZORPAY_KEY_ID } from '../../utils/env';
+import { checkAndGrantFirstOrderBonus } from '../../hooks/useReferrals';
 
 type PaymentChoice = 'razorpay' | 'wallet';
 
@@ -155,6 +157,11 @@ export function CheckoutScreen({ navigation, route }: any) {
         } catch {
           Alert.alert('Payment Cancelled', 'Your order has been saved. You can pay later from your orders.');
         }
+      }
+
+      // Grant first-order referral bonus if applicable (fire-and-forget)
+      if (session?.user.id) {
+        checkAndGrantFirstOrderBonus(session.user.id).catch(() => {});
       }
 
       if (cartType === 'food') clearFood(); else clearEss();

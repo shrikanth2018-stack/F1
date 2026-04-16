@@ -18,19 +18,16 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
-import { useAddEssential, CYCLE_DISPLAY } from '../../hooks/useEssentialsCatalog';
+import { useAddEssential } from '../../hooks/useEssentialsCatalog';
 import { useAllDeliveryCycles } from '../../hooks/useMenuManagement';
 
 const B = Theme.typography.sizes.body + 2;
 
-const MEAL_CYCLES = ['Breakfast', 'Lunch', 'Snacks', 'Dinner'];
-
 export function CreateEssentialScreen({ navigation, route }: { navigation: any; route: any }) {
   const { data: rawCycles = [] } = useAllDeliveryCycles();
+  // Essentials cycles only (is_essentials = true) — matches EssentialsCatalogManageScreen
   const cycles = useMemo(
-    () => rawCycles.filter((c: any) =>
-      MEAL_CYCLES.some((m) => c.cycle_name?.toLowerCase().includes(m.toLowerCase()))
-    ),
+    () => rawCycles.filter((c: any) => c.is_essentials),
     [rawCycles]
   );
 
@@ -49,9 +46,7 @@ export function CreateEssentialScreen({ navigation, route }: { navigation: any; 
   }, [cycles.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const selectedCycle = cycles[cycleIdx] as any;
-  const displayName = selectedCycle
-    ? (CYCLE_DISPLAY[selectedCycle.cycle_name] ?? selectedCycle.cycle_name)
-    : '…';
+  const displayName = selectedCycle ? selectedCycle.cycle_name : '…';
   const cycleLabel = `${displayName} Essentials`;
 
   const handleCycleToggle = () => {

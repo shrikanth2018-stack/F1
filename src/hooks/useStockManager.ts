@@ -6,25 +6,35 @@
  *   - Active order list      (approved items + admin-added items)
  *   - Print batch            (snapshot current list → supply_batches, clears active)
  *   - Batch history          (past prints, reprint)
+ * Filtered by branch when branch_management_active is on.
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../api/supabaseClient';
 import { useAuth } from './useAuth';
 import { QUERY_STALE_TIME } from '../utils/constants';
+import { useBranchFilter } from './useBranchFilter';
 import type { SupplyRequest, SupplyOrderItem, SupplyBatch } from '../types';
 
 // ── Staff supply requests ────────────────────────────────
 
 export function usePendingSupplyRequests() {
+  const bf = useBranchFilter();
+
   return useQuery({
-    queryKey: ['supply_requests', 'pending'],
+    queryKey: ['supply_requests', 'pending', bf.isActive ? bf.branchId ?? 'all' : 'off'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('staff_order_requests')
         .select('*, profiles!staff_order_requests_submitted_by_fkey(full_name, employee_id)')
         .eq('status', 'Pending')
         .order('created_at', { ascending: true });
+
+      if (bf.isActive && bf.branchId != null) {
+        query = query.eq('branch_id', bf.branchId);
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
       return (data ?? []) as (SupplyRequest & { profiles: any })[];
     },
@@ -34,6 +44,7 @@ export function usePendingSupplyRequests() {
 
 export function useReviewSupplyRequest() {
   const { session } = useAuth();
+  const bf = useBranchFilter();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({
@@ -62,6 +73,7 @@ export function useReviewSupplyRequest() {
           request_id: requestId,
           batch_id: null,
           added_by: session?.user.id ?? null,
+          branch_id: bf.isActive ? bf.branchId : null,
         }));
         const { error: e2 } = await supabase.from('supply_order_items').insert(rows);
         if (e2) throw new Error(e2.message);
@@ -77,15 +89,23 @@ export function useReviewSupplyRequest() {
 // ── Active order list ────────────────────────────────────
 
 export function useActiveOrderList() {
+  const bf = useBranchFilter();
+
   return useQuery({
-    queryKey: ['supply_order_items', 'active'],
+    queryKey: ['supply_order_items', 'active', bf.isActive ? bf.branchId ?? 'all' : 'off'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('supply_order_items')
         .select('*')
         .is('batch_id', null)
         .order('category')
         .order('created_at');
+
+      if (bf.isActive && bf.branchId != null) {
+        query = query.eq('branch_id', bf.branchId);
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
       return (data ?? []) as SupplyOrderItem[];
     },
@@ -95,6 +115,7 @@ export function useActiveOrderList() {
 
 export function useAdminAddOrderItem() {
   const { session } = useAuth();
+  const bf = useBranchFilter();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (payload: {
@@ -107,6 +128,7 @@ export function useAdminAddOrderItem() {
         request_id: null,
         batch_id: null,
         added_by: session?.user.id ?? null,
+        branch_id: bf.isActive ? bf.branchId : null,
       });
       if (error) throw new Error(error.message);
     },
@@ -146,6 +168,7 @@ export function useRemoveOrderItem() {
 
 export function usePrintBatch() {
   const { session } = useAuth();
+  const bf = useBranchFilter();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (activeItems: SupplyOrderItem[]) => {
@@ -165,6 +188,7 @@ export function usePrintBatch() {
           printed_by: session?.user.id ?? null,
           items_snapshot: snapshot,
           note: null,
+          branch_id: bf.isActive ? bf.branchId : null,
         })
         .select('id')
         .single();
@@ -190,13 +214,21 @@ export function usePrintBatch() {
 // ── Batch history ────────────────────────────────────────
 
 export function useSupplyBatches() {
+  const bf = useBranchFilter();
+
   return useQuery({
-    queryKey: ['supply_batches'],
+    queryKey: ['supply_batches', bf.isActive ? bf.branchId ?? 'all' : 'off'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('supply_batches')
         .select('*')
         .order('printed_at', { ascending: false });
+
+      if (bf.isActive && bf.branchId != null) {
+        query = query.eq('branch_id', bf.branchId);
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
       return (data ?? []) as SupplyBatch[];
     },

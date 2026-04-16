@@ -11,19 +11,24 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../api/supabaseClient';
+import { useBranchFilter } from './useBranchFilter';
 
 /** Revenue report for a date range */
 export function useRevenueReport(startDate: string, endDate: string) {
+  const bf = useBranchFilter();
+
   return useQuery({
-    queryKey: ['report_revenue', startDate, endDate],
+    queryKey: ['report_revenue', startDate, endDate, bf.isActive ? bf.branchId ?? 'all' : 'off'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('orders')
         .select('id, total_amount, tax_amount, delivery_fee, dispatch_date, status, cycle_id, payment_method')
         .gte('dispatch_date', startDate)
         .lte('dispatch_date', endDate)
         .neq('status', 'Cancelled')
         .order('dispatch_date', { ascending: true });
+      if (bf.isActive && bf.branchId != null) query = query.eq('branch_id', bf.branchId);
+      const { data, error } = await query;
 
       if (error) throw error;
       const orders = data ?? [];
@@ -71,15 +76,19 @@ export function useRevenueReport(startDate: string, endDate: string) {
 
 /** Order breakdown by status for a date range */
 export function useOrderReport(startDate: string, endDate: string) {
+  const bf = useBranchFilter();
+
   return useQuery({
-    queryKey: ['report_orders', startDate, endDate],
+    queryKey: ['report_orders', startDate, endDate, bf.isActive ? bf.branchId ?? 'all' : 'off'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('orders')
         .select('id, status, cycle_id, order_type, dispatch_date')
         .gte('dispatch_date', startDate)
         .lte('dispatch_date', endDate)
         .order('dispatch_date', { ascending: true });
+      if (bf.isActive && bf.branchId != null) query = query.eq('branch_id', bf.branchId);
+      const { data, error } = await query;
 
       if (error) throw error;
       const orders = data ?? [];
@@ -174,15 +183,19 @@ export function useSubscriptionReport() {
 
 /** Staff attendance summary for a date range */
 export function useStaffAttendanceReport(startDate: string, endDate: string) {
+  const bf = useBranchFilter();
+
   return useQuery({
-    queryKey: ['report_staff_attendance', startDate, endDate],
+    queryKey: ['report_staff_attendance', startDate, endDate, bf.isActive ? bf.branchId ?? 'all' : 'off'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('staff_attendance')
         .select('*, profiles!staff_attendance_staff_id_fkey(full_name, phone_number)')
         .gte('date', startDate)
         .lte('date', endDate)
         .order('date', { ascending: true });
+      if (bf.isActive && bf.branchId != null) query = query.eq('branch_id', bf.branchId);
+      const { data, error } = await query;
 
       if (error) throw error;
       const records = data ?? [];
@@ -227,16 +240,20 @@ export function useStaffAttendanceReport(startDate: string, endDate: string) {
 
 /** Orders detail: cycle-wise and menu-wise day-level rows */
 export function useOrdersDetailReport(startDate: string, endDate: string) {
+  const bf = useBranchFilter();
+
   return useQuery({
-    queryKey: ['report_orders_detail', startDate, endDate],
+    queryKey: ['report_orders_detail', startDate, endDate, bf.isActive ? bf.branchId ?? 'all' : 'off'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('orders')
         .select('id, dispatch_date, cycle_id, delivery_cycles(cycle_name), order_items(item_name, quantity)')
         .gte('dispatch_date', startDate)
         .lte('dispatch_date', endDate)
         .neq('status', 'Cancelled')
         .order('dispatch_date', { ascending: false });
+      if (bf.isActive && bf.branchId != null) query = query.eq('branch_id', bf.branchId);
+      const { data, error } = await query;
 
       if (error) throw error;
       const orders = (data ?? []) as any[];
@@ -269,16 +286,20 @@ export function useOrdersDetailReport(startDate: string, endDate: string) {
 
 /** Revenue detail: day-level rows with orders, revenue, tax */
 export function useRevenueDetailReport(startDate: string, endDate: string) {
+  const bf = useBranchFilter();
+
   return useQuery({
-    queryKey: ['report_revenue_detail', startDate, endDate],
+    queryKey: ['report_revenue_detail', startDate, endDate, bf.isActive ? bf.branchId ?? 'all' : 'off'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('orders')
         .select('id, dispatch_date, total_amount, tax_amount')
         .gte('dispatch_date', startDate)
         .lte('dispatch_date', endDate)
         .neq('status', 'Cancelled')
         .order('dispatch_date', { ascending: false });
+      if (bf.isActive && bf.branchId != null) query = query.eq('branch_id', bf.branchId);
+      const { data, error } = await query;
 
       if (error) throw error;
       const orders = (data ?? []) as any[];
@@ -334,15 +355,19 @@ export function useSubscriptionPlanReport() {
 
 /** Expense claims summary for a date range */
 export function useExpenseReport(startDate: string, endDate: string) {
+  const bf = useBranchFilter();
+
   return useQuery({
-    queryKey: ['report_expenses', startDate, endDate],
+    queryKey: ['report_expenses', startDate, endDate, bf.isActive ? bf.branchId ?? 'all' : 'off'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('expense_claims')
         .select('*')
         .gte('created_at', `${startDate}T00:00:00`)
         .lte('created_at', `${endDate}T23:59:59`)
         .order('created_at', { ascending: false });
+      if (bf.isActive && bf.branchId != null) query = query.eq('branch_id', bf.branchId);
+      const { data, error } = await query;
 
       if (error) throw error;
       const claims = data ?? [];

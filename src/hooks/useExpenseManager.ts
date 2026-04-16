@@ -4,25 +4,35 @@
  * Admin hooks for the Expense Manager:
  *   - Staff expense claims  (approve → paid flow)
  *   - Business expenses     (admin-logged operational spending)
+ * Filtered by branch when branch_management_active is on.
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../api/supabaseClient';
 import { useAuth } from './useAuth';
 import { QUERY_STALE_TIME } from '../utils/constants';
+import { useBranchFilter } from './useBranchFilter';
 import type { ExpenseClaim, BusinessExpense } from '../types';
 
 // ── Staff expense claims ──────────────────────────────────────
 
 /** All claims joined with staff profile, ordered newest first */
 export function useAllExpenseClaimsAdmin() {
+  const bf = useBranchFilter();
+
   return useQuery({
-    queryKey: ['admin_expense_claims'],
+    queryKey: ['admin_expense_claims', bf.isActive ? bf.branchId ?? 'all' : 'off'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('expense_claims')
         .select('*, profiles!expense_claims_staff_id_fkey(full_name, phone_number, employee_id)')
         .order('created_at', { ascending: false });
+
+      if (bf.isActive && bf.branchId != null) {
+        query = query.eq('branch_id', bf.branchId);
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
       return (data ?? []) as (ExpenseClaim & { profiles: any })[];
     },
@@ -78,15 +88,22 @@ export const EXPENSE_CATEGORIES = [
 export function useBusinessExpenses() {
   const queryClient = useQueryClient();
   const { session } = useAuth();
+  const bf = useBranchFilter();
 
   const query = useQuery({
-    queryKey: ['business_expenses'],
+    queryKey: ['business_expenses', bf.isActive ? bf.branchId ?? 'all' : 'off'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let q = supabase
         .from('business_expenses')
         .select('*')
         .order('expense_date', { ascending: false })
         .order('created_at', { ascending: false });
+
+      if (bf.isActive && bf.branchId != null) {
+        q = q.eq('branch_id', bf.branchId);
+      }
+
+      const { data, error } = await q;
       if (error) throw error;
       return (data ?? []) as BusinessExpense[];
     },
@@ -107,6 +124,7 @@ export function useBusinessExpenses() {
         vendor: payload.vendor || null,
         recorded_by: session?.user.id ?? null,
         paid_at: payload.is_paid ? new Date().toISOString() : null,
+        branch_id: bf.isActive ? bf.branchId : null,
       });
       if (error) throw new Error(error.message);
     },

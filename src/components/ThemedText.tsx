@@ -25,6 +25,7 @@ export function ThemedText({
 }: ThemedTextProps) {
   return (
     <Text
+      allowFontScaling={false}
       style={[
         {
           fontFamily: Theme.typography.fontFamily,

@@ -29,9 +29,9 @@ import {
   useEmployeeMonthAttendance,
   useEmployeeLeaves,
   useEmployeeSalary,
-  useDeliveryHubs,
   BENEFIT_OPTIONS,
 } from '../../hooks/useResourceManager';
+import { useDeliveryHubs } from '../../hooks/useDeliveryHubs';
 import { useAllStaff } from '../../hooks/useStaffManagement';
 import type { Profile, StaffAttendance, StaffLeave, StaffSalary } from '../../types';
 
