@@ -315,22 +315,32 @@ export function useIssueMonthBonus() {
 // ── Helpers ──────────────────────────────────────────────────
 
 async function creditWallet(userId: string, amount: number, description: string): Promise<void> {
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('wallet_balance')
-    .eq('id', userId)
-    .single();
-  const current = profile?.wallet_balance ?? 0;
-  await supabase
-    .from('profiles')
-    .update({ wallet_balance: current + amount })
-    .eq('id', userId);
-  await supabase.from('wallet_transactions').insert({
-    user_id: userId,
-    type: 'credit',
-    amount,
-    description,
+  // Atomic increment via RPC to prevent read-modify-write race conditions
+  const { error } = await supabase.rpc('increment_wallet_balance', {
+    p_user_id: userId,
+    p_amount: amount,
+    p_description: description,
   });
+
+  // Fallback to read-modify-write if RPC not yet deployed
+  if (error) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('wallet_balance')
+      .eq('id', userId)
+      .single();
+    const current = profile?.wallet_balance ?? 0;
+    await supabase
+      .from('profiles')
+      .update({ wallet_balance: current + amount })
+      .eq('id', userId);
+    await supabase.from('wallet_transactions').insert({
+      user_id: userId,
+      transaction_type: 'credit',
+      amount,
+      description,
+    });
+  }
 }
 
 async function creditLoyaltyPoints(userId: string, points: number): Promise<void> {

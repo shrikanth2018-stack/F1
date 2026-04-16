@@ -82,7 +82,7 @@ export function RootNavigator() {
       <NavigationContainer theme={darkTheme}>
         {session.role === 'admin' && <AdminNavigator />}
         {session.role === 'staff' && <StaffNavigator />}
-        {session.role === 'customer' && <CustomerNavigator />}
+        {(session.role === 'customer' || !['admin', 'staff'].includes(session.role)) && <CustomerNavigator />}
       </NavigationContainer>
     );
   }

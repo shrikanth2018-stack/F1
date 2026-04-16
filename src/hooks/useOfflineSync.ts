@@ -13,13 +13,14 @@ import { useStaffQueueStore } from '../store/staffQueueStore';
 import { MAX_QUEUE_RETRIES } from '../utils/constants';
 
 export function useOfflineSync() {
-  const queue = useStaffQueueStore((s) => s.queue);
-  const isSyncing = useStaffQueueStore((s) => s.isSyncing);
-  const dequeue = useStaffQueueStore((s) => s.dequeue);
+  // Read these via getState() inside drainQueue to avoid recreating the
+  // callback (and re-subscribing NetInfo) every time the queue changes.
   const markSyncing = useStaffQueueStore((s) => s.markSyncing);
+  const dequeue = useStaffQueueStore((s) => s.dequeue);
   const incrementRetry = useStaffQueueStore((s) => s.incrementRetry);
 
   const drainQueue = useCallback(async () => {
+    const { queue, isSyncing } = useStaffQueueStore.getState();
     if (isSyncing || queue.length === 0) return;
     markSyncing(true);
 
@@ -57,7 +58,7 @@ export function useOfflineSync() {
     }
 
     markSyncing(false);
-  }, [queue, isSyncing, dequeue, markSyncing, incrementRetry]);
+  }, [markSyncing, dequeue, incrementRetry]);
 
   useEffect(() => {
     const unsubscribe = NetInfo.addEventListener((state) => {

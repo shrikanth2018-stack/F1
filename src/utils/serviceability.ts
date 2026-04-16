@@ -71,27 +71,8 @@ export async function checkZone(lat: number, lng: number): Promise<ZoneCheckResu
       return { result: 'not_serviceable', zoneId: null, zoneName: null };
     }
 
-    // Fallback: radius-based check (before any polygon zones are defined)
-    const { data } = await supabase
-      .from('store_config')
-      .select('service_center_lat, service_center_lng, service_radius_km')
-      .limit(1)
-      .single();
-
-    const centerLat = (data as any)?.service_center_lat;
-    const centerLng = (data as any)?.service_center_lng;
-    const radiusKm = (data as any)?.service_radius_km;
-
-    if (centerLat == null || centerLng == null || radiusKm == null) {
-      return { result: 'unknown', zoneId: null, zoneName: null };
-    }
-
-    const dist = haversineKm(lat, lng, centerLat, centerLng);
-    return {
-      result: dist <= radiusKm ? 'serviceable' : 'not_serviceable',
-      zoneId: null,
-      zoneName: null,
-    };
+    // No polygon zones configured yet — return unknown until admin sets them up
+    return { result: 'unknown', zoneId: null, zoneName: null };
   } catch {
     return { result: 'unknown', zoneId: null, zoneName: null };
   }

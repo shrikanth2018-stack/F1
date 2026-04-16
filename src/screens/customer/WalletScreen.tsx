@@ -53,6 +53,7 @@ export function WalletScreen({ navigation }: { navigation: any }) {
     }
     topup.mutate(amount, {
       onSuccess: async (data) => {
+        if (!data) return;
         try {
           await RazorpayCheckout.open({
             description: '1stOne Wallet Top-up',

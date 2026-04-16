@@ -174,12 +174,18 @@ function OfferBanner() {
 
   useEffect(() => {
     if (content?.pulse) {
-      Animated.loop(
+      const anim = Animated.loop(
         Animated.sequence([
           Animated.timing(pulseAnim, { toValue: 0.7, duration: 800, useNativeDriver: true }),
           Animated.timing(pulseAnim, { toValue: 1,   duration: 800, useNativeDriver: true }),
         ])
-      ).start();
+      );
+      anim.start();
+      return () => {
+        anim.stop();
+        pulseAnim.stopAnimation();
+        pulseAnim.setValue(1);
+      };
     } else {
       pulseAnim.stopAnimation();
       pulseAnim.setValue(1);
@@ -267,7 +273,7 @@ export function HomeScreen() {
   const isProfileVisible = useUIStore((s) => s.isProfileVisible);
   const setProfileVisible = useUIStore((s) => s.setProfileVisible);
 
-  const essentialsEnabled = useFeatureFlag('essentials_module');
+  const essentialsEnabled = useFeatureFlag('essentials_module_active');
 
   const { data: cycles, isLoading: cyclesLoading, isError: cyclesError, refetch: refetchCycles } = useDeliveryCycles();
   const cycleIds = useMemo(

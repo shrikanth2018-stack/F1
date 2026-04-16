@@ -95,14 +95,20 @@ export function CheckoutScreen({ navigation, route }: any) {
     setGlobalLoading(true, 'Placing order...');
 
     try {
-      const firstEval = evaluations[0];
       const today = new Date();
       let dispatchDate: string;
-      if (firstEval?.scenario === 'B') {
-        const tomorrow = new Date(today);
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        dispatchDate = tomorrow.toISOString().split('T')[0];
+      if (cartType === 'food') {
+        // Food uses smart cart scenario (A = today, B = tomorrow based on cutoff)
+        const firstEval = evaluations[0];
+        if (firstEval?.scenario === 'B') {
+          const tomorrow = new Date(today);
+          tomorrow.setDate(tomorrow.getDate() + 1);
+          dispatchDate = tomorrow.toISOString().split('T')[0];
+        } else {
+          dispatchDate = today.toISOString().split('T')[0];
+        }
       } else {
+        // Essentials always dispatch today
         dispatchDate = today.toISOString().split('T')[0];
       }
 
@@ -119,7 +125,7 @@ export function CheckoutScreen({ navigation, route }: any) {
             essential_item_id: i.essential_item_id,
             quantity: i.quantity,
           })) : [],
-          cycle_id: foodItems[0]?.cycle_id ?? null,
+          cycle_id: cartType === 'food' ? foodItems[0]?.cycle_id ?? null : essItems[0]?.cycle_id ?? null,
           delivery_address_id: selectedAddressId,
           payment_method: paymentMethod,
           dispatch_date: dispatchDate,
@@ -176,6 +182,7 @@ export function CheckoutScreen({ navigation, route }: any) {
   }, [
     foodItems, essItems, selectedAddressId, paymentMethod,
     evaluations, session, clearFood, clearEss, navigation, setGlobalLoading,
+    cartType, totalItemCount,
   ]);
 
   return (

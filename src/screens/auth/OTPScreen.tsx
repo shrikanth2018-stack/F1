@@ -4,7 +4,7 @@
  * For new users: creates profile record after verification.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -33,19 +33,23 @@ interface OTPScreenProps {
 export function OTPScreen({ phone, onBack, onExistingUser, onNewUser }: OTPScreenProps) {
   const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
+  const isVerifyingRef = useRef(false);
   const { verifyOTP } = useAuth();
 
   const handleVerify = async () => {
+    if (isVerifyingRef.current) return;
     if (!isValidOTP(otp)) {
       Alert.alert('Invalid OTP', 'Please enter the 6-digit code');
       return;
     }
 
+    isVerifyingRef.current = true;
     setLoading(true);
     const { error } = await verifyOTP(phone, otp);
 
     if (error) {
       setLoading(false);
+      isVerifyingRef.current = false;
       Alert.alert('Verification Failed', error.message);
       setOtp('');
       return;
@@ -59,6 +63,7 @@ export function OTPScreen({ phone, onBack, onExistingUser, onNewUser }: OTPScree
       .maybeSingle();
 
     setLoading(false);
+    isVerifyingRef.current = false;
     if (profile) {
       onExistingUser();
     } else {

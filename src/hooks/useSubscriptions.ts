@@ -134,7 +134,7 @@ export function useSkipDay() {
         cycle_id: payload.cycle_id,
         reason: payload.reason || 'Skipped by customer',
       }),
-    [['cancelled_days']]
+    [['cancelled_days_all'], ['cancelled_days']]
   );
 }
 
@@ -147,7 +147,7 @@ export function useUndoSkip() {
         .from('cancelled_subscription_days')
         .delete()
         .eq('id', payload.id),
-    [['cancelled_days']]
+    [['cancelled_days_all'], ['cancelled_days']]
   );
 }
 

@@ -92,18 +92,9 @@ export interface DeliveryCycle {
 export interface DeliveryHub {
   id: number;
   hub_name: string;
-  address_details: string;
-  contact_phone: string | null;
-  branch_id: number | null;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface DeliveryHub {
-  id: number;
-  hub_name: string;
   hub_code: string | null;
+  address_details?: string;
+  contact_phone: string | null;
   polygon_geojson: { lat: number; lng: number }[] | null;
   center_lat: number | null;
   center_lng: number | null;
@@ -114,6 +105,7 @@ export interface DeliveryHub {
   extends_coverage: boolean;
   branch_id: number | null;
   created_at: string;
+  updated_at?: string;
 }
 
 export interface DeliveryZone {
@@ -411,10 +403,10 @@ export interface ReferralSettings {
   // Milestone thresholds
   milestone_star_count: number;       // friends who ordered to earn Star badge
   milestone_ambassador_count: number; // friends who ordered to earn Ambassador badge
-  // Legacy fields (kept for compatibility)
-  referrer_reward_points: number;
-  referrer_wallet_credit: number;
-  referee_wallet_credit: number;
+  // Legacy DB columns (optional — may not exist in newer installs)
+  referrer_reward_points?: number;
+  referrer_wallet_credit?: number;
+  referee_wallet_credit?: number;
   updated_at: string;
 }
 

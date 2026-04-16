@@ -99,6 +99,7 @@ export function EssentialsScreen({ navigation }: { navigation: any }) {
       onAdd={() =>
         addItem({
           essential_item_id: item.id,
+          cycle_id: item.cycle_id,
           name: item.name,
           display_price: item.price,
           unit: item.unit,
@@ -180,7 +181,7 @@ export function EssentialsScreen({ navigation }: { navigation: any }) {
       {cartCount > 0 && (
         <TouchableOpacity
           style={styles.cartFab}
-          onPress={() => navigation.navigate('Checkout', { isEssentials: true })}
+          onPress={() => navigation.navigate('Checkout', { cartType: 'essentials' })}
         >
           <ThemedText variant="body" color="primary">
             {cartCount} item(s) — {'\u20B9'}{cartTotal.toFixed(0)}

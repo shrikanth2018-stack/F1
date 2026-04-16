@@ -140,7 +140,13 @@ export function SubscriptionsScreen({ navigation }: any) {
           ),
           color: SUB_COLORS[i % SUB_COLORS.length],
         }))
-        .filter(({ sub }) => subDeliversOn(sub, dateStr, cancelled));
+        .filter(({ sub, cancelled: skippedEntry }) => {
+          // Include days the sub delivers on AND days that are explicitly skipped
+          // (so user can tap a skipped day and resume it)
+          return subDeliversOn(sub, dateStr, cancelled) || (
+            skippedEntry !== undefined && sub.is_active && !sub.is_paused
+          );
+        });
     },
     [activeSubs, allCancelledDays]
   );
