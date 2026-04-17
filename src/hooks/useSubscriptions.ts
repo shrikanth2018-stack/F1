@@ -101,6 +101,9 @@ export function useSubscribe() {
   return useSupabaseMutation<SubscribePayload>(
     async (payload) => {
       const { data, error } = await supabase.functions.invoke('subscribe', {
+        headers: {
+          'Idempotency-Key': `${session?.user.id}-${payload.plan_id}-${payload.start_date}`,
+        },
         body: {
           ...payload,
           user_id: session?.user.id,

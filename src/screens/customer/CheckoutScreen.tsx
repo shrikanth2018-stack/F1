@@ -5,7 +5,7 @@
  * RULE: Client NEVER confirms payment. Razorpay webhook does.
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useMemo } from 'react';
 import {
   View,
   ScrollView,
@@ -23,6 +23,7 @@ import { ThemedText } from '../../components/ThemedText';
 import { ThemedButton } from '../../components/ThemedButton';
 import { Divider } from '../../components/Divider';
 import { DispatchBadge } from '../../components/DispatchBadge';
+import { useQuery } from '@tanstack/react-query';
 import { useCartStore } from '../../store/cartStore';
 import { useEssentialsCartStore } from '../../store/essentialsCartStore';
 import { useUIStore } from '../../store/uiStore';
@@ -35,6 +36,18 @@ import { formatPriceShort } from '../../utils/formatters';
 import { supabase } from '../../api/supabaseClient';
 import { RAZORPAY_KEY_ID } from '../../utils/env';
 import { checkAndGrantFirstOrderBonus } from '../../hooks/useReferrals';
+import { trackOrderPlaced, trackOrderFailed } from '../../utils/analytics';
+
+/** Safe UUID generator — falls back to Math.random when crypto.randomUUID is unavailable (Expo Go, older Android) */
+function generateId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = Math.random() * 16 | 0;
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+  });
+}
 
 type PaymentChoice = 'razorpay' | 'wallet';
 
@@ -64,6 +77,9 @@ export function CheckoutScreen({ navigation, route }: any) {
   const [selectedAddressId, setSelectedAddressId] = useState<number | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<PaymentChoice>('razorpay');
   const [isPlacing, setIsPlacing] = useState(false);
+  // Idempotency key — generated once per checkout session, refreshed after successful order
+  // Use Math.random fallback: crypto.randomUUID() is not available in all RN/Expo Go environments
+  const idempotencyKeyRef = useRef<string>(generateId());
 
   React.useEffect(() => {
     if (addresses && addresses.length > 0 && !selectedAddressId) {
@@ -72,8 +88,31 @@ export function CheckoutScreen({ navigation, route }: any) {
     }
   }, [addresses, selectedAddressId]);
 
+  // Derive zone_id from the selected address
+  const selectedZoneId = useMemo(
+    () => addresses?.find((a) => a.id === selectedAddressId)?.zone_id ?? null,
+    [addresses, selectedAddressId]
+  );
+
+  // Fetch the zone's delivery_fee_override when the address belongs to a zone
+  const { data: zoneOverride } = useQuery({
+    queryKey: ['zone_fee', selectedZoneId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('delivery_zones')
+        .select('delivery_fee_override')
+        .eq('id', selectedZoneId!)
+        .maybeSingle();
+      return data?.delivery_fee_override ?? null;
+    },
+    enabled: selectedZoneId != null,
+    staleTime: 10 * 60 * 1000,
+  });
+
   const taxRate = config?.tax_rate_percentage ?? 5;
-  const deliveryFee = config?.delivery_fee ?? 0;
+  const globalDeliveryFee = config?.delivery_fee ?? 0;
+  // Use zone override when the address belongs to a zone that has one set
+  const deliveryFee = zoneOverride != null ? zoneOverride : globalDeliveryFee;
   const estimatedTax = displayTotal * (taxRate / 100);
   const estimatedTotal = displayTotal + estimatedTax + deliveryFee;
 
@@ -115,7 +154,10 @@ export function CheckoutScreen({ navigation, route }: any) {
       const { data: { session: rawSession } } = await supabase.auth.getSession();
 
       const { data, error } = await supabase.functions.invoke('place-order', {
-        headers: { Authorization: `Bearer ${rawSession?.access_token}` },
+        headers: {
+          Authorization: `Bearer ${rawSession?.access_token}`,
+          'Idempotency-Key': idempotencyKeyRef.current,
+        },
         body: {
           food_items: cartType === 'food' ? foodItems.map((i) => ({
             menu_item_id: i.menu_item_id,
@@ -147,7 +189,13 @@ export function CheckoutScreen({ navigation, route }: any) {
 
       const order = data;
 
+      // Wallet path: order already Confirmed server-side, nothing more to do.
+      // Razorpay path: order is Pending. Open checkout; on success the webhook
+      // will flip it to Paid. Client NEVER confirms payment itself.
+      let razorpayAttempted = false;
+      let razorpaySucceeded = false;
       if (paymentMethod === 'razorpay' && order.razorpay_order_id) {
+        razorpayAttempted = true;
         const options = {
           description: '1stOne Order',
           currency: 'INR',
@@ -160,9 +208,22 @@ export function CheckoutScreen({ navigation, route }: any) {
         };
         try {
           await RazorpayCheckout.open(options);
+          razorpaySucceeded = true;
         } catch {
-          Alert.alert('Payment Cancelled', 'Your order has been saved. You can pay later from your orders.');
+          razorpaySucceeded = false;
         }
+      }
+
+      if (razorpayAttempted && !razorpaySucceeded) {
+        // User cancelled / payment sheet failed. Order sits Pending on the server
+        // until the webhook reports success or the order is cleaned up. Clear cart
+        // and show a clear message — no "pay later" surface exists yet.
+        setGlobalLoading(false);
+        Alert.alert(
+          'Payment Cancelled',
+          'Your order was not placed because payment did not complete. Please try again.',
+        );
+        return;
       }
 
       // Grant first-order referral bonus if applicable (fire-and-forget)
@@ -170,10 +231,21 @@ export function CheckoutScreen({ navigation, route }: any) {
         checkAndGrantFirstOrderBonus(session.user.id).catch(() => {});
       }
 
+      trackOrderPlaced(order.id ?? '', order.total_amount ?? estimatedTotal, paymentMethod, cartType);
       if (cartType === 'food') clearFood(); else clearEss();
+      // Rotate the idempotency key so a new order gets a fresh key
+      idempotencyKeyRef.current = generateId();
       setGlobalLoading(false);
+
+      if (razorpayAttempted && razorpaySucceeded) {
+        Alert.alert(
+          'Payment Processing',
+          'We\u2019ll confirm your order as soon as your bank clears it. You can track it in Orders.',
+        );
+      }
       navigation.navigate('Orders');
     } catch (err: any) {
+      trackOrderFailed(err.message || 'unknown', cartType);
       Alert.alert('Order Failed', err.message || 'Please try again');
     } finally {
       setIsPlacing(false);

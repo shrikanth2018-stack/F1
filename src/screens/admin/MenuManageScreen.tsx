@@ -16,6 +16,7 @@ import {
   TextInput,
   Switch,
   StyleSheet,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
@@ -87,7 +88,18 @@ export function MenuManageScreen({ navigation }: { navigation: any }) {
   };
 
   const handleToggle = (id: number, current: boolean) => {
-    toggleItem.mutate({ id, is_active: !current });
+    if (current) {
+      Alert.alert(
+        'Disable Menu Item?',
+        'This item will no longer appear on the customer menu.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Disable', style: 'destructive', onPress: () => toggleItem.mutate({ id, is_active: false }) },
+        ]
+      );
+    } else {
+      toggleItem.mutate({ id, is_active: true });
+    }
   };
 
   const renderItem = ({ item }: { item: MenuItem }) => {

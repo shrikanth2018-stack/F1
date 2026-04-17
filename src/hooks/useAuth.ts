@@ -29,7 +29,9 @@ function extractRole(session: Session | null): AuthSession | null {
   const jwt = session.access_token;
   try {
     const payload = JSON.parse(atob(jwt.split('.')[1]));
-    console.log('[JWT]', JSON.stringify(payload, null, 2));
+    if (__DEV__) {
+      console.log('[JWT]', JSON.stringify(payload, null, 2));
+    }
     const role: UserRole = payload.user_role || 'customer';
     const assignedHubId: number | null = payload.assigned_hub_id ?? null;
     const branchId: number | null = payload.branch_id ?? null;
@@ -62,10 +64,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     // Initial session check (reads JWT from AsyncStorage)
-    supabase.auth.getSession().then(({ data: { session: existingSession } }) => {
-      setSession(extractRole(existingSession));
-      setIsLoading(false);
-    });
+    supabase.auth.getSession()
+      .then(({ data: { session: existingSession } }) => {
+        setSession(extractRole(existingSession));
+      })
+      .catch(() => {
+        setSession(null);
+      })
+      .finally(() => {
+        setIsLoading(false);
+      });
 
     // Listen for auth state changes (token refresh, sign out)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(

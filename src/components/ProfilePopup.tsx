@@ -64,7 +64,7 @@ export function ProfilePopup() {
 
   const isVisible = useUIStore((s) => s.isProfileVisible);
   const setProfileVisible = useUIStore((s) => s.setProfileVisible);
-  const referralEnabled = useFeatureFlag('referral_system');
+  const referralEnabled = useFeatureFlag('referral_system', true);
 
   const close = () => setProfileVisible(false);
 

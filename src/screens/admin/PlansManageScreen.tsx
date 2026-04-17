@@ -14,6 +14,7 @@ import {
   TextInput,
   Switch,
   StyleSheet,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
@@ -118,7 +119,20 @@ export function PlansManageScreen({ navigation }: { navigation: any }) {
         </View>
         <Switch
           value={item.is_active}
-          onValueChange={() => togglePlan.mutate({ id: item.id, is_active: !item.is_active })}
+          onValueChange={() => {
+            if (item.is_active) {
+              Alert.alert(
+                'Deactivate Plan?',
+                `"${item.name}" will no longer be available for new subscriptions.`,
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  { text: 'Deactivate', style: 'destructive', onPress: () => togglePlan.mutate({ id: item.id, is_active: false }) },
+                ]
+              );
+            } else {
+              togglePlan.mutate({ id: item.id, is_active: true });
+            }
+          }}
           trackColor={{ true: Theme.colors.status.success, false: Theme.colors.background.tertiary }}
           thumbColor={Theme.colors.text.primary}
         />

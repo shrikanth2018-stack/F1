@@ -35,6 +35,7 @@ import { OrderReportScreen } from '../screens/admin/reports/OrderReportScreen';
 import { RevenueReportScreen } from '../screens/admin/reports/RevenueReportScreen';
 import { SubscriptionReportScreen } from '../screens/admin/reports/SubscriptionReportScreen';
 import { StaffReportScreen } from '../screens/admin/reports/StaffReportScreen';
+import { HubReportScreen } from '../screens/admin/reports/HubReportScreen';
 import { Theme } from '../theme';
 import { ThemedText } from '../components/ThemedText';
 
@@ -95,6 +96,7 @@ export function AdminNavigator() {
       <Stack.Screen name="RevenueReport" component={RevenueReportScreen} />
       <Stack.Screen name="SubscriptionReport" component={SubscriptionReportScreen} />
       <Stack.Screen name="StaffReport" component={StaffReportScreen} />
+      <Stack.Screen name="HubReport" component={HubReportScreen} />
 
       {/* Manage — Menu */}
       <Stack.Screen name="MenuManage" component={MenuManageScreen} />

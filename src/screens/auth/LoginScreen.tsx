@@ -25,9 +25,10 @@ import { useAuth } from '../../hooks/useAuth';
 
 interface LoginScreenProps {
   onOTPSent: (phone: string) => void;
+  referralCode?: string;
 }
 
-export function LoginScreen({ onOTPSent }: LoginScreenProps) {
+export function LoginScreen({ onOTPSent, referralCode }: LoginScreenProps) {
   const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
   const { signInWithPhone } = useAuth();
@@ -69,6 +70,13 @@ export function LoginScreen({ onOTPSent }: LoginScreenProps) {
             style={styles.logo}
             resizeMode="contain"
           />
+
+          {/* Referral code hint — shown when app was opened via a referral link */}
+          {referralCode && (
+            <ThemedText variant="small" color="mint" style={{ textAlign: 'center', marginBottom: 12 }}>
+              {`Referral code "${referralCode}" will be applied after signup`}
+            </ThemedText>
+          )}
 
           {/* Phone field — underline, centred */}
           <ThemedInput

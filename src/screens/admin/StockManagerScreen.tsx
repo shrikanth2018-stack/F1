@@ -35,6 +35,7 @@ import {
   useRemoveOrderItem,
   usePrintBatch,
   useSupplyBatches,
+  useSupplyCatalog,
   buildOrderListHTML,
 } from '../../hooks/useStockManager';
 import type { SupplyOrderItem } from '../../types';
@@ -277,54 +278,17 @@ function OrderListTab({ onPrint }: { onPrint: () => void }) {
 
         {/* Add item form */}
         {showAddForm && (
-          <View style={styles.addForm}>
-            <ThemedText variant="body" color="primary" style={[styles.addFormTitle, { fontSize: B }]}>
-              Add Item
-            </ThemedText>
-
-            {/* Category chips */}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: Theme.spacing.sm }}>
-              {CATEGORIES.map((cat) => (
-                <TouchableOpacity
-                  key={cat}
-                  style={[styles.catChip, addCat === cat && styles.catChipActive]}
-                  onPress={() => setAddCat(cat)}
-                >
-                  <Text style={[styles.catChipText, addCat === cat && styles.catChipTextActive]}>
-                    {cat}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-
-            <TextInput
-              style={styles.addInput}
-              placeholder="Item name"
-              placeholderTextColor={Theme.colors.text.muted}
-              value={addName}
-              onChangeText={setAddName}
-            />
-            <TextInput
-              style={styles.addInput}
-              placeholder="Quantity"
-              placeholderTextColor={Theme.colors.text.muted}
-              keyboardType="number-pad"
-              value={addQty}
-              onChangeText={setAddQty}
-            />
-            <View style={styles.addFormBtns}>
-              <TouchableOpacity onPress={() => setShowAddForm(false)} style={styles.addCancelBtn}>
-                <ThemedText variant="body" color="muted" style={{ fontSize: B }}>Cancel</ThemedText>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={handleAdd}
-                disabled={addItem.isPending}
-                style={styles.addSaveBtn}
-              >
-                <ThemedText variant="body" color="mint" style={{ fontSize: B }}>Add ›</ThemedText>
-              </TouchableOpacity>
-            </View>
-          </View>
+          <AddItemForm
+            addCat={addCat}
+            setAddCat={setAddCat}
+            addName={addName}
+            setAddName={setAddName}
+            addQty={addQty}
+            setAddQty={setAddQty}
+            isPending={addItem.isPending}
+            onAdd={handleAdd}
+            onCancel={() => setShowAddForm(false)}
+          />
         )}
       </ScrollView>
 
@@ -433,6 +397,116 @@ function HistoryTab() {
         );
       }}
     />
+  );
+}
+
+// ── Add Item Form (with catalog autocomplete) ────────────
+
+function AddItemForm({
+  addCat,
+  setAddCat,
+  addName,
+  setAddName,
+  addQty,
+  setAddQty,
+  isPending,
+  onAdd,
+  onCancel,
+}: {
+  addCat: Category;
+  setAddCat: (c: Category) => void;
+  addName: string;
+  setAddName: (s: string) => void;
+  addQty: string;
+  setAddQty: (s: string) => void;
+  isPending: boolean;
+  onAdd: () => void;
+  onCancel: () => void;
+}) {
+  const { data: catalog = [] } = useSupplyCatalog(addCat);
+
+  const typed = addName.trim().toLowerCase();
+  const suggestions = typed.length > 0
+    ? catalog.filter((c) => c.name.toLowerCase().startsWith(typed)).slice(0, 8)
+    : [];
+  const exactMatch = catalog.some((c) => c.name.toLowerCase() === typed);
+  const showCustomAdd = typed.length > 0 && !exactMatch;
+
+  return (
+    <View style={styles.addForm}>
+      <ThemedText variant="body" color="primary" style={[styles.addFormTitle, { fontSize: B }]}>
+        Add Item
+      </ThemedText>
+
+      {/* Category chips */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: Theme.spacing.sm }}>
+        {CATEGORIES.map((cat) => (
+          <TouchableOpacity
+            key={cat}
+            style={[styles.catChip, addCat === cat && styles.catChipActive]}
+            onPress={() => setAddCat(cat)}
+          >
+            <Text style={[styles.catChipText, addCat === cat && styles.catChipTextActive]}>
+              {cat}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+
+      <TextInput
+        style={styles.addInput}
+        placeholder="Type item name…"
+        placeholderTextColor={Theme.colors.text.muted}
+        value={addName}
+        onChangeText={setAddName}
+        autoCorrect={false}
+      />
+
+      {(suggestions.length > 0 || showCustomAdd) && (
+        <View style={styles.suggestions}>
+          {suggestions.map((item) => (
+            <TouchableOpacity
+              key={item.id}
+              style={styles.suggestionRow}
+              onPress={() => setAddName(item.name)}
+            >
+              <ThemedText variant="body" color="primary" style={{ fontSize: B, flex: 1 }}>
+                {item.name}
+              </ThemedText>
+              <ThemedText variant="small" color="mint" style={{ fontSize: S }}>Pick</ThemedText>
+            </TouchableOpacity>
+          ))}
+          {showCustomAdd && (
+            <View style={styles.suggestionRow}>
+              <ThemedText variant="body" color="subtitle" style={{ fontSize: B, flex: 1 }}>
+                "{addName.trim()}" (custom)
+              </ThemedText>
+            </View>
+          )}
+        </View>
+      )}
+
+      <TextInput
+        style={styles.addInput}
+        placeholder="Quantity"
+        placeholderTextColor={Theme.colors.text.muted}
+        keyboardType="number-pad"
+        value={addQty}
+        onChangeText={setAddQty}
+      />
+      <View style={styles.addFormBtns}>
+        <TouchableOpacity onPress={onCancel} style={styles.addCancelBtn}>
+          <ThemedText variant="body" color="muted" style={{ fontSize: B }}>Cancel</ThemedText>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={onAdd}
+          disabled={isPending}
+          style={styles.addSaveBtn}
+        >
+          <ThemedText variant="body" color="mint" style={{ fontSize: B }}>Add ›</ThemedText>
+        </TouchableOpacity>
+      </View>
+    </View>
   );
 }
 
@@ -690,6 +764,22 @@ const styles = StyleSheet.create({
     color: Theme.colors.text.primary,
     fontSize: B,
     marginBottom: Theme.spacing.sm,
+  },
+  suggestions: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Theme.colors.layout.divider,
+    borderRadius: 6,
+    marginBottom: Theme.spacing.sm,
+    backgroundColor: Theme.colors.background.primary,
+  },
+  suggestionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: Theme.spacing.sm,
+    paddingVertical: Theme.spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Theme.colors.layout.divider,
   },
   addFormBtns: { flexDirection: 'row', justifyContent: 'flex-end', gap: Theme.spacing.md },
   addCancelBtn: { padding: Theme.spacing.xs },

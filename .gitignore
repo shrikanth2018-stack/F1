@@ -50,3 +50,15 @@ GoogleService-Info.plist
 
 # Metro
 .metro-health-check*
+
+# Supabase CLI working state
+supabase/.temp/
+
+# Coverage
+coverage/
+
+# One-off document generator scripts & outputs
+generate_*.js
+APP_REVIEW.*
+TECHNICAL_AUDIT.*
+Old Audits/

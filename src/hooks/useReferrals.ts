@@ -106,7 +106,7 @@ export function useGenerateReferralCode() {
   });
 }
 
-/** Apply referral code — credits referee signup credit immediately */
+/** Apply referral code — validated and credited server-side via Edge Function */
 export function useApplyReferralCode() {
   const { session } = useAuth();
   const queryClient = useQueryClient();
@@ -114,61 +114,28 @@ export function useApplyReferralCode() {
     mutationFn: async (code: string) => {
       if (!session) throw new Error('Not authenticated');
 
-      // Get referrer
-      const { data: referrer, error: findErr } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('referral_code', code.toUpperCase())
-        .single();
-      if (findErr || !referrer) throw new Error('Invalid referral code');
-      if (referrer.id === session.user.id) throw new Error('Cannot use your own code');
-
-      // Check already referred
-      const { data: existing } = await supabase
-        .from('referrals')
-        .select('id')
-        .eq('referee_id', session.user.id)
-        .limit(1);
-      if (existing && existing.length > 0) throw new Error('You have already used a referral code');
-
-      // Get settings for signup credit amount
-      const { data: rawSettings } = await supabase
-        .from('referral_settings')
-        .select('*')
-        .limit(1)
-        .maybeSingle();
-      const settings = mergedSettings(rawSettings);
-      if (!settings.is_active) throw new Error('Referral program is currently inactive');
-
-      // Create referral record
-      const { error: refErr } = await supabase.from('referrals').insert({
-        referrer_id: referrer.id,
-        referee_id: session.user.id,
-        status: 'pending',
-        reward_given: false,
-        first_order_reward_given: false,
-        month_reward_given: false,
+      const { data: { session: rawSession } } = await supabase.auth.getSession();
+      const { data, error } = await supabase.functions.invoke('apply-referral', {
+        headers: { Authorization: `Bearer ${rawSession?.access_token}` },
+        body: { code },
       });
-      if (refErr) throw refErr;
 
-      // Update referee's profile with referred_by
-      await supabase
-        .from('profiles')
-        .update({ referred_by: referrer.id })
-        .eq('id', session.user.id);
-
-      // Credit referee signup wallet credit
-      if (settings.referee_signup_credit > 0) {
-        await creditWallet(
-          session.user.id,
-          settings.referee_signup_credit,
-          `Referral signup bonus (code: ${code.toUpperCase()})`
-        );
-      }
-
-      // Credit referee loyalty points
-      if (settings.referee_reward_points > 0) {
-        await creditLoyaltyPoints(session.user.id, settings.referee_reward_points);
+      if (error || data?.error) {
+        // Extract the server-side error message
+        let message = 'Failed to apply referral code';
+        try {
+          if (data?.error) {
+            message = data.error;
+          } else {
+            const ctx = (error as any)?.context;
+            if (ctx) {
+              const text = await (ctx.clone ? ctx.clone() : ctx).text();
+              const parsed = JSON.parse(text);
+              if (parsed?.error) message = parsed.error;
+            }
+          }
+        } catch {}
+        throw new Error(message);
       }
     },
     onSuccess: () => {
@@ -315,43 +282,18 @@ export function useIssueMonthBonus() {
 // ── Helpers ──────────────────────────────────────────────────
 
 async function creditWallet(userId: string, amount: number, description: string): Promise<void> {
-  // Atomic increment via RPC to prevent read-modify-write race conditions
   const { error } = await supabase.rpc('increment_wallet_balance', {
     p_user_id: userId,
     p_amount: amount,
     p_description: description,
   });
-
-  // Fallback to read-modify-write if RPC not yet deployed
-  if (error) {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('wallet_balance')
-      .eq('id', userId)
-      .single();
-    const current = profile?.wallet_balance ?? 0;
-    await supabase
-      .from('profiles')
-      .update({ wallet_balance: current + amount })
-      .eq('id', userId);
-    await supabase.from('wallet_transactions').insert({
-      user_id: userId,
-      transaction_type: 'credit',
-      amount,
-      description,
-    });
-  }
+  if (error) throw new Error(`increment_wallet_balance failed: ${error.message}`);
 }
 
 async function creditLoyaltyPoints(userId: string, points: number): Promise<void> {
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('loyalty_points')
-    .eq('id', userId)
-    .single();
-  const current = profile?.loyalty_points ?? 0;
-  await supabase
-    .from('profiles')
-    .update({ loyalty_points: current + points })
-    .eq('id', userId);
+  const { error } = await supabase.rpc('increment_loyalty_points', {
+    p_user_id: userId,
+    p_points: points,
+  });
+  if (error) throw new Error(`increment_loyalty_points failed: ${error.message}`);
 }

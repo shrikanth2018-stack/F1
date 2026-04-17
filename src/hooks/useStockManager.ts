@@ -86,6 +86,27 @@ export function useReviewSupplyRequest() {
   });
 }
 
+// ── Supply catalog (autocomplete source) ─────────────────
+
+export function useSupplyCatalog(category: 'Vegetables' | 'Grocery' | 'Stationery' | null) {
+  return useQuery({
+    queryKey: ['supply_catalog', category],
+    queryFn: async () => {
+      if (!category) return [];
+      const { data, error } = await supabase
+        .from('supply_catalog')
+        .select('id, name')
+        .eq('category', category)
+        .eq('is_active', true)
+        .order('name');
+      if (error) throw error;
+      return (data ?? []) as { id: string; name: string }[];
+    },
+    enabled: !!category,
+    staleTime: 5 * 60_000,
+  });
+}
+
 // ── Active order list ────────────────────────────────────
 
 export function useActiveOrderList() {

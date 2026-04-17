@@ -34,7 +34,7 @@ LogBox.ignoreLogs([
   'AsyncStorage has been extracted',
 ]);
 
-// Keep splash screen visible until auth check completes
+// Hold splash until auth session check completes
 SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient({
@@ -55,10 +55,17 @@ function AppContent() {
   const isGlobalLoading = useUIStore((s) => s.isGlobalLoading);
   const globalLoadingMessage = useUIStore((s) => s.globalLoadingMessage);
 
+  // Hide splash once auth resolves, or after a 5s watchdog so users never
+  // see a frozen splash if getSession() hangs (network stalls, etc.).
   useEffect(() => {
     if (!isLoading) {
-      SplashScreen.hideAsync();
+      SplashScreen.hideAsync().catch(() => {});
+      return;
     }
+    const watchdog = setTimeout(() => {
+      SplashScreen.hideAsync().catch(() => {});
+    }, 5000);
+    return () => clearTimeout(watchdog);
   }, [isLoading]);
 
   return (

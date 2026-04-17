@@ -35,6 +35,7 @@ import { formatTime12h } from '../../utils/timeEngine';
 import { formatPriceShort } from '../../utils/formatters';
 import { supabase } from '../../api/supabaseClient';
 import { useLiveBanner, type CustomBannerContent } from '../../hooks/useBanner';
+import { useWalletNudge } from '../../hooks/useWalletNudge';
 
 // Static assets from Supabase Storage bucket: 'assets'
 const LOGO_URL = supabase.storage.from('assets').getPublicUrl('logo.png').data.publicUrl;
@@ -273,7 +274,8 @@ export function HomeScreen() {
   const isProfileVisible = useUIStore((s) => s.isProfileVisible);
   const setProfileVisible = useUIStore((s) => s.setProfileVisible);
 
-  const essentialsEnabled = useFeatureFlag('essentials_module_active');
+  const essentialsEnabled = useFeatureFlag('essentials_module_active', true);
+  const walletNudge = useWalletNudge();
 
   const { data: cycles, isLoading: cyclesLoading, isError: cyclesError, refetch: refetchCycles } = useDeliveryCycles();
   const cycleIds = useMemo(
@@ -420,6 +422,21 @@ export function HomeScreen() {
 
       {/* Offer banner — live from banners table, falls back to assets/banner.png */}
       <OfferBanner />
+
+      {/* Wallet low-balance nudge */}
+      {walletNudge.showNudge && (
+        <TouchableOpacity
+          style={styles.walletNudge}
+          onPress={() => navigation.navigate('Wallet')}
+          activeOpacity={0.8}
+        >
+          <ThemedText variant="small" color="primary">
+            {'⚠ '}
+            {`Your wallet is ₹${walletNudge.shortfall?.toFixed(0)} short for ${walletNudge.planName} renewal. `}
+            <ThemedText variant="small" color="mint">Top up →</ThemedText>
+          </ThemedText>
+        </TouchableOpacity>
+      )}
 
       {isError && !isRefreshing && (
         <ErrorRetry message="Failed to load menu" onRetry={handleRefresh} />
@@ -586,6 +603,16 @@ const styles = StyleSheet.create({
   hairline: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: Theme.colors.text.mint,
+  },
+  walletNudge: {
+    backgroundColor: Theme.colors.background.secondary,
+    borderLeftWidth: 3,
+    borderLeftColor: Theme.colors.status.warning,
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.sm,
+    marginHorizontal: Theme.spacing.md,
+    marginTop: Theme.spacing.sm,
+    borderRadius: Theme.components.inputRadius,
   },
   bottomBar: {
     flexDirection: 'row',

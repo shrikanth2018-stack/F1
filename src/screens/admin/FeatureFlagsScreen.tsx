@@ -12,6 +12,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
@@ -34,6 +35,26 @@ const FLAG_NOTES: Record<string, string> = {
 export function FeatureFlagsScreen({ navigation }: { navigation: any }) {
   const { data: flags = [], isLoading } = useFeatureFlags();
   const updateFlag = useUpdateFeatureFlag();
+
+  const handleToggle = (flag: any) => {
+    const turningOff = flag.flag_value === true;
+    if (turningOff) {
+      Alert.alert(
+        `Disable ${flag.flag_key}?`,
+        'Turning this off will immediately affect all users. Are you sure?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Disable',
+            style: 'destructive',
+            onPress: () => updateFlag.mutate({ id: flag.id, flag_value: false }),
+          },
+        ]
+      );
+    } else {
+      updateFlag.mutate({ id: flag.id, flag_value: true });
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -77,9 +98,7 @@ export function FeatureFlagsScreen({ navigation }: { navigation: any }) {
               </View>
               <Switch
                 value={flag.flag_value}
-                onValueChange={() =>
-                  updateFlag.mutate({ id: flag.id, flag_value: !flag.flag_value })
-                }
+                onValueChange={() => handleToggle(flag)}
                 trackColor={{
                   true: Theme.colors.status.success,
                   false: Theme.colors.background.tertiary,

@@ -13,12 +13,15 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { Linking } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { useAuth } from '../hooks/useAuth';
 import { usePushNotifications } from '../hooks/usePushNotifications';
+import { navigationRef } from './navigationRef';
 import { CustomerNavigator } from './CustomerNavigator';
 import { StaffNavigator } from './StaffNavigator';
 import { AdminNavigator } from './AdminNavigator';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 import { LoginScreen } from '../screens/auth/LoginScreen';
 import { RegistrationScreen } from '../screens/auth/RegistrationScreen';
 import { OTPScreen } from '../screens/auth/OTPScreen';
@@ -55,6 +58,29 @@ export function RootNavigator() {
   const [isNewUser, setIsNewUser] = useState(false);
   /** True after new-user OTP verify — show address screen before the app */
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
+  /** Referral code carried in from a deep link (1stone://referral?code=XXX) */
+  const [pendingReferralCode, setPendingReferralCode] = useState<string | null>(null);
+
+  // Handle incoming deep links (cold start + foreground)
+  useEffect(() => {
+    const handleUrl = (url: string | null) => {
+      if (!url) return;
+      try {
+        const parsed = new URL(url);
+        if (parsed.hostname === 'referral') {
+          const code = parsed.searchParams.get('code');
+          if (code) setPendingReferralCode(code);
+        }
+      } catch {}
+    };
+
+    // Cold-start URL
+    Linking.getInitialURL().then(handleUrl);
+
+    // Foreground URL
+    const sub = Linking.addEventListener('url', (e) => handleUrl(e.url));
+    return () => sub.remove();
+  }, []);
 
   // Reset auth flow state whenever session is cleared (logout)
   useEffect(() => {
@@ -79,10 +105,12 @@ export function RootNavigator() {
   // Signed in — go to role navigator
   if (session) {
     return (
-      <NavigationContainer theme={darkTheme}>
-        {session.role === 'admin' && <AdminNavigator />}
-        {session.role === 'staff' && <StaffNavigator />}
-        {(session.role === 'customer' || !['admin', 'staff'].includes(session.role)) && <CustomerNavigator />}
+      <NavigationContainer ref={navigationRef} theme={darkTheme}>
+        <ErrorBoundary>
+          {session.role === 'admin' && <AdminNavigator />}
+          {session.role === 'staff' && <StaffNavigator />}
+          {(session.role === 'customer' || !['admin', 'staff'].includes(session.role)) && <CustomerNavigator />}
+        </ErrorBoundary>
       </NavigationContainer>
     );
   }
@@ -122,6 +150,7 @@ export function RootNavigator() {
   // Default: phone step
   return (
     <LoginScreen
+      referralCode={pendingReferralCode ?? undefined}
       onOTPSent={(phone) => {
         setPendingPhone(phone);
         setStep('otp');

@@ -135,11 +135,21 @@ function ReportsTab() {
         <ThemedText variant="body" color="muted" style={styles.rowText}>›</ThemedText>
       </TouchableOpacity>
 
-      <TouchableOpacity style={[styles.reportRow, styles.reportRowLast]} onPress={() => navigation.navigate('StaffReport')}>
+      <TouchableOpacity style={styles.reportRow} onPress={() => navigation.navigate('StaffReport')}>
         <View>
           <ThemedText variant="body" color="primary" style={styles.rowText}>Staff</ThemedText>
           <ThemedText variant="small" color="muted" style={[styles.reportSub, styles.subText]}>
             {stats ? `${stats.staffPresentToday} present today` : '—'}
+          </ThemedText>
+        </View>
+        <ThemedText variant="body" color="muted" style={styles.rowText}>›</ThemedText>
+      </TouchableOpacity>
+
+      <TouchableOpacity style={[styles.reportRow, styles.reportRowLast]} onPress={() => navigation.navigate('HubReport')}>
+        <View>
+          <ThemedText variant="body" color="primary" style={styles.rowText}>Hub Delivery</ThemedText>
+          <ThemedText variant="small" color="muted" style={[styles.reportSub, styles.subText]}>
+            Per-hub order counts & revenue
           </ThemedText>
         </View>
         <ThemedText variant="body" color="muted" style={styles.rowText}>›</ThemedText>

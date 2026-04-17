@@ -10,6 +10,7 @@ import React, { Component, type ErrorInfo, type ReactNode } from 'react';
 import { View, TouchableOpacity, StyleSheet } from 'react-native';
 import { Theme } from '../theme';
 import { ThemedText } from './ThemedText';
+import { captureError } from '../utils/sentry';
 
 interface Props {
   children: ReactNode;
@@ -32,9 +33,9 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    // Log to console in dev; in production, send to error reporting service
     console.error('[ErrorBoundary]', error.message);
     console.error('[ErrorBoundary] Component stack:', info.componentStack);
+    captureError(error, { componentStack: info.componentStack ?? '' });
   }
 
   handleRetry = () => {

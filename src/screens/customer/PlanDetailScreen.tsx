@@ -27,6 +27,7 @@ import { useUIStore } from '../../store/uiStore';
 import { formatPriceShort, formatDateShort } from '../../utils/formatters';
 import { formatTime12h } from '../../utils/timeEngine';
 import { RAZORPAY_KEY_ID } from '../../utils/env';
+import { trackPlanViewed, trackSubscribed } from '../../utils/analytics';
 
 /** Next N calendar days starting from tomorrow */
 function getSelectableDates(count = 14): Date[] {
@@ -60,6 +61,11 @@ export function PlanDetailScreen({ route, navigation }: any) {
   const cycle = cycles?.find((c) => c.id === plan?.cycle_id);
   const { mutateAsync: subscribe } = useSubscribe();
   const { data: mySubs } = useMySubscriptions();
+
+  // Track plan view once plan data is loaded
+  React.useEffect(() => {
+    if (plan) trackPlanViewed(plan.id, plan.plan_name, plan.price);
+  }, [plan?.id]);
 
   const tomorrow = useMemo(() => {
     const d = new Date();
@@ -118,6 +124,7 @@ export function PlanDetailScreen({ route, navigation }: any) {
       }
 
       setGlobalLoading(false);
+      trackSubscribed(plan.id, plan.plan_name, paymentMethod);
       Alert.alert('Subscribed!', `${plan.plan_name} starts ${formatDateShort(startDateStr)}.`, [
         { text: 'OK', onPress: () => navigation.navigate('Subscriptions') },
       ]);

@@ -37,11 +37,17 @@ export function useFeatureFlags() {
 }
 
 /**
- * Check a single feature flag by key name
+ * Check a single feature flag by key name.
+ *
+ * `defaultValue` is returned when the flags table hasn't loaded yet OR the
+ * flag row is missing. Pass `true` for intrinsic modules that should be on
+ * until an admin explicitly disables them (e.g. essentials_module_active);
+ * pass `false` (default) for opt-in modules (hub_delivery_active,
+ * branch_management_active) that must be explicitly enabled.
  */
-export function useFeatureFlag(flagKey: string): boolean {
+export function useFeatureFlag(flagKey: string, defaultValue = false): boolean {
   const { data: flags } = useFeatureFlags();
-  if (!flags) return false;
+  if (!flags) return defaultValue;
   const flag = flags.find((f) => f.flag_key === flagKey);
-  return flag?.flag_value ?? false;
+  return flag?.flag_value ?? defaultValue;
 }

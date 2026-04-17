@@ -47,7 +47,6 @@ import {
 import { useRealtimeOrders } from '../../hooks/useRealtimeOrders';
 import { useOfflineSync } from '../../hooks/useOfflineSync';
 import { useAuth } from '../../hooks/useAuth';
-import { useFeatureFlag } from '../../hooks/useFeatureFlag';
 import { useWalletBalance } from '../../hooks/useWallet';
 import { supabase } from '../../api/supabaseClient';
 import { useQuery } from '@tanstack/react-query';
@@ -71,6 +70,7 @@ function statusColor(status: OrderStatus): string {
     case 'Ready': return Theme.colors.status.success;
     case 'Packed': return Theme.colors.action.primary;
     case 'Dispatched': return Theme.colors.action.primary;
+    case 'Received at Hub': return Theme.colors.status.info;
     case 'On the Way': return Theme.colors.status.warning;
     case 'Delivered': return Theme.colors.status.success;
     case 'Cancelled': return Theme.colors.status.error;
@@ -416,7 +416,6 @@ export function StaffDashboard() {
   const { data: orders, isLoading, isError, refetch } = useStaffOrders(undefined);
   const updateStatus = useUpdateOrderStatus();
   const { pendingCount } = useOfflineSync();
-  const essentialsActive = useFeatureFlag('essentials_module_active');
   const { data: staffMessage } = useStaffMessage();
 
   useRealtimeOrders(true);
@@ -441,7 +440,7 @@ export function StaffDashboard() {
   );
 
   const deliveryOrders = useMemo(
-    () => (orders ?? []).filter((o) => ['Dispatched', 'On the Way', 'Delivered'].includes(o.status)),
+    () => (orders ?? []).filter((o) => ['Dispatched', 'Received at Hub', 'On the Way', 'Delivered'].includes(o.status)),
     [orders]
   );
 
@@ -543,13 +542,21 @@ export function StaffDashboard() {
       if (item.status === 'Ready') nextStatus = 'Packed';
       else if (item.status === 'Packed') nextStatus = 'Dispatched';
     } else if (activeTab === 'Delivery') {
-      if (item.status === 'Dispatched') nextStatus = 'On the Way';
-      else if (item.status === 'On the Way') nextStatus = 'Delivered';
+      // Hub orders: Dispatched → Received at Hub → On the Way → Delivered
+      // Direct orders: Dispatched → On the Way → Delivered
+      if (item.delivery_method === 'hub') {
+        if (item.status === 'Dispatched') nextStatus = 'Received at Hub';
+        else if (item.status === 'Received at Hub') nextStatus = 'On the Way';
+        else if (item.status === 'On the Way') nextStatus = 'Delivered';
+      } else {
+        if (item.status === 'Dispatched') nextStatus = 'On the Way';
+        else if (item.status === 'On the Way') nextStatus = 'Delivered';
+      }
     }
 
     const canAdvance = activeTab === 'Packing'
       ? item.status === 'Ready' || item.status === 'Packed'
-      : item.status === 'Dispatched' || item.status === 'On the Way';
+      : ['Dispatched', 'Received at Hub', 'On the Way'].includes(item.status);
 
     return (
       <View style={styles.orderRow}>
@@ -661,7 +668,7 @@ export function StaffDashboard() {
       {/* Packing sub-tabs */}
       {activeTab === 'Packing' && (
         <View style={styles.subTabs}>
-          {(['Food', ...(essentialsActive ? ['Essentials'] : [])] as PackingSubTab[]).map((sub) => (
+          {(['Food', 'Essentials'] as PackingSubTab[]).map((sub) => (
             <TouchableOpacity
               key={sub}
               style={[styles.subTab, packingSubTab === sub && styles.subTabActive]}

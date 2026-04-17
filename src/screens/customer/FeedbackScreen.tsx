@@ -19,6 +19,7 @@ import { supabase } from '../../api/supabaseClient';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { useAuth } from '../../hooks/useAuth';
+import { trackFeedbackSubmitted } from '../../utils/analytics';
 
 export function FeedbackScreen({ navigation, route }: { navigation: any; route: any }) {
   const orderId: number | null = route?.params?.orderId ?? null;
@@ -41,6 +42,7 @@ export function FeedbackScreen({ navigation, route }: { navigation: any; route: 
       if (error) throw error;
     },
     onSuccess: () => {
+      trackFeedbackSubmitted(rating);
       Alert.alert('Thank you!', 'Your feedback helps us improve.', [
         { text: 'OK', onPress: () => navigation.goBack() },
       ]);

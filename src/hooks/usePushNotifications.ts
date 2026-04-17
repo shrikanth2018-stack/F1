@@ -4,6 +4,13 @@
  * Registers for push notifications via Expo.
  * Stores the push token in Supabase (push_notification_tokens table).
  * Handles foreground notification display.
+ * Tapping a notification deep-links to the relevant screen via navigationRef.
+ *
+ * Notification data payload convention (sent from backend/Edge Function):
+ *   { screen: 'OrderDetail', params: { orderId: '...' } }
+ *   { screen: 'Subscriptions' }
+ *   { screen: 'SubscriptionDetail', params: { subscriptionId: '...' } }
+ *   { screen: 'Wallet' }
  *
  * Platform: Firebase FCM (Android), APNs (iOS)
  */
@@ -15,6 +22,7 @@ import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import { supabase } from '../api/supabaseClient';
 import { useAuth } from './useAuth';
+import { navigationRef } from '../navigation/navigationRef';
 
 // Configure foreground notification behavior
 Notifications.setNotificationHandler({
@@ -95,10 +103,17 @@ export function usePushNotifications() {
         // Could update a badge count or trigger a query refresh here
       });
 
-    // Listen for user tapping on a notification
+    // Listen for user tapping on a notification — deep link to relevant screen
     responseListener.current =
-      Notifications.addNotificationResponseReceivedListener((_response) => {
-        // Could navigate to order detail screen here
+      Notifications.addNotificationResponseReceivedListener((response) => {
+        const data = response.notification.request.content.data as Record<string, any>;
+        const screen = data?.screen as string | undefined;
+        const params = data?.params as Record<string, any> | undefined;
+
+        if (screen && navigationRef.isReady()) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (navigationRef as any).navigate(screen, params);
+        }
       });
 
     return () => {

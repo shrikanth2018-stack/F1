@@ -6,5 +6,11 @@
     "paths": {
       "@/*": ["src/*"]
     }
-  }
+  },
+  "exclude": [
+    "node_modules",
+    "supabase/functions",
+    "ios",
+    "android"
+  ]
 }

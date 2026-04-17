@@ -33,6 +33,7 @@ import {
   REFERRAL_DEFAULTS,
 } from '../../hooks/useReferrals';
 import { formatDateShort } from '../../utils/formatters';
+import { trackReferralApplied, trackReferralShared } from '../../utils/analytics';
 
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
@@ -134,9 +135,19 @@ export function ReferralScreen({ navigation }: { navigation: any }) {
   const handleShare = async () => {
     if (!myCode) return;
     try {
-      await Share.share({
-        message: `Join 1stOne and get fresh food delivered daily!\nUse my referral code: ${myCode}\nYou get ₹${g('referee_signup_credit')} wallet credit on signup!`,
+      // Deep link: opens the app directly to the signup screen with code pre-filled.
+      // Format: 1stone://referral?code=XXXXX
+      // Falls back gracefully on devices without the app installed (shows as plain text).
+      const deepLink = `1stone://referral?code=${myCode}`;
+      const credit = g('referee_signup_credit');
+      const result = await Share.share({
+        title: 'Join 1stOne — Fresh food daily!',
+        message: `Join 1stOne and get fresh food delivered daily!\nUse my referral code: ${myCode} — you get ₹${credit} wallet credit on signup!\n\nDownload & use code: ${deepLink}`,
+        url: deepLink, // iOS share sheet uses url separately
       });
+      if (result.action === Share.sharedAction) {
+        trackReferralShared();
+      }
     } catch {}
   };
 
@@ -149,7 +160,11 @@ export function ReferralScreen({ navigation }: { navigation: any }) {
   const handleApply = () => {
     if (!applyCode.trim()) return;
     applyReferral.mutate(applyCode.trim(), {
-      onSuccess: () => { Alert.alert('', 'Referral code applied!'); setApplyCode(''); },
+      onSuccess: () => {
+        trackReferralApplied(applyCode.trim());
+        Alert.alert('', 'Referral code applied!');
+        setApplyCode('');
+      },
       onError: (err: any) => Alert.alert('Error', err.message),
     });
   };

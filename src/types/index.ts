@@ -201,7 +201,9 @@ export interface CancelledSubscriptionDay {
 // ============ ORDERS ============
 
 export type OrderStatus =
+  | 'Pending'   // razorpay order created, awaiting webhook
   | 'Confirmed'
+  | 'Paid'      // razorpay webhook confirmed payment
   | 'Preparing'
   | 'Ready'
   | 'Packed'
@@ -209,7 +211,8 @@ export type OrderStatus =
   | 'On the Way'
   | 'Delivered'
   | 'Received at Hub'
-  | 'Cancelled';
+  | 'Cancelled'
+  | 'Failed';   // payment failed / cancelled
 
 export type OrderType = 'food' | 'essential';
 export type PaymentMethod = 'wallet' | 'razorpay' | 'split';
@@ -229,6 +232,8 @@ export interface Order {
   hub_id: number | null;
   payment_method: PaymentMethod;
   razorpay_order_id: string | null;
+  razorpay_payment_id: string | null;
+  paid_at: string | null;
   wallet_amount_used: number;
   delivery_address_id: number | null;
   branch_id: number | null;
