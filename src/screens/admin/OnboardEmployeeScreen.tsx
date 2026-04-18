@@ -24,13 +24,13 @@ import {
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
+import { supabase } from '../../api/supabaseClient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { Divider } from '../../components/Divider';
 import {
   useOnboardEmployee,
-  generateEmployeeId,
   DESIGNATIONS,
   SHIFTS,
   BENEFIT_OPTIONS,
@@ -295,10 +295,12 @@ const fi = StyleSheet.create({
 });
 
 // ── Main screen ───────────────────────────────────────────────
+type LookupStatus = 'idle' | 'loading' | 'found' | 'not_found';
+
 export function OnboardEmployeeScreen({ navigation }: { navigation: any }) {
-  const [employeeId, setEmployeeId]   = useState('');
-  const [name, setName]               = useState('');
   const [phone, setPhone]             = useState('');
+  const [name, setName]               = useState('');
+  const [lookupStatus, setLookup]     = useState<LookupStatus>('idle');
   const [designation, setDesig]       = useState('');
   const [joiningDate, setJoining]     = useState(
     new Date().toISOString().split('T')[0]
@@ -312,16 +314,37 @@ export function OnboardEmployeeScreen({ navigation }: { navigation: any }) {
   const { data: hubs = [] } = useDeliveryHubs();
   const onboard = useOnboardEmployee();
 
+  // Auto-lookup profile when 10 digits are entered
   useEffect(() => {
-    generateEmployeeId().then(setEmployeeId);
-  }, []);
+    if (phone.length !== 10) {
+      setName('');
+      setLookup('idle');
+      return;
+    }
+    setLookup('loading');
+    supabase
+      .from('profiles')
+      .select('full_name')
+      .eq('phone_number', phone)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.full_name) {
+          setName(data.full_name);
+          setLookup('found');
+        } else {
+          setName('');
+          setLookup('not_found');
+        }
+      });
+  }, [phone]);
 
   const validate = (): string | null => {
-    if (!name.trim())   return 'Please enter the employee name';
-    if (!phone.trim())  return 'Please enter the phone number';
-    if (phone.trim().length < 10) return 'Enter a valid 10-digit phone number';
-    if (!designation)   return 'Please select a designation';
-    if (!shift)         return 'Please select a shift';
+    if (phone.length !== 10)          return 'Enter a valid 10-digit phone number';
+    if (lookupStatus === 'loading')   return 'Looking up employee…';
+    if (lookupStatus === 'not_found') return 'No account found. Employee must register via OTP first.';
+    if (!name.trim())                 return 'Could not fetch employee name';
+    if (!designation)                 return 'Please select a designation';
+    if (!shift)                       return 'Please select a shift';
     if (!joiningDate.match(/^\d{4}-\d{2}-\d{2}$/)) return 'Joining date must be YYYY-MM-DD';
     return null;
   };
@@ -335,9 +358,8 @@ export function OnboardEmployeeScreen({ navigation }: { navigation: any }) {
 
     onboard.mutate(
       {
-        employee_id:     employeeId,
         full_name:       name.trim(),
-        phone_number:    phone.trim(),
+        phone_number:    phone,
         designation,
         joining_date:    joiningDate,
         shift_timing:    shift,
@@ -347,13 +369,13 @@ export function OnboardEmployeeScreen({ navigation }: { navigation: any }) {
         joining_bonus:   bonus,
       },
       {
-        onSuccess: () => {
+        onSuccess: (result) => {
           const salaryLine = salary > 0
             ? `\nSalary: ₹${salary.toLocaleString('en-IN')}/mo${bonus > 0 ? ` + ₹${bonus.toLocaleString('en-IN')} joining bonus` : ''}`
             : '';
           Alert.alert(
             'Onboarded',
-            `${name.trim()} (${employeeId}) added.${salaryLine}\nLogin: ${phone.trim()} via OTP.`,
+            `${name.trim()} (${result.employee_id}) added.${salaryLine}\nThey can now log in via OTP.`,
             [{ text: 'Done', onPress: () => navigation.goBack() }]
           );
         },
@@ -380,35 +402,57 @@ export function OnboardEmployeeScreen({ navigation }: { navigation: any }) {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <ThemedText variant="small" color="muted" style={styles.sectionLabel}>IDENTITY</ThemedText>
+        <ThemedText variant="small" color="mint" style={styles.sectionLabel}>IDENTITY</ThemedText>
 
+        {/* Phone — lookup trigger */}
+        <View style={fi.container}>
+          <ThemedText variant="small" color="muted" style={fi.label}>Phone Number  (staff login)</ThemedText>
+          <View style={styles.phoneRow}>
+            <TextInput
+              style={[fi.input, { flex: 1 }]}
+              value={phone}
+              onChangeText={(v) => setPhone(v.replace(/\D/g, '').slice(0, 10))}
+              placeholder="10-digit mobile"
+              placeholderTextColor={Theme.colors.text.muted}
+              keyboardType="phone-pad"
+              maxLength={10}
+              returnKeyType="next"
+            />
+            {lookupStatus === 'loading' && (
+              <ActivityIndicator size="small" color={Theme.colors.text.mint} style={{ marginLeft: 8 }} />
+            )}
+          </View>
+          {lookupStatus === 'not_found' && (
+            <ThemedText variant="small" style={styles.warnText}>
+              No account found — employee must register via OTP first.
+            </ThemedText>
+          )}
+        </View>
+
+        {/* Name — auto-filled, read-only */}
         <Field
-          label="Employee ID  (auto-generated)"
-          value={employeeId || 'Generating…'}
+          label="Full Name  (auto-filled)"
+          value={lookupStatus === 'found' ? name : ''}
+          placeholder="Populated after phone lookup"
           editable={false}
         />
+
+        {/* Employee ID — system-assigned */}
         <Field
-          label="Full Name"
-          value={name}
-          onChange={setName}
-          placeholder="e.g. Ravi Kumar"
+          label="Employee ID"
+          value="Auto-assigned on save"
+          editable={false}
         />
-        <Field
-          label="Phone Number  (staff login)"
-          value={phone}
-          onChange={setPhone}
-          placeholder="10-digit mobile"
-          keyboardType="phone-pad"
-        />
+
         <Field
           label="Joining Date  (YYYY-MM-DD)"
           value={joiningDate}
           onChange={setJoining}
-          placeholder="2024-01-15"
+          placeholder={new Date().toISOString().split('T')[0]}
         />
 
         <Divider />
-        <ThemedText variant="small" color="muted" style={styles.sectionLabel}>ROLE & SHIFT</ThemedText>
+        <ThemedText variant="small" color="mint" style={styles.sectionLabel}>ROLE & SHIFT</ThemedText>
 
         <FieldWithSuggestions
           label="Designation"
@@ -429,7 +473,7 @@ export function OnboardEmployeeScreen({ navigation }: { navigation: any }) {
         {hubs.length > 0 && (
           <>
             <Divider />
-            <ThemedText variant="small" color="muted" style={styles.sectionLabel}>
+            <ThemedText variant="small" color="mint" style={styles.sectionLabel}>
               HUB ASSIGNMENT  (optional)
             </ThemedText>
             <ChipPicker
@@ -453,7 +497,7 @@ export function OnboardEmployeeScreen({ navigation }: { navigation: any }) {
         )}
 
         <Divider />
-        <ThemedText variant="small" color="muted" style={styles.sectionLabel}>
+        <ThemedText variant="small" color="mint" style={styles.sectionLabel}>
           COMPENSATION
         </ThemedText>
 
@@ -465,7 +509,7 @@ export function OnboardEmployeeScreen({ navigation }: { navigation: any }) {
           keyboardType="numeric"
         />
         <Field
-          label="Joining Bonus  ₹  (optional, added to first month)"
+          label="Joining Bonus  ₹  (optional)"
           value={joiningBonus}
           onChange={setJoinBonus}
           placeholder="0"
@@ -473,7 +517,7 @@ export function OnboardEmployeeScreen({ navigation }: { navigation: any }) {
         />
 
         <Divider />
-        <ThemedText variant="small" color="muted" style={styles.sectionLabel}>
+        <ThemedText variant="small" color="mint" style={styles.sectionLabel}>
           BENEFITS  (select all that apply)
         </ThemedText>
 
@@ -489,18 +533,20 @@ export function OnboardEmployeeScreen({ navigation }: { navigation: any }) {
         />
       </ScrollView>
 
-      {/* Footer */}
-      <TouchableOpacity
-        style={styles.footer}
-        onPress={handleOnboard}
-        disabled={onboard.isPending}
-        activeOpacity={0.7}
-      >
-        {onboard.isPending
-          ? <ActivityIndicator color={Theme.colors.text.mint} />
-          : <ThemedText variant="body" color="mint" style={{ fontSize: B }}>Onboard  ›</ThemedText>
-        }
-      </TouchableOpacity>
+      {/* Footer — button right-aligned */}
+      <View style={styles.footer}>
+        <TouchableOpacity
+          style={styles.onboardBtn}
+          onPress={handleOnboard}
+          disabled={onboard.isPending}
+          activeOpacity={0.7}
+        >
+          {onboard.isPending
+            ? <ActivityIndicator color={Theme.colors.text.mint} />
+            : <ThemedText variant="body" color="mint" style={{ fontSize: B }}>Onboard  ›</ThemedText>
+          }
+        </TouchableOpacity>
+      </View>
     </SafeAreaView>
   );
 }
@@ -524,16 +570,38 @@ const styles = StyleSheet.create({
 
   sectionLabel: {
     fontSize: S,
-    letterSpacing: 1,
+    letterSpacing: 1.2,
+    fontWeight: '600',
     paddingHorizontal: Theme.spacing.md,
     paddingTop: Theme.spacing.md,
     paddingBottom: Theme.spacing.xs,
   },
 
+  phoneRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+
+  warnText: {
+    color: Theme.colors.status.warning,
+    fontSize: S,
+    marginTop: 4,
+  },
+
   footer: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
     paddingHorizontal: Theme.spacing.md,
     paddingVertical: Theme.spacing.sm + 2,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: Theme.colors.text.mint,
+    borderTopColor: Theme.colors.layout.divider,
+  },
+
+  onboardBtn: {
+    paddingHorizontal: Theme.spacing.lg,
+    paddingVertical: Theme.spacing.sm,
+    borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Theme.colors.text.mint,
   },
 });

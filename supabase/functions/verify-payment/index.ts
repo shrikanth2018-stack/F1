@@ -99,8 +99,23 @@ serve(async (req) => {
       return text('ok: wallet topup credited', 200);
     }
 
+    // 3) Not a topup — check if this is a Razorpay subscription payment
+    const { data: activatedSubs, error: subActivateErr } = await supabase
+      .from('user_subscriptions')
+      .update({ is_active: true })
+      .eq('razorpay_order_id', razorpayOrderId)
+      .eq('is_active', false)
+      .select('id');
+
+    if (subActivateErr) {
+      console.error('[verify-payment] subscription activation error', subActivateErr);
+      // Don't return 500 — fall through so Razorpay gets a 200 and stops retrying
+    } else if (activatedSubs && activatedSubs.length > 0) {
+      return text('ok: subscription activated', 200);
+    }
+
     // Nothing matched — log and return 200 so Razorpay stops retrying
-    console.warn(`[verify-payment] no matching order or topup for ${razorpayOrderId}`);
+    console.warn(`[verify-payment] no matching order, topup, or subscription for ${razorpayOrderId}`);
     return text('ok: no match', 200);
   }
 

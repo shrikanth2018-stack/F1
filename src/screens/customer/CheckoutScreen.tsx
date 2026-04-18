@@ -17,7 +17,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import RazorpayCheckout from 'react-native-razorpay';
+import RazorpayCheckout from '../../utils/razorpay';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { ThemedButton } from '../../components/ThemedButton';
@@ -35,7 +35,6 @@ import { useAuth } from '../../hooks/useAuth';
 import { formatPriceShort } from '../../utils/formatters';
 import { supabase } from '../../api/supabaseClient';
 import { RAZORPAY_KEY_ID } from '../../utils/env';
-import { checkAndGrantFirstOrderBonus } from '../../hooks/useReferrals';
 import { trackOrderPlaced, trackOrderFailed } from '../../utils/analytics';
 
 /** Safe UUID generator — falls back to Math.random when crypto.randomUUID is unavailable (Expo Go, older Android) */
@@ -224,11 +223,6 @@ export function CheckoutScreen({ navigation, route }: any) {
           'Your order was not placed because payment did not complete. Please try again.',
         );
         return;
-      }
-
-      // Grant first-order referral bonus if applicable (fire-and-forget)
-      if (session?.user.id) {
-        checkAndGrantFirstOrderBonus(session.user.id).catch(() => {});
       }
 
       trackOrderPlaced(order.id ?? '', order.total_amount ?? estimatedTotal, paymentMethod, cartType);

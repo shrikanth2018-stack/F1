@@ -16,7 +16,7 @@ import {
   Text,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import RazorpayCheckout from 'react-native-razorpay';
+import RazorpayCheckout from '../../utils/razorpay';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { Divider } from '../../components/Divider';

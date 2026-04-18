@@ -130,6 +130,7 @@ export function useClockIn() {
           table: 'staff_attendance',
           operation: 'upsert',
           payload,
+          userId: session.user.id,
         });
       }
     },
@@ -177,6 +178,7 @@ export function useClockOut() {
           payload,
           matchColumn: 'staff_id',
           matchValue: session.user.id,
+          userId: session.user.id,
         });
       }
     },

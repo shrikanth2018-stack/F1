@@ -1,0 +1,127 @@
+/**
+ * 1stOne F1 — elevate-employee Edge Function
+ *
+ * Admin-only. One call promotes a phone number into a staff profile.
+ *
+ * Steps:
+ *   1. Verify caller's user_role = 'admin'
+ *   2. Normalize phone → +91XXXXXXXXXX
+ *   3. Find existing auth.users row by phone, else admin.createUser()
+ *   4. Set auth.users.app_metadata.user_role = 'staff'
+ *      (so the JWT user_role claim populates on next session)
+ *   5. Call elevate_to_staff RPC — atomic profile upsert + first salary row
+ *   6. Return assigned employee_id
+ *
+ * Deploy: supabase functions deploy elevate-employee
+ */
+
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
+const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const ANON_KEY     = Deno.env.get('SUPABASE_ANON_KEY')!;
+
+const cors = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, content-type',
+};
+
+const json = (b: unknown, s = 200) =>
+  new Response(JSON.stringify(b), {
+    status: s,
+    headers: { ...cors, 'Content-Type': 'application/json' },
+  });
+
+Deno.serve(async (req: Request) => {
+  if (req.method === 'OPTIONS') return new Response(null, { headers: cors });
+  if (req.method !== 'POST')    return json({ error: 'Method not allowed' }, 405);
+
+  try {
+    // 1. Admin gate
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) return json({ error: 'Missing authorization' }, 401);
+
+    const userClient = createClient(SUPABASE_URL, ANON_KEY, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: { user }, error: authErr } = await userClient.auth.getUser();
+    if (authErr || !user) return json({ error: 'Unauthorized' }, 401);
+
+    // Admin gate — role lives in profiles.role (custom_access_token_hook
+    // injects it into the JWT user_role claim on token mint).
+    const adminClient = createClient(SUPABASE_URL, SERVICE_ROLE);
+    const { data: callerProfile, error: profileErr } = await adminClient
+      .from('profiles').select('role').eq('id', user.id).maybeSingle();
+    if (profileErr) return json({ error: `Profile lookup failed: ${profileErr.message}` }, 500);
+    if (callerProfile?.role !== 'admin') {
+      return json({ error: 'Admin role required' }, 403);
+    }
+
+    // 2. Validate payload
+    const body = await req.json();
+    const {
+      full_name, phone_number, designation, joining_date, shift_timing,
+      assigned_hub_id = null, monthly_salary = 0, benefits = '',
+      joining_bonus = 0, branch_id = null,
+    } = body ?? {};
+
+    if (!full_name?.trim())  return json({ error: 'full_name required' }, 400);
+    if (!designation)        return json({ error: 'designation required' }, 400);
+    if (!shift_timing)       return json({ error: 'shift_timing required' }, 400);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(joining_date ?? ''))
+      return json({ error: 'joining_date must be YYYY-MM-DD' }, 400);
+
+    const digits = String(phone_number ?? '').replace(/\D/g, '');
+    const ten = digits.length > 10 ? digits.slice(-10) : digits;
+    if (ten.length !== 10) return json({ error: 'Invalid phone number (need 10 digits)' }, 400);
+    const e164        = `+91${ten}`;
+    const phoneStored = `91${ten}`; // Supabase stores phone without leading '+'
+
+    // 3. Find or create auth user
+    let authUserId: string | null = null;
+    const { data: found, error: lookupErr } = await adminClient
+      .schema('auth')
+      .from('users')
+      .select('id')
+      .eq('phone', phoneStored)
+      .maybeSingle();
+    if (lookupErr) return json({ error: `Auth lookup failed: ${lookupErr.message}` }, 500);
+
+    if (found?.id) {
+      authUserId = found.id;
+    } else {
+      const { data: created, error: createErr } = await adminClient.auth.admin.createUser({
+        phone: e164,
+        phone_confirm: true,
+        user_metadata: { full_name: full_name.trim() },
+      });
+      if (createErr || !created?.user) {
+        return json({ error: `Auth create failed: ${createErr?.message ?? 'unknown'}` }, 500);
+      }
+      authUserId = created.user.id;
+    }
+
+    // 4. Atomic elevate — sets profiles.role = 'staff'.
+    // The custom_access_token_hook will inject user_role='staff' into the
+    // JWT on the staff member's next login, so no app_metadata update needed.
+    const { data: employeeId, error: rpcErr } = await adminClient.rpc('elevate_to_staff', {
+      p_user_id:         authUserId,
+      p_full_name:       full_name.trim(),
+      p_phone_number:    ten,
+      p_designation:     designation,
+      p_joining_date:    joining_date,
+      p_shift_timing:    shift_timing,
+      p_assigned_hub_id: assigned_hub_id,
+      p_monthly_salary:  monthly_salary,
+      p_benefits:        benefits,
+      p_joining_bonus:   joining_bonus,
+      p_branch_id:       branch_id,
+    });
+    if (rpcErr) return json({ error: `Elevate RPC failed: ${rpcErr.message}` }, 500);
+
+    return json({ success: true, employee_id: employeeId, user_id: authUserId });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unexpected error';
+    return json({ error: message }, 500);
+  }
+});

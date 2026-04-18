@@ -113,57 +113,37 @@ export interface OnboardPayload {
   joining_bonus: number;  // credited as first-month bonus; 0 if none
 }
 
-/** Generate next employee ID like 1ST-2026-007 */
-export async function generateEmployeeId(): Promise<string> {
-  const year = new Date().getFullYear();
-  const { count } = await supabase
-    .from('profiles')
-    .select('id', { count: 'exact', head: true })
-    .eq('role', 'staff');
-  const seq = String((count ?? 0) + 1).padStart(3, '0');
-  return `1ST-${year}-${seq}`;
-}
-
+/**
+ * Onboard a new staff member via the elevate-employee Edge Function.
+ * The function finds-or-creates the auth user by phone, sets the JWT
+ * user_role claim to 'staff', and atomically writes the profile +
+ * first-month salary row. Employee ID is allocated server-side from
+ * a Postgres SEQUENCE — race-free across concurrent admins.
+ */
 export function useOnboardEmployee() {
   const queryClient = useQueryClient();
   const bf = useBranchFilter();
   return useMutation({
-    mutationFn: async (payload: OnboardPayload & { employee_id: string }) => {
-      // Insert profile row — staff member logs in via phone OTP
-      const staffId = crypto.randomUUID();
-      const { error: profileErr } = await supabase.from('profiles').insert({
-        id: staffId,
-        role: 'staff',
-        phone_number: payload.phone_number,
-        full_name: payload.full_name,
-        employee_id: payload.employee_id,
-        designation: payload.designation,
-        joining_date: payload.joining_date,
-        shift_timing: payload.shift_timing,
-        assigned_hub_id: payload.assigned_hub_id,
-        monthly_salary: payload.monthly_salary,
-        benefits: payload.benefits || null,
-        wallet_balance: 0,
-        loyalty_points: 0,
-        branch_id: bf.isActive ? bf.branchId : null,
+    mutationFn: async (payload: OnboardPayload): Promise<{ employee_id: string; user_id: string }> => {
+      const { data: { session } } = await supabase.auth.getSession();
+      const { data, error } = await supabase.functions.invoke('elevate-employee', {
+        headers: { Authorization: `Bearer ${session?.access_token}` },
+        body: { ...payload, branch_id: bf.isActive ? bf.branchId : null },
       });
-      if (profileErr) throw new Error(profileErr.message);
 
-      // Auto-create first salary record for current month
-      if (payload.monthly_salary > 0) {
-        const now = new Date();
-        const { error: salErr } = await supabase.from('staff_salary').insert({
-          staff_id: staffId,
-          month: now.getMonth() + 1,
-          year: now.getFullYear(),
-          base_salary: payload.monthly_salary,
-          deductions: 0,
-          bonus: payload.joining_bonus,
-          net_salary: payload.monthly_salary + payload.joining_bonus,
-          is_paid: false,
-        });
-        if (salErr) throw new Error(salErr.message);
+      if (error || data?.error) {
+        let message = data?.error ?? 'Failed to onboard employee';
+        try {
+          const ctx = (error as any)?.context;
+          if (ctx) {
+            const txt = await (ctx.clone ? ctx.clone() : ctx).text();
+            const parsed = JSON.parse(txt);
+            if (parsed?.error) message = parsed.error;
+          }
+        } catch {}
+        throw new Error(message);
       }
+      return data as { employee_id: string; user_id: string };
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['resource_roster'] }),
   });

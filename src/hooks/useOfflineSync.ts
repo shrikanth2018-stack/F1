@@ -25,11 +25,25 @@ export function useOfflineSync() {
     // change — prevents NetInfo from re-subscribing after each dequeue.
     const { queue: currentQueue, isSyncing: currentlySyncing } = useStaffQueueStore.getState();
     if (currentlySyncing || currentQueue.length === 0) return;
+
+    // Verify the current session before replaying any queued mutations.
+    // If no session exists, leave the queue intact for when the user logs back in.
+    const { data: { user: currentUser } } = await supabase.auth.getUser();
+    if (!currentUser) return;
+
     markSyncing(true);
 
     for (const mutation of currentQueue) {
       if (mutation.retryCount >= MAX_QUEUE_RETRIES) {
         // Skip permanently failed mutations (admin should investigate)
+        continue;
+      }
+
+      // Cross-session guard: discard any mutation queued by a different user.
+      // This protects against Staff A's offline actions replaying under Staff B's
+      // session on a shared device.
+      if (mutation.userId !== currentUser.id) {
+        dequeue(mutation.id);
         continue;
       }
 

@@ -157,12 +157,14 @@ export function useUndoSkip() {
 // ── Pause/Resume Subscription ──
 
 export function usePauseSubscription() {
+  const { session } = useAuth();
   return useSupabaseMutation<{ id: number; pause: boolean }>(
     (payload) =>
       supabase
         .from('user_subscriptions')
         .update({ is_paused: payload.pause })
-        .eq('id', payload.id),
+        .eq('id', payload.id)
+        .eq('user_id', session?.user.id ?? ''),
     [QUERY_KEYS.SUBSCRIPTIONS as unknown as string[]]
   );
 }

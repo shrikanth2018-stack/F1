@@ -113,14 +113,14 @@ export function LoginScreen({ onOTPSent, referralCode }: LoginScreenProps) {
           <Text style={styles.footLine}>
             <Text
               style={styles.footLink}
-              onPress={() => Linking.openURL('https://1stone.in/terms')}
+              onPress={() => Linking.openURL('https://wcvqxzqqwcxlcgrjyunf.supabase.co/storage/v1/object/public/assets/Terms.pdf')}
             >
               Terms of Service
             </Text>
             {'  and  '}
             <Text
               style={styles.footLink}
-              onPress={() => Linking.openURL('https://1stone.in/privacy')}
+              onPress={() => Linking.openURL('https://wcvqxzqqwcxlcgrjyunf.supabase.co/storage/v1/object/public/assets/Privacy-Policy.pdf')}
             >
               Privacy Policy
             </Text>

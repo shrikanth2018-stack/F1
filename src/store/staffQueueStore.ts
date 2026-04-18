@@ -15,6 +15,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export interface QueuedMutation {
   id: string;
+  userId: string;
   table: string;
   operation: 'insert' | 'update' | 'upsert';
   payload: Record<string, unknown>;
