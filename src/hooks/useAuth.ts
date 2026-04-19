@@ -8,6 +8,7 @@
  */
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import { AppState, AppStateStatus } from 'react-native';
 import { supabase } from '../api/supabaseClient';
 import type { UserRole, AuthSession } from '../types';
 import type { Session } from '@supabase/supabase-js';
@@ -82,7 +83,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     );
 
-    return () => subscription.unsubscribe();
+    // Proactively refresh session when app returns to foreground.
+    // Prevents 401s after the device has been idle long enough for the JWT to
+    // drift close to expiry — supabase-js auto-refreshes in background but
+    // the timer can be paused by the OS when the app is suspended.
+    const handleAppState = (nextState: AppStateStatus) => {
+      if (nextState === 'active') {
+        supabase.auth.getSession().then(({ data: { session: refreshed } }) => {
+          setSession(extractRole(refreshed));
+        });
+      }
+    };
+    const appStateSub = AppState.addEventListener('change', handleAppState);
+
+    return () => {
+      subscription.unsubscribe();
+      appStateSub.remove();
+    };
   }, []);
 
   const signInWithPhone = useCallback(async (phone: string) => {

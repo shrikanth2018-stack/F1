@@ -55,18 +55,24 @@ export function WalletScreen({ navigation }: { navigation: any }) {
       onSuccess: async (data) => {
         if (!data) return;
         try {
-          await RazorpayCheckout.open({
-            description: '1stOne Wallet Top-up',
-            currency: 'INR',
-            key: RAZORPAY_KEY_ID,
-            amount: Math.round(data.amount * 100),
-            order_id: data.razorpay_order_id,
-            name: '1stOne',
-            prefill: { contact: session?.user.phone ?? '' },
-            theme: { color: Theme.colors.action.primary },
-          });
+          const rawPhone = session?.user.phone ?? '';
+          const contact = rawPhone.length > 10 ? rawPhone.slice(-10) : rawPhone;
+          await Promise.race([
+            RazorpayCheckout.open({
+              description: '1stOne Wallet Top-up',
+              currency: 'INR',
+              key: RAZORPAY_KEY_ID,
+              amount: Math.round(data.amount * 100),
+              order_id: data.razorpay_order_id,
+              name: '1stOne',
+              prefill: { email: 'customer@1stone.in', contact },
+              theme: { color: Theme.colors.action.primary },
+            }),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error('timeout')), 30_000)
+            ),
+          ]);
         } catch {
-          // Payment cancelled or failed — order stays pending, webhook won't fire
           Alert.alert('Payment Cancelled', 'Your top-up was not completed.');
         }
         refreshWallet();

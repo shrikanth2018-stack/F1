@@ -27,7 +27,8 @@ CREATE TABLE IF NOT EXISTS manifest_run_log (
 
 -- ── 2. Core manifest function ─────────────────────────────────
 CREATE OR REPLACE FUNCTION generate_daily_manifest(
-  p_target_date DATE DEFAULT (CURRENT_DATE + INTERVAL '1 day')::DATE
+  p_target_date DATE    DEFAULT (CURRENT_DATE + INTERVAL '1 day')::DATE,
+  p_cycle_id    INTEGER DEFAULT NULL   -- when set, only generate for subs on this cycle
 )
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -60,7 +61,7 @@ BEGIN
   v_config.tax_rate_percentage := COALESCE(v_config.tax_rate_percentage, 5);
   v_config.delivery_fee        := COALESCE(v_config.delivery_fee, 0);
 
-  -- Iterate every active, non-paused subscription
+  -- Iterate every active, non-paused subscription (optionally filtered to one cycle)
   FOR v_sub IN
     SELECT
       us.id            AS sub_id,
@@ -71,8 +72,10 @@ BEGIN
       us.payment_method,
       us.wallet_amount_used
     FROM user_subscriptions us
+    JOIN subscription_plans sp ON sp.id = us.plan_id
     WHERE us.is_active  = TRUE
       AND us.is_paused  = FALSE
+      AND (p_cycle_id IS NULL OR sp.cycle_id = p_cycle_id)
   LOOP
 
     -- Load plan details

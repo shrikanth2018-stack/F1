@@ -185,6 +185,9 @@ export interface UserSubscription {
   is_active: boolean;
   payment_method: 'wallet' | 'razorpay' | 'split';
   razorpay_order_id: string | null;
+  razorpay_payment_id: string | null;
+  wallet_amount_used: number;
+  branch_id: number | null;
   created_at: string;
   updated_at: string;
 }

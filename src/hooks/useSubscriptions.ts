@@ -5,6 +5,7 @@
  * and cancelled/skipped days management.
  */
 
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../api/supabaseClient';
 import { useSupabaseQuery, useSupabaseMutation } from '../api/useSupabaseQuery';
 import { QUERY_KEYS } from '../utils/constants';
@@ -96,23 +97,83 @@ export interface SubscribePayload {
 }
 
 export function useSubscribe() {
-  const { session } = useAuth();
-
   return useSupabaseMutation<SubscribePayload>(
     async (payload) => {
+      // Fetch session at call-time — never use a stale closure value.
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user.id) {
+        console.error('[useSubscribe] No active session — cannot subscribe');
+        throw new Error('You must be logged in to subscribe.');
+      }
+
+      console.log('[useSubscribe] invoking subscribe function', {
+        plan_id: payload.plan_id,
+        payment_method: payload.payment_method,
+        start_date: payload.start_date,
+        user_id: session.user.id,
+      });
+
       const { data, error } = await supabase.functions.invoke('subscribe', {
         headers: {
-          'Idempotency-Key': `${session?.user.id}-${payload.plan_id}-${payload.start_date}`,
+          Authorization: `Bearer ${session.access_token}`,
+          'Idempotency-Key': `${session.user.id}-${payload.plan_id}-${payload.start_date}`,
         },
         body: {
           ...payload,
-          user_id: session?.user.id,
+          user_id: session.user.id,
         },
       });
 
       if (error) {
-        return { data: null, error, count: null, status: 500, statusText: 'Error' } as any;
+        // In @supabase/functions-js v2.x, error.context is already the parsed
+        // JSON body — not a Response. Calling .text() on it throws.
+        let message = 'Failed to subscribe';
+        const ctx = (error as any)?.context;
+        if (ctx && typeof ctx === 'object' && ctx.error) {
+          message = ctx.error;
+        } else if (ctx && typeof ctx === 'string') {
+          message = ctx;
+        } else if (error.message && !error.message.includes('non-2xx')) {
+          message = error.message;
+        }
+        console.error('[useSubscribe] invoke error:', message, error);
+        throw new Error(message);
       }
+
+      console.log('[useSubscribe] invoke success:', data);
+      return { data, error: null, count: null, status: 200, statusText: 'OK' } as any;
+    },
+    [QUERY_KEYS.SUBSCRIPTIONS as unknown as string[]]
+  );
+}
+
+// ── Confirm Razorpay Payment (client-side verification) ──
+
+export interface ConfirmRazorpayPayload {
+  subscription_id: number;
+  razorpay_payment_id: string;
+  razorpay_order_id: string;
+  razorpay_signature: string;
+}
+
+export function useConfirmSubscription() {
+  return useSupabaseMutation<ConfirmRazorpayPayload>(
+    async (payload) => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Not authenticated');
+
+      const { data, error } = await supabase.functions.invoke('confirm-subscription', {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+        body: payload,
+      });
+
+      if (error) {
+        let message = 'Payment confirmation failed';
+        const ctx = (error as any)?.context;
+        if (ctx && typeof ctx === 'object' && ctx.error) message = ctx.error;
+        throw new Error(message);
+      }
+
       return { data, error: null, count: null, status: 200, statusText: 'OK' } as any;
     },
     [QUERY_KEYS.SUBSCRIPTIONS as unknown as string[]]
@@ -152,6 +213,40 @@ export function useUndoSkip() {
         .eq('id', payload.id),
     [['cancelled_days_all'], ['cancelled_days']]
   );
+}
+
+// ── Admin: all subscriptions ──
+
+export function useAdminSubscriptions() {
+  return useQuery({
+    queryKey: ['admin_subscriptions'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('user_subscriptions')
+        .select('*, subscription_plans(plan_name, duration_days, plan_type), profiles!user_subscriptions_user_id_fkey(full_name, phone_number)')
+        .eq('is_active', true)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as any[];
+    },
+  });
+}
+
+export function useAdminCancelSubscription() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ subscriptionId }: { subscriptionId: number }) => {
+      const { error } = await supabase
+        .from('user_subscriptions')
+        .update({ is_active: false, is_paused: false, updated_at: new Date().toISOString() })
+        .eq('id', subscriptionId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin_subscriptions'] });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.SUBSCRIPTIONS });
+    },
+  });
 }
 
 // ── Pause/Resume Subscription ──

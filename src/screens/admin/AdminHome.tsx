@@ -171,6 +171,8 @@ function ManageTab() {
     >
       {/* BRANCH — visible to super-admins only */}
       <BranchRow />
+      <AdminRow label="Manage Running Orders" showChevron onPress={() => navigation.navigate('AdminOrders')} />
+      <AdminRow label="Manage Running Subscriptions" showChevron onPress={() => navigation.navigate('AdminSubscriptions')} />
 
       <Divider />
 

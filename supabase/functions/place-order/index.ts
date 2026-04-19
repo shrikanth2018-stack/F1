@@ -31,20 +31,29 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const RAZORPAY_KEY_ID = Deno.env.get('RAZORPAY_KEY_ID') ?? '';
 const RAZORPAY_KEY_SECRET = Deno.env.get('RAZORPAY_KEY_SECRET') ?? '';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, idempotency-key',
-};
-
-const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-  });
+const ALLOWED_ORIGINS = new Set([
+  SUPABASE_URL,
+  'http://localhost:8081',
+  'http://localhost:19006',
+]);
 
 serve(async (req) => {
+  const origin = req.headers.get('Origin') ?? '';
+  const acao = ALLOWED_ORIGINS.has(origin) ? origin : SUPABASE_URL;
+  const cors = {
+    'Access-Control-Allow-Origin': acao,
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, idempotency-key',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Vary': 'Origin',
+  };
+  const json = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { ...cors, 'Content-Type': 'application/json' },
+    });
+
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response('ok', { headers: cors });
   }
 
   try {
@@ -62,6 +71,18 @@ serve(async (req) => {
     if (authError || !user) return json({ error: 'Unauthorized' }, 401);
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // ── Rate limit: max 5 place-order calls per user per 60 s ──
+    const oneMinuteAgo = new Date(Date.now() - 60_000).toISOString();
+    const { count: recentCount } = await supabase
+      .from('idempotency_keys')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .eq('endpoint', 'place-order')
+      .gte('created_at', oneMinuteAgo);
+    if ((recentCount ?? 0) >= 5) {
+      return json({ error: 'Too many requests. Please wait a moment before trying again.' }, 429);
+    }
 
     // ── Idempotency short-circuit ──────────────────────────────
     // If the same user has sent this key before, return the cached response.
@@ -112,7 +133,7 @@ serve(async (req) => {
     if (stormActive) {
       return json(
         { error: 'Orders are temporarily paused. Please try again shortly.' },
-        503,
+        403,
       );
     }
 
@@ -293,6 +314,26 @@ serve(async (req) => {
         endpoint: 'place-order',
         response: responsePayload,
       });
+    }
+
+    // ── Push notification (wallet orders are immediately Confirmed) ──
+    // Razorpay orders start as Pending — push fires when verify-payment confirms them.
+    if (payment_method === 'wallet') {
+      fetch(`${SUPABASE_URL}/functions/v1/send-push`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        },
+        body: JSON.stringify({
+          user_ids: [user.id],
+          title: 'Order Confirmed!',
+          body: `Your order #${newOrderId} is confirmed. We are getting it ready!`,
+          data: { screen: 'OrderDetail', params: { orderId: newOrderId } },
+          trigger_source: 'order_status',
+          reference_id: String(newOrderId),
+        }),
+      }).catch((e) => console.error('[place-order] push failed:', e));
     }
 
     return json(responsePayload, 200);

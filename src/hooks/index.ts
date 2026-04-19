@@ -35,6 +35,8 @@ export {
   useSkipDay,
   useUndoSkip,
   usePauseSubscription,
+  useAdminSubscriptions,
+  useAdminCancelSubscription,
 } from './useSubscriptions';
 
 // Staff hooks

@@ -20,6 +20,7 @@ import {
   RefreshControl,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { EmptyState } from '../../components/EmptyState';
@@ -127,12 +128,18 @@ export function SubscriptionsScreen({ navigation }: any) {
     refetchCancelled();
   }, [refetch, refetchCancelled]);
 
-  /** All subs delivering on a given date for the active tab */
+  useFocusEffect(
+    useCallback(() => {
+      refetch();
+    }, [refetch])
+  );
+
+  /** All subs delivering on a given date — across ALL types (food + essentials) */
   const getDeliveryInfos = useCallback(
     (date: Date): { sub: EnrichedSub; cancelled: CancelledSubscriptionDay | undefined; color: string }[] => {
       const dateStr = toDateStr(date);
       const cancelled = allCancelledDays ?? [];
-      return activeSubs
+      return subs
         .map((sub, i) => ({
           sub,
           cancelled: cancelled.find(
@@ -148,7 +155,7 @@ export function SubscriptionsScreen({ navigation }: any) {
           );
         });
     },
-    [activeSubs, allCancelledDays]
+    [subs, allCancelledDays]
   );
 
   const handleDayTap = useCallback((date: Date) => {
@@ -180,6 +187,7 @@ export function SubscriptionsScreen({ navigation }: any) {
   const renderSub = ({ item }: { item: EnrichedSub }) => {
     const plan = item.subscription_plans;
     const isRunning = item.is_active && !item.is_paused;
+    const isPendingPayment = !item.is_active && item.payment_method === 'razorpay';
 
     return (
       <View style={styles.row}>
@@ -187,14 +195,20 @@ export function SubscriptionsScreen({ navigation }: any) {
           <ThemedText variant="subtitle" color="primary">
             {plan?.plan_name ?? `Plan #${item.plan_id}`}
           </ThemedText>
-          <ThemedText variant="body" color="subtitle" style={styles.rowMeta}>
-            Started {formatDateShort(item.start_date)} · Day {item.days_consumed}/{plan?.duration_days ?? '?'}
-          </ThemedText>
+          {isPendingPayment ? (
+            <ThemedText variant="body" color="muted" style={styles.rowMeta}>
+              Awaiting payment confirmation
+            </ThemedText>
+          ) : (
+            <ThemedText variant="body" color="subtitle" style={styles.rowMeta}>
+              Starts {formatDateShort(item.start_date)} · Day {item.days_consumed}/{plan?.duration_days ?? '?'}
+            </ThemedText>
+          )}
         </View>
         {item.is_active && (
           <Switch
             value={isRunning}
-            onValueChange={() => togglePause({ id: item.id, pause: isRunning })}
+            onValueChange={() => { togglePause({ id: item.id, pause: isRunning }); }}
             trackColor={{
               false: Theme.colors.background.input,
               true: Theme.colors.text.mint,
@@ -304,8 +318,11 @@ export function SubscriptionsScreen({ navigation }: any) {
                     </ThemedText>
                     <ThemedText variant="micro" color="muted">{month}</ThemedText>
                     <View style={styles.dotRow}>
-                      {activeInfos.map(({ sub, color }) => (
-                        <View key={sub.id} style={[styles.dot, { backgroundColor: color }]} />
+                      {infos.map(({ sub, cancelled: skipped, color }) => (
+                        <View
+                          key={sub.id}
+                          style={[styles.dot, { backgroundColor: color, opacity: skipped ? 0.3 : 1 }]}
+                        />
                       ))}
                     </View>
                   </TouchableOpacity>

@@ -20,7 +20,7 @@ import RazorpayCheckout from '../../utils/razorpay';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { Divider } from '../../components/Divider';
-import { useSubscriptionPlans, usePlanItems, useSubscribe, useMySubscriptions } from '../../hooks/useSubscriptions';
+import { useSubscriptionPlans, usePlanItems, useSubscribe, useConfirmSubscription, useMySubscriptions } from '../../hooks/useSubscriptions';
 import { useDeliveryCycles } from '../../hooks/useDeliveryCycles';
 import { useAuth } from '../../hooks/useAuth';
 import { useUIStore } from '../../store/uiStore';
@@ -60,6 +60,7 @@ export function PlanDetailScreen({ route, navigation }: any) {
   const { data: cycles } = useDeliveryCycles();
   const cycle = cycles?.find((c) => c.id === plan?.cycle_id);
   const { mutateAsync: subscribe } = useSubscribe();
+  const { mutateAsync: confirmSubscription } = useConfirmSubscription();
   const { data: mySubs } = useMySubscriptions();
 
   // Track plan view once plan data is loaded
@@ -94,42 +95,107 @@ export function PlanDetailScreen({ route, navigation }: any) {
   }, [plan, mySubs]);
 
   const doSubscribe = useCallback(async (overrideStartDate: Date) => {
-    if (!plan) return;
+    if (!plan) {
+      console.error('[doSubscribe] Aborted — plan is null');
+      return;
+    }
+    console.log('[doSubscribe] Starting', { planId: plan.id, paymentMethod, startDate: overrideStartDate });
     setIsSubscribing(true);
     setGlobalLoading(true, 'Setting up subscription...');
     try {
       const startDateStr = overrideStartDate.toISOString().split('T')[0];
 
+      console.log('[doSubscribe] Calling subscribe Edge Function...');
       const result = await subscribe({
         plan_id: plan.id,
         payment_method: paymentMethod,
         start_date: startDateStr,
       });
+      console.log('[doSubscribe] Edge Function result:', JSON.stringify(result));
 
-      if (paymentMethod === 'razorpay' && result?.razorpay_order_id) {
+      if (paymentMethod === 'razorpay' && (result as any)?.razorpay_order_id) {
+        if (!RAZORPAY_KEY_ID) {
+          console.error('[doSubscribe] RAZORPAY_KEY_ID is empty — check EXPO_PUBLIC_RAZORPAY_KEY_ID in .env');
+          Alert.alert('Configuration Error', 'Payment gateway not configured. Please contact support.');
+          return;
+        }
+
+        // iOS SDK requires exactly 10-digit contact; strip country prefix if present
+        const rawPhone = session?.user.phone ?? '';
+        const contact = rawPhone.length > 10 ? rawPhone.slice(-10) : rawPhone;
+
+        const rzpOptions = {
+          description: `1stOne ${plan.plan_name} Subscription`,
+          currency: 'INR',
+          key: RAZORPAY_KEY_ID,
+          // amount must be an integer (paise); SDK rejects floats silently on iOS
+          amount: Math.round(plan.price * 100),
+          order_id: (result as any).razorpay_order_id,
+          name: '1stOne',
+          prefill: {
+            // iOS SDK requires a non-empty email string or it won't render the sheet
+            email: 'customer@1stone.in',
+            contact,
+          },
+          // Must be a 6-char hex; Theme token resolves to one, but be explicit
+          theme: { color: Theme.colors.action.primary },
+        };
+
+        console.log('[doSubscribe] Opening Razorpay sheet with options:', JSON.stringify({
+          ...rzpOptions,
+          key: rzpOptions.key ? `${rzpOptions.key.slice(0, 8)}…` : 'MISSING',
+        }));
+
+        let rzpResult: any;
         try {
-          await RazorpayCheckout.open({
-            description: `1stOne ${plan.plan_name} Subscription`,
-            currency: 'INR',
-            key: RAZORPAY_KEY_ID,
-            amount: Math.round(plan.price * 100),
-            order_id: result.razorpay_order_id,
-            name: '1stOne',
-            prefill: { contact: session?.user.phone ?? '' },
-            theme: { color: Theme.colors.action.primary },
-          });
-        } catch {
-          Alert.alert('Payment Cancelled', 'You can retry from My Subscriptions.');
+          // The native shim (razorpay.native.ts) already waits for InteractionManager
+          // + 150 ms so the react-native-screens UIViewController is committed.
+          // Race adds a hard ceiling for cases where the SDK hangs post-open.
+          rzpResult = await Promise.race([
+            RazorpayCheckout.open(rzpOptions),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error('Payment sheet timed out. Please try again.')), 30_000)
+            ),
+          ]);
+          console.log('[doSubscribe] Razorpay payment succeeded:', rzpResult?.razorpay_payment_id);
+        } catch (rpErr: any) {
+          const reason = rpErr?.description ?? rpErr?.message ?? 'Unknown';
+          console.warn('[doSubscribe] Razorpay cancelled or failed:', reason);
+          if (rpErr?.message?.includes('timed out')) {
+            Alert.alert('Payment Timeout', 'The payment sheet did not open. Please try again.');
+          } else {
+            Alert.alert('Payment Cancelled', 'You can retry from My Subscriptions.');
+          }
+          return;
+        }
+
+        // Client-side signature verification — activates the subscription immediately
+        // without needing the Razorpay webhook (which requires a live dashboard).
+        // In production both paths run; whichever fires first wins.
+        if (rzpResult?.razorpay_payment_id && rzpResult?.razorpay_signature) {
+          try {
+            setGlobalLoading(true, 'Confirming payment...');
+            await confirmSubscription({
+              subscription_id: (result as any).subscription_id,
+              razorpay_payment_id: rzpResult.razorpay_payment_id,
+              razorpay_order_id: rzpResult.razorpay_order_id,
+              razorpay_signature: rzpResult.razorpay_signature,
+            });
+            console.log('[doSubscribe] Subscription confirmed via client verification');
+          } catch (confirmErr: any) {
+            // Non-fatal — webhook may still activate it; log and continue
+            console.warn('[doSubscribe] Client confirmation failed (webhook may still fire):', confirmErr?.message);
+          }
         }
       }
 
-      setGlobalLoading(false);
       trackSubscribed(plan.id, plan.plan_name, paymentMethod);
       Alert.alert('Subscribed!', `${plan.plan_name} starts ${formatDateShort(startDateStr)}.`, [
         { text: 'OK', onPress: () => navigation.navigate('Subscriptions') },
       ]);
     } catch (err: any) {
-      Alert.alert('Error', err.message || 'Failed to subscribe');
+      console.error('[doSubscribe] Caught error:', err?.message, err);
+      Alert.alert('Subscription Failed', err?.message || 'Something went wrong. Please try again.');
     } finally {
       setIsSubscribing(false);
       setGlobalLoading(false);

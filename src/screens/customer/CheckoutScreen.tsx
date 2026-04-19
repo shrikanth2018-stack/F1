@@ -32,6 +32,8 @@ import { useStoreConfig } from '../../hooks/useStoreConfig';
 import { useWalletBalance } from '../../hooks/useWallet';
 import { useSmartCart } from '../../hooks/useSmartCart';
 import { useAuth } from '../../hooks/useAuth';
+import { usePendingRazorpayOrder } from '../../hooks/useOrders';
+import { PendingPaymentBanner } from '../../components/PendingPaymentBanner';
 import { formatPriceShort } from '../../utils/formatters';
 import { supabase } from '../../api/supabaseClient';
 import { RAZORPAY_KEY_ID } from '../../utils/env';
@@ -79,6 +81,8 @@ export function CheckoutScreen({ navigation, route }: any) {
   // Idempotency key — generated once per checkout session, refreshed after successful order
   // Use Math.random fallback: crypto.randomUUID() is not available in all RN/Expo Go environments
   const idempotencyKeyRef = useRef<string>(generateId());
+  const { data: pendingOrders } = usePendingRazorpayOrder();
+  const pendingOrder = pendingOrders?.[0] ?? null;
 
   React.useEffect(() => {
     if (addresses && addresses.length > 0 && !selectedAddressId) {
@@ -120,6 +124,10 @@ export function CheckoutScreen({ navigation, route }: any) {
   const walletInsufficient = paymentMethod === 'wallet' && walletLoaded && walletBalance < estimatedTotal;
 
   const handlePlaceOrder = useCallback(async () => {
+    if (config?.storm_mode_active) {
+      Alert.alert('Orders Paused', 'Deliveries are paused due to adverse conditions. Please try again later.');
+      return;
+    }
     if (!selectedAddressId) {
       Alert.alert('Address Required', 'Please select a delivery address');
       return;
@@ -195,6 +203,8 @@ export function CheckoutScreen({ navigation, route }: any) {
       let razorpaySucceeded = false;
       if (paymentMethod === 'razorpay' && order.razorpay_order_id) {
         razorpayAttempted = true;
+        const rawPhone = session?.user.phone ?? '';
+        const contact = rawPhone.length > 10 ? rawPhone.slice(-10) : rawPhone;
         const options = {
           description: '1stOne Order',
           currency: 'INR',
@@ -202,14 +212,23 @@ export function CheckoutScreen({ navigation, route }: any) {
           amount: Math.round(order.total_amount * 100),
           order_id: order.razorpay_order_id,
           name: '1stOne',
-          prefill: { contact: session?.user.phone ?? '' },
+          prefill: {
+            email: 'customer@1stone.in',
+            contact,
+          },
           theme: { color: Theme.colors.action.primary },
         };
         try {
-          await RazorpayCheckout.open(options);
+          await Promise.race([
+            RazorpayCheckout.open(options),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error('timeout')), 30_000)
+            ),
+          ]);
           razorpaySucceeded = true;
-        } catch {
+        } catch (e: any) {
           razorpaySucceeded = false;
+          console.warn('[CheckoutScreen] Razorpay closed:', e?.description ?? e?.message);
         }
       }
 
@@ -254,6 +273,14 @@ export function CheckoutScreen({ navigation, route }: any) {
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
+        {/* Pending payment warning — blocks duplicate Razorpay attempt */}
+        {pendingOrder && (
+          <PendingPaymentBanner
+            order={pendingOrder}
+            onViewOrder={() => navigation.navigate('Orders')}
+          />
+        )}
+
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
@@ -364,11 +391,20 @@ export function CheckoutScreen({ navigation, route }: any) {
         <View style={styles.section}>
           <ThemedText variant="small" color="muted" style={styles.sectionLabel}>PAYMENT</ThemedText>
           <TouchableOpacity
-            style={[styles.paymentOption, paymentMethod === 'razorpay' && styles.paymentSelected]}
-            onPress={() => setPaymentMethod('razorpay')}
+            style={[
+              styles.paymentOption,
+              paymentMethod === 'razorpay' && styles.paymentSelected,
+              !!pendingOrder && styles.paymentDisabled,
+            ]}
+            onPress={() => !pendingOrder && setPaymentMethod('razorpay')}
+            activeOpacity={pendingOrder ? 1 : 0.7}
           >
-            <ThemedText variant="body" color="primary">Pay Online (Razorpay)</ThemedText>
-            <ThemedText variant="micro" color="muted">UPI, Card, Net Banking</ThemedText>
+            <ThemedText variant="body" color={pendingOrder ? 'muted' : 'primary'}>
+              Pay Online (Razorpay)
+            </ThemedText>
+            <ThemedText variant="micro" color="muted">
+              {pendingOrder ? 'Unavailable — previous payment still confirming' : 'UPI, Card, Net Banking'}
+            </ThemedText>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.paymentOption, paymentMethod === 'wallet' && styles.paymentSelected]}
@@ -457,6 +493,7 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   paymentSelected: { borderColor: Theme.colors.action.primary },
+  paymentDisabled: { opacity: 0.45 },
   paymentRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   floatBtn: {
     position: 'absolute',

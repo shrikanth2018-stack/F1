@@ -36,6 +36,9 @@ import { formatPriceShort } from '../../utils/formatters';
 import { supabase } from '../../api/supabaseClient';
 import { useLiveBanner, type CustomBannerContent } from '../../hooks/useBanner';
 import { useWalletNudge } from '../../hooks/useWalletNudge';
+import { useStoreConfig } from '../../hooks/useStoreConfig';
+import { usePendingRazorpayOrder } from '../../hooks/useOrders';
+import { PendingPaymentBanner } from '../../components/PendingPaymentBanner';
 
 // Static assets from Supabase Storage bucket: 'assets'
 const LOGO_URL = supabase.storage.from('assets').getPublicUrl('logo.png').data.publicUrl;
@@ -275,7 +278,11 @@ export function HomeScreen() {
   const setProfileVisible = useUIStore((s) => s.setProfileVisible);
 
   const essentialsEnabled = useFeatureFlag('essentials_module_active', true);
+  const { data: config } = useStoreConfig();
+  const stormMode = config?.storm_mode_active ?? false;
   const walletNudge = useWalletNudge();
+  const { data: pendingOrders } = usePendingRazorpayOrder();
+  const pendingOrder = pendingOrders?.[0] ?? null;
 
   const { data: cycles, isLoading: cyclesLoading, isError: cyclesError, refetch: refetchCycles } = useDeliveryCycles();
   const cycleIds = useMemo(
@@ -420,8 +427,25 @@ export function HomeScreen() {
 
       <View style={styles.hairline} />
 
+      {/* Storm mode — full-width block, no ordering possible */}
+      {stormMode && (
+        <View style={styles.stormBanner}>
+          <ThemedText variant="subtitle" style={styles.stormText}>
+            Deliveries paused due to adverse conditions. We'll resume shortly.
+          </ThemedText>
+        </View>
+      )}
+
       {/* Offer banner — live from banners table, falls back to assets/banner.png */}
-      <OfferBanner />
+      {!stormMode && <OfferBanner />}
+
+      {/* Pending Razorpay payment recovery banner */}
+      {pendingOrder && (
+        <PendingPaymentBanner
+          order={pendingOrder}
+          onViewOrder={() => navigation.navigate('Orders')}
+        />
+      )}
 
       {/* Wallet low-balance nudge */}
       {walletNudge.showNudge && (
@@ -509,7 +533,7 @@ export function HomeScreen() {
       </View>
 
       {/* Cart FAB — sibling to layout so it doesn't block list scroll */}
-      <CartFloatingButton cartType={activeHomeTab} onPress={() => navigation.navigate('Cart')} />
+      {!stormMode && <CartFloatingButton cartType={activeHomeTab} onPress={() => navigation.navigate('Cart')} />}
     </View>
   );
 }
@@ -603,6 +627,18 @@ const styles = StyleSheet.create({
   hairline: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: Theme.colors.text.mint,
+  },
+  stormBanner: {
+    backgroundColor: Theme.colors.status.error,
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.md,
+    marginHorizontal: Theme.spacing.md,
+    marginTop: Theme.spacing.sm,
+    borderRadius: Theme.components.inputRadius,
+  },
+  stormText: {
+    color: '#fff',
+    textAlign: 'center',
   },
   walletNudge: {
     backgroundColor: Theme.colors.background.secondary,

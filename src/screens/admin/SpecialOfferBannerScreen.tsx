@@ -153,13 +153,27 @@ export function SpecialOfferBannerScreen({ navigation }: { navigation: any }) {
     setImageMime(asset.mimeType ?? 'image/jpeg');
   };
 
+  const firePushToCustomers = async (offerTitle: string, offerBody: string) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) return;
+    supabase.functions.invoke('send-push', {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+      body: {
+        role: 'customer',
+        title: offerTitle,
+        body: offerBody,
+        data: { screen: 'Home' },
+        trigger_source: 'admin_push',
+      },
+    }).catch((e: any) => console.error('[SpecialOfferBanner] push failed:', e));
+  };
+
   const handleUpload = async () => {
     if (!imageUri) return;
     setUploading(true);
     try {
       const response = await fetch(imageUri);
       const blob = await response.blob();
-      const ext = imageMime.split('/')[1] ?? 'jpg';
       const { error: storageError } = await supabase.storage
         .from('assets')
         .upload('banner.png', blob, { upsert: true, contentType: imageMime });
@@ -172,6 +186,7 @@ export function SpecialOfferBannerScreen({ navigation }: { navigation: any }) {
         text_content: null,
         is_live: true,
       });
+      firePushToCustomers('New Offer!', 'Check out our latest special offer on the home screen.');
       Alert.alert('Live!', 'Banner updated and now live on the customer home screen.', [
         { text: 'OK', onPress: () => navigation.goBack() },
       ]);
@@ -203,6 +218,7 @@ export function SpecialOfferBannerScreen({ navigation }: { navigation: any }) {
         text_content: JSON.stringify(customContent),
         is_live: true,
       });
+      firePushToCustomers(title.trim(), subtitle.trim() || 'Check out our latest offer!');
       Alert.alert('Live!', 'Custom banner is now live on the customer home screen.', [
         { text: 'OK', onPress: () => navigation.goBack() },
       ]);

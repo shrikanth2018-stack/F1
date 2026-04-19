@@ -18,6 +18,16 @@ import { useFeatureFlag } from './useFeatureFlag';
 import { useAuth } from './useAuth';
 import type { Order, OrderStatus } from '../types';
 
+const STATUS_PUSH: Record<string, { title: string; body: (id: number) => string }> = {
+  Preparing:          { title: 'In the Kitchen',  body: (id) => `Order #${id} is being prepared now.` },
+  Ready:              { title: 'Order Ready!',     body: (id) => `Order #${id} is packed and ready for dispatch.` },
+  Dispatched:         { title: 'On the Way!',      body: (id) => `Your order #${id} is on the way. Should arrive soon!` },
+  'On the Way':       { title: 'On the Way!',      body: (id) => `Your order #${id} is on the way. Should arrive soon!` },
+  'Received at Hub':  { title: 'At Your Hub',      body: (id) => `Order #${id} has arrived at your pickup hub.` },
+  Delivered:          { title: 'Delivered!',        body: (id) => `Order #${id} delivered. Enjoy your meal!` },
+  Cancelled:          { title: 'Order Cancelled',  body: (id) => `Order #${id} has been cancelled.` },
+};
+
 /** Fetch today's orders for staff dashboard */
 export function useStaffOrders(cycleId?: number) {
   const today = new Date().toISOString().split('T')[0];
@@ -52,7 +62,6 @@ export function useStaffOrders(cycleId?: number) {
       if (error) throw error;
       const orders = (data ?? []) as (Order & { order_items: any[]; customer_addresses: any })[];
 
-      // Hub staff see only orders for their hub's addresses
       if (hubDeliveryActive && assignedHubId != null) {
         return orders.filter(
           (o) => (o.customer_addresses as any)?.hub_id === assignedHubId
@@ -65,7 +74,7 @@ export function useStaffOrders(cycleId?: number) {
   });
 }
 
-/** Update order status (offline-aware) */
+/** Update order status (offline-aware) + fire push to customer */
 export function useUpdateOrderStatus() {
   const queryClient = useQueryClient();
   const enqueue = useStaffQueueStore((s) => s.enqueue);
@@ -74,9 +83,11 @@ export function useUpdateOrderStatus() {
     mutationFn: async ({
       orderId,
       status,
+      userId,
     }: {
       orderId: number;
       status: OrderStatus;
+      userId?: string;
     }) => {
       const netState = await NetInfo.fetch();
       const isOnline = netState.isConnected && netState.isInternetReachable !== false;
@@ -88,6 +99,25 @@ export function useUpdateOrderStatus() {
           .eq('id', orderId);
 
         if (error) throw error;
+
+        // Fire-and-forget push to the customer
+        const msg = STATUS_PUSH[status];
+        if (msg && userId) {
+          const { data: { session: raw } } = await supabase.auth.getSession();
+          if (raw?.access_token) {
+            supabase.functions.invoke('send-push', {
+              headers: { Authorization: `Bearer ${raw.access_token}` },
+              body: {
+                user_ids: [userId],
+                title: msg.title,
+                body: msg.body(orderId),
+                data: { screen: 'OrderDetail', params: { orderId }, trigger_source: 'order_status' },
+                trigger_source: 'order_status',
+                reference_id: String(orderId),
+              },
+            }).catch((e) => console.error('[push status]', e));
+          }
+        }
       } else {
         enqueue({
           table: 'orders',
@@ -103,4 +133,3 @@ export function useUpdateOrderStatus() {
     },
   });
 }
-

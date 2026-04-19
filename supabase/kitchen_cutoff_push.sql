@@ -176,40 +176,70 @@ $$;
 
 
 -- ── 4. pg_cron tick: fires every minute ───────────────────────
--- Iterates every active delivery_cycle and, if its cutoff_time has
--- passed for TODAY (in IST) and we haven't already pushed for today,
--- invokes push_kitchen_summary(cycle_id).
+-- Iterates every active delivery_cycle and, if its kitchen_push_time
+-- has passed for TODAY (in IST) and we haven't already pushed for today:
+--   a) Generates subscription orders for this cycle + today (so they're
+--      included in the count before the summary is built).
+--   b) Pushes the kitchen summary.
 --
--- Timezone: cutoff_time is stored as plain TIME (local clock time).
--- We compare against the current IST wall clock.
+-- kitchen_push_time is typically cutoff_time + 5 min (admin-configurable).
+-- Timezone: times stored as plain TIME (IST local clock).
+--
+-- Cross-midnight detection:
+--   cutoff_time > delivery_start means the cutoff is at night and the delivery
+--   is the next morning (e.g. cutoff 22:30, delivery 07:00).
+--   In that case the target delivery date is v_ist_date + 1, not v_ist_date.
+--   Dedup (kitchen_push_log) uses the TARGET delivery date so that:
+--     - tonight's push logs tomorrow's date
+--     - tomorrow morning the log already exists → no accidental re-push
 CREATE OR REPLACE FUNCTION trigger_kitchen_cutoff_pushes()
 RETURNS VOID
 LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 DECLARE
-  v_cycle      RECORD;
-  v_ist_now    TIMESTAMPTZ;
-  v_ist_date   DATE;
-  v_ist_time   TIME;
+  v_cycle       RECORD;
+  v_ist_now     TIMESTAMPTZ;
+  v_ist_date    DATE;
+  v_ist_time    TIME;
+  v_target_date DATE;
 BEGIN
   v_ist_now  := NOW() AT TIME ZONE 'Asia/Kolkata';
   v_ist_date := v_ist_now::DATE;
   v_ist_time := v_ist_now::TIME;
 
   FOR v_cycle IN
-    SELECT dc.id, dc.cutoff_time
+    SELECT dc.id, dc.kitchen_push_time, dc.cutoff_time, dc.delivery_start
     FROM delivery_cycles dc
     WHERE dc.is_active = TRUE
-      AND v_ist_time >= dc.cutoff_time
-      AND NOT EXISTS (
-        SELECT 1
-        FROM kitchen_push_log kpl
-        WHERE kpl.cycle_id  = dc.id
-          AND kpl.push_date = v_ist_date
-      )
+      AND v_ist_time >= dc.kitchen_push_time
   LOOP
-    PERFORM push_kitchen_summary(v_cycle.id, v_ist_date);
+    -- Cross-midnight: cutoff at night, delivery next morning.
+    -- Detected by: cutoff_time (HH:MM:SS) > delivery_start (HH:MM:SS) lexicographically.
+    IF v_cycle.cutoff_time > v_cycle.delivery_start THEN
+      v_target_date := v_ist_date + 1;   -- delivery is tomorrow
+    ELSE
+      v_target_date := v_ist_date;        -- same-day delivery
+    END IF;
+
+    -- Dedup against the delivery date (not the push date) so cross-midnight
+    -- cycles don't re-fire the next morning when the log is keyed to tomorrow.
+    CONTINUE WHEN EXISTS (
+      SELECT 1
+      FROM kitchen_push_log kpl
+      WHERE kpl.cycle_id  = v_cycle.id
+        AND kpl.push_date = v_target_date
+    );
+
+    -- Step 1: generate subscription orders for this cycle's delivery date so
+    -- they are counted in the kitchen summary below.
+    PERFORM generate_daily_manifest(
+      p_target_date => v_target_date,
+      p_cycle_id    => v_cycle.id
+    );
+
+    -- Step 2: aggregate all orders (ad-hoc + subscription) and push to kitchen.
+    PERFORM push_kitchen_summary(v_cycle.id, v_target_date);
   END LOOP;
 END;
 $$;

@@ -21,6 +21,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
+import { supabase } from '../../api/supabaseClient';
 import {
   useAdminNotes,
   useUpsertNote,
@@ -80,6 +81,27 @@ export function NoteToStaffScreen({ navigation }: { navigation: any }) {
           })
         )
       );
+
+      // Fire push to staff for active notes only
+      const activeTargets = targets.filter((t) => state[t.key].active);
+      if (activeTargets.length > 0) {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.access_token) {
+          // Send one combined push covering the first active note's message
+          const first = activeTargets[0];
+          supabase.functions.invoke('send-push', {
+            headers: { Authorization: `Bearer ${session.access_token}` },
+            body: {
+              role: 'staff',
+              title: 'Note from Admin',
+              body: state[first.key].text.trim(),
+              data: { screen: 'StaffDashboard' },
+              trigger_source: 'admin_push',
+            },
+          }).catch((e: any) => console.error('[NoteToStaff] push failed:', e));
+        }
+      }
+
       Alert.alert('Done', 'Notes updated for staff dashboard.');
     } catch (e: any) {
       Alert.alert('Error', e?.message ?? 'Could not save notes.');

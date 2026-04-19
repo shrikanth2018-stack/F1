@@ -448,8 +448,9 @@ export function StaffDashboard() {
 
   // ── Handlers ─────────────────────────────────
   const handleStatusUpdate = useCallback((orderId: number, next: OrderStatus) => {
-    updateStatus.mutate({ orderId, status: next });
-  }, [updateStatus]);
+    const order = (orders ?? []).find((o) => o.id === orderId);
+    updateStatus.mutate({ orderId, status: next, userId: order?.user_id });
+  }, [updateStatus, orders]);
 
   const handleMarkAllKitchenReady = useCallback(() => {
     const toMark = (orders ?? []).filter(
@@ -462,7 +463,7 @@ export function StaffDashboard() {
         text: 'Mark Ready',
         onPress: () => {
           for (const o of toMark) {
-            updateStatus.mutate({ orderId: o.id, status: 'Ready' });
+            updateStatus.mutate({ orderId: o.id, status: 'Ready', userId: o.user_id });
           }
         },
       },
@@ -478,7 +479,7 @@ export function StaffDashboard() {
         text: 'Mark Packed',
         onPress: () => {
           for (const o of toMark) {
-            updateStatus.mutate({ orderId: o.id, status: 'Packed' });
+            updateStatus.mutate({ orderId: o.id, status: 'Packed', userId: o.user_id });
           }
         },
       },

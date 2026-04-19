@@ -1,18 +1,20 @@
 /**
  * 1stOne F1 — Customer Orders Screen
  * Food and Essentials orders in separate tabs.
- * Flat list with hairline separators, no cards.
+ * Infinite scroll — 20 orders per page, more loaded on reaching list bottom.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   FlatList,
   TouchableOpacity,
   StyleSheet,
   RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { DispatchBadge } from '../../components/DispatchBadge';
@@ -38,13 +40,24 @@ type OrderTab = 'food' | 'essentials';
 
 export function OrdersScreen({ navigation }: any) {
   const [activeTab, setActiveTab] = useState<OrderTab>('food');
-  const { data: orders, isLoading, error, refetch } = useMyOrders();
+  const {
+    data,
+    isLoading,
+    error,
+    refetch,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useMyOrders();
+
+  useFocusEffect(useCallback(() => { refetch(); }, [refetch]));
 
   if (error) {
     return <ErrorRetry message="Could not load orders" onRetry={refetch} />;
   }
 
-  const filtered = (orders ?? []).filter((o) =>
+  const allOrders: Order[] = data?.pages.flat() ?? [];
+  const filtered = allOrders.filter((o) =>
     activeTab === 'food' ? o.order_type === 'food' : o.order_type === 'essential'
   );
 
@@ -117,10 +130,17 @@ export function OrdersScreen({ navigation }: any) {
         contentContainerStyle={styles.list}
         refreshControl={
           <RefreshControl
-            refreshing={isLoading}
+            refreshing={isLoading && !isFetchingNextPage}
             onRefresh={refetch}
             tintColor={Theme.colors.action.primary}
           />
+        }
+        onEndReached={() => { if (hasNextPage && !isFetchingNextPage) fetchNextPage(); }}
+        onEndReachedThreshold={0.3}
+        ListFooterComponent={
+          isFetchingNextPage
+            ? <ActivityIndicator color={Theme.colors.action.primary} style={styles.footer} />
+            : null
         }
         ListEmptyComponent={
           !isLoading ? (
@@ -184,5 +204,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 6,
+  },
+  footer: {
+    paddingVertical: Theme.spacing.md,
   },
 });

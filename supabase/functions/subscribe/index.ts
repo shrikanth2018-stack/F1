@@ -7,54 +7,76 @@
  * Wallet path:
  *   - Atomically debit price (decrement_wallet_balance_if_sufficient)
  *   - Insert user_subscriptions row (is_active=true, days_consumed=0)
- *   - Idempotency: (user_id, plan_id, start_date) must not duplicate active sub
  *
  * Razorpay path:
  *   - Create Razorpay order
  *   - Insert user_subscriptions row as provisional (is_active=false)
- *   - Client opens Razorpay Checkout; verify-payment webhook flips it live
- *   - For this v1 we rely on the client calling back with payment_id to flip;
- *     webhook enhancement is wired through the same mark_order_paid path but
- *     on a separate 'subscription_orders' hook — out of scope for this release.
+ *   - verify-payment webhook flips it active on payment.captured
  *
  * Deploy: supabase functions deploy subscribe --no-verify-jwt
  */
 
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 
-const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const RAZORPAY_KEY_ID = Deno.env.get('RAZORPAY_KEY_ID') ?? '';
-const RAZORPAY_KEY_SECRET = Deno.env.get('RAZORPAY_KEY_SECRET') ?? '';
+Deno.serve(async (req: Request) => {
+  // Read env inside handler — prevents boot crash if keys not yet injected
+  const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
+  const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  const RAZORPAY_KEY_ID = Deno.env.get('RAZORPAY_KEY_ID') ?? '';
+  const RAZORPAY_KEY_SECRET = Deno.env.get('RAZORPAY_KEY_SECRET') ?? '';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, idempotency-key',
-};
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    console.error('[subscribe] Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
+    return new Response(JSON.stringify({ error: 'Server misconfigured' }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+  }
 
-const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-  });
+  const ALLOWED_ORIGINS = new Set([SUPABASE_URL, 'http://localhost:8081', 'http://localhost:19006']);
+  const origin = req.headers.get('Origin') ?? '';
+  const acao = ALLOWED_ORIGINS.has(origin) ? origin : SUPABASE_URL;
+  const cors = {
+    'Access-Control-Allow-Origin': acao,
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, idempotency-key',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Vary': 'Origin',
+  };
+  const json = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
 
-serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
 
   try {
     const authHeader = req.headers.get('Authorization') ?? '';
     const idempotencyKey = req.headers.get('Idempotency-Key') ?? '';
 
-    const supabaseUser = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-      global: { headers: { Authorization: authHeader } },
-    });
-    const { data: { user }, error: authError } = await supabaseUser.auth.getUser(
-      authHeader.replace('Bearer ', ''),
-    );
-    if (authError || !user) return json({ error: 'Unauthorized' }, 401);
+    if (!authHeader) {
+      console.error('[subscribe] Missing Authorization header');
+      return json({ error: 'Unauthorized' }, 401);
+    }
+
+    console.log('[subscribe] Auth header present, verifying user...');
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // Verify JWT and extract user
+    const jwt = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: authError } = await supabase.auth.getUser(jwt);
+    if (authError || !user) {
+      console.error('[subscribe] Auth failed:', authError?.message);
+      return json({ error: 'Unauthorized' }, 401);
+    }
+    console.log('[subscribe] User verified:', user.id);
+
+    // Rate limit: max 5 subscribe calls per user per 60 s
+    const oneMinuteAgo = new Date(Date.now() - 60_000).toISOString();
+    const { count: recentCount } = await supabase
+      .from('idempotency_keys')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .eq('endpoint', 'subscribe')
+      .gte('created_at', oneMinuteAgo);
+    if ((recentCount ?? 0) >= 5) {
+      return json({ error: 'Too many requests. Please wait a moment before trying again.' }, 429);
+    }
 
     // Idempotency short-circuit
     if (idempotencyKey) {
@@ -64,11 +86,15 @@ serve(async (req) => {
         .eq('key', idempotencyKey)
         .eq('user_id', user.id)
         .maybeSingle();
-      if (existing?.response) return json(existing.response, 200);
+      if (existing?.response) {
+        console.log('[subscribe] Idempotency hit — returning cached response');
+        return json(existing.response, 200);
+      }
     }
 
     const body = await req.json();
     const { plan_id, payment_method, start_date } = body;
+    console.log('[subscribe] Payload:', { plan_id, payment_method, start_date });
 
     if (!plan_id || !payment_method || !start_date) {
       return json({ error: 'plan_id, payment_method, start_date are required' }, 400);
@@ -80,43 +106,63 @@ serve(async (req) => {
     // Load plan
     const { data: plan, error: planErr } = await supabase
       .from('subscription_plans')
-      .select('id, cycle_id, duration_days, price, plan_type, is_active, branch_id')
+      .select('id, plan_name, cycle_id, duration_days, price, plan_type, is_active, branch_id')
       .eq('id', plan_id)
       .maybeSingle();
-    if (planErr) throw planErr;
-    if (!plan || !plan.is_active) return json({ error: 'Plan unavailable' }, 400);
+    if (planErr) {
+      console.error('[subscribe] Plan fetch error:', planErr.message);
+      throw planErr;
+    }
+    if (!plan || !plan.is_active) {
+      console.error('[subscribe] Plan unavailable:', plan_id);
+      return json({ error: 'Plan unavailable' }, 400);
+    }
+    console.log('[subscribe] Plan loaded:', { id: plan.id, price: plan.price, cycle_id: plan.cycle_id });
 
-    // Conflict: no second active sub with same cycle + plan_type
+    // Conflict check: reject only if date ranges actually overlap.
+    // A queued sub starting after the current one ends is allowed.
     const { data: existingSubs } = await supabase
       .from('user_subscriptions')
-      .select(`
-        id,
-        plan_id,
-        subscription_plans ( cycle_id, plan_type )
-      `)
+      .select('id, start_date, subscription_plans ( cycle_id, plan_type, duration_days )')
       .eq('user_id', user.id)
       .eq('is_active', true);
 
-    const conflict = (existingSubs ?? []).some((s: any) =>
-      s.subscription_plans?.cycle_id === plan.cycle_id &&
-      s.subscription_plans?.plan_type === plan.plan_type,
-    );
+    const MS_PER_DAY = 86_400_000;
+    const newStartMs = new Date(start_date).getTime();
+    const newEndMs   = newStartMs + (plan.duration_days - 1) * MS_PER_DAY;
+
+    const conflict = (existingSubs ?? []).some((s: any) => {
+      if (s.subscription_plans?.cycle_id  !== plan.cycle_id)  return false;
+      if (s.subscription_plans?.plan_type !== plan.plan_type) return false;
+      const existingDuration = s.subscription_plans?.duration_days ?? 0;
+      const existingStartMs  = new Date(s.start_date).getTime();
+      const existingEndMs    = existingStartMs + (existingDuration - 1) * MS_PER_DAY;
+      // Ranges overlap when: newStart ≤ existingEnd AND existingStart ≤ newEnd
+      return newStartMs <= existingEndMs && existingStartMs <= newEndMs;
+    });
+
     if (conflict) {
-      return json({ error: 'You already have an active plan for this cycle + type' }, 409);
+      console.log('[subscribe] Date overlap — new sub conflicts with existing active range');
+      return json({
+        error: 'Your chosen start date overlaps with an existing subscription. Please select a later date.',
+      }, 409);
     }
 
     // ── Wallet path ────────────────────────────────────────────
     if (payment_method === 'wallet') {
+      console.log('[subscribe] Wallet path — debiting:', plan.price);
       const { data: debited, error: debitErr } = await supabase.rpc(
         'decrement_wallet_balance_if_sufficient',
-        {
-          p_user_id: user.id,
-          p_amount: plan.price,
-          p_description: `Subscription plan ${plan.id}`,
-        },
+        { p_user_id: user.id, p_amount: plan.price, p_description: `Subscription plan ${plan.id}` },
       );
-      if (debitErr) throw new Error(`Wallet debit RPC failed: ${debitErr.message}`);
-      if (debited !== true) return json({ error: 'Insufficient wallet balance' }, 400);
+      if (debitErr) {
+        console.error('[subscribe] Wallet debit RPC error:', debitErr.message);
+        throw new Error(`Wallet debit failed: ${debitErr.message}`);
+      }
+      if (debited !== true) {
+        console.log('[subscribe] Insufficient wallet balance');
+        return json({ error: 'Insufficient wallet balance' }, 400);
+      }
 
       const { data: sub, error: subErr } = await supabase
         .from('user_subscriptions')
@@ -136,6 +182,7 @@ serve(async (req) => {
         .single();
 
       if (subErr) {
+        console.error('[subscribe] Subscription insert error:', subErr.message);
         // Rollback debit
         await supabase.rpc('increment_wallet_balance', {
           p_user_id: user.id,
@@ -148,19 +195,32 @@ serve(async (req) => {
       const response = { subscription_id: sub!.id, status: 'active', payment_method: 'wallet' };
       if (idempotencyKey) {
         await supabase.from('idempotency_keys').insert({
-          key: idempotencyKey,
-          user_id: user.id,
-          endpoint: 'subscribe',
-          response,
+          key: idempotencyKey, user_id: user.id, endpoint: 'subscribe', response,
         });
       }
+      console.log('[subscribe] Wallet subscription created:', sub!.id);
+      fetch(`${SUPABASE_URL}/functions/v1/send-push`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+        body: JSON.stringify({
+          user_ids: [user.id],
+          title: 'Subscription Activated!',
+          body: `Your ${(plan as any).plan_name ?? 'subscription'} is active. First delivery starts ${start_date}.`,
+          data: { screen: 'Subscriptions' },
+          trigger_source: 'subscription_activation',
+          reference_id: String(sub!.id),
+        }),
+      }).catch((e: any) => console.error('[subscribe] push failed:', e));
       return json(response, 200);
     }
 
     // ── Razorpay path ──────────────────────────────────────────
     if (!RAZORPAY_KEY_ID || !RAZORPAY_KEY_SECRET) {
-      return json({ error: 'Razorpay not configured' }, 500);
+      console.error('[subscribe] Razorpay keys not configured');
+      return json({ error: 'Razorpay not configured on server' }, 500);
     }
+
+    console.log('[subscribe] Razorpay path — creating order for amount:', plan.price);
     const rzpRes = await fetch('https://api.razorpay.com/v1/orders', {
       method: 'POST',
       headers: {
@@ -175,9 +235,13 @@ serve(async (req) => {
       }),
     });
     const rzpOrder = await rzpRes.json();
-    if (!rzpOrder.id) return json({ error: 'Payment gateway error', details: rzpOrder }, 502);
+    console.log('[subscribe] Razorpay order response:', JSON.stringify(rzpOrder));
 
-    // Provisional subscription (is_active=false until webhook confirms)
+    if (!rzpOrder.id) {
+      console.error('[subscribe] Razorpay order creation failed:', JSON.stringify(rzpOrder));
+      return json({ error: 'Payment gateway error', details: rzpOrder }, 502);
+    }
+
     const { data: sub, error: subErr } = await supabase
       .from('user_subscriptions')
       .insert({
@@ -195,7 +259,10 @@ serve(async (req) => {
       .select('id')
       .single();
 
-    if (subErr) throw new Error(`Subscription insert failed: ${subErr.message}`);
+    if (subErr) {
+      console.error('[subscribe] Provisional subscription insert error:', subErr.message);
+      throw new Error(`Subscription insert failed: ${subErr.message}`);
+    }
 
     const response = {
       subscription_id: sub!.id,
@@ -206,14 +273,14 @@ serve(async (req) => {
     };
     if (idempotencyKey) {
       await supabase.from('idempotency_keys').insert({
-        key: idempotencyKey,
-        user_id: user.id,
-        endpoint: 'subscribe',
-        response,
+        key: idempotencyKey, user_id: user.id, endpoint: 'subscribe', response,
       });
     }
+    console.log('[subscribe] Razorpay subscription provisional, order:', rzpOrder.id);
     return json(response, 200);
+
   } catch (err: any) {
-    return json({ error: err.message ?? 'Internal server error' }, 500);
+    console.error('[subscribe] Unhandled exception:', err?.message, err?.stack);
+    return json({ error: err?.message ?? 'Internal server error' }, 500);
   }
 });
