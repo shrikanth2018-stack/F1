@@ -11,6 +11,7 @@ import {
   Text,
   Pressable,
   StyleSheet,
+  Vibration,
   type ViewStyle,
   type TextStyle,
   type StyleProp,
@@ -22,7 +23,6 @@ import Animated, {
   useAnimatedStyle,
   withSpring,
 } from 'react-native-reanimated';
-import * as Haptics from 'expo-haptics';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Design tokens
@@ -92,7 +92,7 @@ interface HapticButtonProps {
   children: React.ReactNode;
   style?: StyleProp<ViewStyle>;
   disabled?: boolean;
-  hapticStyle?: Haptics.ImpactFeedbackStyle;
+  hapticStyle?: 'light' | 'medium' | 'heavy';
 }
 
 export function HapticButton({
@@ -100,7 +100,7 @@ export function HapticButton({
   children,
   style,
   disabled = false,
-  hapticStyle = Haptics.ImpactFeedbackStyle.Light,
+  hapticStyle = 'light',
 }: HapticButtonProps) {
   const scale = useSharedValue(1);
 
@@ -110,7 +110,7 @@ export function HapticButton({
 
   const handlePressIn = useCallback(() => {
     scale.value = withSpring(0.95, SPRING);
-    Haptics.impactAsync(hapticStyle);
+    Vibration.vibrate(hapticStyle === 'heavy' ? 20 : hapticStyle === 'medium' ? 10 : 5);
   }, [hapticStyle, scale]);
 
   const handlePressOut = useCallback(() => {
