@@ -73,11 +73,22 @@ CREATE POLICY orders_self ON public.orders
 
 DROP POLICY IF EXISTS orders_self_insert ON public.orders;
 CREATE POLICY orders_self_insert ON public.orders
-  FOR INSERT WITH CHECK (user_id = auth.uid() OR public.is_staff_or_admin());
+  FOR INSERT WITH CHECK (
+    (user_id = auth.uid() AND status = 'Pending')
+    OR public.is_staff_or_admin()
+  );
 
 DROP POLICY IF EXISTS orders_staff_update ON public.orders;
 CREATE POLICY orders_staff_update ON public.orders
-  FOR UPDATE USING (public.is_staff_or_admin());
+  FOR UPDATE
+  USING (public.is_staff_or_admin())
+  WITH CHECK (
+    status IN (
+      'Pending', 'Confirmed', 'Preparing', 'Ready',
+      'Packed', 'Dispatched', 'On the Way', 'Delivered',
+      'Cancelled', 'Failed'
+    )
+  );
 
 DROP POLICY IF EXISTS order_items_self ON public.order_items;
 CREATE POLICY order_items_self ON public.order_items

@@ -133,7 +133,7 @@ Deno.serve(async (req: Request) => {
       throw new Error(paidErr.message);
     }
 
-    console.log(`[confirm-order] Order ${order_id} marked paid (client verification)`);
+    console.log(`[confirm-order] Order ${order_id} marked Confirmed`);
     return json({ status: 'paid' });
 
   } catch (err: any) {

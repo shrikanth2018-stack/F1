@@ -11,6 +11,7 @@ import {
   View,
   ScrollView,
   Alert,
+  AppState,
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
@@ -80,7 +81,28 @@ export function CheckoutScreen({ navigation, route }: any) {
   // Idempotency key — generated once per checkout session, refreshed after successful order
   // Use Math.random fallback: crypto.randomUUID() is not available in all RN/Expo Go environments
   const idempotencyKeyRef = useRef<string>(generateId());
+  const isPlacingRef = useRef(false);    // synchronous double-tap guard
+  const razorpayOpenRef = useRef(false); // tracks whether Razorpay sheet is live
   const queryClient = useQueryClient();
+
+  // If the OS brings the app to foreground while Razorpay was open but never
+  // called back (killed webview, memory pressure), unstick the Pay button.
+  // The order stays Pending — PendingPaymentBanner handles recovery on HomeScreen.
+  React.useEffect(() => {
+    const sub = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active' && razorpayOpenRef.current) {
+        setTimeout(() => {
+          if (razorpayOpenRef.current) {
+            razorpayOpenRef.current = false;
+            isPlacingRef.current = false;
+            setIsPlacing(false);
+            setGlobalLoading(false);
+          }
+        }, 2000);
+      }
+    });
+    return () => sub.remove();
+  }, [setGlobalLoading]);
 
   React.useEffect(() => {
     if (addresses && addresses.length > 0 && !selectedAddressId) {
@@ -122,15 +144,21 @@ export function CheckoutScreen({ navigation, route }: any) {
   const walletInsufficient = paymentMethod === 'wallet' && walletLoaded && walletBalance < estimatedTotal;
 
   const handlePlaceOrder = useCallback(async () => {
+    if (isPlacingRef.current) return;
+    isPlacingRef.current = true;
+
     if (config?.storm_mode_active) {
+      isPlacingRef.current = false;
       Alert.alert('Orders Paused', 'Deliveries are paused due to adverse conditions. Please try again later.');
       return;
     }
     if (!selectedAddressId) {
+      isPlacingRef.current = false;
       Alert.alert('Address Required', 'Please select a delivery address');
       return;
     }
     if (totalItemCount === 0) {
+      isPlacingRef.current = false;
       Alert.alert('Empty Cart', 'Add items to your cart first');
       return;
     }
@@ -215,10 +243,14 @@ export function CheckoutScreen({ navigation, route }: any) {
         let rzpResult: any;
         try {
           // 500ms lets UIKit finish dismissing the loading modal before Razorpay presents.
+          razorpayOpenRef.current = true;
           rzpResult = await new Promise<any>((resolve, reject) => {
             setTimeout(() => RazorpayCheckout.open(options).then(resolve).catch(reject), 500);
           });
+          razorpayOpenRef.current = false;
         } catch (e: any) {
+          razorpayOpenRef.current = false;
+          isPlacingRef.current = false;
           setIsPlacing(false);
           setGlobalLoading(false);
           if (e?.code === 'PAYMENT_CANCELLED') {
@@ -265,6 +297,7 @@ export function CheckoutScreen({ navigation, route }: any) {
       trackOrderFailed(err.message || 'unknown', cartType);
       Alert.alert('Order Failed', err.message || 'Please try again');
     } finally {
+      isPlacingRef.current = false;
       setIsPlacing(false);
       setGlobalLoading(false);
     }

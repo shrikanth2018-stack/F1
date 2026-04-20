@@ -99,19 +99,16 @@ export function PlanDetailScreen({ route, navigation }: any) {
       console.error('[doSubscribe] Aborted — plan is null');
       return;
     }
-    console.log('[doSubscribe] Starting', { planId: plan.id, paymentMethod, startDate: overrideStartDate });
     setIsSubscribing(true);
     setGlobalLoading(true, 'Setting up subscription...');
     try {
       const startDateStr = overrideStartDate.toISOString().split('T')[0];
 
-      console.log('[doSubscribe] Calling subscribe Edge Function...');
       const result = await subscribe({
         plan_id: plan.id,
         payment_method: paymentMethod,
         start_date: startDateStr,
       });
-      console.log('[doSubscribe] Edge Function result:', JSON.stringify(result));
 
       if (paymentMethod === 'razorpay' && (result as any)?.razorpay_order_id) {
         if (!RAZORPAY_KEY_ID) {
@@ -141,11 +138,6 @@ export function PlanDetailScreen({ route, navigation }: any) {
           theme: { color: Theme.colors.action.primary },
         };
 
-        console.log('[doSubscribe] Opening Razorpay sheet with options:', JSON.stringify({
-          ...rzpOptions,
-          key: rzpOptions.key ? `${rzpOptions.key.slice(0, 8)}…` : 'MISSING',
-        }));
-
         let rzpResult: any;
         try {
           // The native shim (razorpay.native.ts) already waits for InteractionManager
@@ -157,10 +149,7 @@ export function PlanDetailScreen({ route, navigation }: any) {
               setTimeout(() => reject(new Error('Payment sheet timed out. Please try again.')), 30_000)
             ),
           ]);
-          console.log('[doSubscribe] Razorpay payment succeeded:', rzpResult?.razorpay_payment_id);
         } catch (rpErr: any) {
-          const reason = rpErr?.description ?? rpErr?.message ?? 'Unknown';
-          console.warn('[doSubscribe] Razorpay cancelled or failed:', reason);
           if (rpErr?.message?.includes('timed out')) {
             Alert.alert('Payment Timeout', 'The payment sheet did not open. Please try again.');
           } else {
@@ -181,10 +170,8 @@ export function PlanDetailScreen({ route, navigation }: any) {
               razorpay_order_id: rzpResult.razorpay_order_id,
               razorpay_signature: rzpResult.razorpay_signature,
             });
-            console.log('[doSubscribe] Subscription confirmed via client verification');
-          } catch (confirmErr: any) {
-            // Non-fatal — webhook may still activate it; log and continue
-            console.warn('[doSubscribe] Client confirmation failed (webhook may still fire):', confirmErr?.message);
+          } catch {
+            // Non-fatal — webhook may still activate it
           }
         }
       }

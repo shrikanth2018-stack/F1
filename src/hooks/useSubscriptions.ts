@@ -106,13 +106,6 @@ export function useSubscribe() {
         throw new Error('You must be logged in to subscribe.');
       }
 
-      console.log('[useSubscribe] invoking subscribe function', {
-        plan_id: payload.plan_id,
-        payment_method: payload.payment_method,
-        start_date: payload.start_date,
-        user_id: session.user.id,
-      });
-
       const { data, error } = await supabase.functions.invoke('subscribe', {
         headers: {
           Authorization: `Bearer ${session.access_token}`,
@@ -136,11 +129,8 @@ export function useSubscribe() {
         } else if (error.message && !error.message.includes('non-2xx')) {
           message = error.message;
         }
-        console.error('[useSubscribe] invoke error:', message, error);
         throw new Error(message);
       }
-
-      console.log('[useSubscribe] invoke success:', data);
       return { data, error: null, count: null, status: 200, statusText: 'OK' } as any;
     },
     [QUERY_KEYS.SUBSCRIPTIONS as unknown as string[]]
