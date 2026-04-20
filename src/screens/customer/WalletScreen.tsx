@@ -29,6 +29,7 @@ import {
 } from '../../hooks/useWallet';
 import { useStoreConfig } from '../../hooks/useStoreConfig';
 import { useAuth } from '../../hooks/useAuth';
+import { supabase } from '../../api/supabaseClient';
 import { RAZORPAY_KEY_ID } from '../../utils/env';
 
 const QUICK_AMOUNTS = [500, 1000, 2000];
@@ -54,27 +55,45 @@ export function WalletScreen({ navigation }: { navigation: any }) {
     topup.mutate(amount, {
       onSuccess: async (data) => {
         if (!data) return;
+        const rawPhone = session?.user.phone ?? '';
+        const contact = rawPhone.length > 10 ? rawPhone.slice(-10) : rawPhone;
+
+        let rzpResult: any;
         try {
-          const rawPhone = session?.user.phone ?? '';
-          const contact = rawPhone.length > 10 ? rawPhone.slice(-10) : rawPhone;
-          await Promise.race([
-            RazorpayCheckout.open({
-              description: '1stOne Wallet Top-up',
-              currency: 'INR',
-              key: RAZORPAY_KEY_ID,
-              amount: Math.round(data.amount * 100),
-              order_id: data.razorpay_order_id,
-              name: '1stOne',
-              prefill: { email: 'customer@1stone.in', contact },
-              theme: { color: Theme.colors.action.primary },
-            }),
-            new Promise<never>((_, reject) =>
-              setTimeout(() => reject(new Error('timeout')), 30_000)
-            ),
-          ]);
+          rzpResult = await RazorpayCheckout.open({
+            description: '1stOne Wallet Top-up',
+            currency: 'INR',
+            key: RAZORPAY_KEY_ID,
+            amount: Math.round(data.amount * 100),
+            order_id: data.razorpay_order_id,
+            name: '1stOne',
+            prefill: { email: 'customer@1stone.in', contact },
+            theme: { color: Theme.colors.action.primary },
+          });
         } catch {
           Alert.alert('Payment Cancelled', 'Your top-up was not completed.');
+          return;
         }
+
+        // Confirm payment server-side (HMAC verify + credit wallet via service role).
+        // verify-payment webhook is the fallback; whichever fires first wins.
+        try {
+          const { data: { session: freshSession } } = await supabase.auth.getSession();
+          const { data: confirmData, error: confirmErr } = await supabase.functions.invoke('confirm-topup', {
+            headers: { Authorization: `Bearer ${freshSession?.access_token}` },
+            body: {
+              razorpay_order_id: data.razorpay_order_id,
+              razorpay_payment_id: rzpResult?.razorpay_payment_id,
+              razorpay_signature: rzpResult?.razorpay_signature,
+            },
+          });
+          if (!confirmErr && confirmData?.status === 'credited') {
+            Alert.alert('Wallet Topped Up!', `₹${confirmData.amount} has been added to your wallet.`);
+          }
+        } catch {
+          // Webhook will resolve — silent fail is intentional.
+        }
+
         refreshWallet();
       },
       onError: (err) => Alert.alert('Error', err.message),
