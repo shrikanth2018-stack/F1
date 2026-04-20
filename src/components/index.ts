@@ -18,11 +18,3 @@ export { CartFloatingButton } from './CartFloatingButton';
 export { ErrorBoundary } from './ErrorBoundary';
 export { SubscriptionCalendar } from './SubscriptionCalendar';
 export { ProfilePopup } from './ProfilePopup';
-export {
-  ScreenBackground,
-  GlassCard,
-  HapticButton,
-  Heading,
-  Body,
-  Caption,
-} from './CustomerUI';
