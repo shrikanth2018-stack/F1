@@ -177,9 +177,13 @@ export function PlanDetailScreen({ route, navigation }: any) {
       }
 
       trackSubscribed(plan.id, plan.plan_name, paymentMethod);
+      const itemNames = (planItems ?? [])
+        .map((pi: any) => pi.menu_items?.name)
+        .filter(Boolean)
+        .join(', ');
       Alert.alert(
         'Subscribed!',
-        `${plan.plan_name}\n\nStarts: ${formatDateShort(startDateStr)}\nDuration: ${plan.duration_days} days\n\nYou can pause, skip days, or manage this subscription from My Subscriptions in your profile.`,
+        `${plan.plan_name}${itemNames ? `\nDelivers: ${itemNames}` : ''}\n\nStarts: ${formatDateShort(startDateStr)}\nDuration: ${plan.duration_days} days\n\nManage from My Subscriptions in your profile.`,
         [{ text: 'View My Subscriptions', onPress: () => navigation.navigate('Subscriptions') }],
       );
     } catch (err: any) {
