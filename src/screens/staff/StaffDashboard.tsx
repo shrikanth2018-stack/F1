@@ -440,7 +440,7 @@ export function StaffDashboard() {
   );
 
   const deliveryOrders = useMemo(
-    () => (orders ?? []).filter((o) => ['Dispatched', 'Received at Hub', 'On the Way', 'Delivered'].includes(o.status)),
+    () => (orders ?? []).filter((o) => ['Dispatched', 'Received at Hub', 'On the Way'].includes(o.status)),
     [orders]
   );
 

@@ -177,9 +177,11 @@ export function PlanDetailScreen({ route, navigation }: any) {
       }
 
       trackSubscribed(plan.id, plan.plan_name, paymentMethod);
-      Alert.alert('Subscribed!', `${plan.plan_name} starts ${formatDateShort(startDateStr)}.`, [
-        { text: 'OK', onPress: () => navigation.navigate('Subscriptions') },
-      ]);
+      Alert.alert(
+        'Subscribed!',
+        `${plan.plan_name}\n\nStarts: ${formatDateShort(startDateStr)}\nDuration: ${plan.duration_days} days\n\nYou can pause, skip days, or manage this subscription from My Subscriptions in your profile.`,
+        [{ text: 'View My Subscriptions', onPress: () => navigation.navigate('Subscriptions') }],
+      );
     } catch (err: any) {
       console.error('[doSubscribe] Caught error:', err?.message, err);
       Alert.alert('Subscription Failed', err?.message || 'Something went wrong. Please try again.');

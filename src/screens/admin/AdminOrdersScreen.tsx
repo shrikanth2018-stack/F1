@@ -142,12 +142,12 @@ export function AdminOrdersScreen({ navigation }: any) {
       </View>
 
       <View style={styles.dateRow}>
-        <TouchableOpacity onPress={() => setDateOffset((d) => d - 1)} hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}>
-          <ThemedText variant="subtitle" color="mint" style={styles.txt}>‹</ThemedText>
+        <TouchableOpacity onPress={() => setDateOffset((d) => d - 1)} style={styles.dateArrow} hitSlop={{ top: 12, bottom: 12, left: 16, right: 16 }}>
+          <ThemedText style={styles.arrowText} color="mint">‹</ThemedText>
         </TouchableOpacity>
-        <ThemedText variant="body" color="primary" style={styles.txt}>{formatDateShort(date)}</ThemedText>
-        <TouchableOpacity onPress={() => setDateOffset((d) => d + 1)} hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}>
-          <ThemedText variant="subtitle" color="mint" style={styles.txt}>›</ThemedText>
+        <ThemedText variant="body" color="primary" style={styles.dateLabel}>{formatDateShort(date)}</ThemedText>
+        <TouchableOpacity onPress={() => setDateOffset((d) => d + 1)} style={styles.dateArrow} hitSlop={{ top: 12, bottom: 12, left: 16, right: 16 }}>
+          <ThemedText style={styles.arrowText} color="mint">›</ThemedText>
         </TouchableOpacity>
       </View>
 
@@ -214,8 +214,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
+    paddingVertical: Theme.spacing.md,
+  },
+  dateArrow: {
+    paddingHorizontal: Theme.spacing.lg,
     paddingVertical: Theme.spacing.sm,
-    paddingHorizontal: Theme.spacing.xl,
+  },
+  arrowText: {
+    fontSize: 28,
+    lineHeight: 32,
+  },
+  dateLabel: {
+    minWidth: 140,
+    textAlign: 'center',
   },
   list: { paddingBottom: Theme.spacing.xl },
   row: { paddingHorizontal: Theme.spacing.md, paddingVertical: Theme.spacing.sm + 2 },
