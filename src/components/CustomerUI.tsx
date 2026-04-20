@@ -2,7 +2,10 @@
  * 1stOne F1 — Midnight Glass Design System
  *
  * Foundational components for the Apple Dark Mode + Glassmorphism UI.
- * Powered by expo-blur (native BlurView on iOS, semi-transparent fallback on Android).
+ *
+ * GlassCard uses a semi-transparent View fallback today.
+ * To upgrade to native blur, install expo-blur and swap the inner View
+ * for <BlurView intensity={20} tint="dark"> — the layout is identical.
  */
 
 import React, { useCallback } from 'react';
@@ -16,7 +19,6 @@ import {
   type StyleProp,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { BlurView } from 'expo-blur';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -25,18 +27,16 @@ import Animated, {
 import * as Haptics from 'expo-haptics';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Design tokens
+// Design tokens (self-contained — do not reference Theme to stay independent)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const MG = {
+const MG = {
   black:        '#000000',
+  glass:        'rgba(255, 255, 255, 0.06)',
   glassBorder:  'rgba(255, 255, 255, 0.10)',
   white:        '#FFFFFF',
   bodyGrey:     'rgba(255, 255, 255, 0.85)',
   captionGrey:  '#8E8E93',
-  neonGreen:    '#4ECDC4',
-  errorRed:     '#ef4444',
-  warningAmber: '#FFBF00',
   radius:       16,
 } as const;
 
@@ -62,21 +62,21 @@ export function ScreenBackground({ children, style }: ScreenBackgroundProps) {
 // ─────────────────────────────────────────────────────────────────────────────
 // GlassCard
 //
-// BlurView fills the card background natively on iOS.
-// intensity controls blur strength (20 = subtle, 40 = heavy/opaque feel).
+// Swap for BlurView once expo-blur is installed:
+//   import { BlurView } from 'expo-blur';
+//   Replace the inner <View style={styles.glass}> with:
+//   <BlurView intensity={20} tint="dark" style={[styles.glassCard, style]}>
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface GlassCardProps {
   children: React.ReactNode;
   style?: StyleProp<ViewStyle>;
-  intensity?: number;
 }
 
-export function GlassCard({ children, style, intensity = 20 }: GlassCardProps) {
+export function GlassCard({ children, style }: GlassCardProps) {
   return (
     <View style={[styles.glassCard, style]}>
-      <BlurView intensity={intensity} tint="dark" style={StyleSheet.absoluteFill} />
-      <View style={styles.glassContent}>
+      <View style={styles.glassFill}>
         {children}
       </View>
     </View>
@@ -170,22 +170,29 @@ export function Caption({ children, style, numberOfLines }: TypographyProps) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
+  // ScreenBackground
   screen: {
     flex: 1,
     backgroundColor: MG.black,
   },
+
+  // GlassCard — outer clip boundary, inner glass fill
   glassCard: {
     borderRadius: MG.radius,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: MG.glassBorder,
     overflow: 'hidden',
   },
-  glassContent: {
-    // sits on top of the absolute BlurView layer
+  glassFill: {
+    backgroundColor: MG.glass,
   },
+
+  // HapticButton
   disabled: {
     opacity: 0.4,
   },
+
+  // Typography
   heading: {
     color: MG.white,
     fontSize: 28,

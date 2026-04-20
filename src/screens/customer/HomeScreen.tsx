@@ -1,41 +1,28 @@
 /**
- * 1stOne F1 — Customer Home Screen (Midnight Glass)
+ * 1stOne F1 — Customer Home Screen
  */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useState, useRef, useEffect } from 'react';
 import {
-  Image,
-  Modal,
-  RefreshControl,
-  SectionList,
-  StyleSheet,
-  TouchableOpacity,
-  TouchableWithoutFeedback,
   View,
+  Image,
+  SectionList,
+  TouchableOpacity,
+  StyleSheet,
+  RefreshControl,
+  Modal,
+  TouchableWithoutFeedback,
+  Animated,
 } from 'react-native';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withRepeat,
-  withSequence,
-  withTiming,
-} from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import { supabase } from '../../api/supabaseClient';
-import {
-  ScreenBackground,
-  GlassCard,
-  HapticButton,
-  Heading,
-  Body,
-  Caption,
-  MG,
-} from '../../components/CustomerUI';
+import { Theme } from '../../theme';
+import { ThemedText } from '../../components/ThemedText';
+import { MenuItemCard } from '../../components/MenuItemCard';
+import { CartFloatingButton } from '../../components/CartFloatingButton';
 import { EmptyState } from '../../components/EmptyState';
 import { ErrorRetry } from '../../components/ErrorRetry';
 import { ProfilePopup } from '../../components/ProfilePopup';
-import { PendingPaymentBanner } from '../../components/PendingPaymentBanner';
-import { DispatchBadge } from '../../components/DispatchBadge';
 import { useDeliveryCycles } from '../../hooks/useDeliveryCycles';
 import { useMenuItems } from '../../hooks/useMenuItems';
 import { useSmartCart } from '../../hooks/useSmartCart';
@@ -44,19 +31,21 @@ import { useEssentialsCatalog } from '../../hooks/useEssentials';
 import { useEssentialsCartStore } from '../../store/essentialsCartStore';
 import { useCartStore } from '../../store/cartStore';
 import { useUIStore } from '../../store/uiStore';
-import { useWalletBalance } from '../../hooks/useWallet';
+import { formatTime12h } from '../../utils/timeEngine';
+import { formatPriceShort } from '../../utils/formatters';
+import { supabase } from '../../api/supabaseClient';
+import { useLiveBanner, type CustomBannerContent } from '../../hooks/useBanner';
 import { useWalletNudge } from '../../hooks/useWalletNudge';
 import { useStoreConfig } from '../../hooks/useStoreConfig';
 import { usePendingRazorpayOrder, useCancelOrder } from '../../hooks/useOrders';
-import { useLiveBanner, type CustomBannerContent } from '../../hooks/useBanner';
-import { formatTime12h } from '../../utils/timeEngine';
-import { formatPriceShort } from '../../utils/formatters';
-import type { MenuItem, EssentialItem, DeliveryCycle } from '../../types';
+import { PendingPaymentBanner } from '../../components/PendingPaymentBanner';
 
+// Static assets from Supabase Storage bucket: 'assets'
 const LOGO_URL = supabase.storage.from('assets').getPublicUrl('logo.png').data.publicUrl;
 const BANNER_URL = supabase.storage.from('assets').getPublicUrl('banner.png').data.publicUrl;
+import type { MenuItem, EssentialItem, DeliveryCycle } from '../../types';
 
-// ── Helpers ───────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────
 
 function timeToMinutes(t: string | null | undefined): number {
   if (!t) return 0;
@@ -84,7 +73,6 @@ interface SectionMeta {
   deliveryBy: string;
   cutoffTime: string;
   cycleId: number;
-  minutesToCutoff: number;
 }
 
 function buildSections<T extends { cycle_id: number }>(
@@ -97,69 +85,89 @@ function buildSections<T extends { cycle_id: number }>(
     list.push(item);
     grouped.set(item.cycle_id, list);
   }
-  const now = new Date();
-  const nowMin = now.getHours() * 60 + now.getMinutes();
   return cycles
     .filter((c) => grouped.has(c.id))
-    .map((cycle) => {
-      const cutoffMin = timeToMinutes(cycle.cutoff_time);
-      return {
-        title: cycle.cycle_name,
-        deliveryBy: formatTime12h(cycle.delivery_start),
-        cutoffTime: formatTime12h(cycle.cutoff_time),
-        cycleId: cycle.id,
-        minutesToCutoff: Math.max(0, cutoffMin - nowMin),
-        data: grouped.get(cycle.id) ?? [],
-      };
-    });
+    .map((cycle) => ({
+      title: cycle.cycle_name,
+      deliveryBy: formatTime12h(cycle.delivery_start),
+      cutoffTime: formatTime12h(cycle.cutoff_time),
+      cycleId: cycle.id,
+      data: grouped.get(cycle.id) ?? [],
+    }));
 }
 
 // ── Cycle detail popup ────────────────────────────────────────
 
-function CyclePopup({ cycle, onClose }: { cycle: SectionMeta; onClose: () => void }) {
+function CyclePopup({
+  cycle,
+  onClose,
+}: {
+  cycle: SectionMeta;
+  onClose: () => void;
+}) {
   return (
     <Modal transparent animationType="fade" onRequestClose={onClose}>
       <TouchableWithoutFeedback onPress={onClose}>
         <View style={popup.backdrop} />
       </TouchableWithoutFeedback>
-      <GlassCard style={popup.box} intensity={50}>
-        <Body style={popup.cycleTitle}>{cycle.title}</Body>
+      <View style={popup.box}>
+        <ThemedText variant="subtitle" color="mint" style={popup.title}>
+          {cycle.title}
+        </ThemedText>
         <View style={popup.row}>
-          <Caption>Order cutoff</Caption>
-          <Caption style={{ color: MG.white }}>{cycle.cutoffTime}</Caption>
+          <ThemedText variant="small" color="muted">Order cutoff</ThemedText>
+          <ThemedText variant="small" color="primary">{cycle.cutoffTime}</ThemedText>
         </View>
         <View style={popup.row}>
-          <Caption>Dispatch by</Caption>
-          <Caption style={{ color: MG.white }}>{cycle.deliveryBy}</Caption>
+          <ThemedText variant="small" color="muted">Dispatch by</ThemedText>
+          <ThemedText variant="small" color="primary">{cycle.deliveryBy}</ThemedText>
         </View>
         <TouchableOpacity onPress={onClose} style={popup.closeBtn}>
-          <Caption>Close</Caption>
+          <ThemedText variant="small" color="muted">Close</ThemedText>
         </TouchableOpacity>
-      </GlassCard>
+      </View>
     </Modal>
   );
 }
 
 const popup = StyleSheet.create({
-  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.6)' },
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
   box: {
     position: 'absolute',
     alignSelf: 'center',
-    top: '38%',
+    top: '40%',
     width: 260,
-    padding: 20,
+    backgroundColor: 'rgba(28,28,30,0.95)',
+    borderRadius: Theme.components.inputRadius,
+    padding: Theme.spacing.md,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 10,
   },
-  cycleTitle: { color: MG.white, marginBottom: 12 },
-  row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6 },
-  closeBtn: { marginTop: 12, alignItems: 'center' },
+  title: {
+    marginBottom: Theme.spacing.sm,
+  },
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: Theme.spacing.xs,
+  },
+  closeBtn: {
+    marginTop: Theme.spacing.sm,
+    alignItems: 'center',
+  },
 });
 
-// ── Offer Banner ──────────────────────────────────────────────
-
+// ── Offer Banner (reads from banners table, falls back to storage) ──
 function OfferBanner() {
   const { data: liveBanner } = useLiveBanner();
   const [staticError, setStaticError] = useState(false);
-  const opacity = useSharedValue(1);
+  const pulseAnim = useRef(new Animated.Value(1)).current;
 
   const content: CustomBannerContent | null = useMemo(() => {
     if (liveBanner?.banner_type === 'text' && liveBanner.text_content) {
@@ -170,42 +178,66 @@ function OfferBanner() {
 
   useEffect(() => {
     if (content?.pulse) {
-      opacity.value = withRepeat(
-        withSequence(
-          withTiming(0.55, { duration: 800 }),
-          withTiming(1, { duration: 800 }),
-        ),
-        -1,
-        false,
+      const anim = Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, { toValue: 0.7, duration: 800, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1,   duration: 800, useNativeDriver: true }),
+        ])
       );
+      anim.start();
+      return () => {
+        anim.stop();
+        pulseAnim.stopAnimation();
+        pulseAnim.setValue(1);
+      };
     } else {
-      opacity.value = 1;
+      pulseAnim.stopAnimation();
+      pulseAnim.setValue(1);
     }
   }, [content?.pulse]);
 
-  const animStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
-
+  // Custom text banner
   if (content) {
     return (
-      <Animated.View style={[bannerStyles.textWrap, { backgroundColor: content.bg_color }, animStyle]}>
-        {!!content.emoji && <Body style={bannerStyles.emoji}>{content.emoji}</Body>}
-        <Body style={[bannerStyles.bannerTitle, { color: content.text_color }]} numberOfLines={2}>
+      <Animated.View
+        style={[
+          bannerStyles.wrap,
+          { backgroundColor: content.bg_color, opacity: pulseAnim },
+        ]}
+      >
+        {!!content.emoji && (
+          <ThemedText variant="body" color="primary" style={bannerStyles.emoji}>
+            {content.emoji}
+          </ThemedText>
+        )}
+        <ThemedText
+          variant="header"
+          color="primary"
+          style={[bannerStyles.title, { color: content.text_color }]}
+          numberOfLines={2}
+        >
           {content.title}
-        </Body>
+        </ThemedText>
         {!!content.subtitle && (
-          <Caption style={[bannerStyles.bannerSub, { color: content.text_color }]} numberOfLines={1}>
+          <ThemedText
+            variant="small"
+            color="muted"
+            style={[bannerStyles.sub, { color: content.text_color, opacity: 0.85 }]}
+            numberOfLines={1}
+          >
             {content.subtitle}
-          </Caption>
+          </ThemedText>
         )}
       </Animated.View>
     );
   }
 
-  if (staticError) return null;
-
+  // Image banner — prefer live record URL, else static bucket URL
   const imageUrl = liveBanner?.banner_type === 'image' && liveBanner.image_url
     ? liveBanner.image_url
     : BANNER_URL;
+
+  if (staticError) return null;
 
   return (
     <Image
@@ -218,35 +250,25 @@ function OfferBanner() {
 }
 
 const bannerStyles = StyleSheet.create({
-  textWrap: { width: '100%', height: 120, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 16 },
-  img: { width: '100%', height: 120 },
+  wrap: {
+    width: '100%',
+    height: 130,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: Theme.spacing.md,
+  },
+  img: { width: '100%', height: 130 },
   emoji: { fontSize: 26, marginBottom: 2 },
-  bannerTitle: { fontSize: 20, textAlign: 'center', color: MG.white },
-  bannerSub: { textAlign: 'center', marginTop: 2 },
-});
-
-// ── Dispatch Urgency Tag ──────────────────────────────────────
-
-function UrgencyTag({ minutes }: { minutes: number }) {
-  if (minutes <= 0 || minutes > 120) return null;
-  const urgent = minutes <= 30;
-  return (
-    <Caption style={[urgencyStyles.tag, urgent ? urgencyStyles.red : urgencyStyles.amber]}>
-      {urgent ? `Closes in ${minutes}m` : `${minutes}m left`}
-    </Caption>
-  );
-}
-
-const urgencyStyles = StyleSheet.create({
-  tag: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, overflow: 'hidden', fontSize: 11 },
-  amber: { backgroundColor: 'rgba(255,191,0,0.18)', color: MG.warningAmber },
-  red:   { backgroundColor: 'rgba(239,68,68,0.18)',  color: MG.errorRed },
+  title: { fontSize: Theme.typography.sizes.body + 6, fontWeight: '700', textAlign: 'center' },
+  sub: { fontSize: Theme.typography.sizes.small + 2, textAlign: 'center', marginTop: 2 },
 });
 
 // ── Main screen ───────────────────────────────────────────────
 
 export function HomeScreen() {
   const navigation = useNavigation<any>();
+  const insets = useSafeAreaInsets();
+
   const [popupCycle, setPopupCycle] = useState<SectionMeta | null>(null);
   const [logoError, setLogoError] = useState(false);
 
@@ -259,7 +281,6 @@ export function HomeScreen() {
   const { data: config } = useStoreConfig();
   const stormMode = config?.storm_mode_active ?? false;
   const walletNudge = useWalletNudge();
-  const { data: wallet } = useWalletBalance();
   const { data: pendingOrders } = usePendingRazorpayOrder();
   const pendingOrder = pendingOrders?.[0] ?? null;
   const { mutate: cancelOrder } = useCancelOrder();
@@ -273,27 +294,28 @@ export function HomeScreen() {
   const { data: essentials, isLoading: essentialsLoading, refetch: refetchEssentials } = useEssentialsCatalog();
   const { evaluations } = useSmartCart();
 
-  const foodCycles = useMemo(() => sortByCutoff((cycles ?? []).filter((c) => !c.is_essentials)), [cycles]);
-  const essentialsCycles = useMemo(() => sortByCutoff((cycles ?? []).filter((c) => c.is_essentials)), [cycles]);
+  const foodCycles = useMemo(
+    () => sortByCutoff((cycles ?? []).filter((c) => !c.is_essentials)),
+    [cycles]
+  );
+  const essentialsCycles = useMemo(
+    () => sortByCutoff((cycles ?? []).filter((c) => c.is_essentials)),
+    [cycles]
+  );
   const foodSections = useMemo(() => buildSections(allMenuItems ?? [], foodCycles), [allMenuItems, foodCycles]);
   const essentialsSections = useMemo(() => buildSections(essentials ?? [], essentialsCycles), [essentials, essentialsCycles]);
 
+  // Food cart
   const addItem = useCartStore((s) => s.addItem);
   const updateQuantity = useCartStore((s) => s.updateQuantity);
   const removeItem = useCartStore((s) => s.removeItem);
   const cartItems = useCartStore((s) => s.items);
 
+  // Essentials cart
   const essentialsCart = useEssentialsCartStore((s) => s.items);
   const addEssential = useEssentialsCartStore((s) => s.addItem);
   const updateEssential = useEssentialsCartStore((s) => s.updateQuantity);
   const removeEssential = useEssentialsCartStore((s) => s.removeItem);
-
-  const foodCartCount = cartItems.reduce((sum, i) => sum + i.quantity, 0);
-  const essentialCartCount = essentialsCart.reduce((sum, i) => sum + i.quantity, 0);
-  const totalCartCount = activeHomeTab === 'food' ? foodCartCount : essentialCartCount;
-  const foodCartTotal = cartItems.reduce((sum, i) => sum + i.display_price * i.quantity, 0);
-  const essentialCartTotal = essentialsCart.reduce((sum, i) => sum + i.display_price * i.quantity, 0);
-  const cartTotal = activeHomeTab === 'food' ? foodCartTotal : essentialCartTotal;
 
   const getItemQty = useCallback(
     (id: number) => cartItems.find((i) => i.menu_item_id === id)?.quantity ?? 0,
@@ -316,102 +338,66 @@ export function HomeScreen() {
     const qty = getItemQty(item.id);
     const dispatch = getDispatchInfo(item.id);
     return (
-      <GlassCard style={menuStyles.card}>
-        <View style={menuStyles.row}>
-          <View style={menuStyles.info}>
-            <Body style={{ color: MG.white }}>{item.name}</Body>
-            {item.description ? <Caption numberOfLines={1}>{item.description}</Caption> : null}
-            {dispatch && (
-              <DispatchBadge
-                label={dispatch.dispatch_label}
-                variant={dispatch.scenario === 'A' ? 'today' : 'tomorrow'}
-              />
-            )}
-          </View>
-          <View style={menuStyles.right}>
-            <Body style={menuStyles.price}>{formatPriceShort(item.price)}</Body>
-            {qty === 0 ? (
-              <HapticButton
-                style={menuStyles.addBtn}
-                onPress={() => addItem({ menu_item_id: item.id, cycle_id: item.cycle_id, name: item.name, display_price: item.price })}
-              >
-                <Caption style={menuStyles.addText}>ADD</Caption>
-              </HapticButton>
-            ) : (
-              <View style={menuStyles.stepper}>
-                <HapticButton
-                  style={menuStyles.stepBtn}
-                  onPress={() => qty <= 1 ? removeItem(item.id) : updateQuantity(item.id, qty - 1)}
-                >
-                  <Body style={menuStyles.stepText}>−</Body>
-                </HapticButton>
-                <Body style={menuStyles.qty}>{qty}</Body>
-                <HapticButton
-                  style={menuStyles.stepBtn}
-                  onPress={() => updateQuantity(item.id, qty + 1)}
-                >
-                  <Body style={menuStyles.stepText}>+</Body>
-                </HapticButton>
-              </View>
-            )}
-          </View>
-        </View>
-      </GlassCard>
+      <MenuItemCard
+        item={item}
+        quantity={qty}
+        dispatchLabel={dispatch?.dispatch_label}
+        dispatchScenario={dispatch?.scenario}
+        onAdd={() => addItem({ menu_item_id: item.id, cycle_id: item.cycle_id, name: item.name, display_price: item.price })}
+        onIncrement={() => updateQuantity(item.id, qty + 1)}
+        onDecrement={() => qty <= 1 ? removeItem(item.id) : updateQuantity(item.id, qty - 1)}
+      />
     );
   }, [getItemQty, getDispatchInfo, addItem, updateQuantity, removeItem]);
 
   const renderEssentialItem = useCallback(({ item }: { item: EssentialItem }) => {
     const qty = getEssentialQty(item.id);
     return (
-      <GlassCard style={menuStyles.card}>
-        <View style={menuStyles.row}>
-          <View style={menuStyles.info}>
-            <Body style={{ color: MG.white }}>{item.name}</Body>
-            <Caption>{item.unit}</Caption>
-          </View>
-          <View style={menuStyles.right}>
-            <Body style={menuStyles.price}>{formatPriceShort(item.price)}</Body>
-            {qty === 0 ? (
-              <HapticButton
-                style={menuStyles.addBtn}
-                onPress={() => addEssential({ essential_item_id: item.id, cycle_id: item.cycle_id, name: item.name, display_price: item.price, unit: item.unit })}
-              >
-                <Caption style={menuStyles.addText}>ADD</Caption>
-              </HapticButton>
-            ) : (
-              <View style={menuStyles.stepper}>
-                <HapticButton
-                  style={menuStyles.stepBtn}
-                  onPress={() => qty <= 1 ? removeEssential(item.id) : updateEssential(item.id, qty - 1)}
-                >
-                  <Body style={menuStyles.stepText}>−</Body>
-                </HapticButton>
-                <Body style={menuStyles.qty}>{qty}</Body>
-                <HapticButton
-                  style={menuStyles.stepBtn}
-                  onPress={() => updateEssential(item.id, qty + 1)}
-                >
-                  <Body style={menuStyles.stepText}>+</Body>
-                </HapticButton>
-              </View>
-            )}
-          </View>
+      <View style={styles.itemRow}>
+        <View style={styles.colName}>
+          <ThemedText variant="body" color="primary">{item.name}</ThemedText>
+          {item.description ? <ThemedText variant="small" color="muted">{item.description}</ThemedText> : null}
         </View>
-      </GlassCard>
+        <View style={styles.colPrice}>
+          <ThemedText variant="body" color="mint">{formatPriceShort(item.price)}</ThemedText>
+        </View>
+        <View style={styles.colAction}>
+          {qty === 0 ? (
+            <TouchableOpacity
+              onPress={() => addEssential({ essential_item_id: item.id, cycle_id: item.cycle_id, name: item.name, display_price: item.price, unit: item.unit })}
+              activeOpacity={0.6}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <ThemedText variant="small" style={styles.green}>ADD</ThemedText>
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.stepper}>
+              <TouchableOpacity style={styles.stepBtn} onPress={() => qty <= 1 ? removeEssential(item.id) : updateEssential(item.id, qty - 1)} activeOpacity={0.6}>
+                <ThemedText variant="body" style={styles.green}>−</ThemedText>
+              </TouchableOpacity>
+              <ThemedText variant="body" color="primary" style={styles.qty}>{qty}</ThemedText>
+              <TouchableOpacity style={styles.stepBtn} onPress={() => updateEssential(item.id, qty + 1)} activeOpacity={0.6}>
+                <ThemedText variant="body" style={styles.green}>+</ThemedText>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      </View>
     );
   }, [getEssentialQty, addEssential, updateEssential, removeEssential]);
 
   const renderSectionHeader = useCallback(({ section }: { section: SectionMeta & { data: any[] } }) => (
-    <View style={sectionStyles.header}>
-      <View style={sectionStyles.titleRow}>
-        <Heading style={sectionStyles.title}>{section.title}</Heading>
-        <UrgencyTag minutes={section.minutesToCutoff} />
-      </View>
+    <View style={styles.sectionHeader}>
+      <ThemedText variant="subtitle" color="mint" style={styles.sectionTitle}>
+        {section.title}
+      </ThemedText>
       <TouchableOpacity
-        onPress={() => setPopupCycle(section)}
+        onPress={() => setPopupCycle({ title: section.title, deliveryBy: section.deliveryBy, cutoffTime: section.cutoffTime, cycleId: section.cycleId })}
         hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
       >
-        <Caption>Dispatch by {section.deliveryBy} ›</Caption>
+        <ThemedText variant="small" color="muted">
+          Dispatch by {section.deliveryBy} ›
+        </ThemedText>
       </TouchableOpacity>
     </View>
   ), []);
@@ -419,46 +405,42 @@ export function HomeScreen() {
   const isRefreshing = cyclesLoading || menuLoading || essentialsLoading;
   const isError = cyclesError || menuError;
 
-  // Top bar content
-  const balanceStr = `₹${(wallet?.balance ?? 0).toLocaleString('en-IN')}`;
-
   return (
-    <ScreenBackground>
-      {/* Top bar — logo + wallet balance */}
-      <GlassCard style={topStyles.bar}>
-        <View style={topStyles.row}>
-          <TouchableOpacity onPress={() => setProfileVisible(true)} activeOpacity={0.8} style={topStyles.logoTouch}>
-            {logoError ? (
-              <Heading style={topStyles.logoText}>1stOne</Heading>
-            ) : (
-              <Image
-                source={{ uri: LOGO_URL }}
-                style={topStyles.logo}
-                resizeMode="contain"
-                onError={() => setLogoError(true)}
-              />
-            )}
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => navigation.navigate('Wallet')} activeOpacity={0.8} style={topStyles.walletTouch}>
-            <Caption>Wallet</Caption>
-            <Body style={topStyles.balance}>{balanceStr}</Body>
-          </TouchableOpacity>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      {/* Header */}
+      <View style={styles.header}>
+        <View style={styles.logoWrap}>
+          {logoError ? (
+            <ThemedText variant="header" color="primary">1stOne</ThemedText>
+          ) : (
+            <Image
+              source={{ uri: LOGO_URL }}
+              style={styles.logo}
+              resizeMode="contain"
+              onError={() => setLogoError(true)}
+            />
+          )}
         </View>
-      </GlassCard>
+        <TouchableOpacity style={styles.profileBtn} activeOpacity={0.7} onPress={() => setProfileVisible(true)}>
+          <ThemedText variant="body" color="primary">{'\u{1F464}'}</ThemedText>
+        </TouchableOpacity>
+      </View>
 
-      {/* Storm mode */}
+      <View style={styles.hairline} />
+
+      {/* Storm mode — full-width block, no ordering possible */}
       {stormMode && (
-        <GlassCard style={stormStyles.card}>
-          <Body style={stormStyles.text}>
+        <View style={styles.stormBanner}>
+          <ThemedText variant="subtitle" style={styles.stormText}>
             Deliveries paused due to adverse conditions. We'll resume shortly.
-          </Body>
-        </GlassCard>
+          </ThemedText>
+        </View>
       )}
 
-      {/* Offer banner */}
+      {/* Offer banner — live from banners table, falls back to assets/banner.png */}
       {!stormMode && <OfferBanner />}
 
-      {/* Pending payment recovery */}
+      {/* Pending Razorpay payment recovery banner */}
       {pendingOrder && (
         <PendingPaymentBanner
           order={pendingOrder}
@@ -469,39 +451,49 @@ export function HomeScreen() {
 
       {/* Wallet low-balance nudge */}
       {walletNudge.showNudge && (
-        <HapticButton
-          style={nudgeStyles.card}
+        <TouchableOpacity
+          style={styles.walletNudge}
           onPress={() => navigation.navigate('Wallet')}
+          activeOpacity={0.8}
         >
-          <Body style={nudgeStyles.text}>
+          <ThemedText variant="small" color="primary">
             {'⚠ '}
-            {`Wallet is ₹${walletNudge.shortfall?.toFixed(0)} short for ${walletNudge.planName}. `}
-            <Body style={nudgeStyles.link}>Top up →</Body>
-          </Body>
-        </HapticButton>
+            {`Your wallet is ₹${walletNudge.shortfall?.toFixed(0)} short for ${walletNudge.planName} renewal. `}
+            <ThemedText variant="small" color="mint">Top up →</ThemedText>
+          </ThemedText>
+        </TouchableOpacity>
       )}
 
       {isError && !isRefreshing && (
         <ErrorRetry message="Failed to load menu" onRetry={handleRefresh} />
       )}
 
-      {/* Tab toggle */}
-      <GlassCard style={tabStyles.bar}>
-        <View style={tabStyles.row}>
-          <HapticButton style={tabStyles.tab} onPress={() => setActiveHomeTab('food')}>
-            <Body style={activeHomeTab === 'food' ? tabStyles.active : tabStyles.inactive}>Food</Body>
-            {activeHomeTab === 'food' && <View style={tabStyles.dot} />}
-          </HapticButton>
-          {essentialsEnabled && (
-            <HapticButton style={tabStyles.tab} onPress={() => setActiveHomeTab('essentials')}>
-              <Body style={activeHomeTab === 'essentials' ? tabStyles.active : tabStyles.inactive}>Essentials</Body>
-              {activeHomeTab === 'essentials' && <View style={tabStyles.dot} />}
-            </HapticButton>
-          )}
-        </View>
-      </GlassCard>
+      {/* Toggle — text only, subtitle size */}
+      <View style={styles.toggleRow}>
+        <TouchableOpacity style={styles.togglePill} activeOpacity={0.7} onPress={() => setActiveHomeTab('food')}>
+          <ThemedText
+            variant="subtitle"
+            color={activeHomeTab === 'food' ? 'primary' : 'muted'}
+            style={activeHomeTab === 'food' ? styles.tabActive : undefined}
+          >
+            Food
+          </ThemedText>
+        </TouchableOpacity>
+        {essentialsEnabled && (
+          <TouchableOpacity style={styles.togglePill} activeOpacity={0.7} onPress={() => setActiveHomeTab('essentials')}>
+            <ThemedText
+              variant="subtitle"
+              color={activeHomeTab === 'essentials' ? 'primary' : 'muted'}
+              style={activeHomeTab === 'essentials' ? styles.tabActive : undefined}
+            >
+              Essentials
+            </ThemedText>
+          </TouchableOpacity>
+        )}
+      </View>
 
-      {/* Scrollable list */}
+      {/* Scrollable content area — must be a View with flex:1 wrapping the lists;
+          setting flex:1 directly on SectionList is unreliable on iOS */}
       <View style={styles.list}>
         {activeHomeTab === 'food' && (
           <SectionList
@@ -511,7 +503,7 @@ export function HomeScreen() {
             renderSectionHeader={renderSectionHeader}
             contentContainerStyle={styles.listContent}
             stickySectionHeadersEnabled={false}
-            refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={MG.neonGreen} />}
+            refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={Theme.colors.action.primary} />}
             ListEmptyComponent={!isRefreshing ? <EmptyState title="No items available" subtitle="Check back soon for fresh meals" /> : null}
           />
         )}
@@ -523,131 +515,156 @@ export function HomeScreen() {
             renderSectionHeader={renderSectionHeader}
             contentContainerStyle={styles.listContent}
             stickySectionHeadersEnabled={false}
-            refreshControl={<RefreshControl refreshing={essentialsLoading} onRefresh={refetchEssentials} tintColor={MG.neonGreen} />}
+            refreshControl={<RefreshControl refreshing={essentialsLoading} onRefresh={refetchEssentials} tintColor={Theme.colors.action.primary} />}
             ListEmptyComponent={!essentialsLoading ? <EmptyState title="No essentials available" subtitle="Check back soon" /> : null}
           />
         )}
       </View>
 
-      {/* Sticky cart bar */}
-      {!stormMode && totalCartCount > 0 && (
-        <GlassCard style={cartStyles.bar} intensity={50}>
-          <View style={cartStyles.row}>
-            <View>
-              <Caption>{totalCartCount} item{totalCartCount !== 1 ? 's' : ''}</Caption>
-              <Body style={cartStyles.total}>{formatPriceShort(cartTotal)}</Body>
-            </View>
-            <HapticButton
-              style={cartStyles.checkoutBtn}
-              onPress={() => navigation.navigate('Cart')}
-
-            >
-              <Body style={cartStyles.checkoutText}>Checkout →</Body>
-            </HapticButton>
-          </View>
-        </GlassCard>
-      )}
-
-      {/* Bottom bar — subscriptions link */}
-      {(stormMode || totalCartCount === 0) && (
-        <GlassCard style={bottomStyles.bar}>
-          <HapticButton onPress={() => navigation.navigate('Plans')}>
-            <Caption style={bottomStyles.link}>SUBSCRIPTION PLANS</Caption>
-          </HapticButton>
-        </GlassCard>
-      )}
-
       {isProfileVisible && <ProfilePopup />}
+
       {popupCycle && <CyclePopup cycle={popupCycle} onClose={() => setPopupCycle(null)} />}
-    </ScreenBackground>
+
+      <View style={styles.hairline} />
+
+      {/* Bottom bar */}
+      <View style={[styles.bottomBar, { paddingBottom: insets.bottom || Theme.spacing.sm }]}>
+        <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.navigate('Plans')} style={styles.subsTouch}>
+          <ThemedText variant="body" color="accent" style={styles.subsText}>SUBSCRIPTION PLANS</ThemedText>
+        </TouchableOpacity>
+      </View>
+
+      {/* Cart FAB — sibling to layout so it doesn't block list scroll */}
+      {!stormMode && <CartFloatingButton cartType={activeHomeTab} onPress={() => navigation.navigate('Cart')} />}
+    </View>
   );
 }
 
-// ── Styles ────────────────────────────────────────────────────
-
-const topStyles = StyleSheet.create({
-  bar: { marginHorizontal: 16, marginTop: 8, marginBottom: 4 },
-  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 14 },
-  logoTouch: { flex: 1 },
-  logo: { height: 60, width: 140 },
-  logoText: { fontSize: 22 },
-  walletTouch: { alignItems: 'flex-end', paddingLeft: 12 },
-  balance: { color: MG.neonGreen, marginTop: 2 },
-});
-
-const tabStyles = StyleSheet.create({
-  bar: { marginHorizontal: 16, marginTop: 4, marginBottom: 4 },
-  row: { flexDirection: 'row', padding: 4 },
-  tab: { flex: 1, alignItems: 'center', paddingVertical: 8 },
-  active: { color: MG.white },
-  inactive: { color: MG.captionGrey },
-  dot: { width: 4, height: 4, borderRadius: 2, backgroundColor: MG.neonGreen, marginTop: 4 },
-});
-
-const menuStyles = StyleSheet.create({
-  card: { marginHorizontal: 16, marginBottom: 8 },
-  row: { flexDirection: 'row', padding: 14 },
-  info: { flex: 1, marginRight: 12 },
-  right: { alignItems: 'flex-end', justifyContent: 'space-between', minWidth: 72 },
-  price: { color: MG.neonGreen, marginBottom: 8 },
-  addBtn: {
-    borderWidth: 1,
-    borderColor: MG.neonGreen,
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 4,
-  },
-  addText: { color: MG.neonGreen },
-  stepper: { flexDirection: 'row', alignItems: 'center' },
-  stepBtn: { padding: 6 },
-  stepText: { color: MG.neonGreen },
-  qty: { minWidth: 22, textAlign: 'center', color: MG.white },
-});
-
-const sectionStyles = StyleSheet.create({
-  header: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8 },
-  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
-  title: { fontSize: 20 },
-});
-
-const stormStyles = StyleSheet.create({
-  card: { marginHorizontal: 16, marginTop: 8 },
-  text: { color: MG.errorRed, textAlign: 'center', padding: 14 },
-});
-
-const nudgeStyles = StyleSheet.create({
-  card: {
-    marginHorizontal: 16,
-    marginTop: 4,
-    borderLeftWidth: 3,
-    borderLeftColor: MG.warningAmber,
-    backgroundColor: 'rgba(255,191,0,0.08)',
-    borderRadius: 12,
-    padding: 12,
-  },
-  text: { color: MG.bodyGrey },
-  link: { color: MG.neonGreen },
-});
-
-const cartStyles = StyleSheet.create({
-  bar: { marginHorizontal: 16, marginBottom: 8 },
-  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16 },
-  total: { color: MG.white, marginTop: 2 },
-  checkoutBtn: {
-    backgroundColor: MG.neonGreen,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 10,
-  },
-  checkoutText: { color: MG.black },
-});
-
-const bottomStyles = StyleSheet.create({
-  bar: { marginHorizontal: 16, marginBottom: 8, alignItems: 'center', padding: 14 },
-  link: { color: MG.neonGreen, textAlign: 'center' },
-});
-
 const styles = StyleSheet.create({
-  list: { flex: 1 },
-  listContent: { paddingBottom: 16 },
+  container: {
+    flex: 1,
+    backgroundColor: Theme.colors.background.primary,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingHorizontal: Theme.spacing.md,
+    paddingTop: Theme.spacing.xs,
+    paddingBottom: Theme.spacing.sm,
+    marginBottom: 1,
+  },
+  logoWrap: {
+    flex: 1,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+  },
+  logo: {
+    height: 72,
+    width: 160,
+  },
+  offerBanner: {
+    width: '100%',
+    height: 130,
+    marginBottom: Theme.spacing.sm,
+  },
+  profileBtn: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: Theme.colors.background.tertiary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Text-only toggle — no pill shape, just a faint row background
+  toggleRow: {
+    flexDirection: 'row',
+    marginHorizontal: Theme.spacing.md,
+    marginBottom: Theme.spacing.sm,
+    backgroundColor: Theme.colors.background.secondary,
+    borderRadius: Theme.components.inputRadius,
+  },
+  togglePill: {
+    flex: 1,
+    paddingVertical: Theme.spacing.sm,
+    alignItems: 'center',
+  },
+  tabActive: {
+    fontSize: Theme.typography.sizes.subtitle + 2,
+    textAlign: 'center',
+  },
+  list: {
+    flex: 1,
+  },
+  listContent: {
+    paddingBottom: 80,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: Theme.spacing.md,
+    paddingTop: Theme.spacing.md,
+    paddingBottom: Theme.spacing.sm,
+    backgroundColor: Theme.colors.background.primary,
+  },
+  sectionTitle: {
+    fontSize: Theme.typography.sizes.subtitle + 2,
+  },
+  // Item row — 3 columns
+  itemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.sm + 2,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Theme.colors.layout.divider,
+  },
+  colName: { flex: 3 },
+  colPrice: { flex: 2, alignItems: 'center' },
+  colAction: { flex: 1.5, alignItems: 'flex-end' },
+  green: { color: Theme.colors.status.success },
+  stepper: { flexDirection: 'row', alignItems: 'center' },
+  stepBtn: { padding: Theme.spacing.xs },
+  qty: { minWidth: 22, textAlign: 'center' },
+  hairline: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: Theme.colors.text.mint,
+  },
+  stormBanner: {
+    backgroundColor: Theme.colors.status.error,
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.md,
+    marginHorizontal: Theme.spacing.md,
+    marginTop: Theme.spacing.sm,
+    borderRadius: Theme.components.inputRadius,
+  },
+  stormText: {
+    color: '#fff',
+    textAlign: 'center',
+  },
+  walletNudge: {
+    backgroundColor: Theme.colors.background.secondary,
+    borderLeftWidth: 3,
+    borderLeftColor: Theme.colors.status.warning,
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.sm,
+    marginHorizontal: Theme.spacing.md,
+    marginTop: Theme.spacing.sm,
+    borderRadius: Theme.components.inputRadius,
+  },
+  bottomBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Theme.spacing.md,
+    paddingTop: Theme.spacing.sm,
+    backgroundColor: Theme.colors.background.primary,
+  },
+  subsTouch: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  subsText: {
+    fontSize: Theme.typography.sizes.body + 2,
+  },
 });
