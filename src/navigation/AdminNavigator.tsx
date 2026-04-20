@@ -26,6 +26,7 @@ import { CreateEssentialScreen } from '../screens/admin/CreateEssentialScreen';
 import { ImportItemsScreen } from '../screens/admin/ImportItemsScreen';
 import { NoteToStaffScreen } from '../screens/admin/NoteToStaffScreen';
 import { SpecialOfferBannerScreen } from '../screens/admin/SpecialOfferBannerScreen';
+import { LoginBgScreen } from '../screens/admin/LoginBgScreen';
 import { CustomerFeedbackScreen } from '../screens/admin/CustomerFeedbackScreen';
 import { ReferralSettingsScreen } from '../screens/admin/ReferralSettingsScreen';
 import { ExpenseManagerScreen } from '../screens/admin/ExpenseManagerScreen';
@@ -123,6 +124,7 @@ export function AdminNavigator() {
       <Stack.Screen name="CustomerPush" component={SpecialOfferBannerScreen} />
 
       {/* Manage — Marketing */}
+      <Stack.Screen name="LoginBg" component={LoginBgScreen} />
       <Stack.Screen name="ReferralSettings" component={ReferralSettingsScreen} />
       <Stack.Screen name="CustomerFeedback" component={CustomerFeedbackScreen} />
 

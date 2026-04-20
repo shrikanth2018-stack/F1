@@ -1,12 +1,14 @@
 /**
  * 1stOne F1 — Login Screen
  * Logo, underline phone field, mint-outline LOGIN | REGISTER button, 2-line footer terms.
+ * Background image is fetched from app_settings.login_bg_url at mount time.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Image,
+  ImageBackground,
   Text,
   StyleSheet,
   KeyboardAvoidingView,
@@ -22,6 +24,7 @@ import { ThemedText } from '../../components/ThemedText';
 import { ThemedInput } from '../../components/ThemedInput';
 import { isValidIndianPhone, normalizePhone } from '../../utils/validators';
 import { useAuth } from '../../hooks/useAuth';
+import { supabase } from '../../api/supabaseClient';
 
 interface LoginScreenProps {
   onOTPSent: (phone: string) => void;
@@ -31,7 +34,19 @@ interface LoginScreenProps {
 export function LoginScreen({ onOTPSent, referralCode }: LoginScreenProps) {
   const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
+  const [bgUrl, setBgUrl] = useState<string | null>(null);
   const { signInWithPhone } = useAuth();
+
+  useEffect(() => {
+    supabase
+      .from('app_settings')
+      .select('login_bg_url')
+      .eq('id', 1)
+      .single()
+      .then(({ data }) => {
+        if (data?.login_bg_url) setBgUrl(data.login_bg_url);
+      });
+  }, []);
 
   const handleContinue = async () => {
     if (!isValidIndianPhone(phone)) {
@@ -53,9 +68,9 @@ export function LoginScreen({ onOTPSent, referralCode }: LoginScreenProps) {
     }
   };
 
-  return (
+  const inner = (
     <KeyboardAvoidingView
-      style={styles.container}
+      style={styles.kav}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <ScrollView
@@ -82,7 +97,7 @@ export function LoginScreen({ onOTPSent, referralCode }: LoginScreenProps) {
           <ThemedInput
             mode="underline"
             placeholder="10-digit mobile number"
-            keyboardType="phone-pad"
+            keyboardType="number-pad"
             maxLength={10}
             value={phone}
             onChangeText={setPhone}
@@ -129,10 +144,27 @@ export function LoginScreen({ onOTPSent, referralCode }: LoginScreenProps) {
       </ScrollView>
     </KeyboardAvoidingView>
   );
+
+  if (!bgUrl) {
+    return <View style={styles.container}>{inner}</View>;
+  }
+
+  return (
+    <ImageBackground source={{ uri: bgUrl }} style={styles.container} resizeMode="cover">
+      {/* Dark overlay — sits behind all UI, keeps text readable */}
+      <View style={styles.overlay} pointerEvents="none" />
+      {inner}
+    </ImageBackground>
+  );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+  },
+  kav: { flex: 1 },
   scroll: { flexGrow: 1 },
   body: {
     alignItems: 'center',
