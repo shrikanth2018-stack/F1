@@ -37,7 +37,7 @@ import { supabase } from '../../api/supabaseClient';
 import { useLiveBanner, type CustomBannerContent } from '../../hooks/useBanner';
 import { useWalletNudge } from '../../hooks/useWalletNudge';
 import { useStoreConfig } from '../../hooks/useStoreConfig';
-import { usePendingRazorpayOrder } from '../../hooks/useOrders';
+import { usePendingRazorpayOrder, useCancelOrder } from '../../hooks/useOrders';
 import { PendingPaymentBanner } from '../../components/PendingPaymentBanner';
 
 // Static assets from Supabase Storage bucket: 'assets'
@@ -283,6 +283,7 @@ export function HomeScreen() {
   const walletNudge = useWalletNudge();
   const { data: pendingOrders } = usePendingRazorpayOrder();
   const pendingOrder = pendingOrders?.[0] ?? null;
+  const { mutate: cancelOrder } = useCancelOrder();
 
   const { data: cycles, isLoading: cyclesLoading, isError: cyclesError, refetch: refetchCycles } = useDeliveryCycles();
   const cycleIds = useMemo(
@@ -444,6 +445,7 @@ export function HomeScreen() {
         <PendingPaymentBanner
           order={pendingOrder}
           onViewOrder={() => navigation.navigate('Orders')}
+          onDismiss={() => cancelOrder({ order_id: pendingOrder.id })}
         />
       )}
 

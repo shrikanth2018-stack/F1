@@ -25,7 +25,7 @@ export { useFeatureFlags, useFeatureFlag } from './useFeatureFlag';
 export { useRealtimeOrders } from './useRealtimeOrders';
 export { usePushNotifications } from './usePushNotifications';
 export { useAddresses, useAddAddress } from './useAddresses';
-export { useMyOrders, useOrderDetail } from './useOrders';
+export { useMyOrders, useOrderDetail, useCancelOrder, useConfirmOrder, usePendingRazorpayOrder } from './useOrders';
 export {
   useSubscriptionPlans,
   usePlanItems,

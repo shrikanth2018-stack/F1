@@ -1,8 +1,9 @@
 /**
  * 1stOne F1 — Checkout Screen
  *
- * Handles food items, essentials items, or both in one order.
- * RULE: Client NEVER confirms payment. Razorpay webhook does.
+ * Handles food + essentials orders. Razorpay payments are confirmed
+ * via the confirm-order Edge Function (service-role, HMAC-verified).
+ * The verify-payment webhook is a secondary safety net.
  */
 
 import React, { useState, useCallback, useRef, useMemo } from 'react';
@@ -15,15 +16,15 @@ import {
   ActivityIndicator,
   Text,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import RazorpayCheckout from '../../utils/razorpay';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { ThemedButton } from '../../components/ThemedButton';
 import { Divider } from '../../components/Divider';
 import { DispatchBadge } from '../../components/DispatchBadge';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { QUERY_KEYS } from '../../utils/constants';
 import { useCartStore } from '../../store/cartStore';
 import { useEssentialsCartStore } from '../../store/essentialsCartStore';
 import { useUIStore } from '../../store/uiStore';
@@ -32,8 +33,6 @@ import { useStoreConfig } from '../../hooks/useStoreConfig';
 import { useWalletBalance } from '../../hooks/useWallet';
 import { useSmartCart } from '../../hooks/useSmartCart';
 import { useAuth } from '../../hooks/useAuth';
-import { usePendingRazorpayOrder } from '../../hooks/useOrders';
-import { PendingPaymentBanner } from '../../components/PendingPaymentBanner';
 import { formatPriceShort } from '../../utils/formatters';
 import { supabase } from '../../api/supabaseClient';
 import { RAZORPAY_KEY_ID } from '../../utils/env';
@@ -81,8 +80,7 @@ export function CheckoutScreen({ navigation, route }: any) {
   // Idempotency key — generated once per checkout session, refreshed after successful order
   // Use Math.random fallback: crypto.randomUUID() is not available in all RN/Expo Go environments
   const idempotencyKeyRef = useRef<string>(generateId());
-  const { data: pendingOrders } = usePendingRazorpayOrder();
-  const pendingOrder = pendingOrders?.[0] ?? null;
+  const queryClient = useQueryClient();
 
   React.useEffect(() => {
     if (addresses && addresses.length > 0 && !selectedAddressId) {
@@ -196,11 +194,7 @@ export function CheckoutScreen({ navigation, route }: any) {
 
       const order = data;
 
-      // Wallet path: order already Confirmed server-side, nothing more to do.
-      // Razorpay path: order is Pending. Open checkout; on success the webhook
-      // will flip it to Paid. Client NEVER confirms payment itself.
       let razorpayAttempted = false;
-      let razorpaySucceeded = false;
       if (paymentMethod === 'razorpay' && order.razorpay_order_id) {
         razorpayAttempted = true;
         const rawPhone = session?.user.phone ?? '';
@@ -212,51 +206,61 @@ export function CheckoutScreen({ navigation, route }: any) {
           amount: Math.round(order.total_amount * 100),
           order_id: order.razorpay_order_id,
           name: '1stOne',
-          prefill: {
-            email: 'customer@1stone.in',
-            contact,
-          },
+          prefill: { email: 'customer@1stone.in', contact },
           theme: { color: Theme.colors.action.primary },
         };
-        try {
-          await Promise.race([
-            RazorpayCheckout.open(options),
-            new Promise<never>((_, reject) =>
-              setTimeout(() => reject(new Error('timeout')), 30_000)
-            ),
-          ]);
-          razorpaySucceeded = true;
-        } catch (e: any) {
-          razorpaySucceeded = false;
-          console.warn('[CheckoutScreen] Razorpay closed:', e?.description ?? e?.message);
-        }
-      }
 
-      if (razorpayAttempted && !razorpaySucceeded) {
-        // User cancelled / payment sheet failed. Order sits Pending on the server
-        // until the webhook reports success or the order is cleaned up. Clear cart
-        // and show a clear message — no "pay later" surface exists yet.
         setGlobalLoading(false);
-        Alert.alert(
-          'Payment Cancelled',
-          'Your order was not placed because payment did not complete. Please try again.',
-        );
-        return;
+
+        let rzpResult: any;
+        try {
+          // 500ms lets UIKit finish dismissing the loading modal before Razorpay presents.
+          rzpResult = await new Promise<any>((resolve, reject) => {
+            setTimeout(() => RazorpayCheckout.open(options).then(resolve).catch(reject), 500);
+          });
+        } catch (e: any) {
+          setIsPlacing(false);
+          setGlobalLoading(false);
+          if (e?.code === 'PAYMENT_CANCELLED') {
+            Alert.alert('Payment Cancelled', 'Your order was not placed. Please try again.');
+          } else {
+            // Payment may have reached Razorpay — leave Pending, webhook resolves it.
+            Alert.alert(
+              'Payment Status Unknown',
+              'There was a connectivity issue. Check the Orders tab in a few minutes.',
+              [{ text: 'OK', onPress: () => navigation.popToTop() }],
+            );
+          }
+          return;
+        }
+
+        // Confirm via Edge Function (service role bypasses RLS). Webhook is the fallback.
+        try {
+          const { data: { session: freshSession } } = await supabase.auth.getSession();
+          const { error: confirmErr } = await supabase.functions.invoke('confirm-order', {
+            headers: { Authorization: `Bearer ${freshSession?.access_token}` },
+            body: {
+              order_id: order.id,
+              razorpay_payment_id: rzpResult?.razorpay_payment_id,
+              razorpay_order_id: order.razorpay_order_id,
+              razorpay_signature: rzpResult?.razorpay_signature,
+            },
+          });
+          if (!confirmErr) queryClient.invalidateQueries({ queryKey: QUERY_KEYS.MY_ORDERS });
+        } catch {
+          // Webhook will resolve — silent fail is intentional.
+        }
       }
 
       trackOrderPlaced(order.id ?? '', order.total_amount ?? estimatedTotal, paymentMethod, cartType);
       if (cartType === 'food') clearFood(); else clearEss();
-      // Rotate the idempotency key so a new order gets a fresh key
       idempotencyKeyRef.current = generateId();
       setGlobalLoading(false);
 
-      if (razorpayAttempted && razorpaySucceeded) {
-        Alert.alert(
-          'Payment Processing',
-          'We\u2019ll confirm your order as soon as your bank clears it. You can track it in Orders.',
-        );
+      if (razorpayAttempted) {
+        Alert.alert('Order Placed!', 'Payment received. You can track your order in the Orders tab.');
       }
-      navigation.navigate('Orders');
+      navigation.popToTop();
     } catch (err: any) {
       trackOrderFailed(err.message || 'unknown', cartType);
       Alert.alert('Order Failed', err.message || 'Please try again');
@@ -273,14 +277,6 @@ export function CheckoutScreen({ navigation, route }: any) {
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
-        {/* Pending payment warning — blocks duplicate Razorpay attempt */}
-        {pendingOrder && (
-          <PendingPaymentBanner
-            order={pendingOrder}
-            onViewOrder={() => navigation.navigate('Orders')}
-          />
-        )}
-
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
@@ -394,17 +390,12 @@ export function CheckoutScreen({ navigation, route }: any) {
             style={[
               styles.paymentOption,
               paymentMethod === 'razorpay' && styles.paymentSelected,
-              !!pendingOrder && styles.paymentDisabled,
             ]}
-            onPress={() => !pendingOrder && setPaymentMethod('razorpay')}
-            activeOpacity={pendingOrder ? 1 : 0.7}
+            onPress={() => setPaymentMethod('razorpay')}
+            activeOpacity={0.7}
           >
-            <ThemedText variant="body" color={pendingOrder ? 'muted' : 'primary'}>
-              Pay Online (Razorpay)
-            </ThemedText>
-            <ThemedText variant="micro" color="muted">
-              {pendingOrder ? 'Unavailable — previous payment still confirming' : 'UPI, Card, Net Banking'}
-            </ThemedText>
+            <ThemedText variant="body" color="primary">Pay Online (Razorpay)</ThemedText>
+            <ThemedText variant="micro" color="muted">UPI, Card, Net Banking</ThemedText>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.paymentOption, paymentMethod === 'wallet' && styles.paymentSelected]}
@@ -493,7 +484,6 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   paymentSelected: { borderColor: Theme.colors.action.primary },
-  paymentDisabled: { opacity: 0.45 },
   paymentRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   floatBtn: {
     position: 'absolute',

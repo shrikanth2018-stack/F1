@@ -75,6 +75,29 @@ export function useCancelOrder() {
   );
 }
 
+export function useConfirmOrder() {
+  return useSupabaseMutation<{
+    order_id: number;
+    razorpay_payment_id: string;
+    razorpay_order_id: string;
+    razorpay_signature: string;
+  }>(
+    async (payload) => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Not authenticated');
+
+      const { data, error } = await supabase.functions.invoke('confirm-order', {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+        body: payload,
+      });
+
+      if (error) throw new Error('Payment confirmation failed');
+      return { data, error: null, count: null, status: 200, statusText: 'OK' } as any;
+    },
+    [QUERY_KEYS.MY_ORDERS as unknown as string[], QUERY_KEYS.ORDERS as unknown as string[]]
+  );
+}
+
 // Polls for any Razorpay order stuck in Pending within the last 2 hours.
 // Auto-clears when the webhook flips it to Paid/Failed.
 export function usePendingRazorpayOrder() {

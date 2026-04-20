@@ -79,9 +79,20 @@ export function OrderDetailScreen({ route, navigation }: any) {
           onPress: async () => {
             setIsCancelling(true);
             try {
-              await cancelOrder({ order_id: order.id });
+              const result = await cancelOrder({ order_id: order.id });
+              const serverWallet = (result as any)?.data?.wallet_refunded ?? walletRefund;
+              const serverRzp = (result as any)?.data?.razorpay_refund_due ?? 0;
               refetch();
-              Alert.alert('Order Cancelled', walletRefund > 0 ? `₹${walletRefund} has been added back to your wallet.` : 'Your order has been cancelled.');
+
+              let msg = 'Your order has been cancelled.';
+              if (serverWallet > 0 && serverRzp > 0) {
+                msg = `₹${serverWallet} returned to your wallet. ₹${serverRzp} Razorpay refund will be processed within 5–7 business days.`;
+              } else if (serverWallet > 0) {
+                msg = `₹${serverWallet} has been returned to your wallet.`;
+              } else if (serverRzp > 0) {
+                msg = `Your order has been cancelled. ₹${serverRzp} Razorpay refund will be processed within 5–7 business days.`;
+              }
+              Alert.alert('Order Cancelled', msg);
             } catch (err: any) {
               Alert.alert('Cannot Cancel', err?.message ?? 'Something went wrong.');
             } finally {
@@ -133,6 +144,16 @@ export function OrderDetailScreen({ route, navigation }: any) {
 
   const canCancel = CANCELLABLE_STATUSES.has(order.status) && ageHours <= windowHours && !cutoffPassed;
 
+  const cancelRefundLine = (() => {
+    if (order.status !== 'Cancelled') return '';
+    const w = order.wallet_amount_used ?? 0;
+    const r = Math.max(0, order.total_amount - w);
+    if (w > 0 && r > 0) return `₹${w} returned to wallet · ₹${r} Razorpay refund in 5–7 days`;
+    if (w > 0) return `₹${w} returned to your wallet`;
+    if (r > 0) return `₹${r} Razorpay refund will be processed in 5–7 business days`;
+    return '';
+  })();
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
@@ -158,6 +179,16 @@ export function OrderDetailScreen({ route, navigation }: any) {
             )}
           </View>
         </View>
+
+        {/* Cancelled banner */}
+        {order.status === 'Cancelled' && (
+          <View style={styles.cancelledBanner}>
+            <ThemedText variant="subtitle" style={styles.cancelledTitle}>Order Cancelled</ThemedText>
+            {cancelRefundLine ? (
+              <ThemedText variant="small" color="muted" style={styles.cancelledRefund}>{cancelRefundLine}</ThemedText>
+            ) : null}
+          </View>
+        )}
 
         {/* Status Timeline */}
         {order.status !== 'Cancelled' && (
@@ -356,6 +387,22 @@ const styles = StyleSheet.create({
   cancelHint: {
     textAlign: 'center',
     marginTop: Theme.spacing.xs,
+  },
+  cancelledBanner: {
+    margin: Theme.spacing.md,
+    padding: Theme.spacing.md,
+    backgroundColor: Theme.colors.background.secondary,
+    borderRadius: Theme.components.inputRadius,
+    borderWidth: 1,
+    borderColor: Theme.colors.status.error,
+    alignItems: 'center',
+    gap: 6,
+  },
+  cancelledTitle: {
+    color: Theme.colors.status.error,
+  },
+  cancelledRefund: {
+    textAlign: 'center',
   },
   itemRow: {
     flexDirection: 'row',

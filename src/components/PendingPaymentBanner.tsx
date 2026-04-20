@@ -8,9 +8,10 @@ import type { Order } from '../types';
 interface Props {
   order: Order;
   onViewOrder: () => void;
+  onDismiss?: () => void;
 }
 
-export function PendingPaymentBanner({ order, onViewOrder }: Props) {
+export function PendingPaymentBanner({ order, onViewOrder, onDismiss }: Props) {
   return (
     <View style={styles.banner}>
       <View style={styles.left}>
@@ -24,6 +25,11 @@ export function PendingPaymentBanner({ order, onViewOrder }: Props) {
       <TouchableOpacity onPress={onViewOrder} style={styles.btn} activeOpacity={0.7}>
         <ThemedText variant="small" color="mint">View ›</ThemedText>
       </TouchableOpacity>
+      {onDismiss && (
+        <TouchableOpacity onPress={onDismiss} style={styles.dismiss} activeOpacity={0.7} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <ThemedText variant="small" color="muted">✕</ThemedText>
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
@@ -44,4 +50,5 @@ const styles = StyleSheet.create({
   left: { flex: 1 },
   title: { color: Theme.colors.status.warning, fontWeight: '600', marginBottom: 2 },
   btn: { paddingLeft: Theme.spacing.sm },
+  dismiss: { paddingLeft: Theme.spacing.sm },
 });

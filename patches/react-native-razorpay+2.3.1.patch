@@ -1,0 +1,47 @@
+diff --git a/node_modules/react-native-razorpay/ios/RazorpayCheckout.m b/node_modules/react-native-razorpay/ios/RazorpayCheckout.m
+index a84a48e..7637a7b 100644
+--- a/node_modules/react-native-razorpay/ios/RazorpayCheckout.m
++++ b/node_modules/react-native-razorpay/ios/RazorpayCheckout.m
+@@ -34,17 +34,32 @@ @implementation RNRazorpayCheckout
+         tempOptions[@"integration"] = @"react_native";
+         tempOptions[@"FRAMEWORK"] = @"react_native";
+ 
+-        //get root view to present razorpay vc
+-        id<UIApplicationDelegate> app = [[UIApplication sharedApplication] delegate];
+-        UINavigationController *rootViewController = ((UINavigationController*) app.window.rootViewController);
+-
+-        if (rootViewController.presentedViewController) {
+-            [razorpay open:tempOptions displayController:rootViewController.presentedViewController];
+-            return;
++        // Walk to the topmost presented UIViewController.
++        // react-native-screens v4+ wraps each screen in its own UIViewController,
++        // so app.window.rootViewController is NOT a UINavigationController —
++        // hard-casting it silently produces garbage and the sheet never presents.
++        UIViewController *topVC = nil;
++        for (UIWindowScene *scene in [UIApplication sharedApplication].connectedScenes) {
++            if (scene.activationState == UISceneActivationStateForegroundActive &&
++                [scene isKindOfClass:[UIWindowScene class]]) {
++                for (UIWindow *window in scene.windows) {
++                    if (window.isKeyWindow) {
++                        topVC = window.rootViewController;
++                        break;
++                    }
++                }
++                if (topVC) break;
++            }
+         }
+-
+-        //Use 'open' method with displayController parameter
+-        [razorpay open:tempOptions displayController:rootViewController];
++        // Fallback: pre-scenes API (iOS < 13 / simulators with single window)
++        if (!topVC) {
++            topVC = [UIApplication sharedApplication].windows.firstObject.rootViewController;
++        }
++        // Ascend to the topmost presented controller
++        while (topVC.presentedViewController) {
++            topVC = topVC.presentedViewController;
++        }
++        [razorpay open:tempOptions displayController:topVC];
+     });
+ }
+ 
