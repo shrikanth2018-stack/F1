@@ -51,7 +51,7 @@ export function LoginBgScreen({ navigation }: { navigation: any }) {
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ImagePicker.MediaType.Images,
       quality: 0.85,
       allowsEditing: true,
       aspect: [9, 16],
