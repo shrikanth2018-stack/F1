@@ -23,3 +23,7 @@ CREATE POLICY app_settings_public_read ON public.app_settings
 -- Only admins can update
 CREATE POLICY app_settings_admin_update ON public.app_settings
   FOR UPDATE USING (public.is_admin()) WITH CHECK (public.is_admin());
+
+-- Grant table-level permissions (RLS policies alone are not enough)
+GRANT SELECT ON public.app_settings TO anon;
+GRANT SELECT, UPDATE ON public.app_settings TO authenticated;

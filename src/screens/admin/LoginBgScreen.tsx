@@ -29,6 +29,7 @@ const S = Theme.typography.sizes.small + 2;
 export function LoginBgScreen({ navigation }: { navigation: any }) {
   const [currentUrl, setCurrentUrl] = useState<string | null>(null);
   const [previewUri, setPreviewUri] = useState<string | null>(null);
+  const [previewMime, setPreviewMime] = useState('image/jpeg');
   const [uploading, setUploading] = useState(false);
   const [loadingCurrent, setLoadingCurrent] = useState(true);
 
@@ -51,13 +52,15 @@ export function LoginBgScreen({ navigation }: { navigation: any }) {
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaType.Images,
+      mediaTypes: 'images',
       quality: 0.85,
       allowsEditing: true,
       aspect: [9, 16],
     });
     if (!result.canceled && result.assets[0]) {
-      setPreviewUri(result.assets[0].uri);
+      const asset = result.assets[0];
+      setPreviewUri(asset.uri);
+      setPreviewMime(asset.mimeType ?? 'image/jpeg');
     }
   };
 
@@ -69,12 +72,13 @@ export function LoginBgScreen({ navigation }: { navigation: any }) {
       const response = await fetch(previewUri);
       const blob = await response.blob();
 
-      const newFileName = `login_bg_${Date.now()}.jpg`;
+      const ext = previewMime === 'image/png' ? 'png' : previewMime === 'image/webp' ? 'webp' : 'jpg';
+      const newFileName = `login_bg_${Date.now()}.${ext}`;
 
       // Upload new file
       const { error: uploadError } = await supabase.storage
         .from('assets')
-        .upload(newFileName, blob, { contentType: 'image/jpeg', upsert: false });
+        .upload(newFileName, blob, { contentType: previewMime, upsert: false });
       if (uploadError) throw new Error(uploadError.message);
 
       // Get public URL
@@ -86,7 +90,7 @@ export function LoginBgScreen({ navigation }: { navigation: any }) {
       if (currentUrl) {
         const parts = currentUrl.split('/');
         const candidate = parts[parts.length - 1]?.split('?')[0];
-        if (candidate?.startsWith('login_bg_')) oldFileName = candidate;
+        if (candidate && /^login_bg_\d+\.(jpg|png|webp)$/.test(candidate)) oldFileName = candidate;
       }
 
       // Update DB row
