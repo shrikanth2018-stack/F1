@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
+import { decode } from 'base64-arraybuffer';
 import { supabase } from '../../api/supabaseClient';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
@@ -29,6 +30,7 @@ const S = Theme.typography.sizes.small + 2;
 export function LoginBgScreen({ navigation }: { navigation: any }) {
   const [currentUrl, setCurrentUrl] = useState<string | null>(null);
   const [previewUri, setPreviewUri] = useState<string | null>(null);
+  const [previewBase64, setPreviewBase64] = useState<string | null>(null);
   const [previewMime, setPreviewMime] = useState('image/jpeg');
   const [uploading, setUploading] = useState(false);
   const [loadingCurrent, setLoadingCurrent] = useState(true);
@@ -56,21 +58,22 @@ export function LoginBgScreen({ navigation }: { navigation: any }) {
       quality: 0.85,
       allowsEditing: true,
       aspect: [9, 16],
+      base64: true,
     });
     if (!result.canceled && result.assets[0]) {
       const asset = result.assets[0];
       setPreviewUri(asset.uri);
+      setPreviewBase64(asset.base64 ?? null);
       setPreviewMime(asset.mimeType ?? 'image/jpeg');
     }
   };
 
   const handleUpload = async () => {
-    if (!previewUri) return;
+    if (!previewUri || !previewBase64) return;
     setUploading(true);
     try {
-      // Fetch as blob
-      const response = await fetch(previewUri);
-      const blob = await response.blob();
+      // Convert base64 → ArrayBuffer (avoids React Native blob corruption)
+      const fileData = decode(previewBase64);
 
       const ext = previewMime === 'image/png' ? 'png' : previewMime === 'image/webp' ? 'webp' : 'jpg';
       const newFileName = `login_bg_${Date.now()}.${ext}`;
@@ -78,7 +81,7 @@ export function LoginBgScreen({ navigation }: { navigation: any }) {
       // Upload new file
       const { error: uploadError } = await supabase.storage
         .from('assets')
-        .upload(newFileName, blob, { contentType: previewMime, upsert: false });
+        .upload(newFileName, fileData, { contentType: previewMime, upsert: false });
       if (uploadError) throw new Error(uploadError.message);
 
       // Get public URL
@@ -107,7 +110,8 @@ export function LoginBgScreen({ navigation }: { navigation: any }) {
 
       setCurrentUrl(newUrl);
       setPreviewUri(null);
-      Alert.alert('Done!', 'Login background updated. Customers will see it on their next app launch.');
+      setPreviewBase64(null);
+      Alert.alert('Success', 'Login background updated. Customers will see it on their next app launch.');
     } catch (e: any) {
       Alert.alert('Upload failed', e?.message ?? 'Unknown error');
     } finally {
