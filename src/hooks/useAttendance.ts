@@ -20,6 +20,11 @@ import { useStaffQueueStore } from '../store/staffQueueStore';
 import { QUERY_KEYS, QUERY_STALE_TIME } from '../utils/constants';
 import type { StaffAttendance, StaffLeave } from '../types';
 
+// Shape returned by useClockIn mutationFn so onSuccess can optimistically update the cache
+type ClockInPayload = Pick<StaffAttendance,
+  'staff_id' | 'date' | 'clock_in_time' | 'clock_in_lat' | 'clock_in_lng'
+>;
+
 /** Today's attendance record for current staff */
 export function useTodayAttendance() {
   const { session } = useAuth();
@@ -100,7 +105,7 @@ export function useClockIn() {
   const queryClient = useQueryClient();
   const enqueue = useStaffQueueStore((s) => s.enqueue);
 
-  return useMutation({
+  return useMutation<ClockInPayload, Error, void>({
     mutationFn: async () => {
       if (!session) throw new Error('Not authenticated');
 
@@ -108,7 +113,7 @@ export function useClockIn() {
       const now = new Date().toISOString();
       const coords = await getCurrentCoords();
 
-      const payload = {
+      const payload: ClockInPayload = {
         staff_id: session.user.id,
         date: today,
         clock_in_time: now,
@@ -133,8 +138,25 @@ export function useClockIn() {
           userId: session.user.id,
         });
       }
+
+      // Return the payload so onSuccess can immediately write it to the cache,
+      // making the clock-in time visible before the background refetch completes.
+      return payload;
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
+      // Immediate optimistic write — no need to wait for the DB round-trip
+      queryClient.setQueryData<StaffAttendance | null>(
+        [...QUERY_KEYS.STAFF_ATTENDANCE, 'today', session?.user.id],
+        (existing) => ({
+          id: existing?.id ?? 0,
+          clock_out_time: existing?.clock_out_time ?? null,
+          clock_out_lat: existing?.clock_out_lat ?? null,
+          clock_out_lng: existing?.clock_out_lng ?? null,
+          branch_id: existing?.branch_id ?? null,
+          ...result,
+        })
+      );
+      // Then trigger background refetch to sync server-assigned id / branch_id
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.STAFF_ATTENDANCE });
     },
   });

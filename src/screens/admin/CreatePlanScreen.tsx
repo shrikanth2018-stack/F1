@@ -41,6 +41,7 @@ export function CreatePlanScreen({ navigation, route }: { navigation: any; route
   const [cycleIdx, setCycleIdx] = useState(0);
   const [planName, setPlanName] = useState('');
   const [daysInput, setDaysInput] = useState('');
+  const [priceInput, setPriceInput] = useState('');
   const [selectedItems, setSelectedItems] = useState<PlanItem[]>([]);
 
   const selectedCycle = cycles[cycleIdx] as any;
@@ -85,23 +86,33 @@ export function CreatePlanScreen({ navigation, route }: { navigation: any; route
     const days = parseInt(daysInput, 10);
     if (isNaN(days) || days <= 0) { Alert.alert('Error', 'Enter a valid number of days'); return; }
     if (!selectedCycle) { Alert.alert('Error', 'No delivery cycles available'); return; }
-    if (selectedItems.length === 0) { Alert.alert('Error', 'Add at least one item to the plan'); return; }
 
-    const totalPrice = availableItems.reduce((sum: number, ai: any) => {
-      const si = selectedItems.find((s) => s.item_id === ai.id);
-      return si ? sum + ai.price * si.quantity : sum;
-    }, 0);
+    let finalPrice: number;
+    if (planType === 'food') {
+      if (selectedItems.length === 0) { Alert.alert('Error', 'Add at least one item to the plan'); return; }
+      finalPrice = availableItems.reduce((sum: number, ai: any) => {
+        const si = selectedItems.find((s) => s.item_id === ai.id);
+        return si ? sum + ai.price * si.quantity : sum;
+      }, 0);
+    } else {
+      const p = parseFloat(priceInput);
+      if (isNaN(p) || p <= 0) { Alert.alert('Error', 'Enter a valid plan price'); return; }
+      finalPrice = p;
+    }
 
     addPlan.mutate(
       {
-        name: planName.trim(),
+        plan_name: planName.trim(),
         cycle_id: selectedCycle.id,
-        type: planType,
+        plan_type: planType,
         duration_days: days,
-        price: totalPrice,
+        price: finalPrice,
         plan_items: JSON.stringify(selectedItems),
       },
-      { onSuccess: () => navigation.goBack() }
+      {
+        onSuccess: () => navigation.goBack(),
+        onError: (e: any) => Alert.alert('Error', e?.message ?? 'Failed to save plan'),
+      }
     );
   };
 
@@ -157,71 +168,86 @@ export function CreatePlanScreen({ navigation, route }: { navigation: any; route
           keyboardType="number-pad"
         />
 
-        {/* Available items to pick */}
-        <ThemedText variant="small" color="muted" style={styles.sectionLabel}>
-          {`SELECT ${typeLabel.toUpperCase()} ITEMS`}
-        </ThemedText>
-
-        {availableItems.length === 0 ? (
-          <ThemedText variant="small" color="muted" style={styles.emptyNote}>
-            {`No active ${typeLabel.toLowerCase()} items for this cycle`}
-          </ThemedText>
-        ) : (
-          availableItems.map((item: any) => {
-            const isAdded = selectedItems.some((si) => si.item_id === item.id);
-            return (
-              <TouchableOpacity
-                key={item.id}
-                style={styles.availableRow}
-                onPress={() => handleAddItem(item)}
-                activeOpacity={0.7}
-                disabled={isAdded}
-              >
-                <ThemedText
-                  variant="body"
-                  color={isAdded ? 'muted' : 'primary'}
-                  style={styles.txt}
-                >
-                  {item.name}
-                </ThemedText>
-                <ThemedText variant="small" color="muted" style={styles.subTxt}>
-                  {'₹'}{item.price}
-                </ThemedText>
-                {!isAdded && (
-                  <ThemedText variant="body" color="mint" style={styles.addBtn}>+</ThemedText>
-                )}
-              </TouchableOpacity>
-            );
-          })
+        {/* Price — manual entry for essentials; auto-calculated from items for food */}
+        {planType === 'essentials' && (
+          <TextInput
+            style={styles.input}
+            placeholder="Plan price  ₹"
+            placeholderTextColor={Theme.colors.text.muted}
+            value={priceInput}
+            onChangeText={setPriceInput}
+            keyboardType="decimal-pad"
+          />
         )}
 
-        {/* Selected items with qty controls */}
-        {selectedItems.length > 0 && (
+        {/* Item picker — food only */}
+        {planType === 'food' && (
           <>
-            <ThemedText variant="small" color="muted" style={[styles.sectionLabel, styles.sectionLabelMt]}>
-              PLAN ITEMS
+            <ThemedText variant="small" color="muted" style={styles.sectionLabel}>
+              SELECT FOOD ITEMS
             </ThemedText>
-            {selectedItems.map((si) => (
-              <View key={si.item_id} style={styles.selectedRow}>
-                <ThemedText variant="body" color="primary" style={[styles.txt, styles.selectedName]} numberOfLines={1}>
-                  {si.item_name}
+
+            {availableItems.length === 0 ? (
+              <ThemedText variant="small" color="muted" style={styles.emptyNote}>
+                No active food items for this cycle
+              </ThemedText>
+            ) : (
+              availableItems.map((item: any) => {
+                const isAdded = selectedItems.some((si) => si.item_id === item.id);
+                return (
+                  <TouchableOpacity
+                    key={item.id}
+                    style={styles.availableRow}
+                    onPress={() => handleAddItem(item)}
+                    activeOpacity={0.7}
+                    disabled={isAdded}
+                  >
+                    <ThemedText
+                      variant="body"
+                      color={isAdded ? 'muted' : 'primary'}
+                      style={styles.txt}
+                    >
+                      {item.name}
+                    </ThemedText>
+                    <ThemedText variant="small" color="muted" style={styles.subTxt}>
+                      {'₹'}{item.price}
+                    </ThemedText>
+                    {!isAdded && (
+                      <ThemedText variant="body" color="mint" style={styles.addBtn}>+</ThemedText>
+                    )}
+                  </TouchableOpacity>
+                );
+              })
+            )}
+
+            {selectedItems.length > 0 && (
+              <>
+                <ThemedText variant="small" color="muted" style={[styles.sectionLabel, styles.sectionLabelMt]}>
+                  PLAN ITEMS
                 </ThemedText>
-                <View style={styles.qtyRow}>
-                  <TouchableOpacity style={styles.qtyBtn} onPress={() => handleQtyChange(si.item_id, -1)}>
-                    <ThemedText variant="body" color="muted" style={styles.txt}>−</ThemedText>
-                  </TouchableOpacity>
-                  <ThemedText variant="body" color="primary" style={[styles.txt, styles.qtyNum]}>
-                    {si.quantity}
-                  </ThemedText>
-                  <TouchableOpacity style={styles.qtyBtn} onPress={() => handleQtyChange(si.item_id, 1)}>
-                    <ThemedText variant="body" color="muted" style={styles.txt}>+</ThemedText>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.removeBtn} onPress={() => handleRemoveItem(si.item_id)}>
-                    <ThemedText variant="body" color="muted" style={styles.txt}>×</ThemedText>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ))}
+                {selectedItems.map((si) => (
+                  <View key={si.item_id} style={styles.selectedRow}>
+                    <ThemedText variant="body" color="primary" style={[styles.txt, styles.selectedName]} numberOfLines={1}>
+                      {si.item_name}
+                    </ThemedText>
+                    <View style={styles.qtyRow}>
+                      <TouchableOpacity style={styles.qtyBtn} onPress={() => handleQtyChange(si.item_id, -1)}>
+                        <ThemedText variant="body" color="muted" style={styles.txt}>−</ThemedText>
+                      </TouchableOpacity>
+                      <ThemedText variant="body" color="primary" style={[styles.txt, styles.qtyNum]}>
+                        {si.quantity}
+                      </ThemedText>
+                      <TouchableOpacity style={styles.qtyBtn} onPress={() => handleQtyChange(si.item_id, 1)}>
+                        <ThemedText variant="body" color="muted" style={styles.txt}>+</ThemedText>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.removeBtn} onPress={() => handleRemoveItem(si.item_id)}>
+                        <ThemedText variant="body" color="muted" style={styles.txt}>×</ThemedText>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))}
+              </>
+            )}
           </>
         )}
       </ScrollView>

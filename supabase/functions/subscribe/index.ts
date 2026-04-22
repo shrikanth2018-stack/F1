@@ -131,9 +131,12 @@ Deno.serve(async (req: Request) => {
     const newStartMs = new Date(start_date).getTime();
     const newEndMs   = newStartMs + (plan.duration_days - 1) * MS_PER_DAY;
 
+    // Treat null plan_type (legacy rows created before the column existed) as 'food'
+    const newPlanType = plan.plan_type ?? 'food';
     const conflict = (existingSubs ?? []).some((s: any) => {
-      if (s.subscription_plans?.cycle_id  !== plan.cycle_id)  return false;
-      if (s.subscription_plans?.plan_type !== plan.plan_type) return false;
+      if (s.subscription_plans?.cycle_id !== plan.cycle_id) return false;
+      const existingType = s.subscription_plans?.plan_type ?? 'food';
+      if (existingType !== newPlanType) return false;
       const existingDuration = s.subscription_plans?.duration_days ?? 0;
       const existingStartMs  = new Date(s.start_date).getTime();
       const existingEndMs    = existingStartMs + (existingDuration - 1) * MS_PER_DAY;

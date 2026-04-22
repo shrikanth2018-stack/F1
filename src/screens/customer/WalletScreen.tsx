@@ -103,7 +103,7 @@ export function WalletScreen({ navigation }: { navigation: any }) {
   const handleAdd = () => {
     const amt = parseFloat(customAmount);
     if (!amt || amt <= 0) {
-      Alert.alert('Error', 'Enter a valid amount');
+      Alert.alert('No amount mentioned!');
       return;
     }
     handleTopup(amt);
@@ -117,7 +117,7 @@ export function WalletScreen({ navigation }: { navigation: any }) {
 
       {/* Header row */}
       <View style={styles.header}>
-        <ThemedText variant="header" color="primary">Wallet</ThemedText>
+        <ThemedText variant="header" color="primary">My Wallet</ThemedText>
         <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
           <ThemedText variant="body" color="muted">Close</ThemedText>
         </TouchableOpacity>
@@ -189,28 +189,31 @@ export function WalletScreen({ navigation }: { navigation: any }) {
         {(transactions ?? []).length === 0 ? (
           <EmptyState title="No transactions yet" />
         ) : (
-          (transactions ?? []).map((tx) => (
-            <View key={tx.id} style={styles.txRow}>
-              <View style={styles.txInfo}>
-                <ThemedText variant="body" color="primary">{tx.description}</ThemedText>
-                <ThemedText variant="small" color="muted">
-                  {new Date(tx.created_at).toLocaleDateString('en-IN', {
-                    day: 'numeric', month: 'short',
-                    hour: '2-digit', minute: '2-digit',
-                  })}
+          (transactions ?? []).map((tx, idx, arr) => (
+            <React.Fragment key={tx.id}>
+              {idx > 0 && <View style={styles.txSep} />}
+              <View style={styles.txRow}>
+                <View style={styles.txInfo}>
+                  <ThemedText variant="body" color="primary">{tx.description}</ThemedText>
+                  <ThemedText variant="small" color="muted">
+                    {new Date(tx.created_at).toLocaleDateString('en-IN', {
+                      day: 'numeric', month: 'short',
+                      hour: '2-digit', minute: '2-digit',
+                    })}
+                  </ThemedText>
+                </View>
+                <ThemedText
+                  variant="subtitle"
+                  style={[styles.txAmount, {
+                    color: tx.transaction_type === 'credit'
+                      ? Theme.colors.status.success
+                      : Theme.colors.status.error,
+                  }]}
+                >
+                  {tx.transaction_type === 'credit' ? '+' : '-'}{'\u20B9'}{Math.abs(tx.amount)}
                 </ThemedText>
               </View>
-              <ThemedText
-                variant="subtitle"
-                style={{
-                  color: tx.transaction_type === 'credit'
-                    ? Theme.colors.status.success
-                    : Theme.colors.status.error,
-                }}
-              >
-                {tx.transaction_type === 'credit' ? '+' : '-'}{'\u20B9'}{Math.abs(tx.amount)}
-              </ThemedText>
-            </View>
+            </React.Fragment>
           ))
         )}
       </ScrollView>
@@ -261,10 +264,12 @@ const styles = StyleSheet.create({
     marginBottom: Theme.spacing.sm,
   },
   input: {
-    backgroundColor: Theme.colors.background.input,
-    borderRadius: Theme.components.inputRadius,
-    paddingHorizontal: Theme.spacing.sm,
-    paddingVertical: Theme.spacing.sm,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: `${Theme.colors.text.mint}4D`,
+    backgroundColor: Theme.colors.background.secondary,
+    paddingHorizontal: Theme.spacing.md,
     color: Theme.colors.text.primary,
     fontFamily: Theme.typography.fontFamily,
     fontSize: Theme.typography.sizes.body,
@@ -297,8 +302,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: Theme.spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.layout.divider,
+  },
+  txSep: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: Theme.colors.layout.divider,
+  },
+  txAmount: {
+    fontSize: Theme.typography.sizes.subtitle + 2,
   },
   txInfo: {
     flex: 1,

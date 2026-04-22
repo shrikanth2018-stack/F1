@@ -82,11 +82,11 @@ export function PlansScreen({ navigation }: any) {
     return (
       <View style={styles.planRow}>
         <View style={styles.colName}>
-          <ThemedText variant="body" color="primary">{item.plan_name}</ThemedText>
-          <ThemedText variant="small" color="muted">{subtext}</ThemedText>
+          <ThemedText variant="body" color="primary" style={styles.planName}>{item.plan_name}</ThemedText>
+          <ThemedText variant="small" color="muted" style={styles.planSub}>{subtext}</ThemedText>
         </View>
         <View style={styles.colPrice}>
-          <ThemedText variant="body" color="mint">{formatPriceShort(item.price)}</ThemedText>
+          <ThemedText variant="body" color="mint" style={styles.planPrice}>{formatPriceShort(item.price)}</ThemedText>
         </View>
         <View style={styles.colAction}>
           <TouchableOpacity
@@ -106,7 +106,7 @@ export function PlansScreen({ navigation }: any) {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <ThemedText variant="body" color="accent">‹ Back</ThemedText>
+          <ThemedText variant="body" color="accent" style={styles.backText}>‹ Back</ThemedText>
         </TouchableOpacity>
         <ThemedText variant="header" color="primary">Subscription Plans</ThemedText>
         <View style={styles.headerSpacer} />
@@ -182,13 +182,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     marginHorizontal: Theme.spacing.md,
     marginBottom: Theme.spacing.sm,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: Theme.colors.background.secondary,
-    borderRadius: Theme.components.inputRadius,
+    borderWidth: 1,
+    borderColor: `${Theme.colors.text.mint}4D`,
+    overflow: 'hidden',
   },
   togglePill: {
     flex: 1,
-    paddingVertical: Theme.spacing.sm,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   listWrap: { flex: 1 },
   listContent: { paddingBottom: Theme.spacing.xl },
@@ -212,5 +216,9 @@ const styles = StyleSheet.create({
   colName: { flex: 3 },
   colPrice: { flex: 2, alignItems: 'center' },
   colAction: { flex: 1.5, alignItems: 'flex-end' },
-  green: { color: Theme.colors.status.success },
+  green: { color: Theme.colors.status.success, fontSize: Theme.typography.sizes.small + 2 },
+  backText: { fontSize: Theme.typography.sizes.body + 2 },
+  planName: { fontSize: Theme.typography.sizes.body + 2 },
+  planSub: { fontSize: Theme.typography.sizes.small + 2 },
+  planPrice: { fontSize: Theme.typography.sizes.body + 2 },
 });

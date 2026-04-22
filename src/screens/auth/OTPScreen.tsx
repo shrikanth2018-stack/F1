@@ -1,6 +1,6 @@
 /**
  * 1stOne F1 — OTP Verification Screen
- * Plain text layout. Auto-submits at 6 digits.
+ * Passcode-dot entry, auto-submits at 6 digits.
  * For new users: creates profile record after verification.
  */
 
@@ -8,6 +8,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
+  TextInput,
+  ImageBackground,
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
@@ -16,8 +18,6 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Theme } from '../../theme';
-import { ThemedText } from '../../components/ThemedText';
-import { ThemedInput } from '../../components/ThemedInput';
 import { useAuth } from '../../hooks/useAuth';
 import { supabase } from '../../api/supabaseClient';
 import { isValidOTP } from '../../utils/validators';
@@ -30,11 +30,75 @@ interface OTPScreenProps {
   onNewUser: () => void;
 }
 
+// ── Passcode dot row (6 digits) ─────────────────────────────
+
+function PasscodeDots({ value }: { value: string }) {
+  return (
+    <View style={dots.row}>
+      {Array.from({ length: 6 }).map((_, i) => {
+        const char = value[i];
+        return (
+          <View key={i} style={dots.slot}>
+            {char ? (
+              <Text style={dots.digit}>{char}</Text>
+            ) : (
+              <View style={dots.circle} />
+            )}
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+const dots = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 12,
+  },
+  slot: {
+    width: 40,
+    height: 52,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  digit: {
+    fontFamily: Theme.typography.fontFamily,
+    fontSize: Theme.typography.sizes.body + 5,
+    color: '#ffffff',
+    fontWeight: '400',
+  },
+  circle: {
+    width: 11,
+    height: 11,
+    borderRadius: 5.5,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.35)',
+  },
+});
+
+// ── Screen ───────────────────────────────────────────────────
+
 export function OTPScreen({ phone, onBack, onExistingUser, onNewUser }: OTPScreenProps) {
   const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
+  const [bgUrl, setBgUrl] = useState<string | null>(null);
   const isVerifyingRef = useRef(false);
+  const inputRef = useRef<TextInput>(null);
   const { verifyOTP } = useAuth();
+
+  useEffect(() => {
+    supabase
+      .from('app_settings')
+      .select('login_bg_url')
+      .eq('id', 1)
+      .single()
+      .then(({ data }) => {
+        if (data?.login_bg_url) setBgUrl(data.login_bg_url);
+      });
+  }, []);
 
   const handleVerify = async () => {
     if (isVerifyingRef.current) return;
@@ -55,16 +119,23 @@ export function OTPScreen({ phone, onBack, onExistingUser, onNewUser }: OTPScree
       return;
     }
 
-    // Check if profile exists — determines new vs returning user
-    const { data: profile } = await supabase
+    // Check if profile exists — use the auth-canonical phone from getUser()
+    // to avoid format mismatches between our normalizePhone and Supabase's stored value.
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    const canonicalPhone = authUser?.phone ?? phone;
+
+    const { data: profile, error: profileErr } = await supabase
       .from('profiles')
       .select('id')
-      .eq('phone_number', phone)
+      .or(`phone_number.eq.${canonicalPhone},phone_number.eq.${phone}`)
       .maybeSingle();
 
     setLoading(false);
     isVerifyingRef.current = false;
-    if (profile) {
+
+    // If the query itself errored (RLS, network), treat as existing user —
+    // better to let someone in than to force unnecessary re-registration.
+    if (profile || profileErr) {
       onExistingUser();
     } else {
       onNewUser();
@@ -77,95 +148,112 @@ export function OTPScreen({ phone, onBack, onExistingUser, onNewUser }: OTPScree
     }
   }, [otp]);
 
-  return (
+  const inner = (
     <KeyboardAvoidingView
-      style={styles.container}
+      style={styles.kav}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <View style={styles.inner}>
-        <TouchableOpacity onPress={onBack} style={styles.back}>
-          <ThemedText variant="body" color="accent">‹ Back</ThemedText>
+        <Text style={styles.title}>Enter OTP</Text>
+        <Text style={styles.subtitle}>Sent to {formatPhone(phone)}</Text>
+
+        {/* Passcode dot field */}
+        <TouchableOpacity
+          style={styles.dotWrap}
+          activeOpacity={1}
+          onPress={() => inputRef.current?.focus()}
+        >
+          <PasscodeDots value={otp} />
+          <TextInput
+            ref={inputRef}
+            style={styles.hiddenInput}
+            keyboardType="number-pad"
+            maxLength={6}
+            value={otp}
+            onChangeText={setOtp}
+            autoFocus
+            caretHidden
+          />
         </TouchableOpacity>
 
-        <ThemedText variant="header" color="primary" style={styles.title}>
-          Enter OTP
-        </ThemedText>
-        <ThemedText variant="body" color="subtitle" style={styles.subtitle}>
-          Sent to {formatPhone(phone)}
-        </ThemedText>
+        {/* Loading indicator while auto-verifying */}
+        {loading && <ActivityIndicator color={Theme.colors.text.mint} style={styles.loader} />}
 
-        <ThemedInput
-          mode="underline"
-          placeholder="6-digit code"
-          keyboardType="number-pad"
-          maxLength={6}
-          value={otp}
-          onChangeText={setOtp}
-          autoFocus
-          style={styles.otpInput}
-        />
-
-        <TouchableOpacity
-          style={styles.verifyBtn}
-          activeOpacity={0.85}
-          onPress={handleVerify}
-          disabled={loading || otp.length < 6}
-        >
-          {loading ? (
-            <ActivityIndicator color={Theme.colors.text.mint} />
-          ) : (
-            <>
-              <Text style={[styles.verifyBtnText, otp.length < 6 && styles.btnDisabled]}>
-                Verify
-              </Text>
-              <Text style={[styles.verifyBtnText, otp.length < 6 && styles.btnDisabled]}>
-                ›
-              </Text>
-            </>
-          )}
+        {/* Change phone — replaces the Back button */}
+        <TouchableOpacity style={styles.changePhoneBtn} onPress={onBack} activeOpacity={0.6}>
+          <Text style={styles.changePhoneText}>Change Phone Number</Text>
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
+  );
+
+  if (!bgUrl) {
+    return <View style={styles.container}>{inner}</View>;
+  }
+
+  return (
+    <ImageBackground source={{ uri: bgUrl }} style={styles.container} resizeMode="cover">
+      <View style={styles.overlay} pointerEvents="none" />
+      {inner}
+    </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+  },
+  kav: { flex: 1 },
   inner: {
     flex: 1,
     justifyContent: 'center',
+    alignItems: 'center',
     paddingHorizontal: Theme.spacing.xl,
   },
-  back: { position: 'absolute', top: Theme.spacing.xl, left: Theme.spacing.xl },
-  title: { textAlign: 'center', marginBottom: Theme.spacing.xs },
-  subtitle: { textAlign: 'center', marginBottom: Theme.spacing.xl * 2 },
-  otpInput: {
-    textAlign: 'center',
-    fontSize: Theme.typography.sizes.header,
-    letterSpacing: 12,
-    marginBottom: Theme.spacing.xl,
-  },
-  verifyBtn: {
-    backgroundColor: Theme.colors.background.secondary,
-    borderRadius: Theme.components.inputRadius,
-    borderWidth: 1,
-    borderColor: Theme.colors.text.mint,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    shadowColor: Theme.colors.text.mint,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  verifyBtnText: {
-    color: Theme.colors.text.mint,
+  title: {
     fontFamily: Theme.typography.fontFamily,
-    fontSize: Theme.typography.sizes.body,
-    fontWeight: '600',
+    fontSize: Theme.typography.sizes.header,
+    color: Theme.colors.text.primary,
+    fontWeight: '400',
+    textAlign: 'center',
+    marginBottom: Theme.spacing.xs,
   },
-  btnDisabled: { opacity: 0.4 },
+  subtitle: {
+    fontFamily: Theme.typography.fontFamily,
+    fontSize: Theme.typography.sizes.body + 4,
+    color: Theme.colors.text.muted,
+    textAlign: 'center',
+    marginBottom: Theme.spacing.xl * 2,
+  },
+  dotWrap: {
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: Theme.spacing.xl,
+    paddingVertical: Theme.spacing.sm,
+  },
+  hiddenInput: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    color: 'transparent',
+    backgroundColor: 'transparent',
+  },
+  loader: {
+    marginBottom: Theme.spacing.lg,
+  },
+  changePhoneBtn: {
+    marginTop: Theme.spacing.lg,
+    paddingVertical: Theme.spacing.sm,
+    paddingHorizontal: Theme.spacing.md,
+  },
+  changePhoneText: {
+    fontFamily: Theme.typography.fontFamily,
+    fontSize: Theme.typography.sizes.small + 4,
+    color: 'rgba(255,255,255,0.35)',
+    textAlign: 'center',
+  },
 });

@@ -78,6 +78,7 @@ export function useStaffOrders(cycleId?: number) {
 export function useUpdateOrderStatus() {
   const queryClient = useQueryClient();
   const enqueue = useStaffQueueStore((s) => s.enqueue);
+  const { session } = useAuth();
 
   return useMutation({
     mutationFn: async ({
@@ -120,6 +121,7 @@ export function useUpdateOrderStatus() {
         }
       } else {
         enqueue({
+          userId: session?.user.id ?? '',
           table: 'orders',
           operation: 'update',
           payload: { status, updated_at: new Date().toISOString() },

@@ -88,7 +88,7 @@ export function PlansManageScreen({ navigation }: { navigation: any }) {
       <View style={[styles.row, !item.is_active && styles.rowDim]}>
         <View style={styles.rowLeft}>
           <ThemedText variant="body" color="primary" style={styles.rowText} numberOfLines={1}>
-            {item.name}
+            {item.plan_name}
           </ThemedText>
           <ThemedText variant="small" color="muted" style={styles.sub}>
             {item.duration_days} days
@@ -123,7 +123,7 @@ export function PlansManageScreen({ navigation }: { navigation: any }) {
             if (item.is_active) {
               Alert.alert(
                 'Deactivate Plan?',
-                `"${item.name}" will no longer be available for new subscriptions.`,
+                `"${item.plan_name}" will no longer be available for new subscriptions.`,
                 [
                   { text: 'Cancel', style: 'cancel' },
                   { text: 'Deactivate', style: 'destructive', onPress: () => togglePlan.mutate({ id: item.id, is_active: false }) },

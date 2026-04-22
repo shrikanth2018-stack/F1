@@ -62,6 +62,8 @@ Deno.serve(async (req) => {
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
 
   try {
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
     // Auth: accept service-role key (internal/edge-function callers)
     // OR a staff/admin user JWT (hooks calling after status update).
     const auth = req.headers.get('Authorization') ?? '';
@@ -78,8 +80,6 @@ Deno.serve(async (req) => {
     }
 
     if (!authorized) return json({ error: 'Unauthorized' }, 401);
-
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     const body = await req.json();
     const {

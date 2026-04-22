@@ -17,6 +17,19 @@ const containerStyle = { width: '100%', height: '220px' };
 
 const DEFAULT_CENTER = { lat: 20.5937, lng: 78.9629 };
 
+
+
+const DARK_MAP_STYLE = [
+  { elementType: 'geometry', stylers: [{ color: '#1a1a1a' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#94a3b8' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#1a1a1a' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#2d2d2d' }] },
+  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#212121' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0d1a2e' }] },
+  { featureType: 'poi', stylers: [{ visibility: 'off' }] },
+  { featureType: 'transit', stylers: [{ visibility: 'off' }] },
+];
+
 const MAP_OPTIONS = {
   disableDefaultUI: true,
   zoomControl: true,
@@ -93,13 +106,4 @@ export function PinMap({ latitude, longitude, onLocationChange }: PinMapProps) {
   );
 }
 
-const DARK_MAP_STYLE = [
-  { elementType: 'geometry', stylers: [{ color: '#1a1a1a' }] },
-  { elementType: 'labels.text.fill', stylers: [{ color: '#94a3b8' }] },
-  { elementType: 'labels.text.stroke', stylers: [{ color: '#1a1a1a' }] },
-  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#2d2d2d' }] },
-  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#212121' }] },
-  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0d1a2e' }] },
-  { featureType: 'poi', stylers: [{ visibility: 'off' }] },
-  { featureType: 'transit', stylers: [{ visibility: 'off' }] },
-];
+

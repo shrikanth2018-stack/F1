@@ -60,6 +60,7 @@ function ApplyForm({ onCancel }: { onCancel: () => void }) {
   const validate = (): string | null => {
     if (!startDate.match(/^\d{4}-\d{2}-\d{2}$/)) return 'Enter start date as YYYY-MM-DD';
     if (!endDate.match(/^\d{4}-\d{2}-\d{2}$/))   return 'Enter end date as YYYY-MM-DD';
+    if (startDate < today) return 'Start date cannot be in the past';
     if (endDate < startDate) return 'End date cannot be before start date';
     return null;
   };

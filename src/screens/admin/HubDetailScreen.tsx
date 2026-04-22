@@ -34,7 +34,6 @@ import { ThemedText } from '../../components/ThemedText';
 import { ZoneMap } from '../../components/ZoneMap';
 import { useAddHub, useUpdateHub, useAssignHubAddresses } from '../../hooks/useDeliveryHubs';
 import { useAllStaff } from '../../hooks/useStaffManagement';
-import { supabase } from '../../api/supabaseClient';
 import type { DeliveryHub } from '../../types';
 
 type Region = {
@@ -197,28 +196,18 @@ export function HubDetailScreen({ route, navigation }: Props) {
           }
         }
       } else {
-        await addHub.mutateAsync(payload);
+        const createdHub = await addHub.mutateAsync(payload) as DeliveryHub | null;
+        if (!createdHub) throw new Error('Hub could not be created. Check database permissions and try again.');
 
-        // Fetch newly created hub to get its id for address assignment
         if (vertices.length >= 3) {
-          const { data: newHubs } = await supabase
-            .from('delivery_hubs')
-            .select('*')
-            .eq('hub_name', hubName.trim())
-            .order('created_at', { ascending: false })
-            .limit(1);
-
-          const newHub = (newHubs ?? [])[0] as DeliveryHub | undefined;
-          if (newHub) {
-            const count = await assignAddresses.mutateAsync(newHub);
-            if (count > 0) {
-              Alert.alert(
-                'Hub Created',
-                `${count} address${count !== 1 ? 'es' : ''} assigned to this hub.`,
-                [{ text: 'OK', onPress: () => navigation.goBack() }]
-              );
-              return;
-            }
+          const count = await assignAddresses.mutateAsync(createdHub);
+          if (count > 0) {
+            Alert.alert(
+              'Hub Created',
+              `${count} address${count !== 1 ? 'es' : ''} assigned to this hub.`,
+              [{ text: 'OK', onPress: () => navigation.goBack() }]
+            );
+            return;
           }
         }
       }

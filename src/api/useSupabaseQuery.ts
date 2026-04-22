@@ -66,7 +66,7 @@ export function useSupabaseQuery<T>(
       if (tableOpts.filter) {
         query = tableOpts.filter(query);
       }
-      return query;
+      return query as unknown as PromiseLike<PostgrestResponse<T>>;
     };
   } else {
     resolvedFn = fnOrTable;
@@ -116,7 +116,7 @@ export function useSupabaseSingle<T>(
  */
 export function useSupabaseMutation<TPayload, TResult = unknown>(
   mutationFn: (payload: TPayload) => PromiseLike<PostgrestResponse<TResult> | PostgrestSingleResponse<TResult>>,
-  invalidateKeys?: readonly unknown[][]
+  invalidateKeys?: ReadonlyArray<readonly unknown[]>
 ) {
   const queryClient = useQueryClient();
 

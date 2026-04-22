@@ -431,7 +431,7 @@ function AttendanceTab({
 
             let bg = 'transparent';
             let label = '';
-            let labelColor = Theme.colors.text.muted;
+            let labelColor: string = Theme.colors.text.muted;
 
             if (isPresent) {
               bg = Theme.colors.status.success + '30';

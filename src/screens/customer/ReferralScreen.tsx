@@ -173,11 +173,10 @@ export function ReferralScreen({ navigation }: { navigation: any }) {
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <ThemedText variant="body" color="accent" style={styles.back}>‹ Back</ThemedText>
-        </TouchableOpacity>
         <ThemedText variant="header" color="primary" style={styles.title}>Referrals</ThemedText>
-        <View style={styles.spacer} />
+        <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <ThemedText variant="body" color="muted">Close</ThemedText>
+        </TouchableOpacity>
       </View>
 
       <ScrollView
@@ -347,9 +346,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: Theme.colors.layout.divider,
   },
-  back:   { fontSize: B, minWidth: 60 },
   title:  { flex: 1, textAlign: 'center' },
-  spacer: { minWidth: 60 },
 
   scroll: { paddingBottom: Theme.spacing.xl * 2 },
 

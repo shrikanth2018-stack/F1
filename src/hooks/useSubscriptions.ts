@@ -249,7 +249,8 @@ export function usePauseSubscription() {
         .from('user_subscriptions')
         .update({ is_paused: payload.pause })
         .eq('id', payload.id)
-        .eq('user_id', session?.user.id ?? ''),
+        .eq('user_id', session?.user.id ?? '')
+        .eq('is_active', true),
     [QUERY_KEYS.SUBSCRIPTIONS as unknown as string[]]
   );
 }

@@ -74,6 +74,7 @@ export function useSubmitExpense() {
         if (error) throw error;
       } else {
         enqueue({
+          userId: session.user.id,
           table: 'expense_claims',
           operation: 'insert',
           payload,

@@ -88,11 +88,10 @@ export function OrdersScreen({ navigation }: any) {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <ThemedText variant="body" color="accent">‹ Back</ThemedText>
-        </TouchableOpacity>
         <ThemedText variant="header" color="primary">My Orders</ThemedText>
-        <View style={{ width: 48 }} />
+        <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <ThemedText variant="body" color="muted">Close</ThemedText>
+        </TouchableOpacity>
       </View>
 
       {/* Tabs */}
@@ -167,22 +166,22 @@ const styles = StyleSheet.create({
   },
   tabs: {
     flexDirection: 'row',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.text.mint,
+    marginHorizontal: Theme.spacing.md,
+    marginBottom: Theme.spacing.sm,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Theme.colors.background.secondary,
+    borderWidth: 1,
+    borderColor: `${Theme.colors.text.mint}4D`,
+    overflow: 'hidden',
   },
   tab: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: Theme.spacing.sm,
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
+    justifyContent: 'center',
   },
-  tabActive: {
-    borderBottomColor: Theme.colors.text.mint,
-  },
-  tabTextActive: {
-    fontSize: Theme.typography.sizes.body + 2,
-  },
+  tabActive: {},
+  tabTextActive: {},
   list: {
     paddingTop: Theme.spacing.xs,
     paddingBottom: Theme.spacing.xl,

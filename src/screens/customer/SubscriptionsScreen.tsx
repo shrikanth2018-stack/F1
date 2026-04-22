@@ -224,11 +224,10 @@ export function SubscriptionsScreen({ navigation }: any) {
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <ThemedText variant="body" color="accent">‹ Back</ThemedText>
-        </TouchableOpacity>
         <ThemedText variant="header" color="primary">My Subscriptions</ThemedText>
-        <View style={styles.headerSpacer} />
+        <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <ThemedText variant="body" color="muted">Close</ThemedText>
+        </TouchableOpacity>
       </View>
 
       {/* Food | Essentials tabs */}
@@ -376,7 +375,8 @@ export function SubscriptionsScreen({ navigation }: any) {
                     >
                       <ThemedText
                         variant="body"
-                        color={cancelled ? 'mint' : 'muted'}
+                        color={cancelled ? 'mint' : 'primary'}
+                        style={!cancelled && { color: Theme.colors.status.warning }}
                       >
                         {cancelled ? 'Resume' : 'Skip'}
                       </ThemedText>
@@ -384,9 +384,6 @@ export function SubscriptionsScreen({ navigation }: any) {
                   </View>
                 );
               })}
-              <TouchableOpacity onPress={() => setModalDate(null)} style={modal.closeBtn}>
-                <ThemedText variant="small" color="muted">Close</ThemedText>
-              </TouchableOpacity>
             </View>
           </Modal>
         );
@@ -405,21 +402,24 @@ const styles = StyleSheet.create({
     paddingTop: Theme.spacing.md,
     paddingBottom: Theme.spacing.sm,
   },
-  headerSpacer: { width: 48 },
   tabs: {
     flexDirection: 'row',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.text.mint,
+    marginHorizontal: Theme.spacing.md,
+    marginBottom: Theme.spacing.sm,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Theme.colors.background.secondary,
+    borderWidth: 1,
+    borderColor: `${Theme.colors.text.mint}4D`,
+    overflow: 'hidden',
   },
   tab: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: Theme.spacing.sm,
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
+    justifyContent: 'center',
   },
-  tabActive: { borderBottomColor: Theme.colors.text.mint },
-  tabTextActive: { fontSize: Theme.typography.sizes.body + 2 },
+  tabActive: {},
+  tabTextActive: {},
   list: { flex: 1 },
   row: {
     flexDirection: 'row',
@@ -477,26 +477,21 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: Theme.spacing.md,
     right: Theme.spacing.md,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: Theme.colors.background.secondary,
-    borderRadius: Theme.components.inputRadius,
     borderWidth: 1,
-    borderColor: Theme.colors.text.mint,
+    borderColor: `${Theme.colors.text.mint}4D`,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    shadowColor: Theme.colors.text.mint,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 8,
+    paddingHorizontal: Theme.spacing.md,
   },
   addBtnText: {
     color: Theme.colors.text.mint,
     fontFamily: Theme.typography.fontFamily,
-    fontSize: Theme.typography.sizes.body,
-    fontWeight: '600',
+    fontSize: Theme.typography.sizes.subtitle + 2,
+    fontWeight: '400',
   },
 });
 

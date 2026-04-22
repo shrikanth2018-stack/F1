@@ -10,6 +10,9 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import { supabase } from '../api/supabaseClient';
+import { useCartStore } from '../store/cartStore';
+import { useEssentialsCartStore } from '../store/essentialsCartStore';
+import { useStaffQueueStore } from '../store/staffQueueStore';
 import type { UserRole, AuthSession } from '../types';
 import type { Session } from '@supabase/supabase-js';
 
@@ -118,6 +121,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
+    useCartStore.getState().clearCart();
+    useEssentialsCartStore.getState().clearCart();
+    useStaffQueueStore.getState().clearQueue();
     setSession(null);
   }, []);
 

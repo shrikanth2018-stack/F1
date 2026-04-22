@@ -142,6 +142,7 @@ export interface EssentialItem {
   id: number;
   cycle_id: number;
   name: string;
+  description?: string | null;
   price: number;
   unit: string;
   is_active: boolean;

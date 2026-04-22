@@ -54,11 +54,10 @@ export function FeedbackScreen({ navigation, route }: { navigation: any; route: 
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <ThemedText variant="body" color="accent">‹ Back</ThemedText>
-          </TouchableOpacity>
           <ThemedText variant="header" color="primary">Rate the App</ThemedText>
-          <View style={{ width: 40 }} />
+          <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <ThemedText variant="body" color="muted">Close</ThemedText>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.section}>

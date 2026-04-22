@@ -175,11 +175,10 @@ export function AddAddressScreen({ navigation, onComplete }: Props) {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => onComplete ? onComplete() : navigation?.goBack()}>
-            <ThemedText variant="body" color="accent">‹ Back</ThemedText>
-          </TouchableOpacity>
           <ThemedText variant="header" color="primary">Add Address</ThemedText>
-          <View style={{ width: 40 }} />
+          <TouchableOpacity onPress={() => onComplete ? onComplete() : navigation?.goBack()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <ThemedText variant="body" color="muted">Close</ThemedText>
+          </TouchableOpacity>
         </View>
 
         {/* Label tabs */}

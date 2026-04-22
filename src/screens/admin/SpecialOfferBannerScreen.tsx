@@ -22,12 +22,13 @@ import {
   Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
+import * as ImagePicker from 'expo-image-picker';
+import { decode } from 'base64-arraybuffer';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
+import { Divider } from '../../components/Divider';
 import { supabase } from '../../api/supabaseClient';
-import { useUpsertBanner, type CustomBannerContent } from '../../hooks/useBanner';
+import { useLiveBanner, useUpsertBanner, type CustomBannerContent } from '../../hooks/useBanner';
 
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
@@ -138,19 +139,33 @@ export function SpecialOfferBannerScreen({ navigation }: { navigation: any }) {
   const upsertBanner = useUpsertBanner();
 
   // ── Upload Image state ───────────────────────────────
-  const [imageUri, setImageUri] = useState<string | null>(null);
-  const [imageMime, setImageMime] = useState('image/jpeg');  // set when file is picked
+  const { data: liveBanner } = useLiveBanner();
+  const currentBannerUrl = liveBanner?.banner_type === 'image' ? liveBanner.image_url : null;
+
+  const [previewUri, setPreviewUri] = useState<string | null>(null);
+  const [previewBase64, setPreviewBase64] = useState<string | null>(null);
+  const [previewMime, setPreviewMime] = useState('image/jpeg');
   const [uploading, setUploading] = useState(false);
 
   const pickImage = async () => {
-    const result = await DocumentPicker.getDocumentAsync({
-      type: ['image/jpeg', 'image/png', 'image/webp', 'image/*'],
-      copyToCacheDirectory: true,
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission required', 'Please allow photo library access to pick an image.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: 'images',
+      quality: 0.85,
+      allowsEditing: true,
+      aspect: [16, 5],
+      base64: true,
     });
-    if (result.canceled || !result.assets?.length) return;
-    const asset = result.assets[0];
-    setImageUri(asset.uri);
-    setImageMime(asset.mimeType ?? 'image/jpeg');
+    if (!result.canceled && result.assets[0]) {
+      const asset = result.assets[0];
+      setPreviewUri(asset.uri);
+      setPreviewBase64(asset.base64 ?? null);
+      setPreviewMime(asset.mimeType ?? 'image/jpeg');
+    }
   };
 
   const firePushToCustomers = async (offerTitle: string, offerBody: string) => {
@@ -169,27 +184,39 @@ export function SpecialOfferBannerScreen({ navigation }: { navigation: any }) {
   };
 
   const handleUpload = async () => {
-    if (!imageUri) return;
+    if (!previewUri || !previewBase64) return;
     setUploading(true);
     try {
-      const response = await fetch(imageUri);
-      const blob = await response.blob();
+      const fileData = decode(previewBase64);
+      const ext = previewMime === 'image/png' ? 'png' : previewMime === 'image/webp' ? 'webp' : 'jpg';
+      const newFileName = `banner_${Date.now()}.${ext}`;
+
       const { error: storageError } = await supabase.storage
         .from('assets')
-        .upload('banner.png', blob, { upsert: true, contentType: imageMime });
+        .upload(newFileName, fileData, { contentType: previewMime, upsert: false });
       if (storageError) throw new Error(storageError.message);
 
-      const { data: urlData } = supabase.storage.from('assets').getPublicUrl('banner.png');
+      const { data: urlData } = supabase.storage.from('assets').getPublicUrl(newFileName);
+
+      // Delete the previous banner file from storage (best-effort)
+      if (currentBannerUrl) {
+        const parts = currentBannerUrl.split('/');
+        const oldFile = parts[parts.length - 1]?.split('?')[0];
+        if (oldFile && /^banner_\d+\.(jpg|png|webp)$/.test(oldFile)) {
+          await supabase.storage.from('assets').remove([oldFile]).catch(() => null);
+        }
+      }
+
       await upsertBanner.mutateAsync({
         banner_type: 'image',
-        image_url: `${urlData.publicUrl}?t=${Date.now()}`,
+        image_url: urlData.publicUrl,
         text_content: null,
         is_live: true,
       });
       firePushToCustomers('New Offer!', 'Check out our latest special offer on the home screen.');
-      Alert.alert('Live!', 'Banner updated and now live on the customer home screen.', [
-        { text: 'OK', onPress: () => navigation.goBack() },
-      ]);
+      setPreviewUri(null);
+      setPreviewBase64(null);
+      Alert.alert('Live!', 'Banner updated and now live on the customer home screen.');
     } catch (e: any) {
       Alert.alert('Upload failed', e?.message ?? 'Unknown error');
     } finally {
@@ -264,34 +291,53 @@ export function SpecialOfferBannerScreen({ navigation }: { navigation: any }) {
       {activeTab === 'Upload Image' && (
         <>
           <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-            <ThemedText variant="small" color="muted" style={styles.hint}>
-              Replaces the current banner image. Cropped to 16:5 ratio for best fit.
-            </ThemedText>
+
+            {/* Current banner */}
+            <ThemedText variant="small" color="muted" style={styles.sectionLabel}>CURRENT BANNER</ThemedText>
+            <View style={styles.previewWrap}>
+              {currentBannerUrl ? (
+                <Image source={{ uri: currentBannerUrl }} style={styles.previewImg} resizeMode="cover" />
+              ) : (
+                <ThemedText variant="small" color="muted" style={{ textAlign: 'center' }}>No image banner set</ThemedText>
+              )}
+            </View>
+
+            <Divider />
+
+            {/* New image picker */}
+            <ThemedText variant="small" color="muted" style={styles.sectionLabel}>NEW BANNER</ThemedText>
 
             <TouchableOpacity style={styles.pickBtn} onPress={pickImage} activeOpacity={0.7}>
               <ThemedText variant="body" color="mint" style={styles.txt}>
-                {imageUri ? 'Change Image  ›' : 'Choose from Gallery  ›'}
+                {previewUri ? 'Change Selection  ›' : 'Select from Photos  ›'}
               </ThemedText>
             </TouchableOpacity>
 
-            {imageUri && (
-              <Image
-                source={{ uri: imageUri }}
-                style={styles.imgPreview}
-                resizeMode="cover"
-              />
+            {previewUri && (
+              <>
+                <ThemedText variant="small" color="muted" style={[styles.sectionLabel, { marginTop: Theme.spacing.md }]}>
+                  PREVIEW
+                </ThemedText>
+                <View style={styles.previewWrap}>
+                  <Image source={{ uri: previewUri }} style={styles.previewImg} resizeMode="cover" />
+                </View>
+              </>
             )}
+
+            <ThemedText variant="small" color="muted" style={styles.hint}>
+              Cropped to 16:5 ratio for best fit. Each upload uses a unique filename — no cache issues.
+            </ThemedText>
           </ScrollView>
 
           <TouchableOpacity
-            style={[styles.footer, (!imageUri || uploading) && styles.footerDim]}
+            style={[styles.footer, (!previewUri || uploading) && styles.footerDim]}
             onPress={handleUpload}
-            disabled={!imageUri || uploading}
+            disabled={!previewUri || uploading}
             activeOpacity={0.7}
           >
             {uploading
               ? <ActivityIndicator color={Theme.colors.text.mint} />
-              : <ThemedText variant="body" color={imageUri ? 'mint' : 'muted'} style={styles.txt}>
+              : <ThemedText variant="body" color={previewUri ? 'mint' : 'muted'} style={styles.txt}>
                   Go Live  ›
                 </ThemedText>
             }
@@ -433,21 +479,33 @@ const styles = StyleSheet.create({
     paddingTop: Theme.spacing.md,
   },
 
-  hint: { fontSize: S, marginBottom: Theme.spacing.md, lineHeight: S * 1.5 },
+  hint: { fontSize: S, marginBottom: Theme.spacing.md, lineHeight: S * 1.5, marginTop: Theme.spacing.sm },
 
-  pickBtn: {
-    paddingVertical: Theme.spacing.sm + 2,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.text.mint,
-    alignSelf: 'flex-start',
-    marginBottom: Theme.spacing.md,
+  sectionLabel: {
+    fontSize: S,
+    letterSpacing: 0.5,
+    marginBottom: Theme.spacing.sm,
   },
 
-  imgPreview: {
+  previewWrap: {
     width: '100%',
     height: 130,
-    borderRadius: 8,
-    marginTop: Theme.spacing.sm,
+    backgroundColor: Theme.colors.background.secondary,
+    borderRadius: Theme.components.inputRadius,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Theme.spacing.md,
+  },
+  previewImg: { width: '100%', height: '100%' },
+
+  pickBtn: {
+    paddingVertical: Theme.spacing.md,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Theme.colors.text.mint,
+    borderRadius: Theme.components.inputRadius,
+    marginBottom: Theme.spacing.md,
   },
 
   fieldGap: { height: Theme.spacing.md },

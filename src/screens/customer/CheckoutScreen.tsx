@@ -157,6 +157,12 @@ export function CheckoutScreen({ navigation, route }: any) {
       Alert.alert('Address Required', 'Please select a delivery address');
       return;
     }
+    const selectedAddr = addresses?.find((a) => a.id === selectedAddressId);
+    if (selectedAddr && selectedAddr.is_serviceable === false) {
+      isPlacingRef.current = false;
+      Alert.alert('Outside Delivery Area', 'This address is outside our delivery zone. Please select a different address or add a new one.');
+      return;
+    }
     if (totalItemCount === 0) {
       isPlacingRef.current = false;
       Alert.alert('Empty Cart', 'Add items to your cart first');
@@ -170,6 +176,11 @@ export function CheckoutScreen({ navigation, route }: any) {
       const today = new Date();
       let dispatchDate: string;
       if (cartType === 'food') {
+        // Validate all items share the same dispatch scenario before proceeding
+        const scenarios = [...new Set(evaluations.map((e) => e.scenario))];
+        if (scenarios.length > 1) {
+          throw new Error('Your cart has items dispatching on different days. Please checkout one cycle at a time.');
+        }
         // Food uses smart cart scenario (A = today, B = tomorrow based on cutoff)
         const firstEval = evaluations[0];
         if (firstEval?.scenario === 'B') {
@@ -522,23 +533,20 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: Theme.spacing.md,
     right: Theme.spacing.md,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: Theme.colors.background.secondary,
-    borderRadius: Theme.components.inputRadius,
+    borderWidth: 1,
+    borderColor: `${Theme.colors.text.mint}4D`,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 10,
-    elevation: 8,
+    paddingHorizontal: Theme.spacing.md,
   },
   floatBtnText: {
     color: Theme.colors.text.mint,
     fontFamily: Theme.typography.fontFamily,
-    fontSize: Theme.typography.sizes.body,
-    fontWeight: '600',
+    fontSize: Theme.typography.sizes.subtitle + 2,
+    fontWeight: '400',
   },
 });

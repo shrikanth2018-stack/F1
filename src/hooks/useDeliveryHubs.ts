@@ -62,13 +62,13 @@ interface HubPayload {
 
 export function useAddHub() {
   const bf = useBranchFilter();
-  return useSupabaseMutation<HubPayload>(
+  return useSupabaseMutation<HubPayload, DeliveryHub>(
     (payload) =>
       supabase.from('delivery_hubs').insert({
         ...payload,
         is_active: true,
         branch_id: payload.branch_id ?? (bf.isActive ? bf.branchId : null),
-      }),
+      }).select().single(),
     [QUERY_KEYS.HUBS]
   );
 }

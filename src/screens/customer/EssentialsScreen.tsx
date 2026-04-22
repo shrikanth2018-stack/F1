@@ -48,7 +48,7 @@ function EssentialItemCard({
       </View>
       {quantity === 0 ? (
         <TouchableOpacity style={styles.addBtn} onPress={onAdd}>
-          <ThemedText variant="small" color="primary">ADD</ThemedText>
+          <ThemedText variant="small" color="mint">ADD</ThemedText>
         </TouchableOpacity>
       ) : (
         <View style={styles.stepper}>
@@ -183,10 +183,10 @@ export function EssentialsScreen({ navigation }: { navigation: any }) {
           style={styles.cartFab}
           onPress={() => navigation.navigate('Checkout', { cartType: 'essentials' })}
         >
-          <ThemedText variant="body" color="primary">
+          <ThemedText variant="body" color="mint">
             {cartCount} item(s) — {'\u20B9'}{cartTotal.toFixed(0)}
           </ThemedText>
-          <ThemedText variant="small" color="primary">
+          <ThemedText variant="small" color="mint">
             Checkout {'>'}
           </ThemedText>
         </TouchableOpacity>
@@ -205,9 +205,9 @@ const styles = StyleSheet.create({
   list: { padding: Theme.spacing.md, paddingBottom: 100 },
   itemCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: Theme.colors.background.secondary, borderRadius: Theme.components.inputRadius, padding: Theme.spacing.md, marginBottom: Theme.spacing.sm },
   itemInfo: { flex: 1, marginRight: Theme.spacing.sm },
-  addBtn: { backgroundColor: Theme.colors.action.primary, paddingHorizontal: Theme.spacing.md, paddingVertical: Theme.spacing.sm, borderRadius: 8 },
+  addBtn: { height: 32, paddingHorizontal: Theme.spacing.md, borderRadius: 16, borderWidth: 1, borderColor: `${Theme.colors.text.mint}4D`, backgroundColor: Theme.colors.background.secondary, alignItems: 'center', justifyContent: 'center' },
   stepper: { flexDirection: 'row', alignItems: 'center', backgroundColor: Theme.colors.background.tertiary, borderRadius: 8, overflow: 'hidden' },
   stepBtn: { paddingHorizontal: Theme.spacing.md, paddingVertical: Theme.spacing.sm },
   qty: { minWidth: 30, textAlign: 'center' },
-  cartFab: { position: 'absolute', bottom: Theme.spacing.lg, left: Theme.spacing.md, right: Theme.spacing.md, backgroundColor: Theme.colors.action.primary, borderRadius: Theme.components.inputRadius, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Theme.spacing.md, paddingVertical: Theme.spacing.md },
+  cartFab: { position: 'absolute', bottom: Theme.spacing.lg, left: Theme.spacing.md, right: Theme.spacing.md, height: 40, borderRadius: 20, borderWidth: 1, borderColor: `${Theme.colors.text.mint}4D`, backgroundColor: Theme.colors.background.secondary, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Theme.spacing.md },
 });

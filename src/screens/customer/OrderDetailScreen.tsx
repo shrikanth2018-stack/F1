@@ -28,7 +28,8 @@ import { formatPriceShort, formatDateLong, formatOrderStatus } from '../../utils
 import { formatTime12h } from '../../utils/timeEngine';
 import type { OrderItem } from '../../types';
 
-const CANCELLABLE_STATUSES = new Set(['Pending', 'Confirmed', 'Preparing']);
+// 'Paid' = Razorpay webhook confirmed but kitchen hasn't started yet — still cancellable
+const CANCELLABLE_STATUSES = new Set(['Pending', 'Confirmed', 'Paid', 'Preparing']);
 
 const STATUS_FLOW = [
   'Confirmed',

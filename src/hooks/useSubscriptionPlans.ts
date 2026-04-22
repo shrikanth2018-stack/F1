@@ -26,9 +26,9 @@ export interface PlanItem {
 
 export interface SubscriptionPlan {
   id: number;
-  name: string;
+  plan_name: string;
   cycle_id: number;
-  type: PlanType;
+  plan_type: PlanType;
   duration_days: number;
   price: number;
   is_active: boolean;
@@ -45,13 +45,13 @@ export function useAllPlans(cycleId?: number, type?: PlanType) {
       let query = supabase
         .from('subscription_plans')
         .select('*')
-        .order('name', { ascending: true });
+        .order('plan_name', { ascending: true });
       if (cycleId) query = query.eq('cycle_id', cycleId);
       if (type === 'essentials') {
-        query = query.eq('type', 'essentials');
+        query = query.eq('plan_type', 'essentials');
       } else if (type === 'food') {
-        // also surface legacy rows that predate the type column
-        query = query.or('type.eq.food,type.is.null');
+        // also surface legacy rows that predate the plan_type column
+        query = query.or('plan_type.eq.food,plan_type.is.null');
       }
       if (bf.isActive && bf.branchId != null) {
         query = query.eq('branch_id', bf.branchId);
@@ -69,9 +69,9 @@ export function useAddPlan() {
   const bf = useBranchFilter();
   return useMutation({
     mutationFn: async (plan: {
-      name: string;
+      plan_name: string;
       cycle_id: number;
-      type: PlanType;
+      plan_type: PlanType;
       duration_days: number;
       price: number;
       plan_items: string;
@@ -79,7 +79,12 @@ export function useAddPlan() {
       const { error } = await supabase
         .from('subscription_plans')
         .insert({
-          ...plan,
+          plan_name: plan.plan_name,
+          plan_type: plan.plan_type,
+          cycle_id: plan.cycle_id,
+          duration_days: plan.duration_days,
+          price: plan.price,
+          plan_items: plan.plan_items,
           is_active: true,
           branch_id: bf.isActive ? bf.branchId : null,
         });

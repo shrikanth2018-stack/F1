@@ -35,6 +35,7 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Print from 'expo-print';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { Divider } from '../../components/Divider';
@@ -56,8 +57,8 @@ type StaffTab = 'Kitchen' | 'Packing' | 'Delivery';
 type PackingSubTab = 'Food' | 'Essentials';
 type OrderFormType = 'Vegetables' | 'Grocery' | 'Stationery' | null;
 
-const LOGO_URL = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/public/assets/logo.png`;
-const ROUTE_MAP_URL = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/public/assets/routemap.pdf`;
+const LOGO_URL = supabase.storage.from('assets').getPublicUrl('logo.png').data.publicUrl;
+const ROUTE_MAP_URL = supabase.storage.from('assets').getPublicUrl('routemap.pdf').data.publicUrl;
 
 // Text size offsets for this screen
 const BODY2 = Theme.typography.sizes.body + 2;
@@ -178,13 +179,14 @@ function OrderFormModal({
 
   if (!type) return null;
 
-  // Suggestions: catalog items starting with the typed letter(s), not yet added
+  // Suggestions: all unadded catalog items when search is empty;
+  // narrowed by prefix match when the user types.
   const addedIds = new Set(lineItems.map((i) => i.id));
   const suggestions = search.trim().length > 0
     ? catalog.filter(
         (c) => c.name.toLowerCase().startsWith(search.toLowerCase()) && !addedIds.has(c.id)
       )
-    : [];
+    : catalog.filter((c) => !addedIds.has(c.id));
 
   // Allow adding a custom entry if no exact match in catalog
   const exactMatch = catalog.some((c) => c.name.toLowerCase() === search.trim().toLowerCase());
@@ -497,9 +499,113 @@ export function StaffDashboard() {
     Linking.openURL(`https://maps.apple.com/?q=${q}`);
   };
 
-  const handleRouteMap = () => {
-    // Opens in system browser until expo-web-browser is installed for in-app PDF viewing
-    Linking.openURL(ROUTE_MAP_URL);
+  const handleRouteMap = async () => {
+    try {
+      await Linking.openURL(ROUTE_MAP_URL);
+    } catch {
+      Alert.alert('Cannot Open', 'Could not open the route map. Please check your connection.');
+    }
+  };
+
+  // ── Print helpers (expo-print) ───────────────────────────
+  const handlePrintOrderLabel = async (item: any) => {
+    const addr = item.customer_addresses;
+    const items = (item.order_items ?? [])
+      .map((i: any) => `<li>${i.item_name} &times;${i.quantity}</li>`)
+      .join('');
+    const html = `<!DOCTYPE html><html><head><style>
+      body{font-family:Arial,sans-serif;padding:20px}
+      .label{border:2px solid #000;padding:20px;max-width:320px}
+      h2{margin:0 0 8px 0}p{margin:3px 0}
+      ul{margin:10px 0 0;padding-left:18px;border-top:1px solid #000;padding-top:10px}
+    </style></head><body>
+      <div class="label">
+        <h2>Order #${item.id}</h2>
+        <p><strong>${addr?.full_name ?? '—'}</strong></p>
+        <p>${addr?.address_line ?? '—'}</p>
+        ${addr?.landmark ? `<p>${addr.landmark}</p>` : ''}
+        ${addr?.city ? `<p>${addr.city}</p>` : ''}
+        <ul>${items || '<li>—</li>'}</ul>
+      </div>
+    </body></html>`;
+    try {
+      await Print.printAsync({ html });
+    } catch {
+      Alert.alert('Print Error', 'Could not open print dialog.');
+    }
+  };
+
+  const handlePrintLabels = async () => {
+    if (packingOrders.length === 0) {
+      Alert.alert('No orders', 'No orders to print labels for.');
+      return;
+    }
+    const pages = packingOrders.map((order: any) => {
+      const addr = order.customer_addresses;
+      const items = (order.order_items ?? [])
+        .map((i: any) => `<li>${i.item_name} &times;${i.quantity}</li>`)
+        .join('');
+      return `<div class="label">
+        <h2>Order #${order.id}</h2>
+        <p><strong>${addr?.full_name ?? '—'}</strong></p>
+        <p>${addr?.address_line ?? '—'}</p>
+        ${addr?.landmark ? `<p>${addr.landmark}</p>` : ''}
+        ${addr?.city ? `<p>${addr.city}</p>` : ''}
+        <ul>${items || '<li>—</li>'}</ul>
+      </div>`;
+    }).join('');
+    const html = `<!DOCTYPE html><html><head><style>
+      body{font-family:Arial,sans-serif;margin:0}
+      .label{page-break-after:always;border:2px solid #000;padding:20px;margin:10px}
+      .label:last-child{page-break-after:auto}
+      h2{margin:0 0 8px 0}p{margin:3px 0}
+      ul{margin:10px 0 0;padding-left:18px;border-top:1px solid #000;padding-top:10px}
+    </style></head><body>${pages}</body></html>`;
+    try {
+      await Print.printAsync({ html });
+    } catch {
+      Alert.alert('Print Error', 'Could not open print dialog.');
+    }
+  };
+
+  const handlePrintSummary = async () => {
+    if (packingOrders.length === 0) {
+      Alert.alert('No orders', 'No orders to print summary for.');
+      return;
+    }
+    const rows = packingOrders.map((order: any) => {
+      const addr = order.customer_addresses;
+      const phone = addr?.phone_number || order.profiles?.phone_number || '—';
+      const items = (order.order_items ?? [])
+        .map((i: any) => `${i.item_name} ×${i.quantity}`)
+        .join(', ');
+      return `<tr>
+        <td>#${order.id}</td>
+        <td>${addr?.full_name ?? '—'}</td>
+        <td>${addr?.address_line ?? '—'}${addr?.city ? ', ' + addr.city : ''}</td>
+        <td>${phone}</td>
+        <td>${items || '—'}</td>
+      </tr>`;
+    }).join('');
+    const html = `<!DOCTYPE html><html><head><style>
+      body{font-family:Arial,sans-serif;font-size:12px;padding:12px}
+      h1{font-size:15px;margin-bottom:10px}
+      table{width:100%;border-collapse:collapse}
+      th,td{border:1px solid #ccc;padding:5px 7px;text-align:left;vertical-align:top}
+      th{background:#f0f0f0;font-weight:bold}
+      tr:nth-child(even){background:#f9f9f9}
+    </style></head><body>
+      <h1>Order Summary &mdash; ${new Date().toLocaleDateString('en-IN')}</h1>
+      <table>
+        <thead><tr><th>Order</th><th>Name</th><th>Address</th><th>Phone</th><th>Items</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </body></html>`;
+    try {
+      await Print.printAsync({ html });
+    } catch {
+      Alert.alert('Print Error', 'Could not open print dialog.');
+    }
   };
 
   // ── Kitchen row ──────────────────────────────
@@ -609,7 +715,7 @@ export function StaffDashboard() {
           {activeTab === 'Packing' && (
             <TouchableOpacity
               style={styles.circleIcon}
-              onPress={() => Alert.alert('Print Label', `Label for Order #${item.id}\n${address?.full_name ?? ''}\n${address?.address_line ?? ''}`)}
+              onPress={() => handlePrintOrderLabel(item)}
             >
               <Text style={styles.circleIconText}>⊟</Text>
             </TouchableOpacity>
@@ -748,10 +854,10 @@ export function StaffDashboard() {
       {/* Footer — Packing */}
       {activeTab === 'Packing' && (
         <View style={styles.footer}>
-          <TouchableOpacity onPress={() => Alert.alert('Print All Labels', 'Label preview will open here.')}>
+          <TouchableOpacity onPress={handlePrintLabels}>
             <ThemedText variant="body" color="mint" style={styles.footerText}>Print all labels  ›</ThemedText>
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => Alert.alert('Print Summary', 'Order summary with address & phone preview will open here.')}>
+          <TouchableOpacity onPress={handlePrintSummary}>
             <ThemedText variant="body" color="mint" style={styles.footerText}>Print summary  ›</ThemedText>
           </TouchableOpacity>
         </View>
@@ -955,21 +1061,6 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: Theme.colors.text.mint,
     backgroundColor: Theme.colors.background.primary,
-  },
-  footerColumn: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: Theme.colors.text.mint,
-    backgroundColor: Theme.colors.background.primary,
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-  },
-  footerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: Theme.spacing.xs,
-  },
-  footerDivider: {
-    height: Theme.spacing.md,
   },
   footerText: { fontSize: BODY2 },
 });

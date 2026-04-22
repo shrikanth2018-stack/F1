@@ -86,11 +86,13 @@ export function PlanDetailScreen({ route, navigation }: any) {
    */
   const conflictingSubs = useMemo(() => {
     if (!plan || !mySubs) return [];
+    // Treat null plan_type (legacy rows created before the column existed) as 'food'
+    const newType = plan.plan_type ?? 'food';
     return (mySubs as any[]).filter(
       (s) =>
         s.is_active &&
         s.subscription_plans?.cycle_id === plan.cycle_id &&
-        s.subscription_plans?.plan_type === plan.plan_type
+        (s.subscription_plans?.plan_type ?? 'food') === newType
     );
   }, [plan, mySubs]);
 
@@ -161,6 +163,7 @@ export function PlanDetailScreen({ route, navigation }: any) {
         // Client-side signature verification — activates the subscription immediately
         // without needing the Razorpay webhook (which requires a live dashboard).
         // In production both paths run; whichever fires first wins.
+        let paymentConfirmed = false;
         if (rzpResult?.razorpay_payment_id && rzpResult?.razorpay_signature) {
           try {
             setGlobalLoading(true, 'Confirming payment...');
@@ -170,9 +173,19 @@ export function PlanDetailScreen({ route, navigation }: any) {
               razorpay_order_id: rzpResult.razorpay_order_id,
               razorpay_signature: rzpResult.razorpay_signature,
             });
+            paymentConfirmed = true;
           } catch {
-            // Non-fatal — webhook may still activate it
+            // Non-fatal — webhook will activate it within a few seconds
           }
+        }
+
+        if (!paymentConfirmed) {
+          Alert.alert(
+            'Payment Received',
+            'Your payment was captured. Subscription activation may take a moment — check My Subscriptions shortly.',
+            [{ text: 'OK', onPress: () => navigation.navigate('Subscriptions') }],
+          );
+          return;
         }
       }
 
@@ -447,25 +460,20 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: Theme.spacing.md,
     right: Theme.spacing.md,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: Theme.colors.background.secondary,
-    borderRadius: Theme.components.inputRadius,
     borderWidth: 1,
-    borderColor: Theme.colors.text.mint,
+    borderColor: `${Theme.colors.text.mint}4D`,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    shadowColor: Theme.colors.text.mint,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 8,
+    paddingHorizontal: Theme.spacing.md,
   },
   subscribeBtnText: {
     color: Theme.colors.text.mint,
     fontFamily: Theme.typography.fontFamily,
-    fontSize: Theme.typography.sizes.body,
-    fontWeight: '600',
+    fontSize: Theme.typography.sizes.subtitle + 2,
+    fontWeight: '400',
   },
 });

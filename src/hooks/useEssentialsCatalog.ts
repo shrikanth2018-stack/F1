@@ -18,7 +18,7 @@ import { useBranchFilter } from './useBranchFilter';
 /** Friendly display labels for meal cycles when shown in Essentials context */
 export const CYCLE_DISPLAY: Record<string, string> = {
   Breakfast: 'Morning',
-  Lunch: 'Noon',
+  Lunch: 'Midday',
   Snacks: 'Afternoon',
   Dinner: 'Evening',
 };

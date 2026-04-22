@@ -35,7 +35,7 @@ export function useOfflineSync() {
 
     for (const mutation of currentQueue) {
       if (mutation.retryCount >= MAX_QUEUE_RETRIES) {
-        // Skip permanently failed mutations (admin should investigate)
+        dequeue(mutation.id);
         continue;
       }
 

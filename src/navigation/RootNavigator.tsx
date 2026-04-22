@@ -49,7 +49,7 @@ const darkTheme = {
 };
 
 export function RootNavigator() {
-  const { session, isLoading } = useAuth();
+  const { session, isLoading, signOut } = useAuth();
   // Register push token when signed in; no-ops when session is null
   usePushNotifications();
   const [step, setStep] = useState<AuthStep>('phone');
@@ -95,7 +95,23 @@ export function RootNavigator() {
 
   if (isLoading) return null;
 
-  // Signed in — but new user still needs to add their first address
+  // Registration steps — checked BEFORE session guard to prevent race condition
+  // where onAuthStateChange sets session before onNewUser() sets step='name'.
+  if (step === 'name') {
+    return (
+      <RegistrationScreen
+        phone={pendingPhone}
+        onComplete={(name) => {
+          setPendingName(name);
+          setNeedsOnboarding(true);
+        }}
+        // Session is already live here — the only safe back is to sign out and restart.
+        onBack={() => signOut()}
+      />
+    );
+  }
+
+  // New user completed registration — collect first address before entering app.
   if (session && needsOnboarding) {
     return (
       <AddAddressScreen onComplete={() => setNeedsOnboarding(false)} />
@@ -123,26 +139,12 @@ export function RootNavigator() {
         phone={pendingPhone}
         onBack={() => setStep('phone')}
         onExistingUser={() => {
-          // session already set — onAuthStateChange will trigger re-render to role navigator
+          // session already set — onAuthStateChange triggers re-render to role navigator
         }}
         onNewUser={() => {
           setIsNewUser(true);
           setStep('name');
         }}
-      />
-    );
-  }
-
-  if (step === 'name') {
-    return (
-      <RegistrationScreen
-        phone={pendingPhone}
-        onComplete={(name) => {
-          setPendingName(name);
-          setNeedsOnboarding(true);
-          // session already live at this point
-        }}
-        onBack={() => setStep('otp')}
       />
     );
   }

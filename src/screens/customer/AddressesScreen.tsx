@@ -1,6 +1,7 @@
 /**
  * 1stOne F1 — My Addresses Screen
- * Lists saved addresses; tap "Add Address" to add a new one.
+ * Lists saved addresses with set-default and delete actions.
+ * Delete is only available when the user has more than one address.
  */
 
 import React from 'react';
@@ -8,17 +9,47 @@ import {
   View,
   FlatList,
   TouchableOpacity,
-  StyleSheet
+  Alert,
+  StyleSheet,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { EmptyState } from '../../components/EmptyState';
-import { useAddresses } from '../../hooks/useAddresses';
+import { useAddresses, useSetDefaultAddress, useDeleteAddress } from '../../hooks/useAddresses';
 import type { CustomerAddress } from '../../types';
 
 export function AddressesScreen({ navigation }: any) {
   const { data: addresses, isLoading } = useAddresses();
+  const { mutate: setDefault, isPending: isSettingDefault } = useSetDefaultAddress();
+  const { mutate: deleteAddress } = useDeleteAddress();
+
+  const handleSetDefault = (id: number) => {
+    setDefault(id, {
+      onError: () => Alert.alert('Error', 'Could not update default address. Please try again.'),
+    });
+  };
+
+  const handleDelete = (id: number) => {
+    Alert.alert(
+      'Delete Address',
+      'Remove this address from your saved list?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () =>
+            deleteAddress(id, {
+              onError: () => Alert.alert('Error', 'Could not delete address. Please try again.'),
+            }),
+        },
+      ]
+    );
+  };
+
+  const canDelete = (addresses?.length ?? 0) > 1;
 
   const renderAddress = ({ item }: { item: CustomerAddress }) => (
     <View style={styles.row}>
@@ -35,20 +66,45 @@ export function AddressesScreen({ navigation }: any) {
           <ThemedText variant="small" color="muted">{item.city}</ThemedText>
         ) : null}
       </View>
-      {item.is_default && (
-        <ThemedText variant="small" color="mint">Default</ThemedText>
-      )}
+
+      <View style={styles.rowActions}>
+        {item.is_default ? (
+          <ThemedText variant="small" color="mint" style={styles.defaultLabel}>Default</ThemedText>
+        ) : (
+          <TouchableOpacity
+            onPress={() => handleSetDefault(item.id)}
+            disabled={isSettingDefault}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            {isSettingDefault ? (
+              <ActivityIndicator size="small" color={Theme.colors.text.muted} />
+            ) : (
+              <ThemedText variant="small" color="muted" style={styles.setDefaultText}>
+                Set default
+              </ThemedText>
+            )}
+          </TouchableOpacity>
+        )}
+        {canDelete && (
+          <TouchableOpacity
+            onPress={() => handleDelete(item.id)}
+            style={styles.deleteBtn}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <ThemedText variant="small" style={styles.deleteText}>Delete</ThemedText>
+          </TouchableOpacity>
+        )}
+      </View>
     </View>
   );
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <ThemedText variant="body" color="accent">‹ Back</ThemedText>
-        </TouchableOpacity>
         <ThemedText variant="header" color="primary">My Addresses</ThemedText>
-        <View style={{ width: 40 }} />
+        <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <ThemedText variant="body" color="muted">Close</ThemedText>
+        </TouchableOpacity>
       </View>
 
       <FlatList
@@ -101,16 +157,26 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: Theme.colors.text.mint,
   },
-  rowLeft: { flex: 1 },
+  rowLeft: { flex: 1, marginRight: Theme.spacing.sm },
   addressLine: { marginTop: 2 },
+  rowActions: {
+    alignItems: 'flex-end',
+    gap: Theme.spacing.sm,
+    flexShrink: 0,
+  },
+  defaultLabel: { fontWeight: '500' },
+  setDefaultText: { textDecorationLine: 'underline' },
+  deleteBtn: { marginTop: 2 },
+  deleteText: { color: Theme.colors.status.error },
   addBtn: {
     margin: Theme.spacing.md,
+    height: 40,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: Theme.colors.text.mint,
-    borderRadius: Theme.components.inputRadius,
-    paddingVertical: 14,
+    borderColor: `${Theme.colors.text.mint}4D`,
     alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: Theme.colors.background.secondary,
   },
-  addBtnText: { fontWeight: '600' },
+  addBtnText: { fontWeight: '400' },
 });
