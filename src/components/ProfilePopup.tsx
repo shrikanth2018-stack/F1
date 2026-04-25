@@ -12,7 +12,6 @@ import {
   TouchableWithoutFeedback,
   ScrollView,
   StyleSheet,
-  Alert,
   Dimensions,
   Text,
 } from 'react-native';
@@ -32,6 +31,7 @@ import { useFeatureFlag } from '../hooks/useFeatureFlag';
 import { useUIStore } from '../store/uiStore';
 import { formatPhone, formatCurrency } from '../utils/formatters';
 import { openWhatsApp } from '../utils/links';
+import { confirmDialog } from '../utils/confirmDialog';
 
 const { height: SCREEN_H } = Dimensions.get('window');
 const PANEL_W = 292;
@@ -167,12 +167,15 @@ export function ProfilePopup() {
     openWhatsApp(config?.whatsapp_support_number);
   };
 
-  const handleSignOut = () => {
+  const handleSignOut = async () => {
     close();
-    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign Out', style: 'destructive', onPress: signOut },
-    ]);
+    const confirmed = await confirmDialog({
+      title: 'Sign Out',
+      message: 'Are you sure you want to sign out?',
+      confirmLabel: 'Sign Out',
+      destructive: true,
+    });
+    if (confirmed) signOut();
   };
 
   const userName = wallet?.fullName || (session?.user.phone

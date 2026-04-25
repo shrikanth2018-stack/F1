@@ -13,7 +13,6 @@ import React from 'react';
 import {
   View,
   ScrollView,
-  Alert,
   StyleSheet,
   TouchableOpacity,
 } from 'react-native';
@@ -27,6 +26,7 @@ import { useOfflineSync } from '../../hooks/useOfflineSync';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../../api/supabaseClient';
 import { QUERY_STALE_TIME } from '../../utils/constants';
+import { confirmDialog } from '../../utils/confirmDialog';
 import type { Profile, StaffSalary } from '../../types';
 
 const B = Theme.typography.sizes.body + 2;
@@ -93,11 +93,14 @@ export function StaffProfileScreen() {
     staleTime: QUERY_STALE_TIME,
   });
 
-  const handleSignOut = () => {
-    Alert.alert('Sign Out', 'Are you sure?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign Out', style: 'destructive', onPress: signOut },
-    ]);
+  const handleSignOut = async () => {
+    const confirmed = await confirmDialog({
+      title: 'Sign Out',
+      message: 'Are you sure?',
+      confirmLabel: 'Sign Out',
+      destructive: true,
+    });
+    if (confirmed) signOut();
   };
 
   const displayName = profile?.full_name || session?.user.phone || 'Staff Member';

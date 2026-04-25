@@ -32,6 +32,7 @@ import { useAdminStats } from '../../hooks/useAdminStats';
 import { useBranchFilter } from '../../hooks/useBranchFilter';
 import { useBranches } from '../../hooks/useBranches';
 import { useBranchStore } from '../../store/branchStore';
+import { confirmDialog } from '../../utils/confirmDialog';
 
 type AdminTab = 'Reports' | 'Manage';
 
@@ -250,11 +251,14 @@ export function AdminHome() {
 
   useRealtimeOrders(true);
 
-  const handleSignOut = () => {
-    Alert.alert('Sign Out', 'Are you sure?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign Out', style: 'destructive', onPress: signOut },
-    ]);
+  const handleSignOut = async () => {
+    const confirmed = await confirmDialog({
+      title: 'Sign Out',
+      message: 'Are you sure?',
+      confirmLabel: 'Sign Out',
+      destructive: true,
+    });
+    if (confirmed) signOut();
   };
 
   const TABS: AdminTab[] = ['Reports', 'Manage'];

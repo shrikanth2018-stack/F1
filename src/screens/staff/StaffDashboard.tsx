@@ -54,6 +54,7 @@ import { useStaffNoteForTab, type NoteTarget } from '../../hooks/useAdminNotes';
 import { supabase } from '../../api/supabaseClient';
 import { useQuery } from '@tanstack/react-query';
 import type { OrderStatus } from '../../types';
+import { confirmDialog } from '../../utils/confirmDialog';
 
 type StaffTab = 'Kitchen' | 'Packing' | 'Delivery';
 type PackingSubTab = 'Food' | 'Essentials';
@@ -431,12 +432,15 @@ function ProfilePopup({
     setTimeout(() => navigation.navigate(screen), 150);
   };
 
-  const handleSignOut = () => {
+  const handleSignOut = async () => {
     onClose();
-    Alert.alert('Sign Out', 'Are you sure?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign Out', style: 'destructive', onPress: signOut },
-    ]);
+    const confirmed = await confirmDialog({
+      title: 'Sign Out',
+      message: 'Are you sure?',
+      confirmLabel: 'Sign Out',
+      destructive: true,
+    });
+    if (confirmed) signOut();
   };
 
   return (
