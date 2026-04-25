@@ -54,19 +54,38 @@ type PaymentChoice = 'razorpay' | 'wallet';
 
 export function CheckoutScreen({ navigation, route }: any) {
   const cartType: 'food' | 'essentials' = route?.params?.cartType ?? 'food';
+  const subscriptionPlanId: number | undefined = route?.params?.subscriptionPlanId;
+  const isSubscriptionOnly = subscriptionPlanId != null;
   const { session } = useAuth();
 
   const foodItems = useCartStore((s) => s.items);
+  const foodPlans = useCartStore((s) => s.plans);
   const clearFood = useCartStore((s) => s.clearCart);
+  const clearFoodPlans = useCartStore((s) => s.clearPlans);
   const foodTotal = useCartStore((s) => s.getDisplayTotal());
 
   const essItems = useEssentialsCartStore((s) => s.items);
+  const essPlans = useEssentialsCartStore((s) => s.plans);
   const clearEss = useEssentialsCartStore((s) => s.clearCart);
+  const clearEssPlans = useEssentialsCartStore((s) => s.clearPlans);
   const essTotal = useEssentialsCartStore((s) => s.getDisplayTotal());
 
-  const activeItems = cartType === 'food' ? foodItems : essItems;
-  const displayTotal = cartType === 'food' ? foodTotal : essTotal;
-  const totalItemCount = activeItems.length;
+  // In subscription-only mode, ignore items completely; only the one plan flows through.
+  const subPlan = isSubscriptionOnly
+    ? (foodPlans.find((p) => p.plan_id === subscriptionPlanId)
+       ?? essPlans.find((p) => p.plan_id === subscriptionPlanId)
+       ?? null)
+    : null;
+
+  const activeItems = isSubscriptionOnly ? [] : (cartType === 'food' ? foodItems : essItems);
+  const activePlans = isSubscriptionOnly
+    ? (subPlan ? [subPlan] : [])
+    : (cartType === 'food' ? foodPlans : essPlans);
+  const displayTotal = isSubscriptionOnly
+    ? (subPlan?.price ?? 0)
+    : (cartType === 'food' ? foodTotal : essTotal);
+  // Cart has something to check out when there are items OR plans
+  const totalCartCount = activeItems.length + activePlans.length;
 
   const setGlobalLoading = useUIStore((s) => s.setGlobalLoading);
   const { data: addresses } = useAddresses();
@@ -163,9 +182,9 @@ export function CheckoutScreen({ navigation, route }: any) {
       Alert.alert('Outside Delivery Area', 'This address is outside our delivery zone. Please select a different address or add a new one.');
       return;
     }
-    if (totalItemCount === 0) {
+    if (totalCartCount === 0) {
       isPlacingRef.current = false;
-      Alert.alert('Empty Cart', 'Add items to your cart first');
+      Alert.alert('Empty Cart', 'Add items or a subscription plan to your cart first');
       return;
     }
 
@@ -203,15 +222,24 @@ export function CheckoutScreen({ navigation, route }: any) {
           'Idempotency-Key': idempotencyKeyRef.current,
         },
         body: {
-          food_items: cartType === 'food' ? foodItems.map((i) => ({
+          // In subscription-only mode, items are fully suppressed from the payload.
+          food_items: (!isSubscriptionOnly && cartType === 'food') ? foodItems.map((i) => ({
             menu_item_id: i.menu_item_id,
             quantity: i.quantity,
           })) : [],
-          essentials_items: cartType === 'essentials' ? essItems.map((i) => ({
+          essentials_items: (!isSubscriptionOnly && cartType === 'essentials') ? essItems.map((i) => ({
             essential_item_id: i.essential_item_id,
             quantity: i.quantity,
           })) : [],
-          cycle_id: cartType === 'food' ? foodItems[0]?.cycle_id ?? null : essItems[0]?.cycle_id ?? null,
+          subscription_plans: activePlans.map((p) => ({
+            plan_id: p.plan_id,
+            start_date: p.start_date,
+          })),
+          cycle_id: isSubscriptionOnly
+            ? (subPlan?.cycle_id ?? null)
+            : cartType === 'food'
+              ? (foodItems[0]?.cycle_id ?? foodPlans[0]?.cycle_id ?? null)
+              : (essItems[0]?.cycle_id ?? essPlans[0]?.cycle_id ?? null),
           delivery_address_id: selectedAddressId,
           payment_method: paymentMethod,
           dispatch_date: dispatchDate,
@@ -296,14 +324,35 @@ export function CheckoutScreen({ navigation, route }: any) {
       }
 
       trackOrderPlaced(order.id ?? '', order.total_amount ?? estimatedTotal, paymentMethod, cartType);
-      if (cartType === 'food') clearFood(); else clearEss();
+      // Sub-only checkout must not wipe user's regular cart items — only clear the plan slot.
+      if (isSubscriptionOnly) {
+        if (cartType === 'food') clearFoodPlans(); else clearEssPlans();
+      } else {
+        if (cartType === 'food') clearFood(); else clearEss();
+      }
       idempotencyKeyRef.current = generateId();
       setGlobalLoading(false);
 
+      const hadPlans = activePlans.length > 0;
       if (razorpayAttempted) {
-        Alert.alert('Order Placed!', 'Payment received. You can track your order in the Orders tab.');
+        Alert.alert(
+          hadPlans ? 'Order & Subscription Activated!' : 'Order Placed!',
+          hadPlans
+            ? 'Payment received. Your receipt is in My Orders; the plan is active in My Subscriptions.'
+            : 'Payment received. You can track your order in the Orders tab.'
+        );
+      } else if (hadPlans) {
+        Alert.alert(
+          'Order & Subscription Activated!',
+          'Your receipt is in My Orders; the plan is active in My Subscriptions.'
+        );
       }
-      navigation.popToTop();
+      // Sub-only flow: ensure we don't linger on the now-empty filtered Cart — land on Home.
+      if (isSubscriptionOnly) {
+        navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
+      } else {
+        navigation.popToTop();
+      }
     } catch (err: any) {
       trackOrderFailed(err.message || 'unknown', cartType);
       Alert.alert('Order Failed', err.message || 'Please try again');
@@ -313,9 +362,12 @@ export function CheckoutScreen({ navigation, route }: any) {
       setGlobalLoading(false);
     }
   }, [
-    foodItems, essItems, selectedAddressId, paymentMethod,
-    evaluations, session, clearFood, clearEss, navigation, setGlobalLoading,
-    cartType, totalItemCount,
+    foodItems, essItems, foodPlans, essPlans, activePlans,
+    isSubscriptionOnly, subPlan,
+    selectedAddressId, paymentMethod,
+    evaluations, session, clearFood, clearEss, clearFoodPlans, clearEssPlans,
+    navigation, setGlobalLoading,
+    cartType, totalCartCount,
   ]);
 
   return (
@@ -398,6 +450,17 @@ export function CheckoutScreen({ navigation, route }: any) {
               </ThemedText>
             </View>
           ))}
+
+          {activePlans.map((p) => (
+            <View key={`plan-${p.plan_id}`} style={styles.summaryRow}>
+              <ThemedText variant="body" color="primary">
+                {p.plan_name} · {p.duration_days}d plan
+              </ThemedText>
+              <ThemedText variant="body" color="subtitle">
+                {formatPriceShort(p.price)}
+              </ThemedText>
+            </View>
+          ))}
         </View>
 
         <Divider />
@@ -469,7 +532,7 @@ export function CheckoutScreen({ navigation, route }: any) {
         style={[styles.floatBtn, { bottom: insets.bottom + 16 }]}
         activeOpacity={0.85}
         onPress={handlePlaceOrder}
-        disabled={!selectedAddressId || totalItemCount === 0 || isPlacing}
+        disabled={!selectedAddressId || totalCartCount === 0 || isPlacing}
       >
         {isPlacing
           ? <ActivityIndicator color={Theme.colors.text.mint} />

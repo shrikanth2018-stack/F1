@@ -189,6 +189,17 @@ function HubCard({ hub }: { hub: HubStat }) {
           </ThemedText>
         )}
       </View>
+
+      {/* Commission payout — only shown when hub has a contract and something is owed */}
+      {hub.commission_percent != null && hub.commission_due > 0 && (
+        <View style={styles.cardFooter}>
+          <ThemedText variant="small" color="muted" style={{ fontSize: S }}>
+            Commission ({hub.commission_percent}%): <ThemedText variant="small" color="mint" style={{ fontSize: S }}>
+              {formatPriceShort(hub.commission_due)}
+            </ThemedText> due
+          </ThemedText>
+        </View>
+      )}
     </View>
   );
 }

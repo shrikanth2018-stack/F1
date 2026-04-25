@@ -22,10 +22,12 @@ import {
   useQueryClient,
   type UseQueryOptions,
 } from '@tanstack/react-query';
-import type { PostgrestResponse, PostgrestSingleResponse, PostgrestFilterBuilder } from '@supabase/supabase-js';
 import { supabase } from './supabaseClient';
 
-type SupabaseQueryFn<T> = () => PromiseLike<PostgrestResponse<T> | PostgrestSingleResponse<T>>;
+// The internal fn accepts any Promise-like response — type safety comes from
+// the generic T on the hook's return value, not the fn's response type.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type SupabaseQueryFn<_T> = () => PromiseLike<{ data: any; error: { message: string } | null }>;
 
 interface TableQueryOptions {
   select?: string;
@@ -62,11 +64,14 @@ export function useSupabaseQuery<T>(
     const tableOpts = (optionsOrTableOptions as TableQueryOptions) ?? {};
     resolvedOptions = maybeOptions;
     resolvedFn = () => {
-      let query = supabase.from(fnOrTable).select(tableOpts.select ?? '*');
+      // Dynamic table name bypasses the typed from() overloads — safe because
+      // callers pass the correct T generic which types the hook's return value.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let query = (supabase as any).from(fnOrTable).select(tableOpts.select ?? '*');
       if (tableOpts.filter) {
         query = tableOpts.filter(query);
       }
-      return query as unknown as PromiseLike<PostgrestResponse<T>>;
+      return query;
     };
   } else {
     resolvedFn = fnOrTable;
@@ -115,7 +120,8 @@ export function useSupabaseSingle<T>(
  * Automatically invalidates related queries on success.
  */
 export function useSupabaseMutation<TPayload, TResult = unknown>(
-  mutationFn: (payload: TPayload) => PromiseLike<PostgrestResponse<TResult> | PostgrestSingleResponse<TResult>>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  mutationFn: (payload: TPayload) => PromiseLike<{ data: any; error: { message: string } | null }>,
   invalidateKeys?: ReadonlyArray<readonly unknown[]>
 ) {
   const queryClient = useQueryClient();

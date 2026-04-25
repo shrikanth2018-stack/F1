@@ -23,11 +23,12 @@ import { supabase } from '../../api/supabaseClient';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { Divider } from '../../components/Divider';
+import type { AdminNavProp } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
 
-export function LoginBgScreen({ navigation }: { navigation: any }) {
+export function LoginBgScreen({ navigation }: { navigation: AdminNavProp }) {
   const [currentUrl, setCurrentUrl] = useState<string | null>(null);
   const [previewUri, setPreviewUri] = useState<string | null>(null);
   const [previewBase64, setPreviewBase64] = useState<string | null>(null);

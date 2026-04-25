@@ -295,7 +295,7 @@ const styles = StyleSheet.create({
   },
   dropdownBackdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: Theme.colors.layout.overlayLight,
   },
   dropdownSheet: {
     position: 'absolute',

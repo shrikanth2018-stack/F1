@@ -12,10 +12,11 @@
  *   needsOnboarding=false → role-based navigator
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Linking } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { useAuth } from '../hooks/useAuth';
+import { useApplyReferralCode } from '../hooks/useReferrals';
 import { usePushNotifications } from '../hooks/usePushNotifications';
 import { navigationRef } from './navigationRef';
 import { CustomerNavigator } from './CustomerNavigator';
@@ -60,6 +61,9 @@ export function RootNavigator() {
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   /** Referral code carried in from a deep link (1stone://referral?code=XXX) */
   const [pendingReferralCode, setPendingReferralCode] = useState<string | null>(null);
+  /** Ensures auto-apply fires once per pending code, not on every session refresh */
+  const referralAppliedRef = useRef<string | null>(null);
+  const applyReferral = useApplyReferralCode();
 
   // Handle incoming deep links (cold start + foreground)
   useEffect(() => {
@@ -90,8 +94,21 @@ export function RootNavigator() {
       setPendingName('');
       setIsNewUser(false);
       setNeedsOnboarding(false);
+      referralAppliedRef.current = null;
     }
   }, [session, isLoading]);
+
+  // Auto-apply referral code once the session is live. Fires once per code —
+  // the edge function is idempotent (returns "already used" for repeats), so
+  // on any terminal outcome we clear the pending code and mark it applied.
+  useEffect(() => {
+    if (!session || !pendingReferralCode) return;
+    if (referralAppliedRef.current === pendingReferralCode) return;
+    referralAppliedRef.current = pendingReferralCode;
+    applyReferral.mutate(pendingReferralCode, {
+      onSettled: () => setPendingReferralCode(null),
+    });
+  }, [session, pendingReferralCode, applyReferral]);
 
   if (isLoading) return null;
 

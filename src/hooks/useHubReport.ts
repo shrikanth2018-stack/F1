@@ -25,6 +25,10 @@ export interface HubStat {
   pending: number;       // Confirmed + Preparing + Ready + Packed
   cancelled: number;
   revenue: number;
+  /** Commission % set on the hub (null = no commission contract). */
+  commission_percent: number | null;
+  /** Computed: sum(delivered order total × commission_percent / 100). */
+  commission_due: number;
 }
 
 export function useHubReport(startDate: string, endDate: string) {
@@ -33,7 +37,8 @@ export function useHubReport(startDate: string, endDate: string) {
   return useQuery({
     queryKey: ['report_hub', startDate, endDate, bf.isActive ? bf.branchId ?? 'all' : 'off'],
     queryFn: async () => {
-      // Fetch hub-delivery orders with address hub_id in the date range
+      // Fetch hub-delivery orders with address hub_id in the date range.
+      // Pull commission_percent from the joined hub so we can compute payout due.
       let query = supabase
         .from('orders')
         .select(`
@@ -44,7 +49,7 @@ export function useHubReport(startDate: string, endDate: string) {
           hub_id,
           dispatch_date,
           branch_id,
-          delivery_hubs!orders_hub_id_fkey(hub_name)
+          delivery_hubs!orders_hub_id_fkey(hub_name, commission_percent)
         `)
         .eq('delivery_method', 'hub')
         .gte('dispatch_date', startDate)
@@ -79,12 +84,19 @@ export function useHubReport(startDate: string, endDate: string) {
             pending: 0,
             cancelled: 0,
             revenue: 0,
+            commission_percent: o.delivery_hubs?.commission_percent ?? null,
+            commission_due: 0,
           });
         }
 
         const stat = hubMap.get(hid)!;
         stat.total_orders += 1;
         stat.revenue += o.total_amount ?? 0;
+
+        // Only delivered orders count toward commission payout.
+        if (o.status === 'Delivered' && stat.commission_percent != null) {
+          stat.commission_due += (o.total_amount ?? 0) * (stat.commission_percent / 100);
+        }
 
         switch (o.status) {
           case 'Dispatched':       stat.dispatched += 1; break;

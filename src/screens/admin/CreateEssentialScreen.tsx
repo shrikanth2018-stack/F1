@@ -20,10 +20,11 @@ import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { useAddEssential } from '../../hooks/useEssentialsCatalog';
 import { useAllDeliveryCycles } from '../../hooks/useMenuManagement';
+import type { AdminScreenProps } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
 
-export function CreateEssentialScreen({ navigation, route }: { navigation: any; route: any }) {
+export function CreateEssentialScreen({ navigation, route }: AdminScreenProps<'CreateEssential'>) {
   const { data: rawCycles = [] } = useAllDeliveryCycles();
   // Essentials cycles only (is_essentials = true) — matches EssentialsCatalogManageScreen
   const cycles = useMemo(

@@ -38,13 +38,16 @@ interface ZonePayload {
   hub_id?: number | null;
   polygon_geojson: { lat: number; lng: number }[];
   branch_id?: number | null;
+  driver_code?: string | null;
+  driver_user_id?: string | null;
 }
 
 export function useAddZone() {
   const bf = useBranchFilter();
   return useSupabaseMutation<ZonePayload>(
     (payload) =>
-      supabase.from('delivery_zones').insert({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (supabase.from('delivery_zones') as any).insert({
         ...payload,
         is_active: true,
         branch_id: payload.branch_id ?? (bf.isActive ? bf.branchId : null),
@@ -56,7 +59,8 @@ export function useAddZone() {
 export function useUpdateZone() {
   return useSupabaseMutation<{ id: number } & Partial<ZonePayload & { is_active: boolean }>>(
     ({ id, ...payload }) =>
-      supabase.from('delivery_zones').update(payload).eq('id', id),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (supabase.from('delivery_zones') as any).update(payload).eq('id', id),
     [QUERY_KEYS.ZONES as unknown as string[]]
   );
 }

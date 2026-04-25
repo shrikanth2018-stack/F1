@@ -1,38 +1,51 @@
 /**
  * 1stOne F1 — Plan Detail Screen
  *
- * Shows plan info, included items, price breakdown.
- * Subscribe button → calls Edge Function → payment if Razorpay.
+ * Redesigned header (Plan Name / Plan For / Duration / Daily Dispatch Time /
+ * Total Cost), calendar (earliest selectable = today when within cutoff, else
+ * tomorrow), Included Items labeled with the cycle name.
+ *
+ * CTA = BUY → atomically sets the single-plan cart slot and navigates to Cart
+ * in subscription-only mode (no popup). Header is close-only (no back).
+ *
+ * Conflict rule: compares the plan's core items (item_ids) against the user's
+ * active subscriptions of the same plan_type. On overlap, offers "Start After".
  */
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   View,
   ScrollView,
   Alert,
   StyleSheet,
   TouchableOpacity,
-  ActivityIndicator,
   Text,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import RazorpayCheckout from '../../utils/razorpay';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { Divider } from '../../components/Divider';
-import { useSubscriptionPlans, usePlanItems, useSubscribe, useConfirmSubscription, useMySubscriptions } from '../../hooks/useSubscriptions';
+import { useSubscriptionPlans, usePlanItems, useMySubscriptions } from '../../hooks/useSubscriptions';
 import { useDeliveryCycles } from '../../hooks/useDeliveryCycles';
-import { useAuth } from '../../hooks/useAuth';
-import { useUIStore } from '../../store/uiStore';
+import { useServerTime } from '../../hooks/useServerTime';
+import { useCartStore } from '../../store/cartStore';
+import { useEssentialsCartStore } from '../../store/essentialsCartStore';
 import { formatPriceShort, formatDateShort } from '../../utils/formatters';
-import { formatTime12h } from '../../utils/timeEngine';
-import { RAZORPAY_KEY_ID } from '../../utils/env';
-import { trackPlanViewed, trackSubscribed } from '../../utils/analytics';
+import { formatTime12h, getDispatchScenario } from '../../utils/timeEngine';
+import { essentialsCycleLabel } from '../../utils/cycleLabels';
+import { trackPlanViewed } from '../../utils/analytics';
+import {
+  findCoreItemConflict,
+  planItemIds,
+  startAfterDate,
+  type ActiveSubForConflict,
+} from '../../utils/subscriptionConflict';
+import type { CartPlan } from '../../types';
 
-/** Next N calendar days starting from tomorrow */
-function getSelectableDates(count = 14): Date[] {
+/** Generate N calendar days starting from `offsetDays` from today. */
+function getSelectableDates(count: number, offsetDays: number): Date[] {
   const dates: Date[] = [];
-  for (let i = 1; i <= count; i++) {
+  for (let i = offsetDays; i < offsetDays + count; i++) {
     const d = new Date();
     d.setDate(d.getDate() + i);
     dates.push(d);
@@ -48,197 +61,125 @@ function isSameDay(a: Date, b: Date) {
   );
 }
 
+function toISODate(d: Date): string {
+  return d.toISOString().split('T')[0];
+}
+
 export function PlanDetailScreen({ route, navigation }: any) {
   const { planId } = route.params;
   const insets = useSafeAreaInsets();
-  const { session } = useAuth();
-  const setGlobalLoading = useUIStore((s) => s.setGlobalLoading);
 
   const { data: plans } = useSubscriptionPlans();
   const plan = plans?.find((p) => p.id === planId);
   const { data: planItems } = usePlanItems(planId);
   const { data: cycles } = useDeliveryCycles();
   const cycle = cycles?.find((c) => c.id === plan?.cycle_id);
-  const { mutateAsync: subscribe } = useSubscribe();
-  const { mutateAsync: confirmSubscription } = useConfirmSubscription();
   const { data: mySubs } = useMySubscriptions();
+  const { data: serverTime } = useServerTime();
 
-  // Track plan view once plan data is loaded
+  const setFoodPlan = useCartStore((s) => s.setSinglePlan);
+  const setEssPlan = useEssentialsCartStore((s) => s.setSinglePlan);
+
   React.useEffect(() => {
     if (plan) trackPlanViewed(plan.id, plan.plan_name, plan.price);
   }, [plan?.id]);
 
-  const tomorrow = useMemo(() => {
+  // Earliest selectable start: today if within cutoff, else tomorrow.
+  // While cycle/serverTime load, fall back to tomorrow (safe).
+  const earliestOffset = useMemo(() => {
+    if (!cycle || !serverTime) return 1;
+    return getDispatchScenario(cycle, serverTime) === 'A' ? 0 : 1;
+  }, [cycle, serverTime]);
+
+  const selectableDates = useMemo(() => getSelectableDates(14, earliestOffset), [earliestOffset]);
+
+  // Default pre-selection = the earliest valid date
+  const [startDate, setStartDate] = useState<Date>(() => {
     const d = new Date();
-    d.setDate(d.getDate() + 1);
+    d.setDate(d.getDate() + 1); // provisional (tomorrow); effect below re-syncs once cycle loads
     return d;
-  }, []);
+  });
 
-  const selectableDates = useMemo(() => getSelectableDates(14), []);
-  const [startDate, setStartDate] = useState<Date>(tomorrow);
-  const [paymentMethod, setPaymentMethod] = useState<'razorpay' | 'wallet'>('razorpay');
-  const [isSubscribing, setIsSubscribing] = useState(false);
+  // Keep the selection in sync once serverTime/cycle resolve
+  React.useEffect(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + earliestOffset);
+    setStartDate(d);
+  }, [earliestOffset]);
 
-  /**
-   * Conflict: another active sub with the same cycle_id AND same plan_type
-   * (food vs essential). Multiple cycles on same day = fine. Food + Essentials
-   * on same cycle = fine. Same type on same cycle = blocked.
-   */
-  const conflictingSubs = useMemo(() => {
-    if (!plan || !mySubs) return [];
-    // Treat null plan_type (legacy rows created before the column existed) as 'food'
-    const newType = plan.plan_type ?? 'food';
-    return (mySubs as any[]).filter(
-      (s) =>
-        s.is_active &&
-        s.subscription_plans?.cycle_id === plan.cycle_id &&
-        (s.subscription_plans?.plan_type ?? 'food') === newType
-    );
-  }, [plan, mySubs]);
+  const newItemIds = useMemo(() => planItemIds(planItems ?? []), [planItems]);
+  const planType: 'food' | 'essentials' = plan?.plan_type ?? 'food';
 
-  const doSubscribe = useCallback(async (overrideStartDate: Date) => {
-    if (!plan) {
-      console.error('[doSubscribe] Aborted — plan is null');
-      return;
-    }
-    setIsSubscribing(true);
-    setGlobalLoading(true, 'Setting up subscription...');
-    try {
-      const startDateStr = overrideStartDate.toISOString().split('T')[0];
-
-      const result = await subscribe({
-        plan_id: plan.id,
-        payment_method: paymentMethod,
-        start_date: startDateStr,
-      });
-
-      if (paymentMethod === 'razorpay' && (result as any)?.razorpay_order_id) {
-        if (!RAZORPAY_KEY_ID) {
-          console.error('[doSubscribe] RAZORPAY_KEY_ID is empty — check EXPO_PUBLIC_RAZORPAY_KEY_ID in .env');
-          Alert.alert('Configuration Error', 'Payment gateway not configured. Please contact support.');
-          return;
-        }
-
-        // iOS SDK requires exactly 10-digit contact; strip country prefix if present
-        const rawPhone = session?.user.phone ?? '';
-        const contact = rawPhone.length > 10 ? rawPhone.slice(-10) : rawPhone;
-
-        const rzpOptions = {
-          description: `1stOne ${plan.plan_name} Subscription`,
-          currency: 'INR',
-          key: RAZORPAY_KEY_ID,
-          // amount must be an integer (paise); SDK rejects floats silently on iOS
-          amount: Math.round(plan.price * 100),
-          order_id: (result as any).razorpay_order_id,
-          name: '1stOne',
-          prefill: {
-            // iOS SDK requires a non-empty email string or it won't render the sheet
-            email: 'customer@1stone.in',
-            contact,
-          },
-          // Must be a 6-char hex; Theme token resolves to one, but be explicit
-          theme: { color: Theme.colors.action.primary },
-        };
-
-        let rzpResult: any;
-        try {
-          // The native shim (razorpay.native.ts) already waits for InteractionManager
-          // + 150 ms so the react-native-screens UIViewController is committed.
-          // Race adds a hard ceiling for cases where the SDK hangs post-open.
-          rzpResult = await Promise.race([
-            RazorpayCheckout.open(rzpOptions),
-            new Promise<never>((_, reject) =>
-              setTimeout(() => reject(new Error('Payment sheet timed out. Please try again.')), 30_000)
-            ),
-          ]);
-        } catch (rpErr: any) {
-          if (rpErr?.message?.includes('timed out')) {
-            Alert.alert('Payment Timeout', 'The payment sheet did not open. Please try again.');
-          } else {
-            Alert.alert('Payment Cancelled', 'You can retry from My Subscriptions.');
-          }
-          return;
-        }
-
-        // Client-side signature verification — activates the subscription immediately
-        // without needing the Razorpay webhook (which requires a live dashboard).
-        // In production both paths run; whichever fires first wins.
-        let paymentConfirmed = false;
-        if (rzpResult?.razorpay_payment_id && rzpResult?.razorpay_signature) {
-          try {
-            setGlobalLoading(true, 'Confirming payment...');
-            await confirmSubscription({
-              subscription_id: (result as any).subscription_id,
-              razorpay_payment_id: rzpResult.razorpay_payment_id,
-              razorpay_order_id: rzpResult.razorpay_order_id,
-              razorpay_signature: rzpResult.razorpay_signature,
-            });
-            paymentConfirmed = true;
-          } catch {
-            // Non-fatal — webhook will activate it within a few seconds
-          }
-        }
-
-        if (!paymentConfirmed) {
-          Alert.alert(
-            'Payment Received',
-            'Your payment was captured. Subscription activation may take a moment — check My Subscriptions shortly.',
-            [{ text: 'OK', onPress: () => navigation.navigate('Subscriptions') }],
-          );
-          return;
-        }
-      }
-
-      trackSubscribed(plan.id, plan.plan_name, paymentMethod);
-      const itemNames = (planItems ?? [])
-        .map((pi: any) => pi.menu_items?.name)
-        .filter(Boolean)
-        .join(', ');
-      Alert.alert(
-        'Subscribed!',
-        `${plan.plan_name}${itemNames ? `\nDelivers: ${itemNames}` : ''}\n\nStarts: ${formatDateShort(startDateStr)}\nDuration: ${plan.duration_days} days\n\nManage from My Subscriptions in your profile.`,
-        [{ text: 'View My Subscriptions', onPress: () => navigation.navigate('Subscriptions') }],
-      );
-    } catch (err: any) {
-      console.error('[doSubscribe] Caught error:', err?.message, err);
-      Alert.alert('Subscription Failed', err?.message || 'Something went wrong. Please try again.');
-    } finally {
-      setIsSubscribing(false);
-      setGlobalLoading(false);
-    }
-  }, [plan, paymentMethod, subscribe, session, navigation, setGlobalLoading]);
-
-  const handleSubscribe = useCallback(() => {
+  const pushToCart = useCallback((start: Date) => {
     if (!plan) return;
+    const cartPlan: CartPlan = {
+      plan_id: plan.id,
+      plan_name: plan.plan_name,
+      price: plan.price,
+      duration_days: plan.duration_days,
+      cycle_id: plan.cycle_id,
+      plan_type: planType,
+      start_date: toISODate(start),
+      plan_item_ids: Array.from(newItemIds),
+    };
+    if (planType === 'food') setFoodPlan(cartPlan);
+    else setEssPlan(cartPlan);
+    // Subscription-only cart view — no popup
+    navigation.navigate('Cart', { subscriptionPlanId: plan.id });
+  }, [plan, planType, newItemIds, setFoodPlan, setEssPlan, navigation]);
 
-    if (conflictingSubs.length > 0) {
-      const existing = conflictingSubs[0];
-      const existingPlanName = existing.subscription_plans?.plan_name ?? 'existing plan';
-      const duration = existing.subscription_plans?.duration_days ?? 0;
-      // Day after last delivery of the existing sub
-      const afterDate = new Date(existing.start_date);
-      afterDate.setDate(afterDate.getDate() + duration);
+  const activeSubs: ActiveSubForConflict[] = useMemo(() => {
+    if (!mySubs) return [];
+    return (mySubs as any[])
+      .filter((s) => s.is_active)
+      .map((s) => ({
+        id: s.id,
+        start_date: s.start_date,
+        plan_id: s.plan_id,
+        plan_items: (() => {
+          const raw = s.subscription_plans?.plan_items;
+          if (!raw) return [];
+          if (Array.isArray(raw)) return raw;
+          try { return JSON.parse(raw); } catch { return []; }
+        })(),
+        duration_days: s.subscription_plans?.duration_days ?? 0,
+        plan_name: s.subscription_plans?.plan_name ?? 'existing plan',
+        plan_type: s.subscription_plans?.plan_type ?? 'food',
+        cycle_id: s.subscription_plans?.cycle_id ?? 0,
+      }));
+  }, [mySubs]);
 
+  const handleBuy = useCallback(() => {
+    if (!plan) return;
+    const conflict = findCoreItemConflict(planType, newItemIds, activeSubs);
+    if (conflict) {
+      const afterStr = startAfterDate(conflict);
+      const afterDate = new Date(afterStr);
       Alert.alert(
         'Subscription Conflict',
-        `You already have "${existingPlanName}" active on this cycle. You can schedule this plan to start after it ends.`,
+        `"${conflict.plan_name}" is already active and delivers the same item(s). You can queue this plan to start after it ends.`,
         [
-          {
-            text: `Start After (${formatDateShort(afterDate.toISOString().split('T')[0])})`,
-            onPress: () => doSubscribe(afterDate),
-          },
+          { text: `Start After (${formatDateShort(afterStr)})`, onPress: () => pushToCart(afterDate) },
           { text: 'Cancel', style: 'cancel' },
         ]
       );
       return;
     }
+    pushToCart(startDate);
+  }, [plan, planType, newItemIds, activeSubs, startDate, pushToCart]);
 
-    doSubscribe(startDate);
-  }, [plan, conflictingSubs, startDate, doSubscribe]);
+  const goHome = () => navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
 
   if (!plan) {
     return (
       <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <View style={{ width: 60 }} />
+          <ThemedText variant="header" color="primary">Plan Details</ThemedText>
+          <TouchableOpacity onPress={goHome} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <ThemedText variant="body" color="muted">Close</ThemedText>
+          </TouchableOpacity>
+        </View>
         <ThemedText variant="body" color="subtitle" style={styles.loading}>
           Loading...
         </ThemedText>
@@ -246,47 +187,36 @@ export function PlanDetailScreen({ route, navigation }: any) {
     );
   }
 
-  const pricePerDay = plan.price / plan.duration_days;
+  // Essentials plans show relabeled cycle (Morning/Noon/Evening); food plans show the real cycle_name.
+  const planFor = cycle
+    ? (planType === 'essentials' ? essentialsCycleLabel(cycle) : cycle.cycle_name)
+    : '—';
+  const dailyDispatch = formatTime12h(cycle?.delivery_start);
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* Header — close-only */}
+      <View style={styles.header}>
+        <View style={{ width: 60 }} />
+        <ThemedText variant="header" color="primary">Plan Details</ThemedText>
+        <TouchableOpacity onPress={goHome} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <ThemedText variant="body" color="muted">Close</ThemedText>
+        </TouchableOpacity>
+      </View>
+
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 90 }]}>
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <ThemedText variant="body" color="accent">‹ Back</ThemedText>
-          </TouchableOpacity>
-          <ThemedText variant="header" color="primary">Plan Details</ThemedText>
-          <View style={{ width: 40 }} />
-        </View>
-
-        {/* Plan Info */}
+        {/* Structured plan info */}
         <View style={styles.section}>
-          <ThemedText variant="title" color="primary">
-            {plan.plan_name}
-          </ThemedText>
-          <ThemedText variant="body" color="subtitle" style={styles.planDesc}>
-            {cycle ? `${cycle.cycle_name} daily for ${plan.duration_days} days` : `${plan.duration_days} days`}
-          </ThemedText>
-          {cycle && (
-            <ThemedText variant="body" color="subtitle" style={styles.planDesc}>
-              {`Dispatching daily by : ${formatTime12h(cycle.delivery_start)}`}
-            </ThemedText>
-          )}
-
-          <View style={styles.priceBlock}>
-            <ThemedText variant="title" color="mint">
-              {formatPriceShort(plan.price)}
-            </ThemedText>
-            <ThemedText variant="small" color="muted">
-              {formatPriceShort(pricePerDay)} per day
-            </ThemedText>
-          </View>
+          <InfoRow label="Plan Name" value={plan.plan_name} />
+          <InfoRow label="Plan For" value={planFor} />
+          <InfoRow label="Plan Duration" value={`${plan.duration_days} Days`} />
+          <InfoRow label="Daily Dispatch Time" value={dailyDispatch} />
+          <InfoRow label="Total Cost" value={formatPriceShort(plan.price)} highlight />
         </View>
 
         <Divider />
 
-        {/* Start Date Picker */}
+        {/* Start date calendar */}
         <View style={styles.section}>
           <ThemedText variant="small" color="primary" style={styles.sectionLabel}>
             STARTING DATE
@@ -308,13 +238,7 @@ export function PlanDetailScreen({ route, navigation }: any) {
                   onPress={() => setStartDate(date)}
                   activeOpacity={0.7}
                 >
-                  <ThemedText
-                    variant="micro"
-                    color={selected ? 'mint' : 'muted'}
-                    style={selected ? styles.datePillLabelActive : undefined}
-                  >
-                    {dayName}
-                  </ThemedText>
+                  <ThemedText variant="micro" color={selected ? 'mint' : 'muted'}>{dayName}</ThemedText>
                   <ThemedText
                     variant="body"
                     color={selected ? 'mint' : 'primary'}
@@ -322,13 +246,7 @@ export function PlanDetailScreen({ route, navigation }: any) {
                   >
                     {dayNum}
                   </ThemedText>
-                  <ThemedText
-                    variant="micro"
-                    color={selected ? 'mint' : 'muted'}
-                    style={selected ? styles.datePillLabelActive : undefined}
-                  >
-                    {month}
-                  </ThemedText>
+                  <ThemedText variant="micro" color={selected ? 'mint' : 'muted'}>{month}</ThemedText>
                 </TouchableOpacity>
               );
             })}
@@ -337,15 +255,15 @@ export function PlanDetailScreen({ route, navigation }: any) {
 
         <Divider />
 
-        {/* Included Items */}
+        {/* Included items — labeled with the cycle (Plan For) */}
         <View style={styles.section}>
           <ThemedText variant="small" color="muted" style={styles.sectionLabel}>
-            INCLUDED ITEMS
+            {`INCLUDED IN ${planFor.toUpperCase()}`}
           </ThemedText>
-          {(planItems ?? []).map((pi: any) => (
-            <View key={pi.id} style={styles.itemRow}>
+          {(planItems ?? []).map((pi: any, idx: number) => (
+            <View key={pi.item_id ?? idx} style={styles.itemRow}>
               <ThemedText variant="body" color="primary">
-                {pi.menu_items?.name ?? `Item #${pi.item_id}`}
+                {pi.item_name ?? `Item #${pi.item_id}`}
               </ThemedText>
               <ThemedText variant="small" color="subtitle">
                 x{pi.quantity}
@@ -358,48 +276,29 @@ export function PlanDetailScreen({ route, navigation }: any) {
             </ThemedText>
           )}
         </View>
-
-        <Divider />
-
-        {/* Payment Choice */}
-        <View style={styles.section}>
-          <ThemedText variant="small" color="muted" style={styles.sectionLabel}>
-            PAYMENT
-          </ThemedText>
-          <TouchableOpacity
-            style={[styles.payOpt, paymentMethod === 'razorpay' && styles.payOptSelected]}
-            onPress={() => setPaymentMethod('razorpay')}
-          >
-            <ThemedText variant="body" color="primary">Pay Online (Razorpay)</ThemedText>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.payOpt, paymentMethod === 'wallet' && styles.payOptSelected]}
-            onPress={() => setPaymentMethod('wallet')}
-          >
-            <ThemedText variant="body" color="primary">Wallet Balance</ThemedText>
-          </TouchableOpacity>
-        </View>
       </ScrollView>
 
-      {/* Floating Subscribe button — mint outline style */}
+      {/* BUY — direct to Cart (sub-only mode) */}
       <TouchableOpacity
         style={[styles.subscribeBtn, { bottom: insets.bottom + 16 }]}
         activeOpacity={0.85}
-        onPress={handleSubscribe}
-        disabled={isSubscribing}
+        onPress={handleBuy}
       >
-        {isSubscribing ? (
-          <ActivityIndicator color={Theme.colors.text.mint} />
-        ) : (
-          <>
-            <Text style={styles.subscribeBtnText}>
-              Subscribe · {formatPriceShort(plan.price)}
-            </Text>
-            <Text style={styles.subscribeBtnText}>›</Text>
-          </>
-        )}
+        <Text style={styles.subscribeBtnText}>
+          {`BUY · ${formatPriceShort(plan.price)}`}
+        </Text>
+        <Text style={styles.subscribeBtnText}>›</Text>
       </TouchableOpacity>
     </SafeAreaView>
+  );
+}
+
+function InfoRow({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+  return (
+    <View style={styles.infoRow}>
+      <ThemedText variant="small" color="muted">{label}</ThemedText>
+      <ThemedText variant="body" color={highlight ? 'mint' : 'primary'}>{value}</ThemedText>
+    </View>
   );
 }
 
@@ -416,64 +315,55 @@ const styles = StyleSheet.create({
   },
   section: { padding: Theme.spacing.md },
   sectionLabel: { letterSpacing: 1, marginBottom: Theme.spacing.sm },
-  planDesc: {
-    marginTop: 6,
-    fontSize: Theme.typography.sizes.body + 2,
-  },
-  priceBlock: { marginTop: Theme.spacing.md },
-  dateRow: {
-    gap: 8,
-    paddingVertical: Theme.spacing.xs,
-  },
-  datePill: {
+  infoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: Theme.spacing.sm,
-    paddingHorizontal: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Theme.colors.layout.divider,
+  },
+  dateRow: { paddingRight: Theme.spacing.md, gap: Theme.spacing.sm },
+  datePill: {
+    paddingVertical: Theme.spacing.sm,
+    paddingHorizontal: Theme.spacing.md,
     borderRadius: Theme.components.inputRadius,
     borderWidth: 1,
     borderColor: Theme.colors.layout.divider,
-    backgroundColor: Theme.colors.background.secondary,
-    minWidth: 52,
+    alignItems: 'center',
+    minWidth: 60,
   },
-  datePillSelected: {
-    borderColor: Theme.colors.text.mint,
-    backgroundColor: Theme.colors.background.secondary,
-  },
-  datePillLabelActive: { fontWeight: '600' },
+  datePillSelected: { borderColor: Theme.colors.text.mint },
   datePillNumActive: { fontWeight: '600' },
   itemRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 6,
+    paddingVertical: Theme.spacing.xs,
   },
-  payOpt: {
-    backgroundColor: Theme.colors.background.secondary,
-    borderRadius: Theme.components.inputRadius,
-    padding: Theme.spacing.sm,
-    marginBottom: Theme.spacing.xs,
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  payOptSelected: { borderColor: Theme.colors.action.primary },
   subscribeBtn: {
     position: 'absolute',
     left: Theme.spacing.md,
     right: Theme.spacing.md,
-    height: 40,
-    borderRadius: 20,
     backgroundColor: Theme.colors.background.secondary,
+    borderRadius: Theme.components.inputRadius,
     borderWidth: 1,
-    borderColor: `${Theme.colors.text.mint}4D`,
+    borderColor: Theme.colors.text.mint,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    shadowColor: Theme.colors.text.mint,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 8,
   },
   subscribeBtnText: {
     color: Theme.colors.text.mint,
     fontFamily: Theme.typography.fontFamily,
-    fontSize: Theme.typography.sizes.subtitle + 2,
-    fontWeight: '400',
+    fontSize: Theme.typography.sizes.body,
+    fontWeight: '600',
   },
 });

@@ -34,6 +34,7 @@ import {
 } from '../../hooks/useReferrals';
 import { formatDateShort } from '../../utils/formatters';
 import { trackReferralApplied, trackReferralShared } from '../../utils/analytics';
+import type { CustomerNavProp } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
@@ -113,7 +114,7 @@ const ms = StyleSheet.create({
 });
 
 // ── Main screen ───────────────────────────────────────────────
-export function ReferralScreen({ navigation }: { navigation: any }) {
+export function ReferralScreen({ navigation }: { navigation: CustomerNavProp }) {
   const [applyCode, setApplyCode] = useState('');
   const { data: myCode, isLoading: codeLoading } = useMyReferralCode();
   const { data: settings } = useReferralSettings();

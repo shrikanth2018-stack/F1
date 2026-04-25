@@ -23,6 +23,7 @@ import { ThemedText } from '../../components/ThemedText';
 import { Divider } from '../../components/Divider';
 import { EmptyState } from '../../components/EmptyState';
 import { useStaffRoster, usePendingLeaves, type RosterEntry } from '../../hooks/useResourceManager';
+import type { AdminNavProp } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
@@ -184,7 +185,7 @@ const pl = StyleSheet.create({
 });
 
 // ── Main screen ───────────────────────────────────────────────
-export function ResourceManagerScreen({ navigation }: { navigation: any }) {
+export function ResourceManagerScreen({ navigation }: { navigation: AdminNavProp }) {
   const [filter, setFilter] = useState<Filter>('all');
   const { data: roster = [], isLoading, refetch } = useStaffRoster();
   const { data: pendingLeaves = [], review: reviewLeave } = usePendingLeaves();

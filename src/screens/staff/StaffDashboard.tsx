@@ -45,10 +45,12 @@ import {
   useStaffOrders,
   useUpdateOrderStatus,
 } from '../../hooks/useStaffOrders';
+import { useAllMenuItems } from '../../hooks/useMenuManagement';
 import { useRealtimeOrders } from '../../hooks/useRealtimeOrders';
 import { useOfflineSync } from '../../hooks/useOfflineSync';
 import { useAuth } from '../../hooks/useAuth';
 import { useWalletBalance } from '../../hooks/useWallet';
+import { useStaffNoteForTab, type NoteTarget } from '../../hooks/useAdminNotes';
 import { supabase } from '../../api/supabaseClient';
 import { useQuery } from '@tanstack/react-query';
 import type { OrderStatus } from '../../types';
@@ -83,37 +85,110 @@ function statusColor(status: OrderStatus): string {
 interface AggregateItem {
   key: string;
   item_name: string;
+  /** Unit suffix ("g", "ml", "") — blank means integer count */
+  unit: string;
   total_quantity: number;
   status: OrderStatus;
   order_ids: number[];
 }
 
-function aggregateKitchenItems(orders: any[]): AggregateItem[] {
+/**
+ * Parse a menu item's `ingredients` text into a list of component x qty.
+ *   Input  : "Rice:200g;Sambar:100ml;Chapati:2"
+ *   Output : [{ name: "Rice", unit: "200g" }, ...]
+ *
+ * The trailing token can be a unit string (200g, 100ml) or an integer count (2).
+ * For aggregation we treat integer tokens as a count multiplier; string units we
+ * aggregate by distinct unit label so the kitchen sees "2 Chapati" vs "200g Rice".
+ */
+function parseIngredientTokens(raw: string | null | undefined): Array<{ name: string; token: string }> {
+  if (!raw) return [];
+  return raw
+    .split(';')
+    .map((chunk) => chunk.trim())
+    .filter(Boolean)
+    .map((chunk) => {
+      const [name, token] = chunk.split(':').map((s) => s?.trim() ?? '');
+      return { name: name || '', token: token || '1' };
+    })
+    .filter((x) => x.name.length > 0);
+}
+
+/**
+ * Kitchen aggregator — COMPONENT view.
+ *
+ * For every ordered meal, look up its menu_item.ingredients and aggregate by
+ * component. 10 "Mini Lunch" orders with ingredients "Rice:200g;Sambar:100ml"
+ * become "2000g Rice, 1000ml Sambar" for the kitchen to prep.
+ *
+ * Integer tokens are multiplied (e.g. Chapati:2 × 10 orders = 20 Chapati).
+ * Suffixed tokens (200g, 100ml) extract the numeric prefix, multiply, reapply unit.
+ *
+ * Graceful fallback: if a menu_item has no ingredients defined, the meal name
+ * itself becomes the component so the kitchen still sees something.
+ */
+function aggregateKitchenItems(
+  orders: any[],
+  ingredientsByItemId: Record<number, string | null>,
+): AggregateItem[] {
   const relevant = orders.filter((o) =>
     ['Confirmed', 'Preparing', 'Ready'].includes(o.status)
   );
   const map = new Map<string, AggregateItem>();
+
+  const mergeInto = (
+    name: string,
+    rawToken: string,
+    qty: number,
+    status: OrderStatus,
+    orderId: number,
+  ) => {
+    // Extract optional numeric prefix and unit suffix from the token.
+    // "200g" → { num: 200, unit: "g" }, "2" → { num: 2, unit: "" }
+    const m = rawToken.match(/^(\d*\.?\d+)\s*(.*)$/);
+    const numeric = m ? parseFloat(m[1]) : 1;
+    const unit = (m ? m[2] : '').trim();
+    const totalNumeric = numeric * qty;
+
+    const key = `${name}__${unit}__${status}`;
+    const existing = map.get(key);
+    if (existing) {
+      existing.total_quantity += totalNumeric;
+      if (!existing.order_ids.includes(orderId)) existing.order_ids.push(orderId);
+    } else {
+      map.set(key, {
+        key,
+        item_name: unit ? `${name}${unit ? '' : ''}` : name,
+        unit,
+        total_quantity: totalNumeric,
+        status,
+        order_ids: [orderId],
+      });
+    }
+  };
+
   for (const order of relevant) {
     for (const oi of order.order_items ?? []) {
-      const key = `${oi.item_name}_${order.status}`;
-      const existing = map.get(key);
-      if (existing) {
-        existing.total_quantity += oi.quantity;
-        existing.order_ids.push(order.id);
+      // Only food item_types contribute to kitchen prep
+      if (oi.item_type && oi.item_type !== 'food') continue;
+
+      const ingredientsText = oi.item_id != null ? ingredientsByItemId[oi.item_id] : null;
+      const components = parseIngredientTokens(ingredientsText);
+
+      if (components.length === 0) {
+        // Fallback — no breakdown defined, show the meal itself
+        mergeInto(oi.item_name ?? `Item #${oi.item_id}`, String(oi.quantity), 1, order.status, order.id);
       } else {
-        map.set(key, {
-          key,
-          item_name: oi.item_name,
-          total_quantity: oi.quantity,
-          status: order.status,
-          order_ids: [order.id],
-        });
+        for (const c of components) {
+          mergeInto(c.name, c.token, oi.quantity, order.status, order.id);
+        }
       }
     }
   }
-  const order = ['Confirmed', 'Preparing', 'Ready'];
+
+  const statusOrder = ['Confirmed', 'Preparing', 'Ready'];
   return Array.from(map.values()).sort(
-    (a, b) => order.indexOf(a.status) - order.indexOf(b.status)
+    (a, b) => statusOrder.indexOf(a.status) - statusOrder.indexOf(b.status)
   );
 }
 
@@ -418,7 +493,15 @@ export function StaffDashboard() {
   const { data: orders, isLoading, isError, refetch } = useStaffOrders(undefined);
   const updateStatus = useUpdateOrderStatus();
   const { pendingCount } = useOfflineSync();
-  const { data: staffMessage } = useStaffMessage();
+  // Deprecated: single staff_message from store_config (kept as last-resort fallback)
+  const { data: legacyStaffMessage } = useStaffMessage();
+
+  // Active admin notes targeting the current tab (+ broadcasts targeting 'all')
+  const tabKey: NoteTarget =
+    activeTab === 'Kitchen'  ? 'kitchen'  :
+    activeTab === 'Packing'  ? 'packing'  :
+    activeTab === 'Delivery' ? 'delivery' : 'all';
+  const { data: tabNotes = [] } = useStaffNoteForTab(tabKey);
 
   useRealtimeOrders(true);
 
@@ -441,12 +524,58 @@ export function StaffDashboard() {
     [orders, packingSubTab]
   );
 
-  const deliveryOrders = useMemo(
+  const deliveryOrdersAll = useMemo(
     () => (orders ?? []).filter((o) => ['Dispatched', 'Received at Hub', 'On the Way'].includes(o.status)),
     [orders]
   );
 
-  const kitchenItems = useMemo(() => aggregateKitchenItems(kitchenOrders), [kitchenOrders]);
+  // Driver-code chip filter for Delivery tab. null = "All".
+  const [driverFilter, setDriverFilter] = useState<string | null>(null);
+
+  // Derive the driver code for any order: hub's driver_code for hub-bound, else zone's.
+  const getDriverInfoFor = useCallback((o: any): { code: string | null; label: string } => {
+    const addr = o?.customer_addresses;
+    if (o?.delivery_method === 'hub') {
+      const hub = addr?.delivery_hubs;
+      const code = hub?.driver_code ?? null;
+      const hubName = hub?.hub_name ?? 'Hub';
+      return { code, label: code ? `Branch → ${hubName}` : `Unassigned → ${hubName}` };
+    }
+    const zone = addr?.delivery_zones;
+    const code = zone?.driver_code ?? null;
+    return { code, label: code ? `Driver ${code}` : 'Unassigned' };
+  }, []);
+
+  // Distinct driver codes visible today — powers the filter chip row.
+  const availableDriverCodes = useMemo(() => {
+    const codes = new Set<string>();
+    for (const o of deliveryOrdersAll) {
+      const { code } = getDriverInfoFor(o);
+      if (code) codes.add(code);
+    }
+    return Array.from(codes).sort();
+  }, [deliveryOrdersAll, getDriverInfoFor]);
+
+  const deliveryOrders = useMemo(() => {
+    if (!driverFilter) return deliveryOrdersAll;
+    return deliveryOrdersAll.filter((o) => getDriverInfoFor(o).code === driverFilter);
+  }, [deliveryOrdersAll, driverFilter, getDriverInfoFor]);
+
+  // Build item_id → ingredients map from the full menu catalog.
+  // Used by the kitchen aggregator to break each meal into its components.
+  const { data: allMenu = [] } = useAllMenuItems();
+  const ingredientsByItemId = useMemo(() => {
+    const m: Record<number, string | null> = {};
+    for (const mi of allMenu as any[]) {
+      if (mi.id != null) m[mi.id] = mi.ingredients ?? null;
+    }
+    return m;
+  }, [allMenu]);
+
+  const kitchenItems = useMemo(
+    () => aggregateKitchenItems(kitchenOrders, ingredientsByItemId),
+    [kitchenOrders, ingredientsByItemId]
+  );
 
   // ── Handlers ─────────────────────────────────
   const handleStatusUpdate = useCallback((orderId: number, next: OrderStatus) => {
@@ -568,6 +697,86 @@ export function StaffDashboard() {
     }
   };
 
+  // Render a single label block for an order (shared HTML fragment builder).
+  const renderLabelBlock = (order: any) => {
+    const addr = order.customer_addresses;
+    const items = (order.order_items ?? [])
+      .map((i: any) => `<li>${i.item_name} &times;${i.quantity}</li>`)
+      .join('');
+    return `<div class="label">
+      <h2>Order #${order.id}</h2>
+      <p><strong>${addr?.full_name ?? '—'}</strong></p>
+      <p>${addr?.address_line ?? '—'}</p>
+      ${addr?.landmark ? `<p>${addr.landmark}</p>` : ''}
+      ${addr?.city ? `<p>${addr.city}</p>` : ''}
+      <ul>${items || '<li>—</li>'}</ul>
+    </div>`;
+  };
+
+  const LABEL_STYLES = `body{font-family:Arial,sans-serif;margin:0}
+    .section{page-break-after:always;padding:10px}
+    .section:last-child{page-break-after:auto}
+    .sectionTitle{font-size:16px;font-weight:bold;margin:6px 0 12px 0;padding:6px 10px;background:#000;color:#fff}
+    .label{page-break-inside:avoid;border:2px solid #000;padding:16px;margin:8px 0}
+    h2{margin:0 0 6px 0}p{margin:2px 0}
+    ul{margin:8px 0 0;padding-left:18px;border-top:1px solid #000;padding-top:8px}`;
+
+  /** One page-break per hub. Only hub-bound orders; branch driver picks up bundles. */
+  const handlePrintByHub = async () => {
+    const hubOrders = packingOrders.filter((o: any) => o.delivery_method === 'hub');
+    if (hubOrders.length === 0) {
+      Alert.alert('No hub orders', 'No hub-bound orders to print.');
+      return;
+    }
+    const groups = new Map<string, { hubName: string; orders: any[] }>();
+    for (const o of hubOrders) {
+      const hub = o.customer_addresses?.delivery_hubs;
+      const key = String(hub?.hub_name ?? 'Unknown Hub');
+      const entry = groups.get(key) ?? { hubName: key, orders: [] };
+      entry.orders.push(o);
+      groups.set(key, entry);
+    }
+    const sections = Array.from(groups.values()).map((g) => {
+      const labels = g.orders.map(renderLabelBlock).join('');
+      return `<div class="section">
+        <div class="sectionTitle">${g.hubName} — ${g.orders.length} order${g.orders.length !== 1 ? 's' : ''}</div>
+        ${labels}
+      </div>`;
+    }).join('');
+    const html = `<!DOCTYPE html><html><head><style>${LABEL_STYLES}</style></head><body>${sections}</body></html>`;
+    try { await Print.printAsync({ html }); }
+    catch { Alert.alert('Print Error', 'Could not open print dialog.'); }
+  };
+
+  /** One page-break per driver code. Combines direct (zone driver) + hub (branch driver) orders. */
+  const handlePrintByDriver = async () => {
+    if (packingOrders.length === 0) {
+      Alert.alert('No orders', 'No orders to print.');
+      return;
+    }
+    const groups = new Map<string, { title: string; orders: any[] }>();
+    for (const o of packingOrders) {
+      const info = getDriverInfoFor(o);
+      const key = info.code ?? '__unassigned__';
+      const title = info.code ? `Driver ${info.code}` : 'Unassigned';
+      const entry = groups.get(key) ?? { title, orders: [] };
+      entry.orders.push(o);
+      groups.set(key, entry);
+    }
+    const sections = Array.from(groups.values())
+      .sort((a, b) => a.title.localeCompare(b.title))
+      .map((g) => {
+        const labels = g.orders.map(renderLabelBlock).join('');
+        return `<div class="section">
+          <div class="sectionTitle">${g.title} — ${g.orders.length} order${g.orders.length !== 1 ? 's' : ''}</div>
+          ${labels}
+        </div>`;
+      }).join('');
+    const html = `<!DOCTYPE html><html><head><style>${LABEL_STYLES}</style></head><body>${sections}</body></html>`;
+    try { await Print.printAsync({ html }); }
+    catch { Alert.alert('Print Error', 'Could not open print dialog.'); }
+  };
+
   const handlePrintSummary = async () => {
     if (packingOrders.length === 0) {
       Alert.alert('No orders', 'No orders to print summary for.');
@@ -617,7 +826,9 @@ export function StaffDashboard() {
           {item.item_name}
         </ThemedText>
         <ThemedText variant="body" color="subtitle" style={[styles.qty, styles.rowText]}>
-          × {item.total_quantity}
+          {item.unit
+            ? `${item.total_quantity % 1 === 0 ? item.total_quantity : item.total_quantity.toFixed(1)}${item.unit}`
+            : `× ${item.total_quantity}`}
         </ThemedText>
         <TouchableOpacity
           style={[styles.statusToggle, { borderColor: isReady ? Theme.colors.status.success : Theme.colors.status.info }]}
@@ -665,6 +876,9 @@ export function StaffDashboard() {
       ? item.status === 'Ready' || item.status === 'Packed'
       : ['Dispatched', 'Received at Hub', 'On the Way'].includes(item.status);
 
+    const driverInfo = activeTab === 'Delivery' ? getDriverInfoFor(item) : null;
+    const driverUnassigned = driverInfo && !driverInfo.code;
+
     return (
       <View style={styles.orderRow}>
         <View style={styles.orderRowMain}>
@@ -676,6 +890,16 @@ export function StaffDashboard() {
             {address && (
               <ThemedText variant="small" color="muted" numberOfLines={1} style={styles.rowSmall}>
                 {address.full_name}
+              </ThemedText>
+            )}
+            {driverInfo && (
+              <ThemedText
+                variant="small"
+                color={driverUnassigned ? 'accent' : 'mint'}
+                numberOfLines={1}
+                style={[styles.rowSmall, driverUnassigned && { color: Theme.colors.status.error }]}
+              >
+                {driverInfo.label}
               </ThemedText>
             )}
           </View>
@@ -744,13 +968,6 @@ export function StaffDashboard() {
         </View>
       </View>
 
-      {/* Staff message bar */}
-      {!!staffMessage && (
-        <View style={styles.messageBanner}>
-          <ThemedText variant="small" color="primary">{staffMessage}</ThemedText>
-        </View>
-      )}
-
       {/* Top tabs — pipe separated */}
       <View style={styles.topTabs}>
         {TABS.map((tab, idx) => (
@@ -772,6 +989,17 @@ export function StaffDashboard() {
         ))}
       </View>
 
+      {/* Admin note banners — below the tabs, single-line, centered, mild yellow.
+          Falls back to legacy staff_message when no admin_notes exist. */}
+      {tabNotes.length > 0
+        ? tabNotes.map((n) => (
+            <Text key={n.id} style={styles.noteLine} numberOfLines={1}>{n.note_text}</Text>
+          ))
+        : !!legacyStaffMessage && (
+            <Text style={styles.noteLine} numberOfLines={1}>{legacyStaffMessage}</Text>
+          )
+      }
+
       {/* Packing sub-tabs */}
       {activeTab === 'Packing' && (
         <View style={styles.subTabs}>
@@ -791,6 +1019,31 @@ export function StaffDashboard() {
             </TouchableOpacity>
           ))}
         </View>
+      )}
+
+      {/* Driver code filter chips (Delivery tab only) */}
+      {activeTab === 'Delivery' && availableDriverCodes.length > 0 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.subTabs}
+          contentContainerStyle={{ paddingHorizontal: Theme.spacing.md, gap: Theme.spacing.md }}
+        >
+          <TouchableOpacity onPress={() => setDriverFilter(null)} style={styles.subTab}>
+            <ThemedText variant="body" color={driverFilter === null ? 'primary' : 'muted'}>All</ThemedText>
+          </TouchableOpacity>
+          {availableDriverCodes.map((code) => (
+            <TouchableOpacity key={code} onPress={() => setDriverFilter(code)} style={styles.subTab}>
+              <ThemedText
+                variant="body"
+                color={driverFilter === code ? 'primary' : 'muted'}
+                style={driverFilter === code ? styles.subTabTextActive : undefined}
+              >
+                {code}
+              </ThemedText>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
       )}
 
       {/* Content */}
@@ -854,11 +1107,14 @@ export function StaffDashboard() {
       {/* Footer — Packing */}
       {activeTab === 'Packing' && (
         <View style={styles.footer}>
-          <TouchableOpacity onPress={handlePrintLabels}>
-            <ThemedText variant="body" color="mint" style={styles.footerText}>Print all labels  ›</ThemedText>
+          <TouchableOpacity onPress={handlePrintByDriver}>
+            <ThemedText variant="body" color="mint" style={styles.footerText}>By Driver  ›</ThemedText>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handlePrintByHub}>
+            <ThemedText variant="body" color="mint" style={styles.footerText}>By Hub  ›</ThemedText>
           </TouchableOpacity>
           <TouchableOpacity onPress={handlePrintSummary}>
-            <ThemedText variant="body" color="mint" style={styles.footerText}>Print summary  ›</ThemedText>
+            <ThemedText variant="body" color="mint" style={styles.footerText}>Summary  ›</ThemedText>
           </TouchableOpacity>
         </View>
       )}
@@ -900,7 +1156,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Theme.spacing.md,
     paddingVertical: Theme.spacing.xs,
   },
-  logo: { width: 60, height: 44 },
+  logo: { width: 120, height: 88 },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: Theme.spacing.sm },
   queueBadge: {
     backgroundColor: Theme.colors.status.warning,
@@ -931,6 +1187,14 @@ const styles = StyleSheet.create({
     paddingVertical: Theme.spacing.xs,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: Theme.colors.text.mint,
+  },
+  noteLine: {
+    fontFamily: Theme.typography.fontFamily,
+    fontSize: Theme.typography.sizes.body + 3,
+    color: Theme.colors.status.warning,
+    textAlign: 'center',
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.xs + 2,
   },
 
   topTabs: {
@@ -1069,7 +1333,7 @@ const styles = StyleSheet.create({
 const formModal = StyleSheet.create({
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: Theme.colors.layout.overlayMedium,
   },
   sheet: {
     position: 'absolute',
@@ -1177,7 +1441,7 @@ const formModal = StyleSheet.create({
 const popup = StyleSheet.create({
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    backgroundColor: Theme.colors.layout.overlayLightMid,
   },
   box: {
     position: 'absolute',

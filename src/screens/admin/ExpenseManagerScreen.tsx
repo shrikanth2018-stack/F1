@@ -37,6 +37,7 @@ import {
   EXPENSE_CATEGORIES,
 } from '../../hooks/useExpenseManager';
 import type { ExpenseClaim, BusinessExpense } from '../../types';
+import type { AdminNavProp } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
@@ -507,7 +508,7 @@ const tab = StyleSheet.create({
 });
 
 // ── Main screen ───────────────────────────────────────────────
-export function ExpenseManagerScreen({ navigation }: { navigation: any }) {
+export function ExpenseManagerScreen({ navigation }: { navigation: AdminNavProp }) {
   const [tab, setTab]         = useState<MainTab>('Claims');
   const [showForm, setShowForm] = useState(false);
 

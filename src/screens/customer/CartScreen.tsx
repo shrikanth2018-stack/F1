@@ -24,21 +24,26 @@ import { useEssentialsCartStore } from '../../store/essentialsCartStore';
 import { useSmartCart } from '../../hooks/useSmartCart';
 import { useSmartEssentialsCart } from '../../hooks/useSmartEssentialsCart';
 import { useDeliveryCycles } from '../../hooks/useDeliveryCycles';
-import { formatPriceShort } from '../../utils/formatters';
+import { formatPriceShort, formatDateShort } from '../../utils/formatters';
 import { formatTime12h } from '../../utils/timeEngine';
 
-export function CartScreen({ navigation }: any) {
+export function CartScreen({ navigation, route }: any) {
   const insets = useSafeAreaInsets();
+  const subscriptionPlanId: number | undefined = route?.params?.subscriptionPlanId;
 
   const foodItems = useCartStore((s) => s.items);
+  const foodPlans = useCartStore((s) => s.plans);
   const updateFoodQty = useCartStore((s) => s.updateQuantity);
   const removeFoodItem = useCartStore((s) => s.removeItem);
+  const removeFoodPlan = useCartStore((s) => s.removePlan);
   const clearFood = useCartStore((s) => s.clearCart);
   const foodTotal = useCartStore((s) => s.getDisplayTotal());
 
   const essItems = useEssentialsCartStore((s) => s.items);
+  const essPlans = useEssentialsCartStore((s) => s.plans);
   const updateEssQty = useEssentialsCartStore((s) => s.updateQuantity);
   const removeEssItem = useEssentialsCartStore((s) => s.removeItem);
+  const removeEssPlan = useEssentialsCartStore((s) => s.removePlan);
   const clearEss = useEssentialsCartStore((s) => s.clearCart);
   const essTotal = useEssentialsCartStore((s) => s.getDisplayTotal());
 
@@ -114,7 +119,96 @@ export function CartScreen({ navigation }: any) {
     [todayFood, tomorrowFood, todayEss, tomorrowEss, navigation]
   );
 
-  if (foodItems.length === 0 && essItems.length === 0) {
+  // ── Subscription-only mode ─────────────────────────────────
+  // Entered via PlansScreen BUY (or PlanDetail BUY). Shows only the one plan,
+  // no items, no other plans. One checkout button. Close → Home.
+  const subPlan = subscriptionPlanId != null
+    ? (foodPlans.find((p) => p.plan_id === subscriptionPlanId)
+       ?? essPlans.find((p) => p.plan_id === subscriptionPlanId)
+       ?? null)
+    : null;
+
+  // "Browse after clearing" — if we were in sub-mode but the plan has vanished
+  // (checkout cleared the cart, or user removed it), bail to Home.
+  React.useEffect(() => {
+    if (subscriptionPlanId != null && !subPlan) {
+      navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
+    }
+  }, [subscriptionPlanId, subPlan, navigation]);
+
+  if (subscriptionPlanId != null) {
+    if (!subPlan) return <SafeAreaView style={styles.container} />;
+
+    const goHome = () => navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
+    const handleRemove = () => {
+      if (subPlan.plan_type === 'food') removeFoodPlan(subPlan.plan_id);
+      else removeEssPlan(subPlan.plan_id);
+      goHome();
+    };
+
+    return (
+      <SafeAreaView style={styles.container}>
+        {/* Header — close-only (no back) */}
+        <View style={styles.header}>
+          <View style={{ width: 60 }} />
+          <ThemedText variant="header" color="primary">Cart</ThemedText>
+          <TouchableOpacity onPress={goHome} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <ThemedText variant="body" color="muted">Close</ThemedText>
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView contentContainerStyle={styles.content}>
+          <View style={styles.cartSection}>
+            <View style={styles.sectionHeader}>
+              <ThemedText variant="small" color="muted" style={styles.sectionLabel}>
+                SUBSCRIPTION
+              </ThemedText>
+            </View>
+
+            <View style={styles.itemRow}>
+              <View style={styles.itemInfo}>
+                <ThemedText variant="body" color="primary">{subPlan.plan_name}</ThemedText>
+                <ThemedText variant="small" color="muted">
+                  Starts {formatDateShort(subPlan.start_date)} · {subPlan.duration_days} days
+                </ThemedText>
+              </View>
+              <View style={styles.itemRight}>
+                <TouchableOpacity onPress={handleRemove} style={styles.removeBtn}>
+                  <ThemedText variant="micro" color="muted">Remove</ThemedText>
+                </TouchableOpacity>
+                <ThemedText variant="body" color="accent">
+                  {formatPriceShort(subPlan.price)}
+                </ThemedText>
+              </View>
+            </View>
+
+            <View style={styles.sectionFooter}>
+              <View style={styles.totalRow}>
+                <ThemedText variant="small" color="subtitle">Subtotal</ThemedText>
+                <ThemedText variant="small" color="primary">{formatPriceShort(subPlan.price)}</ThemedText>
+              </View>
+            </View>
+          </View>
+        </ScrollView>
+
+        <TouchableOpacity
+          style={[styles.floatBtn, { bottom: insets.bottom + 16 }]}
+          activeOpacity={0.85}
+          onPress={() => navigation.navigate('Checkout', {
+            cartType: subPlan.plan_type === 'essentials' ? 'essentials' : 'food',
+            subscriptionPlanId: subPlan.plan_id,
+          })}
+        >
+          <ThemedText variant="body" style={styles.floatBtnText}>
+            Pay {formatPriceShort(subPlan.price)} for Subscription
+          </ThemedText>
+          <ThemedText variant="body" style={styles.floatBtnText}>›</ThemedText>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
+  }
+
+  if (foodItems.length === 0 && essItems.length === 0 && foodPlans.length === 0 && essPlans.length === 0) {
     return (
       <SafeAreaView style={styles.container}>
         <EmptyState
@@ -142,7 +236,7 @@ export function CartScreen({ navigation }: any) {
       <ScrollView contentContainerStyle={styles.content}>
 
         {/* ── FOOD CART ── */}
-        {foodItems.length > 0 && (
+        {(foodItems.length > 0 || foodPlans.length > 0) && (
           <View style={styles.cartSection}>
             <View style={styles.sectionHeader}>
               <ThemedText variant="small" color="muted" style={styles.sectionLabel}>FOOD</ThemedText>
@@ -248,6 +342,34 @@ export function CartScreen({ navigation }: any) {
               </>
             )}
 
+            {/* Food subscription plans */}
+            {foodPlans.length > 0 && (
+              <>
+                {(foodItems.length > 0) && <View style={styles.groupDivider} />}
+                <ThemedText variant="small" color="muted" style={styles.planSubLabel}>
+                  SUBSCRIPTION PLANS
+                </ThemedText>
+                {foodPlans.map((p) => (
+                  <View key={`food-plan-${p.plan_id}`} style={styles.itemRow}>
+                    <View style={styles.itemInfo}>
+                      <ThemedText variant="body" color="primary">{p.plan_name}</ThemedText>
+                      <ThemedText variant="small" color="muted">
+                        Starts {formatDateShort(p.start_date)} · {p.duration_days} days
+                      </ThemedText>
+                    </View>
+                    <View style={styles.itemRight}>
+                      <TouchableOpacity onPress={() => removeFoodPlan(p.plan_id)} style={styles.removeBtn}>
+                        <ThemedText variant="micro" color="muted">Remove</ThemedText>
+                      </TouchableOpacity>
+                      <ThemedText variant="body" color="accent">
+                        {formatPriceShort(p.price)}
+                      </ThemedText>
+                    </View>
+                  </View>
+                ))}
+              </>
+            )}
+
             <View style={styles.sectionFooter}>
               <View style={styles.totalRow}>
                 <ThemedText variant="small" color="subtitle">Subtotal</ThemedText>
@@ -257,10 +379,11 @@ export function CartScreen({ navigation }: any) {
           </View>
         )}
 
-        {foodItems.length > 0 && essItems.length > 0 && <Divider />}
+        {(foodItems.length > 0 || foodPlans.length > 0) &&
+         (essItems.length > 0 || essPlans.length > 0) && <Divider />}
 
         {/* ── ESSENTIALS CART ── */}
-        {essItems.length > 0 && (
+        {(essItems.length > 0 || essPlans.length > 0) && (
           <View style={styles.cartSection}>
             <View style={styles.sectionHeader}>
               <ThemedText variant="small" color="muted" style={styles.sectionLabel}>ESSENTIALS</ThemedText>
@@ -319,6 +442,7 @@ export function CartScreen({ navigation }: any) {
             )}
 
             {/* Tomorrow group */}
+            {/* ... */}
             {tomorrowEss.length > 0 && (
               <>
                 {tomorrowEss.map((item) => (
@@ -365,6 +489,34 @@ export function CartScreen({ navigation }: any) {
               </>
             )}
 
+            {/* Essentials subscription plans */}
+            {essPlans.length > 0 && (
+              <>
+                {(essItems.length > 0) && <View style={styles.groupDivider} />}
+                <ThemedText variant="small" color="muted" style={styles.planSubLabel}>
+                  SUBSCRIPTION PLANS
+                </ThemedText>
+                {essPlans.map((p) => (
+                  <View key={`ess-plan-${p.plan_id}`} style={styles.itemRow}>
+                    <View style={styles.itemInfo}>
+                      <ThemedText variant="body" color="primary">{p.plan_name}</ThemedText>
+                      <ThemedText variant="small" color="muted">
+                        Starts {formatDateShort(p.start_date)} · {p.duration_days} days
+                      </ThemedText>
+                    </View>
+                    <View style={styles.itemRight}>
+                      <TouchableOpacity onPress={() => removeEssPlan(p.plan_id)} style={styles.removeBtn}>
+                        <ThemedText variant="micro" color="muted">Remove</ThemedText>
+                      </TouchableOpacity>
+                      <ThemedText variant="body" color="accent">
+                        {formatPriceShort(p.price)}
+                      </ThemedText>
+                    </View>
+                  </View>
+                ))}
+              </>
+            )}
+
             <View style={styles.sectionFooter}>
               <View style={styles.totalRow}>
                 <ThemedText variant="small" color="subtitle">Subtotal</ThemedText>
@@ -376,7 +528,7 @@ export function CartScreen({ navigation }: any) {
       </ScrollView>
 
       {/* Floating checkout buttons */}
-      {foodItems.length > 0 && (
+      {(foodItems.length > 0 || foodPlans.length > 0) && (
         <TouchableOpacity
           style={[styles.floatBtn, { bottom: insets.bottom + 16 }]}
           activeOpacity={0.85}
@@ -388,11 +540,11 @@ export function CartScreen({ navigation }: any) {
           <ThemedText variant="body" style={styles.floatBtnText}>›</ThemedText>
         </TouchableOpacity>
       )}
-      {essItems.length > 0 && (
+      {(essItems.length > 0 || essPlans.length > 0) && (
         <TouchableOpacity
           style={[
             styles.floatBtn,
-            { bottom: foodItems.length > 0 ? insets.bottom + 72 : insets.bottom + 16 },
+            { bottom: (foodItems.length > 0 || foodPlans.length > 0) ? insets.bottom + 72 : insets.bottom + 16 },
           ]}
           activeOpacity={0.85}
           onPress={() => confirmCheckout('essentials')}
@@ -461,6 +613,12 @@ const styles = StyleSheet.create({
     backgroundColor: Theme.colors.layout.divider,
     marginVertical: Theme.spacing.sm,
   },
+  planSubLabel: {
+    letterSpacing: 1,
+    marginTop: Theme.spacing.sm,
+    marginBottom: Theme.spacing.xs,
+  },
+  removeBtn: { paddingHorizontal: 4, paddingVertical: 2, marginBottom: 2 },
   sectionFooter: { paddingVertical: Theme.spacing.sm },
   totalRow: {
     flexDirection: 'row',

@@ -106,7 +106,8 @@ export function useAdminUpdateOrder() {
 
       const { error } = await supabase
         .from('orders')
-        .update(update)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .update(update as any)
         .eq('id', orderId);
 
       if (error) throw error;

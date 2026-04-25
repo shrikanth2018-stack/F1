@@ -68,7 +68,7 @@ const dots = StyleSheet.create({
   digit: {
     fontFamily: Theme.typography.fontFamily,
     fontSize: Theme.typography.sizes.body + 5,
-    color: '#ffffff',
+    color: Theme.colors.text.primary,
     fontWeight: '400',
   },
   circle: {
@@ -76,7 +76,7 @@ const dots = StyleSheet.create({
     height: 9,
     borderRadius: 4.5,
     borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.40)',
+    borderColor: Theme.colors.text.disabled,
   },
 });
 
@@ -223,7 +223,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    backgroundColor: Theme.colors.layout.overlayHeavy,
   },
   kav: { flex: 1 },
   scroll: { flexGrow: 1 },
@@ -240,7 +240,7 @@ const styles = StyleSheet.create({
   title: {
     fontFamily: Theme.typography.fontFamily,
     fontSize: Theme.typography.sizes.header,
-    color: '#ffffff',
+    color: Theme.colors.text.primary,
     fontWeight: '400',
     textAlign: 'center',
     marginBottom: Theme.spacing.lg,

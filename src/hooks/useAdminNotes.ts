@@ -69,11 +69,44 @@ export function useUpsertNote() {
             is_active,
             branch_id: bf.isActive ? bf.branchId : null,
           },
-          { onConflict: 'target_tab' }
+          // Matches the composite UNIQUE (target_tab, branch_id) constraint.
+          // NULLS NOT DISTINCT keeps single-branch / super-admin setups happy
+          // — NULL branch_id collides with other NULL branch_ids.
+          { onConflict: 'target_tab,branch_id' }
         );
       if (error) throw new Error(error.message);
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin_notes'] }),
+  });
+}
+
+/**
+ * Staff-side read — returns active notes for the given tab.
+ * Includes 'all' (broadcasts) plus the tab-specific one if any.
+ * Branch-filtered through useBranchFilter.
+ *
+ * Short stale time so toggling a note on/off in admin reflects within ~5s.
+ */
+export function useStaffNoteForTab(tab: NoteTarget | null) {
+  const bf = useBranchFilter();
+  return useQuery({
+    queryKey: ['staff_notes', tab ?? 'none', bf.isActive ? bf.branchId ?? 'all' : 'off'],
+    queryFn: async () => {
+      if (!tab) return [] as AdminNote[];
+      let q = supabase
+        .from('admin_notes')
+        .select('*')
+        .eq('is_active', true)
+        .in('target_tab', tab === 'all' ? ['all'] : ['all', tab])
+        .order('created_at', { ascending: false });
+      if (bf.isActive && bf.branchId != null) q = q.eq('branch_id', bf.branchId);
+      const { data, error } = await q;
+      if (error) throw new Error(error.message);
+      return (data ?? []) as AdminNote[];
+    },
+    enabled: tab != null,
+    staleTime: 5_000,
+    refetchOnWindowFocus: true,
   });
 }
 

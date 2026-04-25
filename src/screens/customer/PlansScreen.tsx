@@ -4,7 +4,10 @@
  * Opened from HomeScreen footer "SUBSCRIPTION PLANS".
  * Two tabs: Food | Essentials.
  * Each tab shows plans grouped by cycle as text rows.
- * ADD → PlanDetail (subscribe flow).
+ *
+ * BUY → navigates to PlanDetail (structured view + calendar). PlanDetail owns
+ * the conflict check and the cart write; PlansScreen is purely a listing/router.
+ * Row body is not tappable; only the BUY button acts.
  *
  * My Subscriptions lives separately under ProfilePopup → Subscriptions.
  */
@@ -24,6 +27,7 @@ import { EmptyState } from '../../components/EmptyState';
 import { useDeliveryCycles } from '../../hooks/useDeliveryCycles';
 import { useSubscriptionPlans } from '../../hooks/useSubscriptions';
 import { formatPriceShort } from '../../utils/formatters';
+import { essentialsCycleLabel } from '../../utils/cycleLabels';
 import type { SubscriptionPlan } from '../../types';
 
 type PlanTab = 'food' | 'essentials';
@@ -33,32 +37,35 @@ interface PlanSection {
   data: SubscriptionPlan[];
 }
 
-export function PlansScreen({ navigation }: any) {
-  const [activeTab, setActiveTab] = useState<PlanTab>('food');
+export function PlansScreen({ navigation, route }: any) {
+  const initialTab: PlanTab = route?.params?.initialTab === 'essentials' ? 'essentials' : 'food';
+  const [activeTab, setActiveTab] = useState<PlanTab>(initialTab);
 
   const { data: cycles, refetch: refetchCycles } = useDeliveryCycles();
   const { data: plans, isLoading, refetch: refetchPlans } = useSubscriptionPlans();
 
   const handleRefresh = () => { refetchCycles(); refetchPlans(); };
 
+  // Food: all 4 cycles; plans scoped by plan_type='food'
   const foodSections = useMemo<PlanSection[]>(() => {
     if (!cycles || !plans) return [];
     return cycles
-      .filter((c) => !c.is_essentials)
       .map((c) => ({
         title: c.cycle_name,
-        data: plans.filter((p) => p.cycle_id === c.id),
+        data: plans.filter((p) => p.cycle_id === c.id && (p.plan_type ?? 'food') === 'food'),
       }))
       .filter((s) => s.data.length > 0);
   }, [cycles, plans]);
 
+  // Essentials: only cycles flagged is_essentials; plans scoped by plan_type='essentials';
+  // section title is relabeled Morning/Noon/Evening via the cycle-label helper.
   const essentialsSections = useMemo<PlanSection[]>(() => {
     if (!cycles || !plans) return [];
     return cycles
       .filter((c) => c.is_essentials)
       .map((c) => ({
-        title: c.cycle_name,
-        data: plans.filter((p) => p.cycle_id === c.id),
+        title: essentialsCycleLabel(c),
+        data: plans.filter((p) => p.cycle_id === c.id && p.plan_type === 'essentials'),
       }))
       .filter((s) => s.data.length > 0);
   }, [cycles, plans]);
@@ -94,7 +101,7 @@ export function PlansScreen({ navigation }: any) {
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             activeOpacity={0.6}
           >
-            <ThemedText variant="small" style={styles.green}>ADD</ThemedText>
+            <ThemedText variant="small" style={styles.green}>BUY</ThemedText>
           </TouchableOpacity>
         </View>
       </View>
@@ -103,13 +110,16 @@ export function PlansScreen({ navigation }: any) {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
+      {/* Header — close-only (no back); returns to Home */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <ThemedText variant="body" color="accent" style={styles.backText}>‹ Back</ThemedText>
-        </TouchableOpacity>
-        <ThemedText variant="header" color="primary">Subscription Plans</ThemedText>
         <View style={styles.headerSpacer} />
+        <ThemedText variant="header" color="primary">Subscription Plans</ThemedText>
+        <TouchableOpacity
+          onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Home' }] })}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <ThemedText variant="body" color="muted" style={styles.backText}>Close</ThemedText>
+        </TouchableOpacity>
       </View>
 
       {/* Food | Essentials toggle */}

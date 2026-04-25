@@ -123,6 +123,7 @@ export function ProfilePopup() {
   const isVisible = useUIStore((s) => s.isProfileVisible);
   const setProfileVisible = useUIStore((s) => s.setProfileVisible);
   const referralEnabled = useFeatureFlag('referral_system', true);
+  const isHubManager = session?.role === 'customer' && session?.assignedHubId != null;
 
   const [modalMounted, setModalMounted] = useState(false);
   const opacity = useSharedValue(0);
@@ -216,6 +217,12 @@ export function ProfilePopup() {
             <InsetDivider />
             <IOSRow label={loyaltyLabel} onPress={() => go('LoyaltyPoints')} />
           </IOSGroup>
+
+          {isHubManager && (
+            <IOSGroup>
+              <IOSRow label="My Hub Dashboard" onPress={() => go('HubDashboard')} />
+            </IOSGroup>
+          )}
 
           <IOSGroup>
             {referralEnabled && (

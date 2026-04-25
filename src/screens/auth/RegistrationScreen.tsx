@@ -40,7 +40,8 @@ export function RegistrationScreen({ phone, onComplete, onBack }: RegistrationSc
 
     setLoading(true);
     // Create profile now — user is already authenticated at this point
-    await supabase.from('profiles').upsert({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase as any).from('profiles').upsert({
       phone_number: phone,
       full_name: name.trim(),
     }, { onConflict: 'phone_number' });

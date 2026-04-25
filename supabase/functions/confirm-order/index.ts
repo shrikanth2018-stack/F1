@@ -15,6 +15,7 @@
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
+import { getUserFromJwt } from '../_shared/auth.ts';
 
 const SUPABASE_PROJECT_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const ALLOWED_ORIGINS = new Set([
@@ -71,9 +72,8 @@ Deno.serve(async (req: Request) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    const jwt = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabase.auth.getUser(jwt);
-    if (authError || !user) return json({ error: 'Unauthorized' }, 401);
+    const user = getUserFromJwt(authHeader.replace('Bearer ', ''));
+    if (!user) return json({ error: 'Unauthorized' }, 401);
 
     const body = await req.json();
     const { order_id, razorpay_payment_id, razorpay_order_id, razorpay_signature } = body;
@@ -133,8 +133,27 @@ Deno.serve(async (req: Request) => {
       throw new Error(paidErr.message);
     }
 
+    // Activate any subscriptions tied to this same razorpay_order_id.
+    // Safe + idempotent: guarded by is_active=false + user_id + razorpay_order_id.
+    // No-op when the order has no subscription lines.
+    const { data: activatedSubs, error: subErr } = await supabase
+      .from('user_subscriptions')
+      .update({ is_active: true, razorpay_payment_id })
+      .eq('razorpay_order_id', razorpay_order_id)
+      .eq('user_id', user.id)
+      .eq('is_active', false)
+      .select('id');
+
+    if (subErr) {
+      // Non-fatal — the webhook (verify-payment) will retry activation.
+      // Log for observability but don't fail the client request.
+      console.error('[confirm-order] sub activation failed:', subErr.message);
+    } else if (activatedSubs && activatedSubs.length > 0) {
+      console.log(`[confirm-order] Activated ${activatedSubs.length} subscription(s) for order ${order_id}`);
+    }
+
     console.log(`[confirm-order] Order ${order_id} marked Confirmed`);
-    return json({ status: 'paid' });
+    return json({ status: 'paid', subscriptions_activated: activatedSubs?.length ?? 0 });
 
   } catch (err: any) {
     console.error('[confirm-order] Unhandled error:', err?.message);

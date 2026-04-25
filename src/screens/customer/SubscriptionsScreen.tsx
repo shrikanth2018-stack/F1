@@ -52,7 +52,7 @@ type EnrichedSub = UserSubscription & {
     duration_days: number;
     cycle_id: number;
     price: number;
-    plan_type: 'food' | 'essential';
+    plan_type: 'food' | 'essentials';
   };
 };
 
@@ -113,7 +113,7 @@ export function SubscriptionsScreen({ navigation }: any) {
     [subs]
   );
   const essentialsSubs = useMemo(
-    () => subs.filter((s) => s.subscription_plans?.plan_type === 'essential'),
+    () => subs.filter((s) => s.subscription_plans?.plan_type === 'essentials'),
     [subs]
   );
   const activeSubs = activeTab === 'food' ? foodSubs : essentialsSubs;
@@ -498,7 +498,7 @@ const styles = StyleSheet.create({
 const modal = StyleSheet.create({
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.55)',
+    backgroundColor: Theme.colors.layout.overlayMid,
   },
   box: {
     position: 'absolute',

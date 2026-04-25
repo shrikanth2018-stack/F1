@@ -27,6 +27,7 @@
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
+import { getUserFromJwt } from '../_shared/auth.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -71,7 +72,7 @@ Deno.serve(async (req) => {
     let authorized = token === SUPABASE_SERVICE_ROLE_KEY;
 
     if (!authorized && token) {
-      const { data: { user: caller } } = await supabase.auth.getUser(token);
+      const caller = getUserFromJwt(token);
       if (caller) {
         const { data: profile } = await supabase
           .from('profiles').select('role').eq('id', caller.id).maybeSingle();
@@ -86,15 +87,47 @@ Deno.serve(async (req) => {
       user_ids,
       role,
       branch_id,
-      title,
-      body: msgBody,
+      title: titleIn,
+      body: resolvedBody,
+      event_key,
+      vars: varsIn,
       data,
-      trigger_source = 'unknown',
+      trigger_source: triggerSourceIn = 'unknown',
       reference_id = null,
     } = body ?? {};
 
-    if (!title || !msgBody) {
-      return json({ error: 'title and body are required' }, 400);
+    // ── Template resolution (optional) ──────────────────────────
+    // If event_key is given, look up notification_templates for title/body.
+    // is_enabled=false → skip entirely (return 200, sent=0 skipped).
+    // missing row → fall through to the caller-provided title/body.
+    let title: string | undefined = titleIn;
+    let resolvedBody: string | undefined = msgBody;
+    let trigger_source: string = triggerSourceIn;
+
+    if (event_key) {
+      const { data: tmpl } = await supabase
+        .from('notification_templates')
+        .select('title_template, body_template, is_enabled, trigger_source')
+        .eq('event_key', event_key)
+        .maybeSingle();
+      if (tmpl) {
+        if (tmpl.is_enabled === false) {
+          return json({ sent: 0, skipped: true, reason: 'template_disabled' });
+        }
+        const vars: Record<string, unknown> = (varsIn && typeof varsIn === 'object') ? varsIn : {};
+        const substitute = (tpl: string) =>
+          tpl.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, k) => {
+            const v = vars[k];
+            return v === null || v === undefined ? '' : String(v);
+          });
+        title        = substitute(tmpl.title_template);
+        resolvedBody = substitute(tmpl.body_template);
+        trigger_source = tmpl.trigger_source ?? trigger_source;
+      }
+    }
+
+    if (!title || !resolvedBody) {
+      return json({ error: 'title and body (or a valid event_key) are required' }, 400);
     }
 
     // ── Resolve target user IDs ─────────────────────────────────
@@ -134,7 +167,7 @@ Deno.serve(async (req) => {
       to,
       sound: 'default',
       title,
-      body: msgBody,
+      body: resolvedBody,
       data: data ?? {},
     }));
 
@@ -177,7 +210,7 @@ Deno.serve(async (req) => {
           user_id: userId,
           token,
           title,
-          body: msgBody,
+          body: resolvedBody,
           data: data ?? {},
           trigger_source,
           reference_id: reference_id ? String(reference_id) : null,

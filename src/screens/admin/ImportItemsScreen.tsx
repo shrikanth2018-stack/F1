@@ -26,31 +26,85 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { supabase } from '../../api/supabaseClient';
-import { useAllDeliveryCycles } from '../../hooks/useMenuManagement';
+import { useAllDeliveryCycles, useAllMenuItems } from '../../hooks/useMenuManagement';
+import { useEssentialsCatalog } from '../../hooks/useEssentials';
+import type { AdminScreenProps } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
 
-// ── CSV templates ────────────────────────────────────────
-const MENU_TEMPLATE =
-  'Menu Name,Cycle (Breakfast/Lunch/Snacks/Dinner),Sub-Items (name:qty;name2:qty2),Price\n' +
-  'Breakfast Thali,Breakfast,Idli:2;Sambar:100ml;Chutney:30g,120\n' +
-  'South Lunch,Lunch,Rice:200g;Dal:100ml;Sabzi:80g,150\n';
+// ── CSV template builders ────────────────────────────────
+// Templates are generated on demand from CURRENT cycles + item catalogs so
+// every download reflects what's in the DB today (renamed cycles, new cycles,
+// actual item names for plan examples).
 
-const ESSENTIALS_TEMPLATE =
-  'Item Name,Cycle (Breakfast/Lunch/Snacks/Dinner),Price\n' +
-  'Full Cream Milk,Breakfast,45\n' +
-  'Brown Bread,Breakfast,35\n';
+type AnyCycle = { id: number; cycle_name: string; is_essentials?: boolean | null };
+type AnyItem  = { id: number; name: string; cycle_id: number | null };
 
-const PLANS_TEMPLATE =
-  'Plan Name,Cycle (Breakfast/Lunch/Snacks/Dinner),Type (food/essentials),Number of Days,Price\n' +
-  'Breakfast Monthly,Breakfast,food,30,1200\n' +
-  'Lunch Weekly,Lunch,food,7,350\n';
+function cycleHeader(cycles: AnyCycle[]): string {
+  const names = cycles.map((c) => c.cycle_name).filter(Boolean);
+  return names.length > 0 ? `Cycle (${names.join('/')})` : 'Cycle';
+}
+
+function buildMenuTemplate(cycles: AnyCycle[]): string {
+  const header = `Menu Name,${cycleHeader(cycles)},Sub-Items (name:qty;name2:qty2),Price\n`;
+  const first = cycles[0]?.cycle_name ?? 'Breakfast';
+  const second = cycles[1]?.cycle_name ?? 'Lunch';
+  return header +
+    `Example Tiffin,${first},Idli:2;Sambar:100ml;Chutney:30g,120\n` +
+    `Example Meal,${second},Rice:200g;Dal:100ml;Sabzi:80g,150\n`;
+}
+
+function buildEssentialsTemplate(cycles: AnyCycle[]): string {
+  const essCycles = cycles.filter((c) => c.is_essentials);
+  const header = `Item Name,${cycleHeader(essCycles.length > 0 ? essCycles : cycles)},Price,Unit\n`;
+  const first = essCycles[0]?.cycle_name ?? cycles[0]?.cycle_name ?? 'Breakfast';
+  return header +
+    `Full Cream Milk,${first},45,1L\n` +
+    `Fresh Bread,${first},35,400g\n`;
+}
+
+function buildPlansTemplate(cycles: AnyCycle[], menuItems: AnyItem[], essItems: AnyItem[]): string {
+  const header =
+    `Plan Name,${cycleHeader(cycles)},Type (food/essentials),Number of Days,Price,` +
+    `Core Items (name:qty;name2:qty2),Savings Amount\n`;
+  const firstCycle = cycles[0];
+  const firstMenu = menuItems.find((m) => m.cycle_id === firstCycle?.id) ?? menuItems[0];
+  const firstEss  = essItems[0];
+  const foodExample = firstMenu
+    ? `Example Food 30,${firstCycle?.cycle_name ?? 'Breakfast'},food,30,2000,${firstMenu.name}:1,400\n`
+    : '';
+  const essExample = firstEss
+    ? `Example Essentials 30,${cycles.find((c) => c.id === firstEss.cycle_id)?.cycle_name ?? 'Breakfast'},essentials,30,1950,${firstEss.name}:1,150\n`
+    : '';
+  return header + foodExample + essExample;
+}
 
 // ── CSV parser ───────────────────────────────────────────
 type MenuRow = { name: string; cycle_name: string; ingredients: string; price: number };
-type EssentialRow = { name: string; cycle_name: string; price: number };
-type PlanRow = { name: string; cycle_name: string; type: string; duration_days: number; price: number };
+type EssentialRow = { name: string; cycle_name: string; price: number; unit: string };
+type PlanRow = {
+  name: string;
+  cycle_name: string;
+  type: 'food' | 'essentials';
+  duration_days: number;
+  price: number;
+  core_items: Array<{ name: string; quantity: number }>;
+  savings_amount: number;
+};
+
+function parseCoreItems(raw: string): Array<{ name: string; quantity: number }> {
+  if (!raw) return [];
+  return raw
+    .split(';')
+    .map((chunk) => chunk.trim())
+    .filter(Boolean)
+    .map((chunk) => {
+      const [name, qtyStr] = chunk.split(':').map((s) => s.trim());
+      return { name: name ?? '', quantity: parseInt(qtyStr ?? '1', 10) || 1 };
+    })
+    .filter((it) => it.name.length > 0);
+}
 
 function parseMenuCsv(text: string): MenuRow[] {
   return text
@@ -77,11 +131,12 @@ function parseEssentialsCsv(text: string): EssentialRow[] {
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line) => {
-      const [name, cycle_name, priceStr] = line.split(',');
+      const [name, cycle_name, priceStr, unit] = line.split(',');
       return {
         name: name?.trim() ?? '',
         cycle_name: cycle_name?.trim() ?? '',
         price: parseFloat(priceStr) || 0,
+        unit: unit?.trim() ?? '',
       };
     })
     .filter((r) => r.name && r.cycle_name);
@@ -94,32 +149,31 @@ function parsePlansCsv(text: string): PlanRow[] {
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line) => {
-      const [name, cycle_name, type, daysStr, priceStr] = line.split(',');
+      const [name, cycle_name, type, daysStr, priceStr, coreItemsRaw, savingsStr] = line.split(',');
       return {
         name: name?.trim() ?? '',
         cycle_name: cycle_name?.trim() ?? '',
-        type: type?.trim().toLowerCase() === 'essentials' ? 'essentials' : 'food',
+        type: type?.trim().toLowerCase() === 'essentials' ? 'essentials' as const : 'food' as const,
         duration_days: parseInt(daysStr, 10) || 30,
         price: parseFloat(priceStr) || 0,
+        core_items: parseCoreItems(coreItemsRaw ?? ''),
+        savings_amount: parseFloat(savingsStr ?? '0') || 0,
       };
     })
     .filter((r) => r.name && r.cycle_name);
 }
 
 // ── Screen ───────────────────────────────────────────────
-export function ImportItemsScreen({
-  navigation,
-  route,
-}: {
-  navigation: any;
-  route: any;
-}) {
+export function ImportItemsScreen({ navigation, route }: AdminScreenProps<'ImportItems'>) {
   const type: 'menu' | 'essentials' | 'plans' = route.params?.type ?? 'menu';
   const isMenu = type === 'menu';
   const isPlans = type === 'plans';
 
   const queryClient = useQueryClient();
   const { data: cycles = [] } = useAllDeliveryCycles();
+  // Menu + essentials only fetched when building the Plans template (needed for Core Items example lookup).
+  const { data: menuItems = [] } = useAllMenuItems();
+  const { data: essItems = [] } = useEssentialsCatalog();
 
   const [parsedRows, setParsedRows] = useState<MenuRow[] | EssentialRow[] | PlanRow[] | null>(null);
   const [importing, setImporting] = useState(false);
@@ -130,7 +184,11 @@ export function ImportItemsScreen({
     try {
       const FileSystem = require('expo-file-system');
       const Sharing = require('expo-sharing');
-      const csv = isMenu ? MENU_TEMPLATE : isPlans ? PLANS_TEMPLATE : ESSENTIALS_TEMPLATE;
+      const csv = isMenu
+        ? buildMenuTemplate(cycles as AnyCycle[])
+        : isPlans
+          ? buildPlansTemplate(cycles as AnyCycle[], menuItems as AnyItem[], essItems as AnyItem[])
+          : buildEssentialsTemplate(cycles as AnyCycle[]);
       const name = isMenu ? 'menu_import_template.csv' : isPlans ? 'plans_import_template.csv' : 'essentials_import_template.csv';
       const uri = FileSystem.documentDirectory + name;
       await FileSystem.writeAsStringAsync(uri, csv, {
@@ -217,23 +275,46 @@ export function ImportItemsScreen({
         for (const c of cycles) {
           cycleMap[(c as any).cycle_name?.toLowerCase()] = (c as any).id;
         }
+        // Build item-name → id maps per catalog, for resolving Core Items.
+        const menuMap: Record<string, { id: number; name: string }> = {};
+        for (const m of menuItems as AnyItem[]) {
+          if (m.name) menuMap[m.name.toLowerCase()] = { id: m.id, name: m.name };
+        }
+        const essMap: Record<string, { id: number; name: string }> = {};
+        for (const e of essItems as AnyItem[]) {
+          if (e.name) essMap[e.name.toLowerCase()] = { id: e.id, name: e.name };
+        }
+
         const records = rows
-          .map((r) => ({
-            name: r.name,
-            cycle_id: cycleMap[r.cycle_name.toLowerCase()] ?? null,
-            type: r.type,
-            duration_days: r.duration_days,
-            price: r.price,
-            plan_items: '[]',
-            is_active: true,
-          }))
+          .map((r) => {
+            const cycle_id = cycleMap[r.cycle_name.toLowerCase()] ?? null;
+            const catalog = r.type === 'essentials' ? essMap : menuMap;
+            const resolvedItems = r.core_items
+              .map((ci) => {
+                const hit = catalog[ci.name.toLowerCase()];
+                return hit ? { item_id: hit.id, item_name: hit.name, quantity: ci.quantity } : null;
+              })
+              .filter((x): x is { item_id: number; item_name: string; quantity: number } => x !== null);
+            return {
+              plan_name: r.name,
+              cycle_id,
+              plan_type: r.type,
+              duration_days: r.duration_days,
+              price: r.price,
+              plan_items: JSON.stringify(resolvedItems),
+              savings_amount: r.savings_amount,
+              is_active: true,
+            };
+          })
           .filter((r) => r.cycle_id !== null);
+
         if (!records.length) {
           Alert.alert('No matching cycles', 'None of the cycle names matched existing delivery cycles.');
           setImporting(false);
           return;
         }
-        const { error } = await supabase.from('subscription_plans').insert(records);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { error } = await supabase.from('subscription_plans').insert(records as any);
         if (error) throw error;
         queryClient.invalidateQueries({ queryKey: ['admin_plans'] });
       } else {
@@ -247,6 +328,7 @@ export function ImportItemsScreen({
             name: r.name,
             cycle_id: cycleMap[r.cycle_name.toLowerCase()] ?? null,
             price: r.price,
+            unit: r.unit || null,
             is_active: true,
           }))
           .filter((r) => r.cycle_id !== null);
@@ -297,8 +379,9 @@ export function ImportItemsScreen({
               {isMenu
                 ? 'Columns: Menu Name, Cycle, Sub-Items (name:qty;…), Price'
                 : isPlans
-                ? 'Columns: Plan Name, Cycle, Type (food/essentials), Number of Days, Price'
-                : 'Columns: Item Name, Cycle (Breakfast/Lunch/Snacks/Dinner), Price'}
+                ? 'Columns: Plan Name, Cycle, Type (food/essentials), Number of Days, Price, Core Items (name:qty;…), Savings Amount'
+                : 'Columns: Item Name, Cycle, Price, Unit'}
+              {'\n'}Template is built from your current cycles — download fresh each time you make changes.
             </ThemedText>
             <TouchableOpacity style={styles.actionLink} onPress={handleDownloadTemplate}>
               <ThemedText variant="body" color="mint" style={styles.txt}>Download Template  ›</ThemedText>

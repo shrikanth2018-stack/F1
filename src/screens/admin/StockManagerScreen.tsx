@@ -39,6 +39,7 @@ import {
   buildOrderListHTML,
 } from '../../hooks/useStockManager';
 import type { SupplyOrderItem } from '../../types';
+import type { AdminNavProp } from '../../navigation/types';
 
 type StockTab = 'Requests' | 'Order List' | 'History';
 type Category = 'Vegetables' | 'Grocery' | 'Stationery';
@@ -512,7 +513,7 @@ function AddItemForm({
 
 // ── Main Screen ──────────────────────────────────────────
 
-export function StockManagerScreen({ navigation }: { navigation: any }) {
+export function StockManagerScreen({ navigation }: { navigation: AdminNavProp }) {
   const [activeTab, setActiveTab] = useState<StockTab>('Requests');
   const { data: pendingRequests = [] } = usePendingSupplyRequests();
   const { data: activeItems = [] } = useActiveOrderList();

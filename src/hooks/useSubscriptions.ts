@@ -35,14 +35,25 @@ export function useSubscriptionPlans(cycleId?: number | null) {
 }
 
 export function usePlanItems(planId: number) {
-  return useSupabaseQuery<SubscriptionPlanItem>(
-    ['subscription_plan_items', planId],
-    () =>
-      supabase
-        .from('subscription_plan_items')
-        .select('*, menu_items(name, price)')
-        .eq('plan_id', planId),
-  );
+  return useQuery<SubscriptionPlanItem[]>({
+    queryKey: ['plan_items', planId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('subscription_plans')
+        .select('plan_items')
+        .eq('id', planId)
+        .single();
+      if (error) throw new Error(error.message);
+      if (!data?.plan_items) return [];
+      try {
+        return JSON.parse(data.plan_items) as SubscriptionPlanItem[];
+      } catch {
+        return [];
+      }
+    },
+    enabled: !!planId,
+    staleTime: 1000 * 60 * 2,
+  });
 }
 
 // ── User's Active Subscriptions ──
@@ -55,7 +66,7 @@ export function useMySubscriptions() {
     () =>
       supabase
         .from('user_subscriptions')
-        .select('*, subscription_plans(plan_name, duration_days, cycle_id, price, plan_type)')
+        .select('*, subscription_plans(plan_name, duration_days, cycle_id, price, plan_type, plan_items)')
         .eq('user_id', session?.user.id ?? '')
         .order('created_at', { ascending: false }),
     { enabled: !!session?.user.id }
@@ -118,16 +129,23 @@ export function useSubscribe() {
       });
 
       if (error) {
-        // In @supabase/functions-js v2.x, error.context is already the parsed
-        // JSON body — not a Response. Calling .text() on it throws.
         let message = 'Failed to subscribe';
-        const ctx = (error as any)?.context;
-        if (ctx && typeof ctx === 'object' && ctx.error) {
-          message = ctx.error;
-        } else if (ctx && typeof ctx === 'string') {
-          message = ctx;
-        } else if (error.message && !error.message.includes('non-2xx')) {
-          message = error.message;
+        try {
+          const ctx = (error as any)?.context;
+          if (ctx && typeof ctx?.text === 'function') {
+            const raw = await ctx.text();
+            console.error('[useSubscribe] Raw edge fn response:', raw);
+            try {
+              const body = JSON.parse(raw);
+              if (body?.error) message = body.error;
+            } catch {}
+          } else if (ctx && typeof ctx === 'object' && ctx.error) {
+            message = ctx.error;
+          } else if (error.message && !error.message.includes('non-2xx')) {
+            message = error.message;
+          }
+        } catch (parseErr) {
+          console.error('[useSubscribe] Error parse failed:', parseErr);
         }
         throw new Error(message);
       }
@@ -159,8 +177,15 @@ export function useConfirmSubscription() {
 
       if (error) {
         let message = 'Payment confirmation failed';
-        const ctx = (error as any)?.context;
-        if (ctx && typeof ctx === 'object' && ctx.error) message = ctx.error;
+        try {
+          const ctx = (error as any)?.context;
+          if (ctx && typeof ctx?.json === 'function') {
+            const body = await ctx.json();
+            if (body?.error) message = body.error;
+          } else if (ctx && typeof ctx === 'object' && ctx.error) {
+            message = ctx.error;
+          }
+        } catch {}
         throw new Error(message);
       }
 

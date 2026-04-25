@@ -45,10 +45,14 @@ export function ZoneMap({ vertices, onChange, initialRegion }: ZoneMapProps) {
     libraries: LIBRARIES,
   });
 
-  const center = {
+  const [center, setCenter] = useState({
     lat: initialRegion.latitude,
     lng: initialRegion.longitude,
-  };
+  });
+  const mapRef = useRef<google.maps.Map | null>(null);
+  const [searchText, setSearchText] = useState('');
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
 
   const onMapClick = useCallback(
     (e: google.maps.MapMouseEvent) => {
@@ -57,6 +61,36 @@ export function ZoneMap({ vertices, onChange, initialRegion }: ZoneMapProps) {
     },
     [vertices, onChange]
   );
+
+  const handleSearch = async () => {
+    const q = searchText.trim();
+    if (!q) return;
+    setSearching(true);
+    setSearchError(null);
+    try {
+      const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(q)}&key=${apiKey}`;
+      const res = await fetch(url);
+      const json = await res.json();
+      const status: string = json?.status ?? 'UNKNOWN';
+      const hit = json?.results?.[0]?.geometry?.location;
+
+      if (status === 'OK' && hit && typeof hit.lat === 'number' && typeof hit.lng === 'number') {
+        const next = { lat: hit.lat, lng: hit.lng };
+        setCenter(next);
+        mapRef.current?.panTo(next);
+        mapRef.current?.setZoom(15);
+        return;
+      }
+
+      if (status === 'ZERO_RESULTS') setSearchError('No location found');
+      else if (status === 'REQUEST_DENIED') setSearchError(`REQUEST_DENIED — enable Geocoding API on this key. ${json?.error_message ?? ''}`);
+      else setSearchError(`${status}${json?.error_message ? ': ' + json.error_message : ''}`);
+    } catch (err: any) {
+      setSearchError(err?.message ?? 'Search failed');
+    } finally {
+      setSearching(false);
+    }
+  };
 
   if (loadError) {
     return (
@@ -78,6 +112,43 @@ export function ZoneMap({ vertices, onChange, initialRegion }: ZoneMapProps) {
 
   return (
     <div style={{ position: 'relative' }}>
+      {/* Search bar overlay — Geocoding API recenter */}
+      <div style={{
+        position: 'absolute', top: 8, left: 8, right: 8, zIndex: 2,
+        display: 'flex', gap: 6, alignItems: 'center',
+      }}>
+        <input
+          type="text"
+          value={searchText}
+          onChange={(e) => setSearchText(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
+          placeholder="Search a place or area…"
+          style={{
+            flex: 1, padding: '8px 12px', borderRadius: 8,
+            border: '1px solid #2d2d2d', background: 'rgba(26,26,26,0.9)',
+            color: '#fff', fontSize: 14, outline: 'none',
+          }}
+        />
+        <button
+          onClick={handleSearch}
+          disabled={searching}
+          style={{
+            padding: '8px 14px', borderRadius: 8, border: '1px solid #38bdf8',
+            background: 'rgba(26,26,26,0.9)', color: '#38bdf8',
+            fontSize: 14, cursor: 'pointer',
+          }}
+        >
+          {searching ? '…' : 'Search'}
+        </button>
+      </div>
+      {searchError && (
+        <div style={{
+          position: 'absolute', top: 54, left: 8, zIndex: 2,
+          color: '#f87171', fontSize: 12,
+          background: 'rgba(0,0,0,0.6)', padding: '4px 8px', borderRadius: 4,
+        }}>{searchError}</div>
+      )}
+
       <GoogleMap
         mapContainerStyle={containerStyle}
         center={center}
@@ -87,6 +158,7 @@ export function ZoneMap({ vertices, onChange, initialRegion }: ZoneMapProps) {
           styles: DARK_MAP_STYLE,
         }}
         onClick={onMapClick}
+        onLoad={(map) => { mapRef.current = map; }}
       >
         {polygonPath.length >= 3 && (
           <Polygon

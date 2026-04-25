@@ -200,6 +200,7 @@ function ManageTab() {
         <ThemedText variant="small" color="muted" style={styles.sectionLabel}>NOTIFICATIONS</ThemedText>
       </View>
       <AdminRow label="Note to Staff" showChevron onPress={() => navigation.navigate('PushNotifications')} />
+      <AdminRow label="Manage Notifications" showChevron onPress={() => navigation.navigate('NotificationManager')} />
 
       <Divider />
 

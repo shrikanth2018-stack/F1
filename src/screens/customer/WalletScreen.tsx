@@ -31,10 +31,11 @@ import { useStoreConfig } from '../../hooks/useStoreConfig';
 import { useAuth } from '../../hooks/useAuth';
 import { supabase } from '../../api/supabaseClient';
 import { RAZORPAY_KEY_ID } from '../../utils/env';
+import type { CustomerNavProp } from '../../navigation/types';
 
 const QUICK_AMOUNTS = [500, 1000, 2000];
 
-export function WalletScreen({ navigation }: { navigation: any }) {
+export function WalletScreen({ navigation }: { navigation: CustomerNavProp }) {
   const [customAmount, setCustomAmount] = useState('');
   const insets = useSafeAreaInsets();
 

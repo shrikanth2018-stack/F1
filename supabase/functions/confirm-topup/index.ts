@@ -15,6 +15,7 @@
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
+import { getUserFromJwt } from '../_shared/auth.ts';
 
 const SUPABASE_PROJECT_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const ALLOWED_ORIGINS = new Set([
@@ -64,10 +65,8 @@ Deno.serve(async (req: Request) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser(
-      authHeader.replace('Bearer ', ''),
-    );
-    if (authError || !user) return json({ error: 'Unauthorized' }, 401);
+    const user = getUserFromJwt(authHeader.replace('Bearer ', ''));
+    if (!user) return json({ error: 'Unauthorized' }, 401);
 
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = await req.json();
 

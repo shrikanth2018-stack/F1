@@ -19,6 +19,7 @@ function makeCycle(cutoff: string, deliveryStart: string): DeliveryCycle {
     delivery_end: '12:00:00',
     is_active: true,
     is_essentials: false,
+    essentials_label: null,
     branch_id: null,
     sort_order: 1,
     created_at: '',

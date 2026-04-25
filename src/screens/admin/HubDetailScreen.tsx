@@ -14,7 +14,7 @@
  * to this hub via the get_addresses_for_hub_assignment RPC + client-side ray-cast.
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   ScrollView,
@@ -23,18 +23,22 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
-  Modal,
   StyleSheet,
-  FlatList,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { ZoneMap } from '../../components/ZoneMap';
-import { useAddHub, useUpdateHub, useAssignHubAddresses } from '../../hooks/useDeliveryHubs';
-import { useAllStaff } from '../../hooks/useStaffManagement';
+import { PhonePicker, type PickedProfile } from '../../components/PhonePicker';
+import {
+  useAddHub,
+  useUpdateHub,
+  useAssignHubAddresses,
+  useAssignHubOperator,
+} from '../../hooks/useDeliveryHubs';
 import type { DeliveryHub } from '../../types';
+import type { AdminScreenProps } from '../../navigation/types';
 
 type Region = {
   latitude: number;
@@ -53,13 +57,8 @@ const DEFAULT_REGION: Region = {
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
 
-interface Props {
-  route: { params?: { hub?: DeliveryHub } };
-  navigation: any;
-}
-
-export function HubDetailScreen({ route, navigation }: Props) {
-  const existingHub = route.params?.hub as DeliveryHub | undefined;
+export function HubDetailScreen({ route, navigation }: AdminScreenProps<'HubDetail'>) {
+  const existingHub = route.params?.hub;
   const isEditing = existingHub != null;
 
   const insets = useSafeAreaInsets();
@@ -86,23 +85,48 @@ export function HubDetailScreen({ route, navigation }: Props) {
   const [hubName, setHubName] = useState(existingHub?.hub_name ?? '');
   const [hubCode, setHubCode] = useState(existingHub?.hub_code ?? '');
 
-  // Staff
-  const [staffUserId, setStaffUserId] = useState<string | null>(existingHub?.staff_user_id ?? null);
-  const [staffName, setStaffName] = useState(existingHub?.staff_name ?? '');
-  const [staffPhone, setStaffPhone] = useState(existingHub?.staff_phone ?? '');
-  const [staffSearch, setStaffSearch] = useState('');
-  const [staffPickerVisible, setStaffPickerVisible] = useState(false);
+  // Economics — both optional
+  const [deliveryFee, setDeliveryFee] = useState(
+    existingHub?.delivery_fee_override != null ? String(existingHub.delivery_fee_override) : ''
+  );
+  const [commissionPct, setCommissionPct] = useState(
+    existingHub?.commission_percent != null ? String(existingHub.commission_percent) : ''
+  );
+
+  // Hub Operator — any registered customer (unlocks My Hub Dashboard for them)
+  const [operator, setOperator] = useState<PickedProfile | null>(
+    existingHub?.staff_user_id
+      ? {
+          userId:     existingHub.staff_user_id,
+          name:       existingHub.staff_name ?? '',
+          phone:      existingHub.staff_phone ?? '',
+          employeeId: null,
+        }
+      : null
+  );
+
+  // Driver — staff only (auto-fills display driver_code from employee_id)
+  const [driver, setDriver] = useState<PickedProfile | null>(
+    existingHub?.driver_user_id
+      ? {
+          userId:     existingHub.driver_user_id,
+          name:       '',
+          phone:      '',
+          employeeId: existingHub.driver_code ?? null,
+        }
+      : null
+  );
 
   // Settings
   const [extendsCoverage, setExtendsCoverage] = useState(existingHub?.extends_coverage ?? false);
   const [isActive, setIsActive] = useState(existingHub?.is_active ?? true);
 
-  const { data: allStaff = [] } = useAllStaff();
   const addHub = useAddHub();
   const updateHub = useUpdateHub();
   const assignAddresses = useAssignHubAddresses();
+  const assignOperator = useAssignHubOperator();
 
-  const saving = addHub.isPending || updateHub.isPending || assignAddresses.isPending;
+  const saving = addHub.isPending || updateHub.isPending || assignAddresses.isPending || assignOperator.isPending;
 
   const centreOnDeviceLocation = async () => {
     try {
@@ -126,31 +150,6 @@ export function HubDetailScreen({ route, navigation }: Props) {
     }
   }, []);
 
-  const filteredStaff = useMemo(() => {
-    const q = staffSearch.toLowerCase().trim();
-    if (!q) return (allStaff as any[]).slice(0, 20);
-    return (allStaff as any[]).filter(
-      (s) =>
-        s.full_name?.toLowerCase().includes(q) ||
-        s.phone_number?.includes(q) ||
-        s.employee_id?.toLowerCase().includes(q)
-    );
-  }, [allStaff, staffSearch]);
-
-  const selectStaff = (staff: any) => {
-    setStaffUserId(staff.id);
-    setStaffName(staff.full_name ?? '');
-    setStaffPhone(staff.phone_number ?? '');
-    setStaffSearch('');
-    setStaffPickerVisible(false);
-  };
-
-  const clearStaff = () => {
-    setStaffUserId(null);
-    setStaffName('');
-    setStaffPhone('');
-  };
-
   const computeCenter = (verts: { lat: number; lng: number }[]) => {
     if (verts.length === 0) return { lat: null, lng: null };
     return {
@@ -164,51 +163,78 @@ export function HubDetailScreen({ route, navigation }: Props) {
       Alert.alert('Required', 'Please enter a hub name.');
       return;
     }
+    if (!driver) {
+      Alert.alert('Required', 'Please assign a driver — branch driver who delivers to this hub.');
+      return;
+    }
 
     const center = computeCenter(vertices);
+    const feeNum = deliveryFee.trim() ? parseFloat(deliveryFee) : null;
+    const commissionNum = commissionPct.trim() ? parseFloat(commissionPct) : null;
+
+    // Auto-derive the display driver_code from the staff's employee_id.
+    // Fallback: "D-{last 4 of phone}" — keeps the staff dashboard filter chips populated
+    // even if the staff somehow has no employee_id yet.
+    const derivedDriverCode = driver.employeeId?.trim()
+      || `D-${(driver.phone ?? '').slice(-4) || '????'}`;
+
     const payload = {
       hub_name: hubName.trim(),
       hub_code: hubCode.trim() || null,
       polygon_geojson: vertices.length >= 3 ? vertices : null,
       center_lat: center.lat,
       center_lng: center.lng,
-      staff_user_id: staffUserId,
-      staff_name: staffName.trim() || null,
-      staff_phone: staffPhone.trim() || null,
+      // staff fields: capture the operator profile (name/phone denormalized for quick display)
+      staff_user_id: operator?.userId ?? null,
+      staff_name:    operator?.name ?? null,
+      staff_phone:   operator?.phone ?? null,
       extends_coverage: extendsCoverage,
+      driver_code:    derivedDriverCode,
+      driver_user_id: driver.userId,
+      delivery_fee_override: feeNum != null && !isNaN(feeNum) && feeNum >= 0 ? feeNum : null,
+      commission_percent:    commissionNum != null && !isNaN(commissionNum) && commissionNum >= 0 ? commissionNum : null,
     };
 
     try {
+      let hubId: number;
+
       if (isEditing) {
         await updateHub.mutateAsync({ id: existingHub!.id, ...payload, is_active: isActive });
-
-        // Re-assign addresses if polygon is set
-        if (vertices.length >= 3) {
-          const savedHub: DeliveryHub = { ...existingHub!, ...payload, is_active: isActive };
-          const count = await assignAddresses.mutateAsync(savedHub);
-          if (count > 0) {
-            Alert.alert(
-              'Hub Saved',
-              `${count} address${count !== 1 ? 'es' : ''} assigned to this hub.`,
-              [{ text: 'OK', onPress: () => navigation.goBack() }]
-            );
-            return;
-          }
-        }
+        hubId = existingHub!.id;
       } else {
         const createdHub = await addHub.mutateAsync(payload) as DeliveryHub | null;
         if (!createdHub) throw new Error('Hub could not be created. Check database permissions and try again.');
+        hubId = createdHub.id;
+      }
 
-        if (vertices.length >= 3) {
-          const count = await assignAddresses.mutateAsync(createdHub);
-          if (count > 0) {
-            Alert.alert(
-              'Hub Created',
-              `${count} address${count !== 1 ? 'es' : ''} assigned to this hub.`,
-              [{ text: 'OK', onPress: () => navigation.goBack() }]
-            );
-            return;
-          }
+      // Sync profiles.assigned_hub_id so the operator unlocks My Hub Dashboard.
+      // Only fires when the operator selection changed (or is being cleared).
+      const prevOperatorId = existingHub?.staff_user_id ?? null;
+      const newOperatorId = operator?.userId ?? null;
+      if (prevOperatorId !== newOperatorId) {
+        await assignOperator.mutateAsync({
+          hubId,
+          newUserId: newOperatorId,
+          oldUserId: prevOperatorId,
+        });
+      }
+
+      // Re-assign addresses if polygon is set
+      if (vertices.length >= 3) {
+        const savedHub: DeliveryHub = {
+          ...(existingHub ?? {} as DeliveryHub),
+          ...payload,
+          id: hubId,
+          is_active: isActive,
+        };
+        const count = await assignAddresses.mutateAsync(savedHub);
+        if (count > 0) {
+          Alert.alert(
+            isEditing ? 'Hub Saved' : 'Hub Created',
+            `${count} address${count !== 1 ? 'es' : ''} assigned to this hub.`,
+            [{ text: 'OK', onPress: () => navigation.goBack() }]
+          );
+          return;
         }
       }
 
@@ -289,33 +315,71 @@ export function HubDetailScreen({ route, navigation }: Props) {
             autoCapitalize="characters"
           />
         </View>
+        <View style={styles.hairline} />
+
+        {/* Driver — branch driver who delivers to this hub (phone-picked from staff) */}
+        <View style={styles.fieldBlock}>
+          <ThemedText variant="small" color="muted" style={styles.fieldLabel}>Driver *</ThemedText>
+          <PhonePicker
+            value={driver}
+            onChange={setDriver}
+            roleFilter="staff"
+            labelNotFound="Not a staff member. Elevate them via Manage → Staff first."
+            labelPlaceholder="Enter driver's 10-digit phone"
+          />
+        </View>
 
         <View style={styles.divider} />
 
-        {/* ── Staff ── */}
+        {/* ── Economics ── */}
+        <View style={styles.sectionHeader}>
+          <ThemedText variant="small" color="muted" style={styles.sectionLabel}>ECONOMICS</ThemedText>
+        </View>
+
+        <View style={styles.fieldRow}>
+          <ThemedText variant="small" color="muted" style={styles.fieldLabel}>Delivery Fee Override (₹)</ThemedText>
+          <TextInput
+            style={styles.fieldInput}
+            value={deliveryFee}
+            onChangeText={setDeliveryFee}
+            placeholder="Blank to use zone / store default"
+            placeholderTextColor={Theme.colors.text.muted}
+            keyboardType="decimal-pad"
+          />
+        </View>
+        <View style={styles.hairline} />
+
+        <View style={styles.fieldRow}>
+          <ThemedText variant="small" color="muted" style={styles.fieldLabel}>Commission %</ThemedText>
+          <TextInput
+            style={styles.fieldInput}
+            value={commissionPct}
+            onChangeText={setCommissionPct}
+            placeholder="Blank for no commission"
+            placeholderTextColor={Theme.colors.text.muted}
+            keyboardType="decimal-pad"
+          />
+        </View>
+
+        <View style={styles.divider} />
+
+        {/* ── Hub Operator (phone-picked registered customer) ── */}
         <View style={styles.sectionHeader}>
           <ThemedText variant="small" color="muted" style={styles.sectionLabel}>HUB OPERATOR</ThemedText>
         </View>
+        <ThemedText variant="small" color="muted" style={styles.sectionHint}>
+          Enter the operator's phone. They must be a registered customer. Assigning them unlocks "My Hub Dashboard" inside their Profile.
+        </ThemedText>
 
-        {staffUserId ? (
-          <View style={styles.staffSelected}>
-            <View style={styles.staffInfo}>
-              <ThemedText variant="body" color="primary" style={styles.staffName}>
-                {staffName}
-              </ThemedText>
-              <ThemedText variant="small" color="muted">{staffPhone}</ThemedText>
-            </View>
-            <TouchableOpacity onPress={clearStaff} style={styles.staffClear}>
-              <ThemedText variant="small" color="accent">Remove</ThemedText>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <TouchableOpacity style={styles.staffPickBtn} onPress={() => setStaffPickerVisible(true)} activeOpacity={0.7}>
-            <ThemedText variant="body" color="muted" style={{ fontSize: B }}>
-              Assign operator  ›
-            </ThemedText>
-          </TouchableOpacity>
-        )}
+        <View style={styles.fieldBlock}>
+          <PhonePicker
+            value={operator}
+            onChange={setOperator}
+            roleFilter={null}
+            labelNotFound="No customer with this phone. They must register on the app first."
+            labelPlaceholder="Enter operator's 10-digit phone"
+          />
+        </View>
 
         <View style={styles.divider} />
 
@@ -367,60 +431,6 @@ export function HubDetailScreen({ route, navigation }: Props) {
 
         <View style={{ height: Theme.spacing.xl * 2 }} />
       </ScrollView>
-
-      {/* Staff Picker Modal */}
-      <Modal
-        visible={staffPickerVisible}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setStaffPickerVisible(false)}
-      >
-        <View style={[sp.container, { paddingTop: insets.top }]}>
-          <View style={sp.header}>
-            <TouchableOpacity onPress={() => setStaffPickerVisible(false)}>
-              <ThemedText variant="body" color="accent">Cancel</ThemedText>
-            </TouchableOpacity>
-            <ThemedText variant="header" color="primary">Select Staff</ThemedText>
-            <View style={{ width: 60 }} />
-          </View>
-
-          <View style={sp.searchRow}>
-            <TextInput
-              style={sp.searchInput}
-              value={staffSearch}
-              onChangeText={setStaffSearch}
-              placeholder="Search by name, phone, or ID"
-              placeholderTextColor={Theme.colors.text.muted}
-              autoFocus
-            />
-          </View>
-
-          <FlatList
-            data={filteredStaff}
-            keyExtractor={(item: any) => item.id}
-            renderItem={({ item }: { item: any }) => (
-              <TouchableOpacity style={sp.staffRow} onPress={() => selectStaff(item)} activeOpacity={0.7}>
-                <View>
-                  <ThemedText variant="body" color="primary" style={sp.staffName}>
-                    {item.full_name}
-                  </ThemedText>
-                  <ThemedText variant="small" color="muted">
-                    {item.phone_number}
-                    {item.employee_id ? `  ·  ${item.employee_id}` : ''}
-                    {item.designation ? `  ·  ${item.designation}` : ''}
-                  </ThemedText>
-                </View>
-              </TouchableOpacity>
-            )}
-            ListEmptyComponent={
-              <View style={sp.empty}>
-                <ThemedText variant="body" color="muted">No staff found</ThemedText>
-              </View>
-            }
-            ItemSeparatorComponent={() => <View style={sp.separator} />}
-          />
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -450,6 +460,12 @@ const styles = StyleSheet.create({
     alignItems: 'baseline',
   },
   sectionLabel: { letterSpacing: 1, fontSize: S },
+  sectionHint: {
+    paddingHorizontal: Theme.spacing.md,
+    marginBottom: Theme.spacing.sm,
+    fontSize: S - 1,
+    fontStyle: 'italic',
+  },
   sectionSub: { fontSize: S - 1 },
 
   clearRow: {
@@ -467,6 +483,10 @@ const styles = StyleSheet.create({
   fieldRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.sm,
+  },
+  fieldBlock: {
     paddingHorizontal: Theme.spacing.md,
     paddingVertical: Theme.spacing.sm,
   },
@@ -514,40 +534,3 @@ const styles = StyleSheet.create({
   warningText: { fontSize: S },
 });
 
-const sp = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Theme.colors.background.primary },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.layout.divider,
-  },
-  searchRow: {
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.layout.divider,
-  },
-  searchInput: {
-    color: Theme.colors.text.primary,
-    fontFamily: Theme.typography.fontFamily,
-    fontSize: B,
-    paddingVertical: Theme.spacing.xs,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.text.mint,
-  },
-  staffRow: {
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm + 2,
-  },
-  staffName: { fontSize: B, marginBottom: 2 },
-  separator: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: Theme.colors.layout.divider,
-    marginHorizontal: Theme.spacing.md,
-  },
-  empty: { padding: Theme.spacing.md },
-});

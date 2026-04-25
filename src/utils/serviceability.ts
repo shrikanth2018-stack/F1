@@ -14,6 +14,9 @@ export interface ZoneCheckResult {
   result: ServiceabilityResult;
   zoneId: number | null;
   zoneName: string | null;
+  /** Set when the match came from an extending hub (outside any zone but inside a hub polygon). */
+  hubId: number | null;
+  hubName: string | null;
 }
 
 /** Ray-casting point-in-polygon. Works for geographic coordinates at city scale. */
@@ -48,33 +51,69 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
 }
 
 /**
- * Check if a coordinate falls inside any active delivery zone.
- * Returns the matching zone's id/name for storage on the address.
+ * Check if a coordinate falls inside any active delivery zone or an extending hub.
+ *
+ * Priority:
+ *   1. Zone polygons (normal serviceable area) → returns zoneId
+ *   2. Hub polygons with extends_coverage=true  → returns hubId only (zoneId null)
+ *   3. Nothing matches → not_serviceable
+ *
+ * The extending-hub path lets admins deliver to pockets outside the zone
+ * boundary (e.g. an office cluster across the highway) without redrawing zones.
  */
 export async function checkZone(lat: number, lng: number): Promise<ZoneCheckResult> {
+  const EMPTY: ZoneCheckResult = { result: 'unknown', zoneId: null, zoneName: null, hubId: null, hubName: null };
   try {
-    const { data: zones } = await supabase
-      .from('delivery_zones')
-      .select('id, zone_name, polygon_geojson')
-      .eq('is_active', true);
+    const [zonesRes, hubsRes] = await Promise.all([
+      supabase.from('delivery_zones').select('id, zone_name, polygon_geojson').eq('is_active', true),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (supabase.from('delivery_hubs') as any)
+        .select('id, hub_name, polygon_geojson, extends_coverage')
+        .eq('is_active', true)
+        .eq('extends_coverage', true),
+    ]);
 
-    const polygonZones = (zones ?? []).filter(
+    const polygonZones = (zonesRes.data ?? []).filter(
       (z: any) => Array.isArray(z.polygon_geojson) && z.polygon_geojson.length >= 3
     );
+    const extendingHubs = (hubsRes.data ?? []).filter(
+      (h: any) => Array.isArray(h.polygon_geojson) && h.polygon_geojson.length >= 3
+    );
 
-    if (polygonZones.length > 0) {
-      for (const zone of polygonZones) {
-        if (pointInPolygon(lat, lng, zone.polygon_geojson)) {
-          return { result: 'serviceable', zoneId: zone.id, zoneName: zone.zone_name };
-        }
+    // 1. Zones first
+    for (const zone of polygonZones) {
+      if (pointInPolygon(lat, lng, zone.polygon_geojson as { lat: number; lng: number }[])) {
+        return {
+          result: 'serviceable',
+          zoneId: zone.id,
+          zoneName: zone.zone_name,
+          hubId: null,
+          hubName: null,
+        };
       }
-      return { result: 'not_serviceable', zoneId: null, zoneName: null };
     }
 
-    // No polygon zones configured yet — return unknown until admin sets them up
-    return { result: 'unknown', zoneId: null, zoneName: null };
+    // 2. Fallback to extending hubs
+    for (const hub of extendingHubs) {
+      if (pointInPolygon(lat, lng, hub.polygon_geojson as { lat: number; lng: number }[])) {
+        return {
+          result: 'serviceable',
+          zoneId: null,
+          zoneName: null,
+          hubId: hub.id,
+          hubName: hub.hub_name,
+        };
+      }
+    }
+
+    // 3. If we have any polygon configured, the point simply isn't served.
+    // If nothing's configured yet, stay 'unknown' so the app doesn't block orders during setup.
+    if (polygonZones.length > 0 || extendingHubs.length > 0) {
+      return { result: 'not_serviceable', zoneId: null, zoneName: null, hubId: null, hubName: null };
+    }
+    return EMPTY;
   } catch {
-    return { result: 'unknown', zoneId: null, zoneName: null };
+    return EMPTY;
   }
 }
 

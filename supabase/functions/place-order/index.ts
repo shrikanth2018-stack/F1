@@ -25,6 +25,8 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
+import { getUserFromJwt } from '../_shared/auth.ts';
+import { resolveAndSendPush } from '../_shared/notifications.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -60,15 +62,8 @@ serve(async (req) => {
     const authHeader = req.headers.get('Authorization') ?? '';
     const idempotencyKey = req.headers.get('Idempotency-Key') ?? '';
 
-    const supabaseUser = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-      global: { headers: { Authorization: authHeader } },
-    });
-
-    const { data: { user }, error: authError } = await supabaseUser.auth.getUser(
-      authHeader.replace('Bearer ', ''),
-    );
-
-    if (authError || !user) return json({ error: 'Unauthorized' }, 401);
+    const user = getUserFromJwt(authHeader.replace('Bearer ', ''));
+    if (!user) return json({ error: 'Unauthorized' }, 401);
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
@@ -102,6 +97,7 @@ serve(async (req) => {
       food_items = [],
       essentials_items = [],
       items: legacy_items = [],
+      subscription_plans = [],
       cycle_id,
       delivery_address_id,
       payment_method,
@@ -111,8 +107,8 @@ serve(async (req) => {
 
     const foodItems = food_items.length > 0 ? food_items : legacy_items;
 
-    if (foodItems.length === 0 && essentials_items.length === 0) {
-      return json({ error: 'No items provided' }, 400);
+    if (foodItems.length === 0 && essentials_items.length === 0 && subscription_plans.length === 0) {
+      return json({ error: 'No items or plans provided' }, 400);
     }
 
     // ── Store config + storm mode ──────────────────────────────
@@ -149,6 +145,9 @@ serve(async (req) => {
 
     if (!addressData) return json({ error: 'Invalid delivery address' }, 400);
 
+    // Delivery fee priority: hub override → zone override → store default.
+    // Hub wins because hubs are the final dispatch point and may carry extra cost
+    // (e.g. external contractor markup). Both overrides are nullable.
     let deliveryFee = config?.delivery_fee ?? 0;
     if (addressData.zone_id != null) {
       const { data: zone } = await supabase
@@ -157,6 +156,14 @@ serve(async (req) => {
         .eq('id', addressData.zone_id)
         .maybeSingle();
       if (zone?.delivery_fee_override != null) deliveryFee = zone.delivery_fee_override;
+    }
+    if (addressData.hub_id != null) {
+      const { data: hub } = await supabase
+        .from('delivery_hubs')
+        .select('delivery_fee_override')
+        .eq('id', addressData.hub_id)
+        .maybeSingle();
+      if ((hub as any)?.delivery_fee_override != null) deliveryFee = (hub as any).delivery_fee_override;
     }
 
     const deliveryMethod = addressData.hub_id != null ? 'hub' : 'direct';
@@ -215,9 +222,102 @@ serve(async (req) => {
       }
     }
 
+    // ── Subscription plans: validate + core-items conflict + add to subtotal ──
+    const planStartById = new Map<number, string>();
+    const loadedPlans: any[] = [];
+    if (subscription_plans.length > 0) {
+      const planIds = subscription_plans.map((sp: any) => sp.plan_id);
+      const { data: planRows, error: planErr } = await supabase
+        .from('subscription_plans')
+        .select('id, plan_name, price, duration_days, cycle_id, plan_type, is_active, plan_items, branch_id')
+        .in('id', planIds);
+      if (planErr) throw planErr;
+
+      for (const sp of subscription_plans) {
+        const plan = planRows?.find((p: any) => p.id === sp.plan_id);
+        if (!plan || !plan.is_active) {
+          return json({ error: `Plan ${sp.plan_id} unavailable` }, 400);
+        }
+        if (!sp.start_date) {
+          return json({ error: `start_date required for plan ${sp.plan_id}` }, 400);
+        }
+        loadedPlans.push(plan);
+        planStartById.set(plan.id, sp.start_date);
+      }
+
+      // ── Core-items + date-range conflict check ───────────────
+      // Blueprint: two plans with the same core item are allowed when the
+      // new plan is QUEUED (its date range does not overlap the existing sub).
+      // A real conflict = item overlap AND date overlap; queued plans pass.
+      const { data: activeSubs } = await supabase
+        .from('user_subscriptions')
+        .select('id, start_date, subscription_plans ( plan_type, plan_items, duration_days )')
+        .eq('user_id', user.id)
+        .eq('is_active', true);
+
+      const parseItemIds = (raw: unknown): Set<number> => {
+        let arr: any[] = [];
+        if (typeof raw === 'string') { try { arr = JSON.parse(raw); } catch { arr = []; } }
+        else if (Array.isArray(raw)) arr = raw;
+        const ids = new Set<number>();
+        for (const it of arr) if (typeof it?.item_id === 'number') ids.add(it.item_id);
+        return ids;
+      };
+
+      const MS_PER_DAY = 86_400_000;
+      for (const newPlan of loadedPlans) {
+        const newType = newPlan.plan_type ?? 'food';
+        const newIds = parseItemIds(newPlan.plan_items);
+        if (newIds.size === 0) continue;
+
+        const newStartStr = planStartById.get(newPlan.id)!;
+        const newStartMs = new Date(newStartStr).getTime();
+        const newEndMs = newStartMs + (newPlan.duration_days - 1) * MS_PER_DAY;
+
+        for (const existing of activeSubs ?? []) {
+          const ep: any = (existing as any).subscription_plans;
+          if (!ep) continue;
+          if ((ep.plan_type ?? 'food') !== newType) continue;
+
+          const exStartMs = new Date((existing as any).start_date).getTime();
+          const exEndMs = exStartMs + ((ep.duration_days ?? 0) - 1) * MS_PER_DAY;
+
+          // Ranges must overlap for a conflict to be possible.
+          // (newStart > existingEnd) OR (existingStart > newEnd) → queued → allow
+          if (newEndMs < exStartMs || exEndMs < newStartMs) continue;
+
+          // Ranges overlap — now check if any core item_id collides.
+          const existingIds = parseItemIds(ep.plan_items);
+          for (const id of newIds) {
+            if (existingIds.has(id)) {
+              return json({
+                error: `"${newPlan.plan_name}" overlaps an active subscription delivering the same item during these dates.`,
+              }, 409);
+            }
+          }
+        }
+      }
+
+      // Roll plan prices into subtotal + order lines so the customer receipt shows them
+      for (const plan of loadedPlans) {
+        subtotal += plan.price;
+        orderItemRows.push({
+          item_id: plan.id,
+          item_type: 'subscription',
+          item_name: plan.plan_name,
+          quantity: 1,
+          price_at_time: plan.price,
+        });
+        if (!resolvedCycleId && plan.cycle_id) resolvedCycleId = plan.cycle_id;
+      }
+    }
+
     const taxAmount = Math.round(subtotal * (taxRate / 100) * 100) / 100;
     const totalAmount = Math.round((subtotal + taxAmount + deliveryFee) * 100) / 100;
-    const orderType = foodItems.length > 0 ? 'food' : 'essential';
+    // orderType: items drive it when present; else infer from first plan's type
+    const orderType = foodItems.length > 0 || loadedPlans.some((p) => (p.plan_type ?? 'food') === 'food')
+      ? 'food'
+      : 'essential';
 
     // ── Razorpay: create the order BEFORE we touch our DB ─────
     let razorpayOrderId: string | null = null;
@@ -297,6 +397,33 @@ serve(async (req) => {
       throw new Error(`place_order_atomic failed: ${rpcError?.message ?? 'unknown'}`);
     }
 
+    // ── Create user_subscriptions rows for any plans in this order ──
+    // Wallet path: is_active=true immediately (payment already settled).
+    // Razorpay path: is_active=false + razorpay_order_id matching the order —
+    // verify-payment webhook flips them active on payment.captured using
+    // razorpay_order_id (existing logic, unchanged).
+    for (const plan of loadedPlans) {
+      const start = planStartById.get(plan.id);
+      const { error: subErr } = await supabase.from('user_subscriptions').insert({
+        user_id: user.id,
+        plan_id: plan.id,
+        start_date: start,
+        days_consumed: 0,
+        is_active: payment_method === 'wallet',
+        is_paused: false,
+        payment_method,
+        wallet_amount_used: 0,
+        razorpay_order_id: razorpayOrderId,
+        branch_id: plan.branch_id ?? null,
+      });
+      if (subErr) {
+        // Non-blocking — order is already live. Log for manual reconciliation.
+        console.error('[place-order] user_subscriptions insert failed:', {
+          plan_id: plan.id, order_id: newOrderId, error: subErr.message,
+        });
+      }
+    }
+
     const responsePayload = {
       id: newOrderId,
       status: orderStatus,
@@ -304,6 +431,7 @@ serve(async (req) => {
       razorpay_order_id: razorpayOrderId,
       payment_method,
       wallet_amount_used: walletAmountUsed,
+      subscription_count: loadedPlans.length,
     };
 
     // ── Cache the response under the idempotency key ──────────
@@ -319,20 +447,19 @@ serve(async (req) => {
     // ── Push notification (wallet orders are immediately Confirmed) ──
     // Razorpay orders start as Pending — push fires when verify-payment confirms them.
     if (payment_method === 'wallet') {
-      fetch(`${SUPABASE_URL}/functions/v1/send-push`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-        },
-        body: JSON.stringify({
-          user_ids: [user.id],
+      resolveAndSendPush({
+        supabase,
+        supabaseUrl: SUPABASE_URL,
+        serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY,
+        eventKey: 'order.confirmed',
+        userIds: [user.id],
+        vars: { order_id: newOrderId },
+        fallback: {
           title: 'Order Confirmed!',
           body: `Your order #${newOrderId} is confirmed. We are getting it ready!`,
-          data: { screen: 'OrderDetail', params: { orderId: newOrderId } },
-          trigger_source: 'order_status',
-          reference_id: String(newOrderId),
-        }),
+        },
+        data: { screen: 'OrderDetail', params: { orderId: newOrderId } },
+        referenceId: String(newOrderId),
       }).catch((e) => console.error('[place-order] push failed:', e));
     }
 

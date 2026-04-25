@@ -63,7 +63,8 @@ export function useReferralSettings() {
         .limit(1)
         .maybeSingle();
       if (error) throw error;
-      return mergedSettings(data);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return mergedSettings(data as any);
     },
     staleTime: QUERY_STALE_TIME,
   });
@@ -161,19 +162,21 @@ export async function checkAndGrantFirstOrderBonus(userId: string): Promise<void
   if (!profile?.referred_by) return;
 
   // Find the referral record
-  const { data: referral } = await supabase
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: referral } = await (supabase as any)
     .from('referrals')
     .select('id, status, first_order_reward_given')
     .eq('referee_id', userId)
     .eq('referrer_id', profile.referred_by)
-    .maybeSingle();
+    .maybeSingle() as { data: { id: number; status: string | null; first_order_reward_given: boolean | null } | null };
   if (!referral || referral.first_order_reward_given) return;
 
   // Get settings
   const { data: rawSettings } = await supabase
     .from('referral_settings')
     .select('*').limit(1).maybeSingle();
-  const settings = mergedSettings(rawSettings);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const settings = mergedSettings(rawSettings as any);
   if (!settings.is_active) return;
 
   // Count referee's orders
@@ -196,8 +199,9 @@ export async function checkAndGrantFirstOrderBonus(userId: string): Promise<void
     await creditLoyaltyPoints(profile.referred_by, settings.referrer_first_order_points);
   }
 
-  // Update referral record
-  await supabase
+  // Update referral record — first_order_reward_given column needs migration (see supabase/sql/referrals_reward_columns.sql)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (supabase as any)
     .from('referrals')
     .update({ status: 'first_order_done', first_order_reward_given: true, reward_given: true })
     .eq('id', referral.id);
@@ -235,17 +239,19 @@ export function useUpdateReferralSettings() {
         .limit(1)
         .maybeSingle();
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const db = supabase as any;
       if (existing?.id) {
-        const { error } = await supabase
+        const { error } = await db
           .from('referral_settings')
           .update({ ...settings, updated_at: new Date().toISOString() })
           .eq('id', existing.id);
-        if (error) throw new Error(error.message);
+        if (error) throw new Error((error as { message: string }).message);
       } else {
-        const { error } = await supabase
+        const { error } = await db
           .from('referral_settings')
           .insert({ ...REFERRAL_DEFAULTS, ...settings });
-        if (error) throw new Error(error.message);
+        if (error) throw new Error((error as { message: string }).message);
       }
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['referral_settings'] }),
@@ -260,7 +266,8 @@ export function useIssueMonthBonus() {
       const { data: rawSettings } = await supabase
         .from('referral_settings')
         .select('*').limit(1).maybeSingle();
-      const settings = mergedSettings(rawSettings);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const settings = mergedSettings(rawSettings as any);
 
       if (settings.referrer_month_credit > 0) {
         await creditWallet(
@@ -269,11 +276,12 @@ export function useIssueMonthBonus() {
           'Referral bonus — friend completed first month'
         );
       }
-      const { error } = await supabase
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error } = await (supabase as any)
         .from('referrals')
         .update({ status: 'month_complete', month_reward_given: true })
         .eq('id', referralId);
-      if (error) throw new Error(error.message);
+      if (error) throw new Error((error as { message: string }).message);
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin_referrals'] }),
   });

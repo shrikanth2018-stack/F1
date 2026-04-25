@@ -24,6 +24,7 @@ import { ThemedText } from '../../components/ThemedText';
 import { Divider } from '../../components/Divider';
 import { useStoreConfig } from '../../hooks/useStoreConfig';
 import { useUpdateStoreConfig } from '../../hooks/useStaffManagement';
+import type { AdminNavProp } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
@@ -139,7 +140,7 @@ function SectionLabel({ title }: { title: string }) {
 }
 
 // ── Main screen ──────────────────────────────────────────
-export function StoreConfigScreen({ navigation }: { navigation: any }) {
+export function StoreConfigScreen({ navigation }: { navigation: AdminNavProp }) {
   const { data: config, isLoading } = useStoreConfig();
   const updateConfig = useUpdateStoreConfig();
 

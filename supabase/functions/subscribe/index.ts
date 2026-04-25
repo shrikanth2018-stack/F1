@@ -17,6 +17,8 @@
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
+import { getUserFromJwt } from '../_shared/auth.ts';
+import { resolveAndSendPush } from '../_shared/notifications.ts';
 
 Deno.serve(async (req: Request) => {
   // Read env inside handler — prevents boot crash if keys not yet injected
@@ -53,15 +55,12 @@ Deno.serve(async (req: Request) => {
       return json({ error: 'Unauthorized' }, 401);
     }
 
-    console.log('[subscribe] Auth header present, verifying user...');
-
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Verify JWT and extract user
     const jwt = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabase.auth.getUser(jwt);
-    if (authError || !user) {
-      console.error('[subscribe] Auth failed:', authError?.message);
+    const user = getUserFromJwt(jwt);
+    if (!user) {
+      console.error('[subscribe] Invalid or expired JWT');
       return json({ error: 'Unauthorized' }, 401);
     }
     console.log('[subscribe] User verified:', user.id);
@@ -202,17 +201,19 @@ Deno.serve(async (req: Request) => {
         });
       }
       console.log('[subscribe] Wallet subscription created:', sub!.id);
-      fetch(`${SUPABASE_URL}/functions/v1/send-push`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
-        body: JSON.stringify({
-          user_ids: [user.id],
+      resolveAndSendPush({
+        supabase,
+        supabaseUrl: SUPABASE_URL,
+        serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY,
+        eventKey: 'subscription.activated',
+        userIds: [user.id],
+        vars: { plan_name: (plan as any).plan_name ?? 'subscription', start_date },
+        fallback: {
           title: 'Subscription Activated!',
           body: `Your ${(plan as any).plan_name ?? 'subscription'} is active. First delivery starts ${start_date}.`,
-          data: { screen: 'Subscriptions' },
-          trigger_source: 'subscription_activation',
-          reference_id: String(sub!.id),
-        }),
+        },
+        data: { screen: 'Subscriptions' },
+        referenceId: String(sub!.id),
       }).catch((e: any) => console.error('[subscribe] push failed:', e));
       return json(response, 200);
     }

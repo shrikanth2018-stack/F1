@@ -31,15 +31,21 @@ import type { OrderItem } from '../../types';
 // 'Paid' = Razorpay webhook confirmed but kitchen hasn't started yet — still cancellable
 const CANCELLABLE_STATUSES = new Set(['Pending', 'Confirmed', 'Paid', 'Preparing']);
 
-const STATUS_FLOW = [
-  'Confirmed',
-  'Preparing',
-  'Ready',
-  'Packed',
-  'Dispatched',
-  'On the Way',
-  'Delivered',
-];
+// Progress bar flows — per blueprint Sec 5.1.
+// Food includes kitchen prep states; Essentials skips them (no cooking).
+// "Received at Hub" only appears when the order is going via a hub.
+const FOOD_FLOW       = ['Confirmed', 'Preparing', 'Ready', 'Packed', 'Dispatched', 'On the Way', 'Delivered'];
+const ESSENTIALS_FLOW = ['Confirmed', 'Packed', 'Dispatched', 'On the Way', 'Delivered'];
+
+function buildStatusFlow(orderType: string | null | undefined, deliveryMethod: string | null | undefined): string[] {
+  const base = (orderType === 'essential' || orderType === 'essentials') ? ESSENTIALS_FLOW : FOOD_FLOW;
+  if (deliveryMethod !== 'hub') return base;
+  // Insert "Received at Hub" between Dispatched and On the Way
+  const out = [...base];
+  const dispatchedIdx = out.indexOf('Dispatched');
+  if (dispatchedIdx >= 0) out.splice(dispatchedIdx + 1, 0, 'Received at Hub');
+  return out;
+}
 
 export function OrderDetailScreen({ route, navigation }: any) {
   const { orderId } = route.params;
@@ -119,7 +125,8 @@ export function OrderDetailScreen({ route, navigation }: any) {
     );
   }
 
-  const currentStatusIndex = STATUS_FLOW.indexOf(order.status);
+  const statusFlow = buildStatusFlow((order as any).order_type, (order as any).delivery_method);
+  const currentStatusIndex = statusFlow.indexOf(order.status);
   const dispatchCycle = (cycles ?? []).find((c) => c.id === order.cycle_id);
   const dispatchTime = formatTime12h(dispatchCycle?.delivery_start);
 
@@ -208,7 +215,7 @@ export function OrderDetailScreen({ route, navigation }: any) {
                   )
               )}
             </View>
-            {STATUS_FLOW.map((status, index) => {
+            {statusFlow.map((status, index) => {
               const isCompleted = index <= currentStatusIndex;
               const isCurrent = index === currentStatusIndex;
               return (
@@ -220,7 +227,7 @@ export function OrderDetailScreen({ route, navigation }: any) {
                       isCurrent && styles.dotCurrent,
                     ]}
                   />
-                  {index < STATUS_FLOW.length - 1 && (
+                  {index < statusFlow.length - 1 && (
                     <View
                       style={[
                         styles.line,

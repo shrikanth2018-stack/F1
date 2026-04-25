@@ -102,10 +102,11 @@ export function AddAddressScreen({ navigation, onComplete }: Props) {
     if (zoneResult?.result === 'not_serviceable') {
       Alert.alert(
         'Outside Delivery Area',
-        "We don't deliver here yet, but we'll notify you when we expand to your area. Save this address anyway?",
+        "We don't deliver to this pin yet. You can move the pin to a valid location (e.g., your office), or enter anyway to browse — we'll notify you when we expand.",
         [
+          { text: 'Adjust the Pin' },
+          { text: 'Enter Anyway', onPress: () => saveAddress() },
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Save Anyway', onPress: () => saveAddress() },
         ]
       );
       return;
@@ -166,7 +167,7 @@ export function AddAddressScreen({ navigation, onComplete }: Props) {
 
   const indicatorText =
     zoneResult?.result === 'serviceable'
-      ? `✓  Serviceable${zoneResult.zoneName ? ` · ${zoneResult.zoneName}` : ''}`
+      ? `✓  Serviceable${zoneResult.zoneName ? ` · ${zoneResult.zoneName}` : zoneResult.hubName ? ` · ${zoneResult.hubName} (hub delivery)` : ''}`
       : zoneResult?.result === 'not_serviceable'
       ? '✕  Outside delivery area — we will notify you when available'
       : '';

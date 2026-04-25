@@ -25,6 +25,7 @@ import {
   useAddMenuItem,
   useAllDeliveryCycles,
 } from '../../hooks/useMenuManagement';
+import type { AdminScreenProps } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
@@ -33,7 +34,7 @@ const MEAL_CYCLES = ['Breakfast', 'Lunch', 'Snacks', 'Dinner'];
 
 type SubItem = { name: string; qty: string };
 
-export function CreateMenuScreen({ navigation, route }: { navigation: any; route: any }) {
+export function CreateMenuScreen({ navigation, route }: AdminScreenProps<'CreateMenu'>) {
   const { data: rawCycles = [] } = useAllDeliveryCycles();
   const cycles = rawCycles.filter((c: any) =>
     MEAL_CYCLES.some((m) => c.cycle_name?.toLowerCase().includes(m.toLowerCase()))

@@ -20,6 +20,7 @@ import { Theme } from '../../../theme';
 import { ThemedText } from '../../../components/ThemedText';
 import { EmptyState } from '../../../components/EmptyState';
 import { useRevenueDetailReport } from '../../../hooks/useReports';
+import type { AdminNavProp } from '../../../navigation/types';
 
 type Period = 'Weekly' | 'Monthly' | 'Quarterly';
 const PERIODS: Period[] = ['Weekly', 'Monthly', 'Quarterly'];
@@ -77,7 +78,7 @@ async function handleDownload(html: string) {
   }
 }
 
-export function RevenueReportScreen({ navigation }: { navigation: any }) {
+export function RevenueReportScreen({ navigation }: { navigation: AdminNavProp }) {
   const [period, setPeriod] = useState<Period>('Monthly');
   const { start, end } = useMemo(() => getPeriodRange(period), [period]);
   const { data, isLoading } = useRevenueDetailReport(start, end);

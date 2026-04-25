@@ -10,7 +10,8 @@
  * Idempotent: safe to call multiple times — checks reward_given before crediting.
  */
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
+import { getUserFromJwt } from '../_shared/auth.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -37,11 +38,8 @@ Deno.serve(async (req: Request) => {
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) return json({ error: 'Missing authorization' }, 401);
 
-    const userClient = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_ANON_KEY')!, {
-      global: { headers: { Authorization: authHeader } },
-    });
-    const { data: { user }, error: authError } = await userClient.auth.getUser();
-    if (authError || !user) return json({ error: 'Unauthorized' }, 401);
+    const user = getUserFromJwt(authHeader.replace('Bearer ', ''));
+    if (!user) return json({ error: 'Unauthorized' }, 401);
 
     const { code } = await req.json();
     if (!code || typeof code !== 'string') return json({ error: 'code is required' }, 400);

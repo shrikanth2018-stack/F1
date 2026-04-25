@@ -46,6 +46,8 @@ import { formatPriceShort } from '../../utils/formatters';
 import { supabase } from '../../api/supabaseClient';
 import { useLiveBanner, type CustomBannerContent } from '../../hooks/useBanner';
 import { useWalletNudge } from '../../hooks/useWalletNudge';
+import { useAddresses } from '../../hooks/useAddresses';
+import { essentialsCycleLabel } from '../../utils/cycleLabels';
 import { useStoreConfig } from '../../hooks/useStoreConfig';
 import { usePendingRazorpayOrder, useCancelOrder } from '../../hooks/useOrders';
 import { PendingPaymentBanner } from '../../components/PendingPaymentBanner';
@@ -157,7 +159,7 @@ function CyclePopup({ cycle, onClose }: { cycle: SectionMeta; onClose: () => voi
 }
 
 const popup = StyleSheet.create({
-  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.6)' },
+  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: Theme.colors.layout.overlay },
   box: {
     position: 'absolute',
     alignSelf: 'center',
@@ -348,6 +350,10 @@ export function HomeScreen() {
   const { data: config } = useStoreConfig();
   const stormMode = config?.storm_mode_active ?? false;
   const walletNudge = useWalletNudge();
+  const { data: addresses } = useAddresses();
+  // Lead-capture nudge: user entered via "Enter Anyway" with an out-of-zone pin.
+  // Checkout will block them until they add a serviceable address.
+  const outOfZone = (addresses?.length ?? 0) > 0 && !addresses!.some((a) => a.is_serviceable);
   const { data: pendingOrders } = usePendingRazorpayOrder();
   const pendingOrder = pendingOrders?.[0] ?? null;
   const { mutate: cancelOrder } = useCancelOrder();
@@ -408,8 +414,10 @@ export function HomeScreen() {
     opacity: toggleOpacity.value,
   }));
 
+  // Food: all 4 cycles serve food.
+  // Essentials: only cycles flagged is_essentials (Breakfast/Lunch/Dinner, not Snacks).
   const foodCycles = useMemo(
-    () => sortByCutoff((cycles ?? []).filter((c) => !c.is_essentials)),
+    () => sortByCutoff(cycles ?? []),
     [cycles]
   );
   const essentialsCycles = useMemo(
@@ -417,7 +425,14 @@ export function HomeScreen() {
     [cycles]
   );
   const foodSections = useMemo(() => buildSections(allMenuItems ?? [], foodCycles), [allMenuItems, foodCycles]);
-  const essentialsSections = useMemo(() => buildSections(essentials ?? [], essentialsCycles), [essentials, essentialsCycles]);
+  // Essentials sections re-label via each cycle's admin-defined essentials_label.
+  const essentialsSections = useMemo(
+    () => buildSections(essentials ?? [], essentialsCycles).map((s) => {
+      const cycle = essentialsCycles.find((c) => c.id === s.cycleId);
+      return { ...s, title: cycle ? essentialsCycleLabel(cycle) : s.title };
+    }),
+    [essentials, essentialsCycles]
+  );
 
   const addItem = useCartStore((s) => s.addItem);
   const updateQuantity = useCartStore((s) => s.updateQuantity);
@@ -530,6 +545,20 @@ export function HomeScreen() {
             {'⚠ '}
             {`Your wallet is ₹${walletNudge.shortfall?.toFixed(0)} short for ${walletNudge.planName} renewal. `}
             <ThemedText variant="small" color="mint">Top up →</ThemedText>
+          </ThemedText>
+        </TouchableOpacity>
+      )}
+
+      {outOfZone && (
+        <TouchableOpacity
+          style={styles.walletNudge}
+          onPress={() => navigation.navigate('AddAddress')}
+          activeOpacity={0.8}
+        >
+          <ThemedText variant="small" color="primary">
+            {'⚠ '}
+            {`Your address is outside our delivery area — checkout is disabled. `}
+            <ThemedText variant="small" color="mint">Add a valid address →</ThemedText>
           </ThemedText>
         </TouchableOpacity>
       )}
@@ -656,7 +685,7 @@ export function HomeScreen() {
         <TouchableOpacity
           style={styles.subsBtn}
           activeOpacity={0.75}
-          onPress={() => navigation.navigate('Plans')}
+          onPress={() => navigation.navigate('Plans', { initialTab: activeHomeTab })}
         >
           <Text style={styles.subsText}>Subscription Plans</Text>
         </TouchableOpacity>

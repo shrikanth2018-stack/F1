@@ -104,3 +104,14 @@ export function capitalize(text: string): string {
 export function formatOrderStatus(status: string): string {
   return capitalize(status.replace(/_/g, ' '));
 }
+
+/**
+ * Extract a human-readable message from an unknown catch-block value.
+ * Use instead of (e: any) => e?.message in mutation onError callbacks.
+ */
+export function getErrorMessage(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  if (typeof e === 'string') return e;
+  if (e && typeof e === 'object' && 'message' in e) return String((e as { message: unknown }).message);
+  return 'An unexpected error occurred';
+}

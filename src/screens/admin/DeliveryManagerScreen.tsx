@@ -1,7 +1,9 @@
 /**
  * 1stOne F1 — Delivery Manager
  *
- * 4-tab screen: Food Cycles | Essentials Cycles | Zones & Fees | Hubs
+ * 3-tab screen: Cycles | Zones & Fees | Hubs
+ * Cycles tab lists every delivery cycle; each card toggles whether it serves
+ * essentials and holds the customer-facing essentials label.
  *
  * Food / Essentials Cycles — inline-editable delivery times.
  * Zones & Fees — polygon zone editor: draw on map, set name / fee / hub.
@@ -25,11 +27,13 @@ import * as Location from 'expo-location';
 import { ZoneMap } from '../../components/ZoneMap';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
-import { useAllDeliveryCycles, useUpdateDeliveryCycle } from '../../hooks/useMenuManagement';
+import { PhonePicker, type PickedProfile } from '../../components/PhonePicker';
+import { useAllDeliveryCycles, useUpdateDeliveryCycle, useAddDeliveryCycle } from '../../hooks/useMenuManagement';
 import { useDeliveryZones, useAddZone, useUpdateZone, useDeleteZone } from '../../hooks/useDeliveryZones';
 import { useActiveHubs, useDeliveryHubs, useToggleHub } from '../../hooks/useDeliveryHubs';
 import { supabase } from '../../api/supabaseClient';
 import type { DeliveryCycle, DeliveryZone, DeliveryHub } from '../../types';
+import type { AdminNavProp } from '../../navigation/types';
 
 type Region = {
   latitude: number;
@@ -42,8 +46,8 @@ const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
 
 
-type DeliveryTab = 'Food Cycles' | 'Essentials Cycles' | 'Zones & Fees' | 'Hubs';
-const TABS: DeliveryTab[] = ['Food Cycles', 'Essentials Cycles', 'Zones & Fees', 'Hubs'];
+type DeliveryTab = 'Cycles' | 'Zones & Fees' | 'Hubs';
+const TABS: DeliveryTab[] = ['Cycles', 'Zones & Fees', 'Hubs'];
 
 // Default map region — central India; overridden by device location when available
 const DEFAULT_REGION: Region = {
@@ -126,18 +130,41 @@ const tf = StyleSheet.create({
 });
 
 // ── CycleCard ────────────────────────────────────────────────
-function CycleCard({ cycle, displayName }: { cycle: DeliveryCycle; displayName: string }) {
+function CycleCard({ cycle }: { cycle: DeliveryCycle }) {
   const update = useUpdateDeliveryCycle();
+  const [essLabel, setEssLabel] = useState(cycle.essentials_label ?? '');
+  const [cycleName, setCycleName] = useState(cycle.cycle_name);
 
   const save = (field: string, val: string) => {
     const formatted = val.length === 5 ? `${val}:00` : val;
     update.mutate({ id: cycle.id, [field]: formatted });
   };
 
+  const saveEssLabel = () => {
+    const trimmed = essLabel.trim();
+    update.mutate({ id: cycle.id, essentials_label: trimmed.length > 0 ? trimmed : null });
+  };
+
+  const saveCycleName = () => {
+    const trimmed = cycleName.trim();
+    if (trimmed.length > 0 && trimmed !== cycle.cycle_name) {
+      update.mutate({ id: cycle.id, cycle_name: trimmed });
+    } else {
+      setCycleName(cycle.cycle_name);
+    }
+  };
+
   return (
     <View style={card.container}>
       <View style={card.header}>
-        <ThemedText variant="body" color="primary" style={card.name}>{displayName}</ThemedText>
+        <TextInput
+          value={cycleName}
+          onChangeText={setCycleName}
+          onBlur={saveCycleName}
+          style={card.nameInput}
+          placeholder="Cycle name"
+          placeholderTextColor={Theme.colors.text.muted}
+        />
         <Switch
           value={cycle.is_active}
           onValueChange={(v) => update.mutate({ id: cycle.id, is_active: v })}
@@ -148,6 +175,30 @@ function CycleCard({ cycle, displayName }: { cycle: DeliveryCycle; displayName: 
       <TimeField label="Order Cut-off" value={cycle.cutoff_time} onCommit={(v) => save('cutoff_time', v)} />
       <TimeField label="Kitchen Push" value={cycle.kitchen_push_time} onCommit={(v) => save('kitchen_push_time', v)} />
       <TimeField label="Dispatch" value={cycle.delivery_start} onCommit={(v) => save('delivery_start', v)} />
+
+      {/* Essentials label — only meaningful when cycle supports essentials */}
+      <View style={card.labelRow}>
+        <ThemedText variant="small" color="muted" style={card.labelName}>Essentials Toggle</ThemedText>
+        <Switch
+          value={cycle.is_essentials}
+          onValueChange={(v) => update.mutate({ id: cycle.id, is_essentials: v })}
+          trackColor={{ true: Theme.colors.status.success, false: Theme.colors.background.tertiary }}
+          thumbColor={Theme.colors.text.primary}
+        />
+      </View>
+      {cycle.is_essentials && (
+        <View style={card.labelRow}>
+          <ThemedText variant="small" color="muted" style={card.labelName}>Essentials Label</ThemedText>
+          <TextInput
+            value={essLabel}
+            onChangeText={setEssLabel}
+            onBlur={saveEssLabel}
+            placeholder="e.g. Morning"
+            placeholderTextColor={Theme.colors.text.muted}
+            style={card.labelInput}
+          />
+        </View>
+      )}
     </View>
   );
 }
@@ -165,7 +216,206 @@ const card = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: Theme.spacing.xs,
   },
-  name: { fontSize: B, fontWeight: '600' },
+  nameInput: {
+    flex: 1,
+    fontSize: B,
+    fontWeight: '600',
+    color: Theme.colors.text.primary,
+    paddingVertical: 0,
+    marginRight: Theme.spacing.sm,
+  },
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: Theme.spacing.xs,
+  },
+  labelName: { fontSize: S, minWidth: 130 },
+  labelInput: {
+    flex: 1,
+    fontSize: S,
+    color: Theme.colors.text.primary,
+    paddingHorizontal: Theme.spacing.sm,
+    paddingVertical: Theme.spacing.xs,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Theme.colors.layout.divider,
+    textAlign: 'right',
+  },
+});
+
+// ── AddCycleModal ────────────────────────────────────────────
+function AddCycleModal({
+  visible,
+  onClose,
+}: {
+  visible: boolean;
+  onClose: () => void;
+}) {
+  const addCycle = useAddDeliveryCycle();
+  const [name, setName] = useState('');
+  const [cutoff, setCutoff] = useState('');
+  const [dispatch, setDispatch] = useState('');
+  const [isEss, setIsEss] = useState(false);
+  const [essLabel, setEssLabel] = useState('');
+
+  React.useEffect(() => {
+    if (visible) {
+      setName('');
+      setCutoff('');
+      setDispatch('');
+      setIsEss(false);
+      setEssLabel('');
+    }
+  }, [visible]);
+
+  const toHHMMSS = (v: string) => (v.length === 5 ? `${v}:00` : v);
+
+  const save = async () => {
+    if (!name.trim()) { Alert.alert('Missing', 'Enter a cycle name'); return; }
+    if (!/^\d{2}:\d{2}(:\d{2})?$/.test(cutoff)) { Alert.alert('Missing', 'Enter cut-off as HH:MM'); return; }
+    if (!/^\d{2}:\d{2}(:\d{2})?$/.test(dispatch)) { Alert.alert('Missing', 'Enter dispatch as HH:MM'); return; }
+    try {
+      await addCycle.mutateAsync({
+        cycle_name: name.trim(),
+        cutoff_time: toHHMMSS(cutoff),
+        delivery_start: toHHMMSS(dispatch),
+        kitchen_push_time: toHHMMSS(cutoff),
+        is_essentials: isEss,
+        essentials_label: isEss ? (essLabel.trim() || null) : null,
+      });
+      onClose();
+    } catch (e: any) {
+      Alert.alert('Failed', e?.message ?? 'Could not create cycle');
+    }
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={addModal.backdrop}>
+        <View style={addModal.sheet}>
+          <ThemedText variant="subtitle" color="primary" style={addModal.title}>Add Cycle</ThemedText>
+
+          <View style={addModal.row}>
+            <ThemedText variant="small" color="muted" style={addModal.label}>Name</ThemedText>
+            <TextInput
+              value={name}
+              onChangeText={setName}
+              placeholder="e.g. Late Dinner"
+              placeholderTextColor={Theme.colors.text.muted}
+              style={addModal.input}
+            />
+          </View>
+
+          <View style={addModal.row}>
+            <ThemedText variant="small" color="muted" style={addModal.label}>Cut-off (HH:MM)</ThemedText>
+            <TextInput
+              value={cutoff}
+              onChangeText={setCutoff}
+              placeholder="21:00"
+              placeholderTextColor={Theme.colors.text.muted}
+              style={addModal.input}
+              maxLength={5}
+            />
+          </View>
+
+          <View style={addModal.row}>
+            <ThemedText variant="small" color="muted" style={addModal.label}>Dispatch (HH:MM)</ThemedText>
+            <TextInput
+              value={dispatch}
+              onChangeText={setDispatch}
+              placeholder="22:00"
+              placeholderTextColor={Theme.colors.text.muted}
+              style={addModal.input}
+              maxLength={5}
+            />
+          </View>
+
+          <View style={addModal.row}>
+            <ThemedText variant="small" color="muted" style={addModal.label}>Essentials cycle</ThemedText>
+            <Switch
+              value={isEss}
+              onValueChange={setIsEss}
+              trackColor={{ true: Theme.colors.status.success, false: Theme.colors.background.tertiary }}
+              thumbColor={Theme.colors.text.primary}
+            />
+          </View>
+
+          {isEss && (
+            <View style={addModal.row}>
+              <ThemedText variant="small" color="muted" style={addModal.label}>Essentials Label</ThemedText>
+              <TextInput
+                value={essLabel}
+                onChangeText={setEssLabel}
+                placeholder="e.g. Morning"
+                placeholderTextColor={Theme.colors.text.muted}
+                style={addModal.input}
+              />
+            </View>
+          )}
+
+          <View style={addModal.actions}>
+            <TouchableOpacity onPress={onClose} style={addModal.btn}>
+              <ThemedText variant="body" color="muted">Cancel</ThemedText>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={save} style={addModal.btn} disabled={addCycle.isPending}>
+              {addCycle.isPending ? (
+                <ActivityIndicator color={Theme.colors.text.mint} />
+              ) : (
+                <ThemedText variant="body" color="mint">Save</ThemedText>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+const addBtn = StyleSheet.create({
+  row: {
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.sm + 2,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Theme.colors.layout.divider,
+  },
+});
+
+const addModal = StyleSheet.create({
+  backdrop: {
+    flex: 1,
+    backgroundColor: Theme.colors.layout.overlayHeavy,
+    justifyContent: 'center',
+    paddingHorizontal: Theme.spacing.md,
+  },
+  sheet: {
+    backgroundColor: Theme.colors.background.secondary,
+    borderRadius: 12,
+    padding: Theme.spacing.md,
+  },
+  title: { marginBottom: Theme.spacing.sm, textAlign: 'center' },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: Theme.spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Theme.colors.layout.divider,
+  },
+  label: { minWidth: 140, fontSize: S },
+  input: {
+    flex: 1,
+    fontSize: S,
+    color: Theme.colors.text.primary,
+    textAlign: 'right',
+    paddingHorizontal: Theme.spacing.xs,
+  },
+  actions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: Theme.spacing.lg,
+    marginTop: Theme.spacing.md,
+  },
+  btn: { paddingVertical: Theme.spacing.xs },
 });
 
 // ── ZoneEditorModal ──────────────────────────────────────────
@@ -191,6 +441,17 @@ function ZoneEditorModal({ visible, editingZone, onClose }: ZoneEditorModalProps
     editingZone?.delivery_fee_override != null ? String(editingZone.delivery_fee_override) : ''
   );
   const [selectedHubId, setSelectedHubId] = useState<number | null>(editingZone?.hub_id ?? null);
+  // Driver phone-picker state — seeded from existing zone if set
+  const [driver, setDriver] = useState<PickedProfile | null>(
+    editingZone?.driver_user_id
+      ? {
+          userId:     editingZone.driver_user_id,
+          name:       '',
+          phone:      '',
+          employeeId: editingZone.driver_code ?? null,
+        }
+      : null
+  );
   const [mapRegion, setMapRegion] = useState<Region>(DEFAULT_REGION);
 
   const centreOnDeviceLocation = async () => {
@@ -215,6 +476,7 @@ function ZoneEditorModal({ visible, editingZone, onClose }: ZoneEditorModalProps
       setZoneName('');
       setFeeOverride('');
       setSelectedHubId(null);
+      setDriver(null);
       centreOnDeviceLocation();
     } else if (editingZone?.polygon_geojson?.length) {
       const lats = editingZone.polygon_geojson.map((p) => p.lat);
@@ -237,9 +499,16 @@ function ZoneEditorModal({ visible, editingZone, onClose }: ZoneEditorModalProps
       Alert.alert('Required', 'Tap at least 3 points on the map to define the zone boundary.');
       return;
     }
+    if (!driver) {
+      Alert.alert('Required', 'Please assign a driver — orders in this zone need one.');
+      return;
+    }
 
     const polygon_geojson = vertices;
     const fee = feeOverride.trim() ? parseFloat(feeOverride) : null;
+    // Display token mirrors staff's employee_id; fallback to last-4 phone.
+    const derivedDriverCode = driver.employeeId?.trim()
+      || `D-${(driver.phone ?? '').slice(-4) || '????'}`;
 
     try {
       if (isEditing) {
@@ -249,6 +518,8 @@ function ZoneEditorModal({ visible, editingZone, onClose }: ZoneEditorModalProps
           polygon_geojson,
           delivery_fee_override: fee,
           hub_id: selectedHubId,
+          driver_code: derivedDriverCode,
+          driver_user_id: driver.userId,
         });
       } else {
         await addZone.mutateAsync({
@@ -256,6 +527,8 @@ function ZoneEditorModal({ visible, editingZone, onClose }: ZoneEditorModalProps
           polygon_geojson,
           delivery_fee_override: fee,
           hub_id: selectedHubId,
+          driver_code: derivedDriverCode,
+          driver_user_id: driver.userId,
         });
       }
       onClose();
@@ -314,6 +587,19 @@ function ZoneEditorModal({ visible, editingZone, onClose }: ZoneEditorModalProps
               onChangeText={setZoneName}
               placeholder="e.g. North Bangalore"
               placeholderTextColor={Theme.colors.text.muted}
+            />
+          </View>
+          <View style={em.hairline} />
+
+          {/* Driver — phone-picked from staff; display driver_code auto-fills from employee_id */}
+          <View style={em.fieldBlock}>
+            <ThemedText variant="small" color="muted" style={em.fieldLabel}>Driver *</ThemedText>
+            <PhonePicker
+              value={driver}
+              onChange={setDriver}
+              roleFilter="staff"
+              labelNotFound="Not a staff member. Elevate them via Manage → Staff first."
+              labelPlaceholder="Enter driver's 10-digit phone"
             />
           </View>
           <View style={em.hairline} />
@@ -391,6 +677,10 @@ const em = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.sm,
+  },
+  fieldBlock: {
     paddingHorizontal: Theme.spacing.md,
     paddingVertical: Theme.spacing.sm,
   },
@@ -556,7 +846,7 @@ const zt = StyleSheet.create({
 });
 
 // ── HubsTab ───────────────────────────────────────────────────
-function HubsTab({ navigation }: { navigation: any }) {
+function HubsTab({ navigation }: { navigation: AdminNavProp }) {
   const { data: hubs = [], isLoading } = useDeliveryHubs();
   const toggleHub = useToggleHub();
 
@@ -607,7 +897,7 @@ function HubsTab({ navigation }: { navigation: any }) {
     <View style={ht.container}>
       <TouchableOpacity
         style={ht.addRow}
-        onPress={() => navigation.navigate('HubDetail')}
+        onPress={() => navigation.navigate('HubDetail', {})}
         activeOpacity={0.7}
       >
         <ThemedText variant="body" color="mint" style={ht.addText}>+ New Hub</ThemedText>
@@ -695,33 +985,26 @@ const ht = StyleSheet.create({
 });
 
 // ── Main screen ──────────────────────────────────────────────
-export function DeliveryManagerScreen({ navigation }: { navigation: any }) {
-  const [activeTab, setActiveTab] = useState<DeliveryTab>('Food Cycles');
+export function DeliveryManagerScreen({ navigation }: { navigation: AdminNavProp }) {
+  const [activeTab, setActiveTab] = useState<DeliveryTab>('Cycles');
 
   const { data: allCycles = [] } = useAllDeliveryCycles();
 
-  // Food cycles: is_essentials = false (Breakfast / Lunch / Snacks / Dinner)
-  const foodCycles = React.useMemo(
-    () => (allCycles as DeliveryCycle[]).filter((c) => !c.is_essentials),
-    [allCycles]
-  );
+  // One unified list — each card shows the is_essentials toggle + essentials label.
+  const cycles = React.useMemo(() => (allCycles as DeliveryCycle[]), [allCycles]);
 
-  // Essentials cycles: is_essentials = true (Morning / Midday / Evening — whatever is in DB)
-  const essentialsCycles = React.useMemo(
-    () => (allCycles as DeliveryCycle[]).filter((c) => c.is_essentials),
-    [allCycles]
-  );
+  const [addCycleOpen, setAddCycleOpen] = useState(false);
 
-  const renderCycles = (essentials: boolean) => {
-    const list = essentials ? essentialsCycles : foodCycles;
-    return list.map((c) => (
-      <CycleCard
-        key={c.id}
-        cycle={c}
-        displayName={c.cycle_name}
-      />
-    ));
-  };
+  const renderCycles = () => (
+    <>
+      <TouchableOpacity style={addBtn.row} onPress={() => setAddCycleOpen(true)} activeOpacity={0.6}>
+        <ThemedText variant="body" color="mint">+ Add Cycle</ThemedText>
+      </TouchableOpacity>
+      {cycles.map((c) => (
+        <CycleCard key={c.id} cycle={c} />
+      ))}
+    </>
+  );
 
   return (
     <SafeAreaView style={styles.container}>
@@ -759,15 +1042,20 @@ export function DeliveryManagerScreen({ navigation }: { navigation: any }) {
         ))}
       </ScrollView>
 
-      {activeTab === 'Food Cycles' || activeTab === 'Essentials Cycles' ? (
+      {activeTab === 'Cycles' ? (
         <ScrollView showsVerticalScrollIndicator={false}>
-          {renderCycles(activeTab === 'Essentials Cycles')}
+          {renderCycles()}
         </ScrollView>
       ) : activeTab === 'Zones & Fees' ? (
         <ZonesTab />
       ) : (
         <HubsTab navigation={navigation} />
       )}
+
+      <AddCycleModal
+        visible={addCycleOpen}
+        onClose={() => setAddCycleOpen(false)}
+      />
     </SafeAreaView>
   );
 }

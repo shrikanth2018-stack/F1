@@ -11,6 +11,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../api/supabaseClient';
 import { useAuth } from './useAuth';
+import { useBranchFilter } from './useBranchFilter';
 import { QUERY_KEYS, QUERY_STALE_TIME } from '../utils/constants';
 import type { Profile, ExpenseClaim, StaffLeave, StaffAttendance } from '../types';
 
@@ -84,14 +85,16 @@ export function useReviewExpense() {
   });
 }
 
-/** Fetch all leave requests */
+/** Fetch all leave requests — branch-filtered via the staff member's profile */
 export function useAllLeaveRequests(statusFilter?: string) {
+  const bf = useBranchFilter();
   return useQuery({
-    queryKey: ['admin_leaves', statusFilter ?? 'all'],
+    queryKey: ['admin_leaves', statusFilter ?? 'all', bf.isActive ? bf.branchId ?? 'all' : 'off'],
     queryFn: async () => {
+      // staff_leaves has no branch_id column — join profiles to filter by branch.
       let query = supabase
         .from('staff_leaves')
-        .select('*, profiles!staff_leaves_staff_id_fkey(full_name, phone_number)')
+        .select('*, profiles!staff_leaves_staff_id_fkey(full_name, phone_number, branch_id)')
         .order('created_at', { ascending: false });
 
       if (statusFilter) {
@@ -100,7 +103,12 @@ export function useAllLeaveRequests(statusFilter?: string) {
 
       const { data, error } = await query;
       if (error) throw error;
-      return (data ?? []) as (StaffLeave & { profiles: any })[];
+      const rows = (data ?? []) as (StaffLeave & { profiles: { branch_id: number | null } & Record<string, unknown> })[];
+
+      if (!bf.isActive || bf.branchId == null) {
+        return rows as unknown as (StaffLeave & { profiles: any })[];
+      }
+      return rows.filter((r) => r.profiles?.branch_id === bf.branchId) as unknown as (StaffLeave & { profiles: any })[];
     },
     staleTime: QUERY_STALE_TIME,
   });
@@ -163,7 +171,8 @@ export function useUpdateStoreConfig() {
     mutationFn: async (updates: Record<string, unknown>) => {
       const { error } = await supabase
         .from('store_config')
-        .update(updates)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .update(updates as any)
         .eq('id', 1);
       if (error) throw error;
     },

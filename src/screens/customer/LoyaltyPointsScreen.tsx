@@ -19,8 +19,9 @@ import { ThemedText } from '../../components/ThemedText';
 import { Divider } from '../../components/Divider';
 import { EmptyState } from '../../components/EmptyState';
 import { useWalletBalance } from '../../hooks/useWallet';
+import type { CustomerNavProp } from '../../navigation/types';
 
-export function LoyaltyPointsScreen({ navigation }: { navigation: any }) {
+export function LoyaltyPointsScreen({ navigation }: { navigation: CustomerNavProp }) {
   const insets = useSafeAreaInsets();
   const { data: wallet } = useWalletBalance();
   const [redeemEnabled, setRedeemEnabled] = useState(false);

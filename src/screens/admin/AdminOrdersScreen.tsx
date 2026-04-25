@@ -23,6 +23,7 @@ import { DispatchBadge } from '../../components/DispatchBadge';
 import { useAdminCancelOrder } from '../../hooks/useAdminOrders';
 import { supabase } from '../../api/supabaseClient';
 import { formatPriceShort, formatDateShort } from '../../utils/formatters';
+import type { AdminNavProp } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
@@ -54,7 +55,7 @@ function useOrdersForDate(date: string) {
 
       if (!data || data.length === 0) return [];
 
-      const userIds = [...new Set(data.map((o) => o.user_id))];
+      const userIds = [...new Set(data.map((o) => o.user_id).filter((id): id is string => id != null))];
       const { data: profiles } = await supabase
         .from('profiles')
         .select('id, full_name, phone_number')
@@ -70,20 +71,21 @@ function useOrdersForDate(date: string) {
 
       const itemsMap: Record<number, { item_name: string; quantity: number }[]> = {};
       for (const item of items ?? []) {
-        if (!itemsMap[item.order_id]) itemsMap[item.order_id] = [];
-        itemsMap[item.order_id].push(item);
+        const oid = item.order_id ?? 0;
+        if (!itemsMap[oid]) itemsMap[oid] = [];
+        itemsMap[oid].push({ item_name: item.item_name ?? '', quantity: item.quantity ?? 0 });
       }
 
       return data.map((o) => ({
         ...o,
-        profile: profileMap[o.user_id] ?? null,
+        profile: o.user_id ? (profileMap[o.user_id] ?? null) : null,
         items: itemsMap[o.id] ?? [],
       }));
     },
   });
 }
 
-export function AdminOrdersScreen({ navigation }: any) {
+export function AdminOrdersScreen({ navigation }: { navigation: AdminNavProp }) {
   const [dateOffset, setDateOffset] = useState(0);
   const date = getDateStr(dateOffset);
 
@@ -174,17 +176,17 @@ export function AdminOrdersScreen({ navigation }: any) {
                 <ThemedText variant="body" color="primary" style={styles.txt}>
                   #{item.id} — {customer}
                 </ThemedText>
-                <DispatchBadge label={item.status} variant={STATUS_VARIANT[item.status] ?? 'info'} />
+                <DispatchBadge label={item.status ?? ''} variant={STATUS_VARIANT[item.status ?? ''] ?? 'info'} />
               </View>
               <ThemedText variant="small" color="subtitle" style={[styles.sub, { marginBottom: 4 }]}>
                 {itemsLabel}
               </ThemedText>
               <View style={styles.rowBottom}>
                 <ThemedText variant="small" color="muted" style={styles.sub}>
-                  {formatPriceShort(item.total_amount)}
-                  {item.wallet_amount_used > 0 ? `  (₹${item.wallet_amount_used} wallet)` : ''}
+                  {formatPriceShort(item.total_amount ?? 0)}
+                  {(item.wallet_amount_used ?? 0) > 0 ? `  (₹${item.wallet_amount_used} wallet)` : ''}
                 </ThemedText>
-                {CANCELLABLE.has(item.status) && (
+                {CANCELLABLE.has(item.status ?? '') && (
                   <TouchableOpacity onPress={() => handleCancel(item)} activeOpacity={0.6}>
                     <ThemedText variant="small" style={styles.cancelText}>Cancel</ThemedText>
                   </TouchableOpacity>

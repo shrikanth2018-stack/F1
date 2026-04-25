@@ -454,7 +454,7 @@ const styles = StyleSheet.create({
 const cal = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: Theme.colors.layout.overlayMedium,
     justifyContent: 'flex-end',
   },
   box: {

@@ -58,13 +58,18 @@ interface HubPayload {
   staff_phone?: string | null;
   extends_coverage?: boolean;
   branch_id?: number | null;
+  driver_code?: string | null;
+  driver_user_id?: string | null;
+  delivery_fee_override?: number | null;
+  commission_percent?: number | null;
 }
 
 export function useAddHub() {
   const bf = useBranchFilter();
   return useSupabaseMutation<HubPayload, DeliveryHub>(
     (payload) =>
-      supabase.from('delivery_hubs').insert({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (supabase.from('delivery_hubs') as any).insert({
         ...payload,
         is_active: true,
         branch_id: payload.branch_id ?? (bf.isActive ? bf.branchId : null),
@@ -76,9 +81,38 @@ export function useAddHub() {
 export function useUpdateHub() {
   return useSupabaseMutation<{ id: number } & Partial<HubPayload & { is_active: boolean }>>(
     ({ id, ...payload }) =>
-      supabase.from('delivery_hubs').update(payload).eq('id', id),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (supabase.from('delivery_hubs') as any).update(payload).eq('id', id),
     [QUERY_KEYS.HUBS]
   );
+}
+
+/**
+ * Atomically assign (or unassign) a hub's operator.
+ * Calls the assign_hub_operator RPC which:
+ *   - Clears the previous operator's profiles.assigned_hub_id (if different)
+ *   - Sets the new operator's profiles.assigned_hub_id to this hub
+ *   - Writes delivery_hubs.staff_user_id
+ * Pass p_new_user_id = null to unassign.
+ */
+export function useAssignHubOperator() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: {
+      hubId: number;
+      newUserId: string | null;
+      oldUserId: string | null;
+    }) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error } = await (supabase as any).rpc('assign_hub_operator', {
+        p_hub_id:       payload.hubId,
+        p_new_user_id:  payload.newUserId,
+        p_old_user_id:  payload.oldUserId,
+      });
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: QUERY_KEYS.HUBS }),
+  });
 }
 
 export function useToggleHub() {

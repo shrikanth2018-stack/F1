@@ -20,6 +20,7 @@ import { Theme } from '../../../theme';
 import { ThemedText } from '../../../components/ThemedText';
 import { EmptyState } from '../../../components/EmptyState';
 import { useStaffAttendanceReport } from '../../../hooks/useReports';
+import type { AdminNavProp } from '../../../navigation/types';
 
 type Period = 'Weekly' | 'Monthly' | 'Quarterly';
 const PERIODS: Period[] = ['Weekly', 'Monthly', 'Quarterly'];
@@ -75,7 +76,7 @@ async function handleDownload(html: string) {
   }
 }
 
-export function StaffReportScreen({ navigation }: { navigation: any }) {
+export function StaffReportScreen({ navigation }: { navigation: AdminNavProp }) {
   const [period, setPeriod] = useState<Period>('Monthly');
   const { start, end } = useMemo(() => getPeriodRange(period), [period]);
   const { data, isLoading } = useStaffAttendanceReport(start, end);

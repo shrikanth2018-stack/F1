@@ -29,6 +29,7 @@ import {
 } from '../../hooks/useSubscriptionPlans';
 import { useAllDeliveryCycles } from '../../hooks/useMenuManagement';
 import { CYCLE_DISPLAY } from '../../hooks/useEssentialsCatalog';
+import type { AdminNavProp } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
@@ -41,7 +42,7 @@ function parsePlanItems(raw: string): { item_name: string; quantity: number }[] 
   try { return JSON.parse(raw) ?? []; } catch { return []; }
 }
 
-export function PlansManageScreen({ navigation }: { navigation: any }) {
+export function PlansManageScreen({ navigation }: { navigation: AdminNavProp }) {
   const { data: rawCycles = [] } = useAllDeliveryCycles();
   const cycles = useMemo(
     () => rawCycles.filter((c: any) =>

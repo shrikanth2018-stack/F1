@@ -20,6 +20,7 @@
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
+import { resolveAndSendPush } from '../_shared/notifications.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -63,70 +64,102 @@ Deno.serve(async (req: Request) => {
 
     if (subsErr) throw subsErr;
 
-    type ExpiryBucket = { userId: string; subId: number; planName: string; daysLeft: number };
-    const oneDay: ExpiryBucket[] = [];
-    const twoDay: ExpiryBucket[] = [];
+    type Bucket = { userId: string; subId: number; planName: string };
+    const oneDay: Bucket[] = [];
+    const twoDay: Bucket[] = [];
+    const startingTomorrow: Bucket[] = [];
+
+    const tomorrowStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' })
+      .format(new Date(Date.now() + 86_400_000));
 
     for (const sub of subs ?? []) {
       const plan = sub.subscription_plans as any;
       if (!plan?.duration_days || !sub.start_date) continue;
 
+      // Starts-tomorrow: day before first delivery (heads-up push).
+      if (sub.start_date === tomorrowStr) {
+        startingTomorrow.push({ userId: sub.user_id, subId: sub.id, planName: plan.plan_name });
+      }
+
       const endMs = new Date(sub.start_date + 'T00:00:00Z').getTime() + plan.duration_days * 86_400_000;
       const daysLeft = Math.round((endMs - todayMs) / 86_400_000);
 
       if (daysLeft === 1) {
-        oneDay.push({ userId: sub.user_id, subId: sub.id, planName: plan.plan_name, daysLeft: 1 });
+        oneDay.push({ userId: sub.user_id, subId: sub.id, planName: plan.plan_name });
       } else if (daysLeft === 2) {
-        twoDay.push({ userId: sub.user_id, subId: sub.id, planName: plan.plan_name, daysLeft: 2 });
+        twoDay.push({ userId: sub.user_id, subId: sub.id, planName: plan.plan_name });
       }
     }
 
     const results: any[] = [];
 
+    // ── Send starts-tomorrow notices (heads-up the day before first delivery) ──
+    for (const { userId, subId, planName } of startingTomorrow) {
+      const r = await resolveAndSendPush({
+        supabase,
+        supabaseUrl: SUPABASE_URL,
+        serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY,
+        eventKey: 'subscription.starting_tomorrow',
+        userIds: [userId],
+        vars: { plan_name: planName },
+        fallback: {
+          title: 'Subscription Starts Tomorrow',
+          body: `Your ${planName} subscription starts tomorrow. First delivery on the way!`,
+        },
+        data: { screen: 'Subscriptions' },
+        referenceId: String(subId),
+      });
+      results.push({ subId, phase: 'starting_tomorrow', ...r });
+    }
+
     // ── Send 1-day notices ──────────────────────────────────────
     for (const { userId, subId, planName } of oneDay) {
-      const pushRes = await fetch(SUPABASE_URL + '/functions/v1/send-push', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-        },
-        body: JSON.stringify({
-          user_ids: [userId],
+      const r = await resolveAndSendPush({
+        supabase,
+        supabaseUrl: SUPABASE_URL,
+        serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY,
+        eventKey: 'subscription.ending_1d',
+        userIds: [userId],
+        vars: { plan_name: planName },
+        fallback: {
           title: 'Subscription Ending Tomorrow',
           body: `Your ${planName} subscription ends tomorrow. Renew now to stay uninterrupted!`,
-          data: { screen: 'PlanDetail', params: { subscriptionId: subId }, trigger_source: 'subscription_expiry' },
-          trigger_source: 'subscription_expiry',
-          reference_id: String(subId),
-        }),
+        },
+        data: { screen: 'PlanDetail', params: { subscriptionId: subId } },
+        referenceId: String(subId),
       });
-      results.push({ subId, daysLeft: 1, status: pushRes.status });
+      results.push({ subId, daysLeft: 1, ...r });
     }
 
     // ── Send 2-day notices ──────────────────────────────────────
     for (const { userId, subId, planName } of twoDay) {
-      const pushRes = await fetch(SUPABASE_URL + '/functions/v1/send-push', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-        },
-        body: JSON.stringify({
-          user_ids: [userId],
+      const r = await resolveAndSendPush({
+        supabase,
+        supabaseUrl: SUPABASE_URL,
+        serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY,
+        eventKey: 'subscription.ending_2d',
+        userIds: [userId],
+        vars: { plan_name: planName },
+        fallback: {
           title: 'Subscription Ending in 2 Days',
           body: `Your ${planName} subscription ends in 2 days. Renew now to keep your meals coming!`,
-          data: { screen: 'PlanDetail', params: { subscriptionId: subId }, trigger_source: 'subscription_expiry' },
-          trigger_source: 'subscription_expiry',
-          reference_id: String(subId),
-        }),
+        },
+        data: { screen: 'PlanDetail', params: { subscriptionId: subId } },
+        referenceId: String(subId),
       });
-      results.push({ subId, daysLeft: 2, status: pushRes.status });
+      results.push({ subId, daysLeft: 2, ...r });
     }
 
     console.log(
-      `[subscription-expiry-push] ${todayStr}: ${oneDay.length} × 1-day, ${twoDay.length} × 2-day notices sent`,
+      `[subscription-expiry-push] ${todayStr}: ${startingTomorrow.length} × starts-tomorrow, ${oneDay.length} × 1-day, ${twoDay.length} × 2-day notices sent`,
     );
-    return json({ date: todayStr, one_day: oneDay.length, two_day: twoDay.length, results });
+    return json({
+      date: todayStr,
+      starting_tomorrow: startingTomorrow.length,
+      one_day: oneDay.length,
+      two_day: twoDay.length,
+      results,
+    });
 
   } catch (err: any) {
     console.error('[subscription-expiry-push] error:', err?.message);

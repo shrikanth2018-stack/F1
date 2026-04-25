@@ -34,6 +34,7 @@ import {
 import { useDeliveryHubs } from '../../hooks/useDeliveryHubs';
 import { useAllStaff } from '../../hooks/useStaffManagement';
 import type { Profile, StaffAttendance, StaffLeave, StaffSalary } from '../../types';
+import type { AdminScreenProps } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
@@ -899,14 +900,8 @@ const tab = StyleSheet.create({
 });
 
 // ── Main screen ───────────────────────────────────────────────
-export function EmployeeDetailScreen({
-  navigation,
-  route,
-}: {
-  navigation: any;
-  route: any;
-}) {
-  const { staffId } = route.params as { staffId: string };
+export function EmployeeDetailScreen({ navigation, route }: AdminScreenProps<'EmployeeDetail'>) {
+  const { staffId } = route.params;
   const [activeTab, setActiveTab] = useState<DetailTab>('Profile');
 
   const { data: allStaff = [] } = useAllStaff();

@@ -48,8 +48,8 @@ export function useRevenueReport(startDate: string, endDate: string) {
         dailyMap[d].revenue += o.total_amount;
         dailyMap[d].count += 1;
         totalRevenue += o.total_amount;
-        totalTax += o.tax_amount;
-        totalDeliveryFees += o.delivery_fee;
+        totalTax += o.tax_amount ?? 0;
+        totalDeliveryFees += o.delivery_fee ?? 0;
         totalOrders += 1;
       }
 
@@ -96,19 +96,19 @@ export function useOrderReport(startDate: string, endDate: string) {
       // By status
       const statusBreakdown: Record<string, number> = {};
       for (const o of orders) {
-        statusBreakdown[o.status] = (statusBreakdown[o.status] || 0) + 1;
+        statusBreakdown[o.status ?? 'unknown'] = (statusBreakdown[o.status ?? 'unknown'] || 0) + 1;
       }
 
       // By cycle
       const cycleBreakdown: Record<number, number> = {};
       for (const o of orders) {
-        cycleBreakdown[o.cycle_id] = (cycleBreakdown[o.cycle_id] || 0) + 1;
+        cycleBreakdown[o.cycle_id ?? 0] = (cycleBreakdown[o.cycle_id ?? 0] || 0) + 1;
       }
 
       // By type
       const typeBreakdown: Record<string, number> = {};
       for (const o of orders) {
-        typeBreakdown[o.order_type] = (typeBreakdown[o.order_type] || 0) + 1;
+        typeBreakdown[o.order_type ?? 'unknown'] = (typeBreakdown[o.order_type ?? 'unknown'] || 0) + 1;
       }
 
       // Daily counts
@@ -208,10 +208,10 @@ export function useStaffAttendanceReport(startDate: string, endDate: string) {
       }> = {};
 
       for (const r of records) {
-        const id = r.staff_id;
+        const id = r.staff_id ?? 'unknown';
         if (!staffMap[id]) {
           staffMap[id] = {
-            name: r.profiles?.full_name || r.profiles?.phone_number || id,
+            name: (r as any).profiles?.full_name || (r as any).profiles?.phone_number || id,
             daysPresent: 0,
             totalHours: 0,
           };
@@ -372,7 +372,7 @@ export function useExpenseReport(startDate: string, endDate: string) {
       if (error) throw error;
       const claims = data ?? [];
 
-      const totalAmount = claims.reduce((s, c) => s + c.amount, 0);
+      const totalAmount = claims.reduce((s, c) => s + (c.amount ?? 0), 0);
       const approved = claims.filter((c) => c.status === 'Approved');
       const pending = claims.filter((c) => c.status === 'Pending');
       const rejected = claims.filter((c) => c.status === 'Rejected');
@@ -380,15 +380,16 @@ export function useExpenseReport(startDate: string, endDate: string) {
       // By category
       const categoryBreakdown: Record<string, number> = {};
       for (const c of claims) {
-        categoryBreakdown[c.category] = (categoryBreakdown[c.category] || 0) + c.amount;
+        const cat = c.category ?? 'unknown';
+        categoryBreakdown[cat] = (categoryBreakdown[cat] || 0) + (c.amount ?? 0);
       }
 
       return {
         total: claims.length,
         totalAmount,
-        approvedAmount: approved.reduce((s, c) => s + c.amount, 0),
-        pendingAmount: pending.reduce((s, c) => s + c.amount, 0),
-        rejectedAmount: rejected.reduce((s, c) => s + c.amount, 0),
+        approvedAmount: approved.reduce((s, c) => s + (c.amount ?? 0), 0),
+        pendingAmount: pending.reduce((s, c) => s + (c.amount ?? 0), 0),
+        rejectedAmount: rejected.reduce((s, c) => s + (c.amount ?? 0), 0),
         approvedCount: approved.length,
         pendingCount: pending.length,
         rejectedCount: rejected.length,

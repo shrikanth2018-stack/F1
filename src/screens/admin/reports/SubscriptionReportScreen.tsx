@@ -20,6 +20,7 @@ import { Theme } from '../../../theme';
 import { ThemedText } from '../../../components/ThemedText';
 import { EmptyState } from '../../../components/EmptyState';
 import { useSubscriptionReport, useSubscriptionPlanReport } from '../../../hooks/useReports';
+import type { AdminNavProp } from '../../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
@@ -66,7 +67,7 @@ async function handleDownload(html: string) {
   }
 }
 
-export function SubscriptionReportScreen({ navigation }: { navigation: any }) {
+export function SubscriptionReportScreen({ navigation }: { navigation: AdminNavProp }) {
   const { data: overview, isLoading } = useSubscriptionReport();
   const { data: plans = [] } = useSubscriptionPlanReport();
 

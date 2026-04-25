@@ -21,13 +21,14 @@ import { ThemedText } from '../../components/ThemedText';
 import { useAddPlan, type PlanType, type PlanItem } from '../../hooks/useSubscriptionPlans';
 import { useAllDeliveryCycles, useAllMenuItems } from '../../hooks/useMenuManagement';
 import { useAllEssentials, CYCLE_DISPLAY } from '../../hooks/useEssentialsCatalog';
+import type { AdminScreenProps } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
 
 const MEAL_CYCLES = ['Breakfast', 'Lunch', 'Snacks', 'Dinner'];
 
-export function CreatePlanScreen({ navigation, route }: { navigation: any; route: any }) {
+export function CreatePlanScreen({ navigation, route }: AdminScreenProps<'CreatePlan'>) {
   const planType: PlanType = route.params?.planType ?? 'food';
 
   const { data: rawCycles = [] } = useAllDeliveryCycles();

@@ -38,6 +38,7 @@ import {
 } from '../../hooks/useReferrals';
 import type { ReferralSettings } from '../../types';
 import { formatDateShort } from '../../utils/formatters';
+import type { AdminNavProp } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
@@ -190,7 +191,7 @@ const rr = StyleSheet.create({
 });
 
 // ── Main screen ──────────────────────────────────────────────
-export function ReferralSettingsScreen({ navigation }: { navigation: any }) {
+export function ReferralSettingsScreen({ navigation }: { navigation: AdminNavProp }) {
   const { data: savedSettings, isLoading } = useReferralSettings();
   const updateSettings = useUpdateReferralSettings();
   const { data: allReferrals = [], isLoading: refLoading, refetch } = useAllReferrals();

@@ -19,6 +19,7 @@ import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { useFeatureFlags } from '../../hooks/useFeatureFlag';
 import { useUpdateFeatureFlag } from '../../hooks/useStaffManagement';
+import type { AdminNavProp } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
@@ -26,13 +27,11 @@ const S = Theme.typography.sizes.small + 2;
 // Flags removed from product — hide from UI even if rows exist in DB
 const HIDDEN_FLAGS = new Set(['loyalty_program', 'route_pdf_generation']);
 
-// Flags wired in app code — show as active toggles
-// branch_management_active: toggle saves to DB but query-layer gating is a pending build
-const FLAG_NOTES: Record<string, string> = {
-  branch_management_active: 'Saves to DB — full query gating is a pending build',
-};
+// Flags wired in app code — show as active toggles.
+// Per-flag helper notes shown on the admin row (empty object = no notes today).
+const FLAG_NOTES: Record<string, string> = {};
 
-export function FeatureFlagsScreen({ navigation }: { navigation: any }) {
+export function FeatureFlagsScreen({ navigation }: { navigation: AdminNavProp }) {
   const { data: flags = [], isLoading } = useFeatureFlags();
   const updateFlag = useUpdateFeatureFlag();
 

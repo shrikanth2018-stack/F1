@@ -18,6 +18,7 @@ export const Theme = {
       muted: '#94a3b8',
       accent: '#0A84FF',
       mint: '#4ECDC4',
+      disabled: 'rgba(255,255,255,0.35)',
     },
     action: {
       primary: '#38bdf8',
@@ -30,6 +31,12 @@ export const Theme = {
     },
     layout: {
       divider: 'rgba(255, 255, 255, 0.1)',
+      overlayLight: 'rgba(0,0,0,0.4)',
+      overlayLightMid: 'rgba(0,0,0,0.45)',
+      overlayMedium: 'rgba(0,0,0,0.5)',
+      overlayMid: 'rgba(0,0,0,0.55)',
+      overlay: 'rgba(0,0,0,0.6)',
+      overlayHeavy: 'rgba(0,0,0,0.75)',
     },
     calendar: {
       breakfast: '#FFBF00',

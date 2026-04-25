@@ -18,14 +18,23 @@ import { useFeatureFlag } from './useFeatureFlag';
 import { useAuth } from './useAuth';
 import type { Order, OrderStatus } from '../types';
 
-const STATUS_PUSH: Record<string, { title: string; body: (id: number) => string }> = {
-  Preparing:          { title: 'In the Kitchen',  body: (id) => `Order #${id} is being prepared now.` },
-  Ready:              { title: 'Order Ready!',     body: (id) => `Order #${id} is packed and ready for dispatch.` },
-  Dispatched:         { title: 'On the Way!',      body: (id) => `Your order #${id} is on the way. Should arrive soon!` },
-  'On the Way':       { title: 'On the Way!',      body: (id) => `Your order #${id} is on the way. Should arrive soon!` },
-  'Received at Hub':  { title: 'At Your Hub',      body: (id) => `Order #${id} has arrived at your pickup hub.` },
-  Delivered:          { title: 'Delivered!',        body: (id) => `Order #${id} delivered. Enjoy your meal!` },
-  Cancelled:          { title: 'Order Cancelled',  body: (id) => `Order #${id} has been cancelled.` },
+// Blueprint Sec 5.3 — anti-spam filter.
+// Push ONLY at critical milestones: Ready, Dispatched, Received at Hub, Delivered, Cancelled.
+// "Preparing" and "On the Way" are intentionally omitted to avoid notification fatigue.
+//
+// Each entry pairs the event_key (for admin template lookup) with a hardcoded
+// fallback used when the template row is missing. Admin can override text or
+// disable any of these via the Notification Manager screen.
+const STATUS_PUSH: Record<string, {
+  event_key: string;
+  title: string;
+  body: (id: number) => string;
+}> = {
+  Ready:              { event_key: 'order.ready',           title: 'Order Ready!',    body: (id) => `Order #${id} is packed and ready for dispatch.` },
+  Dispatched:         { event_key: 'order.dispatched',      title: 'On the Way!',     body: (id) => `Your order #${id} is on the way. Should arrive soon!` },
+  'Received at Hub':  { event_key: 'order.received_at_hub', title: 'At Your Hub',     body: (id) => `Order #${id} has arrived at your pickup hub.` },
+  Delivered:          { event_key: 'order.delivered',       title: 'Delivered!',      body: (id) => `Order #${id} delivered. Enjoy your meal!` },
+  Cancelled:          { event_key: 'order.cancelled',       title: 'Order Cancelled', body: (id) => `Order #${id} has been cancelled.` },
 };
 
 /** Fetch today's orders for staff dashboard */
@@ -45,9 +54,14 @@ export function useStaffOrders(cycleId?: number) {
       hubDeliveryActive && assignedHubId != null ? assignedHubId : 'no-hub',
     ],
     queryFn: async () => {
+      // Also pull the zone's + hub's driver_code so the Delivery tab can label each row.
       let query = supabase
         .from('orders')
-        .select('*, order_items(*), customer_addresses(*)')
+        .select(`
+          *,
+          order_items(*),
+          customer_addresses(*, delivery_zones(driver_code, zone_name), delivery_hubs(driver_code, hub_name))
+        `)
         .eq('dispatch_date', today)
         .order('created_at', { ascending: false });
 
@@ -101,7 +115,10 @@ export function useUpdateOrderStatus() {
 
         if (error) throw error;
 
-        // Fire-and-forget push to the customer
+        // Fire-and-forget push to the customer.
+        // send-push resolves the template on the server side via event_key.
+        // Fallback title/body are sent along so the push still works even if
+        // the template row is missing. If admin disabled the event, server skips.
         const msg = STATUS_PUSH[status];
         if (msg && userId) {
           const { data: { session: raw } } = await supabase.auth.getSession();
@@ -110,9 +127,11 @@ export function useUpdateOrderStatus() {
               headers: { Authorization: `Bearer ${raw.access_token}` },
               body: {
                 user_ids: [userId],
+                event_key: msg.event_key,
+                vars: { order_id: orderId },
                 title: msg.title,
                 body: msg.body(orderId),
-                data: { screen: 'OrderDetail', params: { orderId }, trigger_source: 'order_status' },
+                data: { screen: 'OrderDetail', params: { orderId } },
                 trigger_source: 'order_status',
                 reference_id: String(orderId),
               },

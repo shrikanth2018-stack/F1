@@ -26,9 +26,11 @@ import { EssentialsScreen } from '../screens/customer/EssentialsScreen';
 import { FeedbackScreen } from '../screens/customer/FeedbackScreen';
 import { PlansScreen } from '../screens/customer/PlansScreen';
 import { LoyaltyPointsScreen } from '../screens/customer/LoyaltyPointsScreen';
+import { HubDashboardScreen } from '../screens/customer/HubDashboardScreen';
 import { Theme } from '../theme';
+import type { CustomerStackParamList } from './types';
 
-const Stack = createNativeStackNavigator();
+const Stack = createNativeStackNavigator<CustomerStackParamList>();
 
 export function CustomerNavigator() {
   return (
@@ -67,6 +69,7 @@ export function CustomerNavigator() {
         component={LoyaltyPointsScreen}
         options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
       />
+      <Stack.Screen name="HubDashboard" component={HubDashboardScreen} />
     </Stack.Navigator>
   );
 }

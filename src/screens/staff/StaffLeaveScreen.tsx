@@ -28,6 +28,7 @@ import { Divider } from '../../components/Divider';
 import { EmptyState } from '../../components/EmptyState';
 import { useMyLeaves, useApplyLeave } from '../../hooks/useStaffLeave';
 import type { StaffLeave } from '../../types';
+import type { StaffNavProp } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
@@ -223,7 +224,7 @@ const lr = StyleSheet.create({
 });
 
 // ── Main screen ───────────────────────────────────────────────
-export function StaffLeaveScreen({ navigation }: { navigation: any }) {
+export function StaffLeaveScreen({ navigation }: { navigation: StaffNavProp }) {
   const [showForm, setShowForm] = useState(false);
   const { data: leaves = [], isLoading } = useMyLeaves();
 

@@ -18,9 +18,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { EmptyState } from '../../components/EmptyState';
-import { useAllFeedback, type FeedbackEntry } from '../../hooks/useCustomerFeedback';
+import {
+  useAllFeedback,
+  useOrderItemRatings,
+  type FeedbackEntry,
+  type OrderItemRating,
+} from '../../hooks/useCustomerFeedback';
 import { openWhatsApp } from '../../utils/links';
 import { formatDateShort } from '../../utils/formatters';
+import type { AdminNavProp } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
@@ -39,7 +45,13 @@ const stars = StyleSheet.create({
   row: { fontSize: B, letterSpacing: 2, color: Theme.colors.status.warning },
 });
 
-function FeedbackRow({ item }: { item: FeedbackEntry }) {
+function FeedbackRow({
+  item,
+  itemRatings,
+}: {
+  item: FeedbackEntry;
+  itemRatings?: OrderItemRating[];
+}) {
   const name = item.profiles?.full_name || item.profiles?.phone_number || 'Customer';
   const phone = item.profiles?.phone_number;
 
@@ -72,6 +84,20 @@ function FeedbackRow({ item }: { item: FeedbackEntry }) {
         <ThemedText variant="small" color="muted" style={row.orderRef}>
           Order #{item.order_id}
         </ThemedText>
+      )}
+
+      {/* Per-item ratings (order-linked feedback only) */}
+      {itemRatings && itemRatings.length > 0 && (
+        <View style={row.itemsBlock}>
+          {itemRatings.map((ir) => (
+            <View key={ir.id} style={row.itemRow}>
+              <ThemedText variant="small" color="subtitle" style={row.itemName} numberOfLines={1}>
+                {ir.item_name ?? `Item #${ir.order_item_id}`}
+              </ThemedText>
+              <Stars rating={ir.rating} />
+            </View>
+          ))}
+        </View>
       )}
 
       {!!item.comments && (
@@ -108,12 +134,25 @@ const row = StyleSheet.create({
   phone: { fontSize: S, marginTop: 2 },
   date: { fontSize: S, marginTop: 2 },
   orderRef: { fontSize: S, marginTop: Theme.spacing.xs, color: Theme.colors.text.muted },
+  itemsBlock: {
+    marginTop: Theme.spacing.sm,
+    paddingLeft: Theme.spacing.sm,
+    borderLeftWidth: 2,
+    borderLeftColor: Theme.colors.layout.divider,
+  },
+  itemRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 2,
+  },
+  itemName: { fontSize: S, flex: 1, marginRight: Theme.spacing.sm },
   comment: { fontSize: B, marginTop: Theme.spacing.sm, lineHeight: B * 1.5 },
   respondBtn: { marginTop: Theme.spacing.sm, alignSelf: 'flex-start' },
   respondTxt: { fontSize: S },
 });
 
-export function CustomerFeedbackScreen({ navigation }: { navigation: any }) {
+export function CustomerFeedbackScreen({ navigation }: { navigation: AdminNavProp }) {
   const [activeTab, setActiveTab] = useState<FeedbackTab>('Feedback');
   const { data: all = [], isLoading, refetch } = useAllFeedback();
 
@@ -121,6 +160,13 @@ export function CustomerFeedbackScreen({ navigation }: { navigation: any }) {
     if (activeTab === 'Feedback') return all.filter((f) => f.order_id === null);
     return all.filter((f) => f.order_id !== null);
   }, [all, activeTab]);
+
+  // Batch-fetch per-item ratings for all order-linked entries currently visible
+  const orderIds = useMemo(
+    () => Array.from(new Set(items.map((f) => f.order_id).filter((id): id is number => id != null))),
+    [items]
+  );
+  const { data: ratingsByOrder } = useOrderItemRatings(orderIds);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -163,7 +209,12 @@ export function CustomerFeedbackScreen({ navigation }: { navigation: any }) {
       <FlatList
         data={items}
         keyExtractor={(item) => String(item.id)}
-        renderItem={({ item }) => <FeedbackRow item={item} />}
+        renderItem={({ item }) => (
+          <FeedbackRow
+            item={item}
+            itemRatings={item.order_id != null ? ratingsByOrder?.get(item.order_id) : undefined}
+          />
+        )}
         ListEmptyComponent={
           !isLoading ? (
             <EmptyState

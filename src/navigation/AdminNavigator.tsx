@@ -25,6 +25,7 @@ import { EssentialsCatalogManageScreen } from '../screens/admin/EssentialsCatalo
 import { CreateEssentialScreen } from '../screens/admin/CreateEssentialScreen';
 import { ImportItemsScreen } from '../screens/admin/ImportItemsScreen';
 import { NoteToStaffScreen } from '../screens/admin/NoteToStaffScreen';
+import { NotificationManagerScreen } from '../screens/admin/NotificationManagerScreen';
 import { SpecialOfferBannerScreen } from '../screens/admin/SpecialOfferBannerScreen';
 import { LoginBgScreen } from '../screens/admin/LoginBgScreen';
 import { CustomerFeedbackScreen } from '../screens/admin/CustomerFeedbackScreen';
@@ -41,13 +42,14 @@ import { StaffReportScreen } from '../screens/admin/reports/StaffReportScreen';
 import { HubReportScreen } from '../screens/admin/reports/HubReportScreen';
 import { Theme } from '../theme';
 import { ThemedText } from '../components/ThemedText';
+import type { AdminNavProp, AdminStackParamList } from './types';
 
-const Stack = createNativeStackNavigator();
+const Stack = createNativeStackNavigator<AdminStackParamList>();
 
 const B = Theme.typography.sizes.body + 2;
 
 /** Placeholder for screens not yet built — shows the title + "Coming soon" */
-function PlaceholderScreen({ route, navigation }: { route: any; navigation: any }) {
+function PlaceholderScreen({ route, navigation }: { route: { name: string }; navigation: AdminNavProp }) {
   return (
     <SafeAreaView style={placeholder.container}>
       <View style={placeholder.header}>
@@ -122,6 +124,7 @@ export function AdminNavigator() {
       {/* Manage — Notifications */}
       <Stack.Screen name="PushNotifications" component={NoteToStaffScreen} />
       <Stack.Screen name="CustomerPush" component={SpecialOfferBannerScreen} />
+      <Stack.Screen name="NotificationManager" component={NotificationManagerScreen} />
 
       {/* Manage — Marketing */}
       <Stack.Screen name="LoginBg" component={LoginBgScreen} />

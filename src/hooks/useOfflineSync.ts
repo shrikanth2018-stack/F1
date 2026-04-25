@@ -48,16 +48,18 @@ export function useOfflineSync() {
       }
 
       try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const db = supabase as any;
         let query;
         if (mutation.operation === 'insert') {
-          query = supabase.from(mutation.table).insert(mutation.payload);
+          query = db.from(mutation.table).insert(mutation.payload);
         } else if (mutation.operation === 'update' && mutation.matchColumn && mutation.matchValue) {
-          query = supabase
+          query = db
             .from(mutation.table)
             .update(mutation.payload)
             .eq(mutation.matchColumn, mutation.matchValue);
         } else if (mutation.operation === 'upsert') {
-          query = supabase.from(mutation.table).upsert(mutation.payload);
+          query = db.from(mutation.table).upsert(mutation.payload);
         } else {
           dequeue(mutation.id);
           continue;

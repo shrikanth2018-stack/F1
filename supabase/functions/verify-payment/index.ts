@@ -19,6 +19,7 @@
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
+import { resolveAndSendPush } from '../_shared/notifications.ts';
 
 const text = (body: string, status = 200) =>
   new Response(body, { status, headers: { 'Content-Type': 'text/plain' } });
@@ -89,7 +90,13 @@ Deno.serve(async (req: Request) => {
   }
 
   // ── payment.captured / order.paid ──────────────────────────
+  //
+  // A single razorpay_order_id can map to BOTH an order row AND one-or-more
+  // user_subscriptions rows (cart-driven subscription purchase). Run all three
+  // branches per webhook call — each is idempotent and no-ops when nothing
+  // matches. Do NOT early-return on the first match.
   if (eventType === 'payment.captured' || eventType === 'order.paid') {
+    let matchedAny = false;
 
     // 1) Customer order
     const { data: paidOrders, error: paidErr } = await supabase.rpc('mark_order_paid', {
@@ -100,25 +107,27 @@ Deno.serve(async (req: Request) => {
       // Log but return 200 — returning 500 causes Razorpay to retry indefinitely
       console.error('[verify-payment] mark_order_paid error:', paidErr.message);
     } else if (paidOrders && paidOrders.length > 0) {
+      matchedAny = true;
       console.log('[verify-payment] Customer order marked paid:', razorpayOrderId);
       const { data: orderRow } = await supabase
         .from('orders').select('id, user_id')
         .eq('razorpay_order_id', razorpayOrderId).maybeSingle();
       if (orderRow?.user_id) {
-        fetch(`${SUPABASE_URL}/functions/v1/send-push`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
-          body: JSON.stringify({
-            user_ids: [orderRow.user_id],
+        resolveAndSendPush({
+          supabase,
+          supabaseUrl: SUPABASE_URL,
+          serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY,
+          eventKey: 'order.razorpay_confirmed',
+          userIds: [orderRow.user_id],
+          vars: { order_id: orderRow.id },
+          fallback: {
             title: 'Order Confirmed!',
             body: `Your order #${orderRow.id} payment is confirmed. We're getting it ready!`,
-            data: { screen: 'OrderDetail', params: { orderId: orderRow.id } },
-            trigger_source: 'order_status',
-            reference_id: String(orderRow.id),
-          }),
+          },
+          data: { screen: 'OrderDetail', params: { orderId: orderRow.id } },
+          referenceId: String(orderRow.id),
         }).catch((e: any) => console.error('[verify-payment] order push failed:', e));
       }
-      return text('ok: order marked paid', 200);
     }
 
     // 2) Wallet topup
@@ -129,25 +138,27 @@ Deno.serve(async (req: Request) => {
     if (topupErr) {
       console.error('[verify-payment] complete_wallet_topup error:', topupErr.message);
     } else if (topups && topups.length > 0) {
+      matchedAny = true;
       console.log('[verify-payment] Wallet topup credited:', razorpayOrderId);
       const { data: topupRow } = await supabase
         .from('pending_wallet_topups').select('user_id, amount')
         .eq('razorpay_order_id', razorpayOrderId).maybeSingle();
       if (topupRow?.user_id) {
-        fetch(`${SUPABASE_URL}/functions/v1/send-push`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
-          body: JSON.stringify({
-            user_ids: [topupRow.user_id],
+        resolveAndSendPush({
+          supabase,
+          supabaseUrl: SUPABASE_URL,
+          serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY,
+          eventKey: 'wallet.topped_up',
+          userIds: [topupRow.user_id],
+          vars: { amount: topupRow.amount },
+          fallback: {
             title: 'Wallet Topped Up!',
             body: `\u20b9${topupRow.amount} has been added to your wallet.`,
-            data: { screen: 'Wallet' },
-            trigger_source: 'wallet_topup',
-            reference_id: razorpayOrderId,
-          }),
+          },
+          data: { screen: 'Wallet' },
+          referenceId: razorpayOrderId,
         }).catch((e: any) => console.error('[verify-payment] topup push failed:', e));
       }
-      return text('ok: wallet topup credited', 200);
     }
 
     // 3) Subscription activation
@@ -163,11 +174,8 @@ Deno.serve(async (req: Request) => {
 
     if (subErr) {
       console.error('[verify-payment] Subscription activation error:', subErr.message);
-      // Return 200 — retrying won't help a schema error
-      return text('ok: sub activation error logged', 200);
-    }
-
-    if (activatedSubs && activatedSubs.length > 0) {
+    } else if (activatedSubs && activatedSubs.length > 0) {
+      matchedAny = true;
       console.log('[verify-payment] Subscription activated:', activatedSubs.map((s: any) => s.id));
       const subId = activatedSubs[0].id;
       const { data: subRow } = await supabase
@@ -176,25 +184,27 @@ Deno.serve(async (req: Request) => {
         .eq('id', subId).maybeSingle();
       if (subRow?.user_id) {
         const planName = (subRow.subscription_plans as any)?.plan_name ?? 'your plan';
-        fetch(`${SUPABASE_URL}/functions/v1/send-push`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
-          body: JSON.stringify({
-            user_ids: [subRow.user_id],
+        resolveAndSendPush({
+          supabase,
+          supabaseUrl: SUPABASE_URL,
+          serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY,
+          eventKey: 'subscription.activated',
+          userIds: [subRow.user_id],
+          vars: { plan_name: planName },
+          fallback: {
             title: 'Subscription Activated!',
             body: `Your ${planName} subscription is now active. Enjoy your meals!`,
-            data: { screen: 'Subscriptions' },
-            trigger_source: 'subscription_activation',
-            reference_id: String(subId),
-          }),
+          },
+          data: { screen: 'Subscriptions' },
+          referenceId: String(subId),
         }).catch((e: any) => console.error('[verify-payment] sub push failed:', e));
       }
-      return text('ok: subscription activated', 200);
     }
 
-    // Nothing matched — ack so Razorpay stops retrying
-    console.warn('[verify-payment] No matching order/topup/subscription for order:', razorpayOrderId);
-    return text('ok: no match', 200);
+    if (!matchedAny) {
+      console.warn('[verify-payment] No matching order/topup/subscription for order:', razorpayOrderId);
+    }
+    return text('ok', 200);
   }
 
   // ── payment.failed ─────────────────────────────────────────
@@ -214,17 +224,19 @@ Deno.serve(async (req: Request) => {
         .from('orders').select('id, user_id')
         .eq('razorpay_order_id', razorpayOrderId).maybeSingle();
       if (failedOrder?.user_id) {
-        fetch(`${SUPABASE_URL}/functions/v1/send-push`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
-          body: JSON.stringify({
-            user_ids: [failedOrder.user_id],
+        resolveAndSendPush({
+          supabase,
+          supabaseUrl: SUPABASE_URL,
+          serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY,
+          eventKey: 'order.payment_failed',
+          userIds: [failedOrder.user_id],
+          vars: { order_id: failedOrder.id },
+          fallback: {
             title: 'Payment Failed',
             body: `Payment for order #${failedOrder.id} could not be processed. Please try again.`,
-            data: { screen: 'Orders' },
-            trigger_source: 'order_status',
-            reference_id: String(failedOrder.id),
-          }),
+          },
+          data: { screen: 'Orders' },
+          referenceId: String(failedOrder.id),
         }).catch((e: any) => console.error('[verify-payment] failed push failed:', e));
       }
     }

@@ -81,7 +81,8 @@ export function useUpdateMenuItem() {
     }: Partial<MenuItem> & { id: number }) => {
       const { error } = await supabase
         .from('menu_items')
-        .update(updates)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .update(updates as any)
         .eq('id', id);
       if (error) throw error;
     },
@@ -143,8 +144,46 @@ export function useUpdateDeliveryCycle() {
     mutationFn: async ({ id, ...updates }: { id: number } & Record<string, unknown>) => {
       const { error } = await supabase
         .from('delivery_cycles')
-        .update(updates)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .update(updates as any)
         .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin_delivery_cycles'] });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.DELIVERY_CYCLES });
+    },
+  });
+}
+
+/** Create a new delivery cycle */
+export function useAddDeliveryCycle() {
+  const queryClient = useQueryClient();
+  const bf = useBranchFilter();
+
+  return useMutation({
+    mutationFn: async (payload: {
+      cycle_name: string;
+      cutoff_time: string;
+      delivery_start: string;
+      kitchen_push_time?: string;
+      is_essentials?: boolean;
+      essentials_label?: string | null;
+      sort_order?: number;
+    }) => {
+      const row = {
+        ...payload,
+        kitchen_push_time: payload.kitchen_push_time ?? payload.cutoff_time,
+        is_essentials: payload.is_essentials ?? false,
+        essentials_label: payload.essentials_label ?? null,
+        sort_order: payload.sort_order ?? 99,
+        is_active: true,
+        branch_id: bf.isActive ? bf.branchId : null,
+      };
+      const { error } = await supabase
+        .from('delivery_cycles')
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .insert(row as any);
       if (error) throw error;
     },
     onSuccess: () => {

@@ -29,6 +29,7 @@ import { ThemedText } from '../../components/ThemedText';
 import { Divider } from '../../components/Divider';
 import { supabase } from '../../api/supabaseClient';
 import { useLiveBanner, useUpsertBanner, type CustomBannerContent } from '../../hooks/useBanner';
+import type { AdminNavProp } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
@@ -134,7 +135,7 @@ const sw = StyleSheet.create({
 });
 
 // ── Main screen ──────────────────────────────────────────
-export function SpecialOfferBannerScreen({ navigation }: { navigation: any }) {
+export function SpecialOfferBannerScreen({ navigation }: { navigation: AdminNavProp }) {
   const [activeTab, setActiveTab] = useState<BannerTab>('Upload Image');
   const upsertBanner = useUpsertBanner();
 

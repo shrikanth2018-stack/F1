@@ -28,13 +28,14 @@ import {
   NOTE_TARGETS,
   type NoteTarget,
 } from '../../hooks/useAdminNotes';
+import type { AdminNavProp } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
 
 type NoteState = { text: string; active: boolean };
 
-export function NoteToStaffScreen({ navigation }: { navigation: any }) {
+export function NoteToStaffScreen({ navigation }: { navigation: AdminNavProp }) {
   const { data: notes = [], isLoading } = useAdminNotes();
   const upsert = useUpsertNote();
 

@@ -20,6 +20,7 @@ import { Theme } from '../../../theme';
 import { ThemedText } from '../../../components/ThemedText';
 import { EmptyState } from '../../../components/EmptyState';
 import { useOrdersDetailReport } from '../../../hooks/useReports';
+import type { AdminNavProp } from '../../../navigation/types';
 
 type Period = 'Weekly' | 'Monthly' | 'Quarterly';
 type ViewMode = 'Cycle wise' | 'Menu wise';
@@ -86,7 +87,7 @@ function buildHtml(
   </body></html>`;
 }
 
-export function OrderReportScreen({ navigation }: { navigation: any }) {
+export function OrderReportScreen({ navigation }: { navigation: AdminNavProp }) {
   const [period, setPeriod] = useState<Period>('Monthly');
   const [viewMode, setViewMode] = useState<ViewMode>('Cycle wise');
   const { start, end } = useMemo(() => getPeriodRange(period), [period]);

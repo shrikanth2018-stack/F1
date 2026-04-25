@@ -23,7 +23,9 @@ import { ErrorRetry } from '../../components/ErrorRetry';
 import { useEssentialsCatalog } from '../../hooks/useEssentials';
 import { useDeliveryCycles } from '../../hooks/useDeliveryCycles';
 import { useEssentialsCartStore } from '../../store/essentialsCartStore';
+import { essentialsCycleLabel } from '../../utils/cycleLabels';
 import type { EssentialItem } from '../../types';
+import type { CustomerNavProp } from '../../navigation/types';
 
 function EssentialItemCard({
   item,
@@ -67,7 +69,7 @@ function EssentialItemCard({
   );
 }
 
-export function EssentialsScreen({ navigation }: { navigation: any }) {
+export function EssentialsScreen({ navigation }: { navigation: CustomerNavProp }) {
   const [cycleFilter, setCycleFilter] = useState<number | undefined>(undefined);
 
   const { data: cycles } = useDeliveryCycles();
@@ -147,7 +149,7 @@ export function EssentialsScreen({ navigation }: { navigation: any }) {
                 variant="small"
                 color={cycleFilter === c.id ? 'primary' : 'subtitle'}
               >
-                {c.cycle_name}
+                {essentialsCycleLabel(c)}
               </ThemedText>
             </TouchableOpacity>
           ))}

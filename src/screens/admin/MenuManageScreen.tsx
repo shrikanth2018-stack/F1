@@ -29,6 +29,7 @@ import {
   useAllDeliveryCycles,
 } from '../../hooks/useMenuManagement';
 import type { MenuItem } from '../../types';
+import type { AdminNavProp } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
@@ -49,7 +50,7 @@ function parseComponents(raw?: string | null): { name: string; qty: string }[] {
 
 const MEAL_CYCLES = ['Breakfast', 'Lunch', 'Snacks', 'Dinner'];
 
-export function MenuManageScreen({ navigation }: { navigation: any }) {
+export function MenuManageScreen({ navigation }: { navigation: AdminNavProp }) {
   const { data: rawCycles = [] } = useAllDeliveryCycles();
   // Only the 4 meal cycles — essentials has its own screen
   const cycleOptions = useMemo(

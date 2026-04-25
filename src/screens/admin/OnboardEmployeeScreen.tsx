@@ -36,6 +36,8 @@ import {
   BENEFIT_OPTIONS,
 } from '../../hooks/useResourceManager';
 import { useDeliveryHubs } from '../../hooks/useDeliveryHubs';
+import { openWhatsApp } from '../../utils/links';
+import type { AdminNavProp } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
@@ -297,7 +299,7 @@ const fi = StyleSheet.create({
 // ── Main screen ───────────────────────────────────────────────
 type LookupStatus = 'idle' | 'loading' | 'found' | 'not_found';
 
-export function OnboardEmployeeScreen({ navigation }: { navigation: any }) {
+export function OnboardEmployeeScreen({ navigation }: { navigation: AdminNavProp }) {
   const [phone, setPhone]             = useState('');
   const [name, setName]               = useState('');
   const [lookupStatus, setLookup]     = useState<LookupStatus>('idle');
@@ -373,10 +375,33 @@ export function OnboardEmployeeScreen({ navigation }: { navigation: any }) {
           const salaryLine = salary > 0
             ? `\nSalary: ₹${salary.toLocaleString('en-IN')}/mo${bonus > 0 ? ` + ₹${bonus.toLocaleString('en-IN')} joining bonus` : ''}`
             : '';
+
+          // Welcome WhatsApp — pre-filled on admin's device, admin taps send.
+          const hubName = hubs.find((h) => h.id === hubId)?.hub_name ?? '';
+          const whatsappMsg =
+            `Welcome to 1stOne, ${name.trim()}!\n\n` +
+            `Your employment is now active:\n` +
+            `• Employee ID: ${result.employee_id}\n` +
+            `• Role: ${designation}\n` +
+            (hubName ? `• Assigned Hub: ${hubName}\n` : '') +
+            (shift  ? `• Shift: ${shift}\n` : '') +
+            (salary > 0 ? `• Monthly Salary: ₹${salary.toLocaleString('en-IN')}${bonus > 0 ? ` (+ ₹${bonus.toLocaleString('en-IN')} joining bonus)` : ''}\n` : '') +
+            `\nPlease log back into the 1stOne app via OTP — you'll see your Staff Dashboard on next login.\n\n` +
+            `Kindly forward your employment documents (ID proof, bank details, prior experience) securely to your manager at the earliest.`;
+
           Alert.alert(
             'Onboarded',
-            `${name.trim()} (${result.employee_id}) added.${salaryLine}\nThey can now log in via OTP.`,
-            [{ text: 'Done', onPress: () => navigation.goBack() }]
+            `${name.trim()} (${result.employee_id}) added.${salaryLine}\nSend the welcome WhatsApp now?`,
+            [
+              { text: 'Skip', style: 'cancel', onPress: () => navigation.goBack() },
+              {
+                text: 'Send WhatsApp',
+                onPress: () => {
+                  openWhatsApp(phone, whatsappMsg);
+                  navigation.goBack();
+                },
+              },
+            ]
           );
         },
         onError: (e: any) => Alert.alert('Error', e?.message ?? 'Failed to onboard employee'),
