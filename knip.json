@@ -1,0 +1,21 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "App.tsx",
+    "src/**/__tests__/**/*.{ts,tsx}",
+    "src/**/*.test.{ts,tsx}"
+  ],
+  "project": [
+    "src/**/*.{ts,tsx}",
+    "App.tsx"
+  ],
+  "ignore": [
+    "supabase/**",
+    "ios/**",
+    "android/**"
+  ],
+  "ignoreBinaries": [
+    "expo"
+  ],
+  "expo": false
+}
