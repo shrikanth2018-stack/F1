@@ -1,7 +1,28 @@
-// Mock supabase so AsyncStorage (a native module) is never loaded in node env
-jest.mock('@/api/supabaseClient', () => ({ supabase: {} }));
+// Mock supabase so AsyncStorage (a native module) is never loaded in node env.
+// Variables prefixed with `mock` are allowed inside jest.mock() per Jest's hoisting rules.
+const mockData: {
+  zones: Array<{ id: number; zone_name: string; polygon_geojson: { lat: number; lng: number }[] | null }>;
+  hubs: Array<{ id: number; hub_name: string; polygon_geojson: { lat: number; lng: number }[] | null; extends_coverage: boolean }>;
+} = { zones: [], hubs: [] };
 
-import { pointInPolygon } from '@/utils/serviceability';
+jest.mock('@/api/supabaseClient', () => ({
+  supabase: {
+    from: (table: string) => {
+      const filterChain = {
+        eq: () => filterChain,
+        select: () => filterChain,
+        then: (resolve: (value: { data: unknown }) => void) => {
+          if (table === 'delivery_zones') resolve({ data: mockData.zones });
+          else if (table === 'delivery_hubs') resolve({ data: mockData.hubs });
+          else resolve({ data: [] });
+        },
+      };
+      return filterChain;
+    },
+  },
+}));
+
+import { pointInPolygon, checkZone } from '@/utils/serviceability';
 
 // Simple square polygon: (0,0) → (0,2) → (2,2) → (2,0)
 const square = [
@@ -85,5 +106,91 @@ describe('pointInPolygon — edge cases', () => {
       { lat: 2, lng: 4 },
     ];
     expect(pointInPolygon(0, 3, triangle)).toBe(false);
+  });
+});
+
+describe('checkZone — hub-extends fallback', () => {
+  // Two non-overlapping polygons:
+  //   zone covers (0,0) → (10,10)
+  //   hub covers (20,20) → (30,30) and has extends_coverage=true
+  const zonePoly = [
+    { lat: 0, lng: 0 },
+    { lat: 0, lng: 10 },
+    { lat: 10, lng: 10 },
+    { lat: 10, lng: 0 },
+  ];
+  const hubPoly = [
+    { lat: 20, lng: 20 },
+    { lat: 20, lng: 30 },
+    { lat: 30, lng: 30 },
+    { lat: 30, lng: 20 },
+  ];
+
+  beforeEach(() => {
+    mockData.zones = [];
+    mockData.hubs = [];
+  });
+
+  it('returns serviceable + zoneId when point is inside a zone', async () => {
+    mockData.zones = [{ id: 1, zone_name: 'A', polygon_geojson: zonePoly }];
+    mockData.hubs = [{ id: 99, hub_name: 'X', polygon_geojson: hubPoly, extends_coverage: true }];
+    const r = await checkZone(5, 5);
+    expect(r.result).toBe('serviceable');
+    expect(r.zoneId).toBe(1);
+    expect(r.zoneName).toBe('A');
+    expect(r.hubId).toBeNull();
+  });
+
+  it('returns serviceable + hubId when point is OUTSIDE zones but inside an extending hub', async () => {
+    mockData.zones = [{ id: 1, zone_name: 'A', polygon_geojson: zonePoly }];
+    mockData.hubs = [{ id: 99, hub_name: 'X', polygon_geojson: hubPoly, extends_coverage: true }];
+    const r = await checkZone(25, 25);
+    expect(r.result).toBe('serviceable');
+    expect(r.zoneId).toBeNull();
+    expect(r.hubId).toBe(99);
+    expect(r.hubName).toBe('X');
+  });
+
+  it('zone takes priority over hub when point is inside both', async () => {
+    // Overlapping case: hub covers same area as zone
+    mockData.zones = [{ id: 1, zone_name: 'A', polygon_geojson: zonePoly }];
+    mockData.hubs = [{ id: 99, hub_name: 'X', polygon_geojson: zonePoly, extends_coverage: true }];
+    const r = await checkZone(5, 5);
+    expect(r.zoneId).toBe(1);
+    expect(r.hubId).toBeNull();
+  });
+
+  it('returns not_serviceable when point is outside everything (with config present)', async () => {
+    mockData.zones = [{ id: 1, zone_name: 'A', polygon_geojson: zonePoly }];
+    mockData.hubs = [{ id: 99, hub_name: 'X', polygon_geojson: hubPoly, extends_coverage: true }];
+    const r = await checkZone(50, 50);
+    expect(r.result).toBe('not_serviceable');
+    expect(r.zoneId).toBeNull();
+    expect(r.hubId).toBeNull();
+  });
+
+  it('returns unknown when nothing is configured (no zones, no hubs)', async () => {
+    mockData.zones = [];
+    mockData.hubs = [];
+    const r = await checkZone(5, 5);
+    expect(r.result).toBe('unknown');
+  });
+
+  it('skips zones with degenerate polygons', async () => {
+    mockData.zones = [
+      { id: 1, zone_name: 'Bad', polygon_geojson: null },
+      { id: 2, zone_name: 'Good', polygon_geojson: zonePoly },
+    ];
+    const r = await checkZone(5, 5);
+    expect(r.zoneId).toBe(2);
+  });
+
+  it('does not match a hub when no zones are configured but an extending hub covers the point', async () => {
+    // Edge case: only extending hubs, no zones — should still return hub match
+    mockData.zones = [];
+    mockData.hubs = [{ id: 99, hub_name: 'Solo', polygon_geojson: hubPoly, extends_coverage: true }];
+    const r = await checkZone(25, 25);
+    expect(r.result).toBe('serviceable');
+    expect(r.hubId).toBe(99);
   });
 });
