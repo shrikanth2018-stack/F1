@@ -27,6 +27,9 @@ import { OfflineBanner } from './src/components/OfflineBanner';
 import { LoadingOverlay } from './src/components/LoadingOverlay';
 import { useUIStore } from './src/store/uiStore';
 import { QUERY_STALE_TIME } from './src/utils/constants';
+import { initSentry } from './src/utils/sentry';
+
+initSentry();
 
 // Suppress known harmless warnings in dev
 LogBox.ignoreLogs([

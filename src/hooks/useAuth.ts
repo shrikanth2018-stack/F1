@@ -9,10 +9,14 @@
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
+import * as Notifications from 'expo-notifications';
+import * as Device from 'expo-device';
+import Constants from 'expo-constants';
 import { supabase } from '../api/supabaseClient';
 import { useCartStore } from '../store/cartStore';
 import { useEssentialsCartStore } from '../store/essentialsCartStore';
 import { useStaffQueueStore } from '../store/staffQueueStore';
+import { setSentryUser, clearSentryUser } from '../utils/sentry';
 import type { UserRole, AuthSession } from '../types';
 import type { Session } from '@supabase/supabase-js';
 
@@ -105,6 +109,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  // Keep Sentry user context in sync with the session — tags every event
+  // (errors, breadcrumbs) with the active user so we can trace incidents.
+  useEffect(() => {
+    if (session?.user.id) {
+      setSentryUser(session.user.id, session.user.phone);
+    } else {
+      clearSentryUser();
+    }
+  }, [session?.user.id, session?.user.phone]);
+
   const signInWithPhone = useCallback(async (phone: string) => {
     const { error } = await supabase.auth.signInWithOtp({ phone });
     return { error: error ? new Error(error.message) : null };
@@ -120,12 +134,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
+    // Best-effort: delete this device's push token row so the previous user
+    // doesn't keep receiving pushes after logout (shared-device case).
+    if (session?.user.id && Device.isDevice) {
+      try {
+        const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+        const tokenData = await Notifications.getExpoPushTokenAsync(
+          projectId ? { projectId } : undefined,
+        );
+        if (tokenData.data) {
+          await supabase
+            .from('push_notification_tokens')
+            .delete()
+            .eq('user_id', session.user.id)
+            .eq('token', tokenData.data);
+        }
+      } catch (e) {
+        console.warn('[useAuth] push token cleanup failed:', e);
+      }
+    }
+
     await supabase.auth.signOut();
     useCartStore.getState().clearCart();
     useEssentialsCartStore.getState().clearCart();
     useStaffQueueStore.getState().clearQueue();
     setSession(null);
-  }, []);
+  }, [session?.user.id]);
 
   const value = { session, isLoading, signInWithPhone, verifyOTP, signOut };
 
