@@ -46,8 +46,7 @@ export function useAddZone() {
   const bf = useBranchFilter();
   return useSupabaseMutation<ZonePayload>(
     (payload) =>
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (supabase.from('delivery_zones') as any).insert({
+      supabase.from('delivery_zones').insert({
         ...payload,
         is_active: true,
         branch_id: payload.branch_id ?? (bf.isActive ? bf.branchId : null),
@@ -59,8 +58,7 @@ export function useAddZone() {
 export function useUpdateZone() {
   return useSupabaseMutation<{ id: number } & Partial<ZonePayload & { is_active: boolean }>>(
     ({ id, ...payload }) =>
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (supabase.from('delivery_zones') as any).update(payload).eq('id', id),
+      supabase.from('delivery_zones').update(payload).eq('id', id),
     [QUERY_KEYS.ZONES as unknown as string[]]
   );
 }

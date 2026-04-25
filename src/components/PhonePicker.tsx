@@ -74,17 +74,17 @@ export function PhonePicker({
         setStatus('not_found');
         return;
       }
-      if (roleFilter && (data as any).role !== roleFilter) {
+      if (roleFilter && data.role !== roleFilter) {
         setStatus('wrong_role');
         return;
       }
 
       setStatus('idle');
       onChange({
-        userId: (data as any).id,
-        name: (data as any).full_name ?? phone,
-        phone: (data as any).phone_number ?? phone,
-        employeeId: (data as any).employee_id ?? null,
+        userId: data.id,
+        name: data.full_name ?? phone,
+        phone: data.phone_number ?? phone,
+        employeeId: data.employee_id ?? null,
       });
       setPhone('');
     })();

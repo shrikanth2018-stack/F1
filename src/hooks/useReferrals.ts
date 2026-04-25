@@ -239,6 +239,8 @@ export function useUpdateReferralSettings() {
         .limit(1)
         .maybeSingle();
 
+      // Local ReferralSettings type has reward-tier columns that the DB table
+      // doesn't have yet (pending migration). Cast preserves runtime contract.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const db = supabase as any;
       if (existing?.id) {

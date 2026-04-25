@@ -66,8 +66,7 @@ export async function checkZone(lat: number, lng: number): Promise<ZoneCheckResu
   try {
     const [zonesRes, hubsRes] = await Promise.all([
       supabase.from('delivery_zones').select('id, zone_name, polygon_geojson').eq('is_active', true),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (supabase.from('delivery_hubs') as any)
+      supabase.from('delivery_hubs')
         .select('id, hub_name, polygon_geojson, extends_coverage')
         .eq('is_active', true)
         .eq('extends_coverage', true),

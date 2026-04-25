@@ -69,8 +69,7 @@ export function useOrderItemRatings(orderIds: number[]) {
     queryKey: ['order_item_ratings', ...orderIds.sort((a, b) => a - b)],
     queryFn: async () => {
       if (orderIds.length === 0) return new Map<number, OrderItemRating[]>();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error } = await (supabase as any)
+      const { data, error } = await supabase
         .from('order_item_ratings')
         .select('id, order_id, order_item_id, rating, created_at, order_items(item_name)')
         .in('order_id', orderIds)
@@ -78,7 +77,7 @@ export function useOrderItemRatings(orderIds: number[]) {
       if (error) throw new Error(error.message);
 
       const byOrder = new Map<number, OrderItemRating[]>();
-      for (const r of (data ?? []) as any[]) {
+      for (const r of data ?? []) {
         const row: OrderItemRating = {
           id: r.id,
           order_id: r.order_id,

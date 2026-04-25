@@ -39,7 +39,9 @@ export function RegistrationScreen({ phone, onComplete, onBack }: RegistrationSc
     }
 
     setLoading(true);
-    // Create profile now — user is already authenticated at this point
+    // Create profile now — user is already authenticated at this point.
+    // profiles.id is PK linked to auth.users via DB default, not set client-side;
+    // typed Insert requires it, so cast preserves runtime contract.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (supabase as any).from('profiles').upsert({
       phone_number: phone,

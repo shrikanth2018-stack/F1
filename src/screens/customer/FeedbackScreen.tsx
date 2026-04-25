@@ -105,8 +105,7 @@ export function FeedbackScreen({ navigation, route }: CustomerScreenProps<'Feedb
             rating,
           }));
         if (rows.length > 0) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const { error: itemErr } = await ((supabase as any).from('order_item_ratings').insert(rows));
+          const { error: itemErr } = await supabase.from('order_item_ratings').insert(rows);
           // Per-item insert is best-effort — overall feedback already saved.
           // Log but don't fail the user's submission if this errors.
           if (itemErr) console.error('[feedback] per-item insert failed:', itemErr.message);

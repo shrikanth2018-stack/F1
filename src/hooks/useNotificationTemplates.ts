@@ -22,8 +22,7 @@ export function useNotificationTemplates() {
   return useQuery({
     queryKey: ['notification_templates'],
     queryFn: async (): Promise<NotificationTemplate[]> => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error } = await (supabase as any)
+      const { data, error } = await supabase
         .from('notification_templates')
         .select('*')
         .order('event_key');
@@ -44,8 +43,7 @@ export function useUpdateNotificationTemplate() {
       is_enabled?: boolean;
     }) => {
       const { event_key, ...updates } = payload;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error } = await (supabase as any)
+      const { error } = await supabase
         .from('notification_templates')
         .update({ ...updates, updated_at: new Date().toISOString() })
         .eq('event_key', event_key);

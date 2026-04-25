@@ -402,6 +402,7 @@ export type Database = {
           cutoff_time: string
           cycle_name: string
           delivery_start: string
+          essentials_label: string | null
           id: number
           is_active: boolean | null
           is_essentials: boolean | null
@@ -415,6 +416,7 @@ export type Database = {
           cutoff_time: string
           cycle_name: string
           delivery_start: string
+          essentials_label?: string | null
           id?: number
           is_active?: boolean | null
           is_essentials?: boolean | null
@@ -428,6 +430,7 @@ export type Database = {
           cutoff_time?: string
           cycle_name?: string
           delivery_start?: string
+          essentials_label?: string | null
           id?: number
           is_active?: boolean | null
           is_essentials?: boolean | null
@@ -451,8 +454,12 @@ export type Database = {
           branch_id: number | null
           center_lat: number | null
           center_lng: number | null
+          commission_percent: number | null
           contact_phone: string | null
           created_at: string | null
+          delivery_fee_override: number | null
+          driver_code: string | null
+          driver_user_id: string | null
           extends_coverage: boolean
           hub_code: string | null
           hub_name: string
@@ -469,8 +476,12 @@ export type Database = {
           branch_id?: number | null
           center_lat?: number | null
           center_lng?: number | null
+          commission_percent?: number | null
           contact_phone?: string | null
           created_at?: string | null
+          delivery_fee_override?: number | null
+          driver_code?: string | null
+          driver_user_id?: string | null
           extends_coverage?: boolean
           hub_code?: string | null
           hub_name: string
@@ -487,8 +498,12 @@ export type Database = {
           branch_id?: number | null
           center_lat?: number | null
           center_lng?: number | null
+          commission_percent?: number | null
           contact_phone?: string | null
           created_at?: string | null
+          delivery_fee_override?: number | null
+          driver_code?: string | null
+          driver_user_id?: string | null
           extends_coverage?: boolean
           hub_code?: string | null
           hub_name?: string
@@ -516,6 +531,8 @@ export type Database = {
           created_at: string | null
           delivery_fee_override: number | null
           description: string | null
+          driver_code: string | null
+          driver_user_id: string | null
           hub_id: number | null
           id: number
           is_active: boolean | null
@@ -528,6 +545,8 @@ export type Database = {
           created_at?: string | null
           delivery_fee_override?: number | null
           description?: string | null
+          driver_code?: string | null
+          driver_user_id?: string | null
           hub_id?: number | null
           id?: number
           is_active?: boolean | null
@@ -540,6 +559,8 @@ export type Database = {
           created_at?: string | null
           delivery_fee_override?: number | null
           description?: string | null
+          driver_code?: string | null
+          driver_user_id?: string | null
           hub_id?: number | null
           id?: number
           is_active?: boolean | null
@@ -901,6 +922,81 @@ export type Database = {
             columns: ["cycle_id"]
             isOneToOne: false
             referencedRelation: "delivery_cycles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notification_templates: {
+        Row: {
+          body_template: string
+          description: string | null
+          event_key: string
+          is_enabled: boolean
+          title_template: string
+          trigger_source: string | null
+          updated_at: string
+        }
+        Insert: {
+          body_template: string
+          description?: string | null
+          event_key: string
+          is_enabled?: boolean
+          title_template: string
+          trigger_source?: string | null
+          updated_at?: string
+        }
+        Update: {
+          body_template?: string
+          description?: string | null
+          event_key?: string
+          is_enabled?: boolean
+          title_template?: string
+          trigger_source?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      order_item_ratings: {
+        Row: {
+          comments: string | null
+          created_at: string
+          id: number
+          order_id: number
+          order_item_id: number
+          rating: number
+          user_id: string
+        }
+        Insert: {
+          comments?: string | null
+          created_at?: string
+          id?: number
+          order_id: number
+          order_item_id: number
+          rating: number
+          user_id: string
+        }
+        Update: {
+          comments?: string | null
+          created_at?: string
+          id?: number
+          order_id?: number
+          order_item_id?: number
+          rating?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_item_ratings_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_item_ratings_order_item_id_fkey"
+            columns: ["order_item_id"]
+            isOneToOne: false
+            referencedRelation: "order_items"
             referencedColumns: ["id"]
           },
         ]
@@ -1584,12 +1680,14 @@ export type Database = {
           essentials_module_active: boolean | null
           hub_delivery_active: boolean | null
           id: number
+          low_wallet_threshold: number | null
           loyalty_points_per_rupee: number | null
           min_wallet_topup: number | null
           storm_mode_active: boolean | null
           tax_rate_percentage: number | null
           updated_at: string | null
           whatsapp_support_number: string | null
+          winback_inactive_days: number | null
         }
         Insert: {
           branch_management_active?: boolean | null
@@ -1599,12 +1697,14 @@ export type Database = {
           essentials_module_active?: boolean | null
           hub_delivery_active?: boolean | null
           id?: number
+          low_wallet_threshold?: number | null
           loyalty_points_per_rupee?: number | null
           min_wallet_topup?: number | null
           storm_mode_active?: boolean | null
           tax_rate_percentage?: number | null
           updated_at?: string | null
           whatsapp_support_number?: string | null
+          winback_inactive_days?: number | null
         }
         Update: {
           branch_management_active?: boolean | null
@@ -1614,12 +1714,14 @@ export type Database = {
           essentials_module_active?: boolean | null
           hub_delivery_active?: boolean | null
           id?: number
+          low_wallet_threshold?: number | null
           loyalty_points_per_rupee?: number | null
           min_wallet_topup?: number | null
           storm_mode_active?: boolean | null
           tax_rate_percentage?: number | null
           updated_at?: string | null
           whatsapp_support_number?: string | null
+          winback_inactive_days?: number | null
         }
         Relationships: []
       }
@@ -1969,6 +2071,10 @@ export type Database = {
     }
     Functions: {
       _kitchen_get_secret: { Args: { p_name: string }; Returns: string }
+      assign_hub_operator: {
+        Args: { p_hub_id: number; p_new_user_id: string; p_old_user_id: string }
+        Returns: undefined
+      }
       assign_hub_to_address_ids: {
         Args: { p_address_ids: number[]; p_hub_id: number }
         Returns: undefined

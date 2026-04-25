@@ -68,6 +68,8 @@ export function useAddHub() {
   const bf = useBranchFilter();
   return useSupabaseMutation<HubPayload, DeliveryHub>(
     (payload) =>
+      // address_details is NOT NULL in DB but optional in HubPayload (legacy);
+      // cast preserves runtime behavior — admin UI requires it.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (supabase.from('delivery_hubs') as any).insert({
         ...payload,
@@ -81,8 +83,7 @@ export function useAddHub() {
 export function useUpdateHub() {
   return useSupabaseMutation<{ id: number } & Partial<HubPayload & { is_active: boolean }>>(
     ({ id, ...payload }) =>
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (supabase.from('delivery_hubs') as any).update(payload).eq('id', id),
+      supabase.from('delivery_hubs').update(payload).eq('id', id),
     [QUERY_KEYS.HUBS]
   );
 }
@@ -103,6 +104,8 @@ export function useAssignHubOperator() {
       newUserId: string | null;
       oldUserId: string | null;
     }) => {
+      // RPC param types are string-only; nulls are valid at runtime
+      // (used for unassign) — types don't reflect the SECURITY DEFINER overload.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { error } = await (supabase as any).rpc('assign_hub_operator', {
         p_hub_id:       payload.hubId,
