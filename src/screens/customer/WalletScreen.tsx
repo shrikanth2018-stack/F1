@@ -13,6 +13,7 @@ import {
   TouchableOpacity,
   TextInput,
   Alert,
+  Platform,
   StyleSheet,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -49,6 +50,13 @@ export function WalletScreen({ navigation }: { navigation: CustomerNavProp }) {
   const minTopup = config?.min_wallet_topup ?? 100;
 
   const handleTopup = (amount: number) => {
+    if (Platform.OS === 'web') {
+      Alert.alert(
+        'Mobile App Required',
+        'Wallet top-up uses online payment which is only available on the 1stOne mobile app. Please open the app on your phone to add money.',
+      );
+      return;
+    }
     if (amount < minTopup) {
       Alert.alert('Minimum', `Minimum top-up is \u20B9${minTopup}`);
       return;

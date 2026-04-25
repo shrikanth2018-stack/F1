@@ -12,6 +12,7 @@ import {
   ScrollView,
   Alert,
   AppState,
+  Platform,
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
@@ -165,6 +166,18 @@ export function CheckoutScreen({ navigation, route }: any) {
   const handlePlaceOrder = useCallback(async () => {
     if (isPlacingRef.current) return;
     isPlacingRef.current = true;
+
+    // Razorpay's React Native SDK doesn't support browsers. Customers on
+    // web can browse + view their account but must use the mobile app to
+    // pay. Block before any DB writes happen.
+    if (Platform.OS === 'web' && paymentMethod === 'razorpay') {
+      isPlacingRef.current = false;
+      Alert.alert(
+        'Mobile App Required',
+        'Online payment is only available on the 1stOne mobile app. Please open the app on your phone to complete this order, or pay from your wallet here if you have sufficient balance.',
+      );
+      return;
+    }
 
     if (config?.storm_mode_active) {
       isPlacingRef.current = false;
