@@ -164,6 +164,8 @@ export function LoginScreen({ onOTPSent, referralCode }: LoginScreenProps) {
               onChangeText={setPhone}
               autoFocus
               caretHidden
+              accessibilityLabel="Phone number"
+              accessibilityHint="Enter your 10-digit mobile number"
             />
           </TouchableOpacity>
 
@@ -173,6 +175,9 @@ export function LoginScreen({ onOTPSent, referralCode }: LoginScreenProps) {
             activeOpacity={0.85}
             onPress={handleContinue}
             disabled={loading || phone.length < 10}
+            accessibilityRole="button"
+            accessibilityLabel="Login or Register"
+            accessibilityState={{ disabled: loading || phone.length < 10, busy: loading }}
           >
             {loading ? (
               <ActivityIndicator color={Theme.colors.text.mint} />

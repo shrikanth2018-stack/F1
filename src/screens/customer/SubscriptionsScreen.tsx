@@ -276,7 +276,9 @@ export function SubscriptionsScreen({ navigation }: any) {
           !isLoading ? (
             <EmptyState
               title={`No ${activeTab} subscriptions`}
-              subtitle="Tap Add Plan below to subscribe"
+              subtitle="Subscribe to a plan to lock in your daily meals"
+              actionLabel="Browse Plans"
+              onAction={() => navigation.navigate('Plans')}
             />
           ) : null
         }

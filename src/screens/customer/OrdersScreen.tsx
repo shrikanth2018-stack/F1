@@ -145,7 +145,9 @@ export function OrdersScreen({ navigation }: any) {
           !isLoading ? (
             <EmptyState
               title={`No ${activeTab} orders yet`}
-              subtitle="Your order history will appear here"
+              subtitle="Browse plans or order a single meal to get started"
+              actionLabel="Browse Plans"
+              onAction={() => navigation.navigate('Plans')}
             />
           ) : null
         }

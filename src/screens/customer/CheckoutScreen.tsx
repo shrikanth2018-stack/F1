@@ -500,6 +500,9 @@ export function CheckoutScreen({ navigation, route }: any) {
             ]}
             onPress={() => setPaymentMethod('razorpay')}
             activeOpacity={0.7}
+            accessibilityRole="radio"
+            accessibilityLabel="Pay online via Razorpay"
+            accessibilityState={{ selected: paymentMethod === 'razorpay' }}
           >
             <ThemedText variant="body" color="primary">Pay Online (Razorpay)</ThemedText>
             <ThemedText variant="micro" color="muted">UPI, Card, Net Banking</ThemedText>
@@ -507,6 +510,9 @@ export function CheckoutScreen({ navigation, route }: any) {
           <TouchableOpacity
             style={[styles.paymentOption, paymentMethod === 'wallet' && styles.paymentSelected]}
             onPress={() => setPaymentMethod('wallet')}
+            accessibilityRole="radio"
+            accessibilityLabel="Pay from wallet"
+            accessibilityState={{ selected: paymentMethod === 'wallet' }}
           >
             <View style={styles.paymentRow}>
               <ThemedText variant="body" color="primary">Wallet Balance</ThemedText>
@@ -533,6 +539,12 @@ export function CheckoutScreen({ navigation, route }: any) {
         activeOpacity={0.85}
         onPress={handlePlaceOrder}
         disabled={!selectedAddressId || totalCartCount === 0 || isPlacing}
+        accessibilityRole="button"
+        accessibilityLabel={paymentMethod === 'wallet' ? 'Pay from wallet' : 'Pay online'}
+        accessibilityState={{
+          disabled: !selectedAddressId || totalCartCount === 0 || isPlacing,
+          busy: isPlacing,
+        }}
       >
         {isPlacing
           ? <ActivityIndicator color={Theme.colors.text.mint} />

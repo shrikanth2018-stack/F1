@@ -196,6 +196,8 @@ export function OTPScreen({ phone, onBack, onExistingUser, onNewUser }: OTPScree
             onChangeText={setOtp}
             autoFocus
             caretHidden
+            accessibilityLabel="One-time password"
+            accessibilityHint="Enter the 6-digit code sent to your phone"
           />
         </TouchableOpacity>
 
@@ -208,6 +210,9 @@ export function OTPScreen({ phone, onBack, onExistingUser, onNewUser }: OTPScree
           onPress={handleResend}
           disabled={resendCountdown > 0 || resending}
           activeOpacity={0.6}
+          accessibilityRole="button"
+          accessibilityLabel="Resend OTP"
+          accessibilityState={{ disabled: resendCountdown > 0 || resending, busy: resending }}
         >
           <Text
             style={[
@@ -224,7 +229,13 @@ export function OTPScreen({ phone, onBack, onExistingUser, onNewUser }: OTPScree
         </TouchableOpacity>
 
         {/* Change phone — replaces the Back button */}
-        <TouchableOpacity style={styles.changePhoneBtn} onPress={onBack} activeOpacity={0.6}>
+        <TouchableOpacity
+          style={styles.changePhoneBtn}
+          onPress={onBack}
+          activeOpacity={0.6}
+          accessibilityRole="button"
+          accessibilityLabel="Change phone number"
+        >
           <Text style={styles.changePhoneText}>Change Phone Number</Text>
         </TouchableOpacity>
       </View>

@@ -198,6 +198,8 @@ export function CartScreen({ navigation, route }: any) {
             cartType: subPlan.plan_type === 'essentials' ? 'essentials' : 'food',
             subscriptionPlanId: subPlan.plan_id,
           })}
+          accessibilityRole="button"
+          accessibilityLabel={`Pay ${formatPriceShort(subPlan.price)} for subscription`}
         >
           <ThemedText variant="body" style={styles.floatBtnText}>
             Pay {formatPriceShort(subPlan.price)} for Subscription
