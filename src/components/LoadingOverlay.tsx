@@ -36,7 +36,7 @@ export function LoadingOverlay({ visible, message }: LoadingOverlayProps) {
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: Theme.colors.layout.overlay,
     justifyContent: 'center',
     alignItems: 'center',
   },

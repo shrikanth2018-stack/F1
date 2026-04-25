@@ -70,7 +70,7 @@ const styles = StyleSheet.create({
   map: { flex: 1 },
   hint: { position: 'absolute', bottom: 8, left: 0, right: 0, alignItems: 'center' },
   hintText: {
-    backgroundColor: 'rgba(0,0,0,0.55)',
+    backgroundColor: Theme.colors.layout.overlayMid,
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 10,

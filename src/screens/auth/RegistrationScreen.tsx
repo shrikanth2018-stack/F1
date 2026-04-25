@@ -39,11 +39,17 @@ export function RegistrationScreen({ phone, onComplete, onBack }: RegistrationSc
     }
 
     setLoading(true);
-    // Create profile now — user is already authenticated at this point.
-    // profiles.id is PK linked to auth.users via DB default, not set client-side;
-    // typed Insert requires it, so cast preserves runtime contract.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (supabase as any).from('profiles').upsert({
+    // User is already authenticated — pass auth.user.id explicitly so the
+    // typed upsert satisfies profiles.id (PK linked to auth.users.id).
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      setLoading(false);
+      Alert.alert('Session Error', 'Please log in again.');
+      onBack();
+      return;
+    }
+    await supabase.from('profiles').upsert({
+      id: user.id,
       phone_number: phone,
       full_name: name.trim(),
     }, { onConflict: 'phone_number' });

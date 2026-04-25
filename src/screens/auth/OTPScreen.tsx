@@ -85,9 +85,11 @@ export function OTPScreen({ phone, onBack, onExistingUser, onNewUser }: OTPScree
   const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
   const [bgUrl, setBgUrl] = useState<string | null>(null);
+  const [resendCountdown, setResendCountdown] = useState(30);
+  const [resending, setResending] = useState(false);
   const isVerifyingRef = useRef(false);
   const inputRef = useRef<TextInput>(null);
-  const { verifyOTP } = useAuth();
+  const { verifyOTP, signInWithPhone } = useAuth();
 
   useEffect(() => {
     supabase
@@ -148,6 +150,27 @@ export function OTPScreen({ phone, onBack, onExistingUser, onNewUser }: OTPScree
     }
   }, [otp]);
 
+  // Tick the resend countdown once a second until zero, then enable button
+  useEffect(() => {
+    if (resendCountdown <= 0) return;
+    const t = setTimeout(() => setResendCountdown((s) => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [resendCountdown]);
+
+  const handleResend = async () => {
+    if (resendCountdown > 0 || resending) return;
+    setResending(true);
+    const { error } = await signInWithPhone(phone);
+    setResending(false);
+    if (error) {
+      Alert.alert('Resend Failed', error.message);
+      return;
+    }
+    setOtp('');
+    setResendCountdown(30);
+    Alert.alert('OTP Sent', 'A new code has been sent to your phone.');
+  };
+
   const inner = (
     <KeyboardAvoidingView
       style={styles.kav}
@@ -178,6 +201,27 @@ export function OTPScreen({ phone, onBack, onExistingUser, onNewUser }: OTPScree
 
         {/* Loading indicator while auto-verifying */}
         {loading && <ActivityIndicator color={Theme.colors.text.mint} style={styles.loader} />}
+
+        {/* Resend OTP — disabled with countdown for first 30s */}
+        <TouchableOpacity
+          style={styles.resendBtn}
+          onPress={handleResend}
+          disabled={resendCountdown > 0 || resending}
+          activeOpacity={0.6}
+        >
+          <Text
+            style={[
+              styles.resendText,
+              (resendCountdown > 0 || resending) && styles.resendDisabled,
+            ]}
+          >
+            {resending
+              ? 'Sending…'
+              : resendCountdown > 0
+                ? `Resend OTP in ${resendCountdown}s`
+                : 'Resend OTP'}
+          </Text>
+        </TouchableOpacity>
 
         {/* Change phone — replaces the Back button */}
         <TouchableOpacity style={styles.changePhoneBtn} onPress={onBack} activeOpacity={0.6}>
@@ -244,6 +288,19 @@ const styles = StyleSheet.create({
   },
   loader: {
     marginBottom: Theme.spacing.lg,
+  },
+  resendBtn: {
+    paddingVertical: Theme.spacing.sm,
+    paddingHorizontal: Theme.spacing.md,
+  },
+  resendText: {
+    fontFamily: Theme.typography.fontFamily,
+    fontSize: Theme.typography.sizes.small + 4,
+    color: Theme.colors.text.mint,
+    textAlign: 'center',
+  },
+  resendDisabled: {
+    color: Theme.colors.text.disabled,
   },
   changePhoneBtn: {
     marginTop: Theme.spacing.lg,
