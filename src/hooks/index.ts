@@ -31,7 +31,6 @@ export {
   usePlanItems,
   useMySubscriptions,
   useCancelledDays,
-  useSubscribe,
   useSkipDay,
   useUndoSkip,
   usePauseSubscription,
