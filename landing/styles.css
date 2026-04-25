@@ -5,13 +5,14 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Tahoma", Roboto, sans-serif;
   font-size: 16px;
   line-height: 1.6;
-  color: #1a1a1a;
-  background: #fff;
+  color: #f0f0f0;            /* light text on dark bg */
+  background: #151515;       /* matches mobile Theme.colors.background.primary */
 }
 img { max-width: 100%; display: block; }
-a { color: #0a84ff; text-decoration: none; }
+a { color: #4ECDC4; text-decoration: none; }       /* mint accent for links */
 a:hover { text-decoration: underline; }
 ul { list-style: none; }
+strong { color: #fff; }
 
 /* ── Layout container ────────────────────────────────────── */
 .container {
@@ -25,7 +26,7 @@ ul { list-style: none; }
   position: sticky;
   top: 0;
   z-index: 100;
-  background: rgba(21, 21, 21, 0.95);            /* matches mobile app bg #151515 */
+  background: rgba(21, 21, 21, 0.95);
   backdrop-filter: saturate(180%) blur(20px);
   -webkit-backdrop-filter: saturate(180%) blur(20px);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
@@ -34,7 +35,7 @@ ul { list-style: none; }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 64px;
+  height: 100px;             /* enlarged from 64px to fit 80px logo */
 }
 .brand {
   display: flex;
@@ -42,7 +43,7 @@ ul { list-style: none; }
   text-decoration: none;
 }
 .brand-logo {
-  height: 40px;
+  height: 80px;              /* 2x the original 40px */
   width: auto;
   object-fit: contain;
 }
@@ -55,23 +56,27 @@ ul { list-style: none; }
 }
 .nav a:hover { color: #4ECDC4; text-decoration: none; }
 
-/* Hide nav on small screens — header just shows brand */
 @media (max-width: 640px) {
   .nav { display: none; }
+  .header-row { height: 80px; }
+  .brand-logo { height: 60px; }   /* downsize on small screens to keep header tidy */
 }
 
-/* ── Launching-shortly notice (sticky just below header) ── */
+/* ── Launching-shortly notice (sits just below header) ──── */
 .notice {
   position: sticky;
-  top: 64px;                       /* sit directly below the 64px header */
+  top: 100px;                /* matches header height */
   z-index: 99;
-  background: #FFBF00;             /* matches Theme.colors.status.warning */
-  color: #1a1a1a;
+  background: transparent;   /* no background per request */
+  color: #FFBF00;            /* yellow text */
   font-size: 14px;
   font-weight: 500;
   text-align: center;
   padding: 10px 0;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  border-bottom: 1px solid rgba(255, 191, 0, 0.15);
+}
+@media (max-width: 640px) {
+  .notice { top: 80px; }     /* match smaller header on mobile */
 }
 
 /* ── Hero ────────────────────────────────────────────────── */
@@ -85,8 +90,6 @@ ul { list-style: none; }
 .hero-bg {
   position: absolute;
   inset: 0;
-  /* Photo on top, gradient as fallback if image ever fails to load.
-     JS in index.html overrides this with admin-uploaded URL if present. */
   background-image:
     url('https://images.unsplash.com/photo-1742281258189-3b933879867a?fm=jpg&q=80&w=2400&auto=format&fit=crop'),
     linear-gradient(135deg, #1a3d3a 0%, #4ECDC4 100%);
@@ -97,7 +100,7 @@ ul { list-style: none; }
 .hero-overlay {
   position: absolute;
   inset: 0;
-  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0.65));
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.75));
   z-index: 1;
 }
 .hero-content {
@@ -168,22 +171,23 @@ ul { list-style: none; }
   font-style: italic;
 }
 
-/* ── Sections ────────────────────────────────────────────── */
+/* ── Sections (dark mode) ────────────────────────────────── */
 .section {
   padding: 80px 0;
+  background: #151515;
 }
 .section-alt {
-  background: #f8f8f8;
+  background: #1C1C1E;       /* Theme.colors.background.secondary */
 }
 .section h2 {
   font-size: clamp(24px, 3vw, 32px);
   font-weight: 500;
   margin-bottom: 16px;
-  color: #151515;
+  color: #fff;
 }
 .section p {
   font-size: clamp(15px, 1.5vw, 17px);
-  color: #333;
+  color: #cfcfcf;
   max-width: 720px;
 }
 
@@ -195,13 +199,14 @@ ul { list-style: none; }
   display: flex;
   gap: 16px;
   padding: 12px 0;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   font-size: 15px;
+  color: #cfcfcf;
 }
 .contact-list li:last-child { border-bottom: 0; }
 .contact-label {
   width: 80px;
-  color: #888;
+  color: #86868B;            /* Theme.colors.text.subtitle */
   font-weight: 500;
 }
 
@@ -210,18 +215,18 @@ ul { list-style: none; }
 
 .faq-main {
   padding: 64px 0 96px;
-  min-height: calc(100vh - 64px);
-  background: #fff;
+  min-height: calc(100vh - 100px);
+  background: #151515;
 }
 .faq-title {
   font-size: clamp(28px, 4vw, 40px);
   font-weight: 500;
   margin-bottom: 12px;
-  color: #151515;
+  color: #fff;
 }
 .faq-intro {
   font-size: 16px;
-  color: #555;
+  color: #cfcfcf;
   margin-bottom: 40px;
   max-width: 640px;
 }
@@ -229,14 +234,14 @@ ul { list-style: none; }
   max-width: 760px;
 }
 .faq-item {
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   padding: 18px 0;
 }
 .faq-item summary {
   cursor: pointer;
   font-size: 17px;
   font-weight: 500;
-  color: #151515;
+  color: #fff;
   padding: 6px 32px 6px 0;
   position: relative;
   list-style: none;
@@ -262,23 +267,24 @@ ul { list-style: none; }
   padding-right: 32px;
   font-size: 15px;
   line-height: 1.7;
-  color: #444;
+  color: #cfcfcf;
 }
 .faq-footer-note {
   margin-top: 48px;
   padding-top: 24px;
-  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
   font-size: 14px;
-  color: #888;
+  color: #86868B;
   max-width: 640px;
 }
 
 /* ── Footer ──────────────────────────────────────────────── */
 .footer {
-  background: #151515;
-  color: #888;
+  background: #0d0d0d;       /* slightly darker than page for visual separation */
+  color: #86868B;
   padding: 24px 0;
   font-size: 13px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
 }
 .footer-row {
   display: flex;
