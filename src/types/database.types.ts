@@ -122,16 +122,19 @@ export type Database = {
       app_settings: {
         Row: {
           id: number
+          landing_hero_url: string | null
           login_bg_url: string
           updated_at: string
         }
         Insert: {
           id?: number
+          landing_hero_url?: string | null
           login_bg_url?: string
           updated_at?: string
         }
         Update: {
           id?: number
+          landing_hero_url?: string | null
           login_bg_url?: string
           updated_at?: string
         }
@@ -1343,8 +1346,14 @@ export type Database = {
         Row: {
           id: number
           is_active: boolean | null
+          milestone_ambassador_count: number | null
+          milestone_star_count: number | null
           referee_reward_points: number | null
+          referee_signup_credit: number | null
           referee_wallet_credit: number | null
+          referrer_first_order_credit: number | null
+          referrer_first_order_points: number | null
+          referrer_month_credit: number | null
           referrer_reward_points: number | null
           referrer_wallet_credit: number | null
           updated_at: string | null
@@ -1352,8 +1361,14 @@ export type Database = {
         Insert: {
           id?: number
           is_active?: boolean | null
+          milestone_ambassador_count?: number | null
+          milestone_star_count?: number | null
           referee_reward_points?: number | null
+          referee_signup_credit?: number | null
           referee_wallet_credit?: number | null
+          referrer_first_order_credit?: number | null
+          referrer_first_order_points?: number | null
+          referrer_month_credit?: number | null
           referrer_reward_points?: number | null
           referrer_wallet_credit?: number | null
           updated_at?: string | null
@@ -1361,8 +1376,14 @@ export type Database = {
         Update: {
           id?: number
           is_active?: boolean | null
+          milestone_ambassador_count?: number | null
+          milestone_star_count?: number | null
           referee_reward_points?: number | null
+          referee_signup_credit?: number | null
           referee_wallet_credit?: number | null
+          referrer_first_order_credit?: number | null
+          referrer_first_order_points?: number | null
+          referrer_month_credit?: number | null
           referrer_reward_points?: number | null
           referrer_wallet_credit?: number | null
           updated_at?: string | null
@@ -1372,7 +1393,9 @@ export type Database = {
       referrals: {
         Row: {
           created_at: string | null
+          first_order_reward_given: boolean | null
           id: number
+          month_reward_given: boolean | null
           referee_id: string | null
           referrer_id: string | null
           reward_given: boolean | null
@@ -1380,7 +1403,9 @@ export type Database = {
         }
         Insert: {
           created_at?: string | null
+          first_order_reward_given?: boolean | null
           id?: number
+          month_reward_given?: boolean | null
           referee_id?: string | null
           referrer_id?: string | null
           reward_given?: boolean | null
@@ -1388,7 +1413,9 @@ export type Database = {
         }
         Update: {
           created_at?: string | null
+          first_order_reward_given?: boolean | null
           id?: number
+          month_reward_given?: boolean | null
           referee_id?: string | null
           referrer_id?: string | null
           reward_given?: boolean | null
@@ -2072,7 +2099,11 @@ export type Database = {
     Functions: {
       _kitchen_get_secret: { Args: { p_name: string }; Returns: string }
       assign_hub_operator: {
-        Args: { p_hub_id: number; p_new_user_id: string; p_old_user_id: string }
+        Args: {
+          p_hub_id: number
+          p_new_user_id?: string
+          p_old_user_id?: string
+        }
         Returns: undefined
       }
       assign_hub_to_address_ids: {
