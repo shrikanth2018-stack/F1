@@ -33,7 +33,6 @@ import { useAllDeliveryCycles } from '../../hooks/useMenuManagement';
 import type { AdminNavProp } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
-const S = Theme.typography.sizes.small + 2;
 const P = Theme.typography.sizes.body + 4;
 
 export function EssentialsCatalogManageScreen({ navigation }: { navigation: AdminNavProp }) {

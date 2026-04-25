@@ -536,7 +536,7 @@ export function StockManagerScreen({ navigation }: { navigation: AdminNavProp })
           text: 'Print & Archive',
           onPress: async () => {
             printBatch.mutate(activeItems, {
-              onSuccess: async (batchId) => {
+              onSuccess: async (_batchId) => {
                 const html = buildOrderListHTML(
                   activeItems.map((i) => ({ name: i.name, qty: i.qty, category: i.category })),
                 );

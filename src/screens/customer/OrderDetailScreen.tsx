@@ -16,7 +16,6 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
-import { DispatchBadge } from '../../components/DispatchBadge';
 import { Divider } from '../../components/Divider';
 import { ErrorRetry } from '../../components/ErrorRetry';
 import { useOrderDetail, useCancelOrder } from '../../hooks/useOrders';

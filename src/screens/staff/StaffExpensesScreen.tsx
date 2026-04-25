@@ -5,7 +5,7 @@
  * Plain text layout — no cards/boxes. Title centred.
  */
 
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   ScrollView,

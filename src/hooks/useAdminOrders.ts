@@ -13,7 +13,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../api/supabaseClient';
 import { QUERY_KEYS, QUERY_STALE_TIME } from '../utils/constants';
 import { useBranchFilter } from './useBranchFilter';
-import type { Order, OrderStatus } from '../types';
+import type { OrderStatus } from '../types';
 
 interface AdminOrderFilters {
   date?: string;         // YYYY-MM-DD, defaults to today

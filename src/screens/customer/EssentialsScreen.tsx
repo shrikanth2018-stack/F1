@@ -17,7 +17,6 @@ import {
 } from 'react-native';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
-import { ThemedButton } from '../../components/ThemedButton';
 import { EmptyState } from '../../components/EmptyState';
 import { ErrorRetry } from '../../components/ErrorRetry';
 import { useEssentialsCatalog } from '../../hooks/useEssentials';

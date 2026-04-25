@@ -8,7 +8,6 @@ import React, { useCallback, useRef, useState } from 'react';
 import {
   GoogleMap,
   useJsApiLoader,
-  DrawingManager,
   Polygon,
   Marker,
 } from '@react-google-maps/api';

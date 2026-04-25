@@ -29,7 +29,7 @@ import {
   useUndoSkip,
   usePauseSubscription,
 } from '../../hooks/useSubscriptions';
-import { formatPriceShort, formatDateLong } from '../../utils/formatters';
+import { formatDateLong } from '../../utils/formatters';
 
 export function SubscriptionDetailScreen({ route, navigation }: any) {
   const { subscriptionId } = route.params;
@@ -74,7 +74,6 @@ export function SubscriptionDetailScreen({ route, navigation }: any) {
   const handlePauseToggle = useCallback(async () => {
     if (!sub) return;
 
-    const action = sub.is_paused ? 'resume' : 'pause';
     Alert.alert(
       `${sub.is_paused ? 'Resume' : 'Pause'} Subscription?`,
       sub.is_paused

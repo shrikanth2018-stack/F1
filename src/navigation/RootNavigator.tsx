@@ -55,8 +55,8 @@ export function RootNavigator() {
   usePushNotifications();
   const [step, setStep] = useState<AuthStep>('phone');
   const [pendingPhone, setPendingPhone] = useState('');
-  const [pendingName, setPendingName] = useState('');
-  const [isNewUser, setIsNewUser] = useState(false);
+  const [, setPendingName] = useState('');
+  const [, setIsNewUser] = useState(false);
   /** True after new-user OTP verify — show address screen before the app */
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   /** Referral code carried in from a deep link (1stone://referral?code=XXX) */

@@ -26,7 +26,6 @@ import { Divider } from '../../components/Divider';
 import type { AdminNavProp } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
-const S = Theme.typography.sizes.small + 2;
 
 export function LoginBgScreen({ navigation }: { navigation: AdminNavProp }) {
   const [currentUrl, setCurrentUrl] = useState<string | null>(null);

@@ -664,39 +664,6 @@ export function StaffDashboard() {
     }
   };
 
-  const handlePrintLabels = async () => {
-    if (packingOrders.length === 0) {
-      Alert.alert('No orders', 'No orders to print labels for.');
-      return;
-    }
-    const pages = packingOrders.map((order: any) => {
-      const addr = order.customer_addresses;
-      const items = (order.order_items ?? [])
-        .map((i: any) => `<li>${i.item_name} &times;${i.quantity}</li>`)
-        .join('');
-      return `<div class="label">
-        <h2>Order #${order.id}</h2>
-        <p><strong>${addr?.full_name ?? '—'}</strong></p>
-        <p>${addr?.address_line ?? '—'}</p>
-        ${addr?.landmark ? `<p>${addr.landmark}</p>` : ''}
-        ${addr?.city ? `<p>${addr.city}</p>` : ''}
-        <ul>${items || '<li>—</li>'}</ul>
-      </div>`;
-    }).join('');
-    const html = `<!DOCTYPE html><html><head><style>
-      body{font-family:Arial,sans-serif;margin:0}
-      .label{page-break-after:always;border:2px solid #000;padding:20px;margin:10px}
-      .label:last-child{page-break-after:auto}
-      h2{margin:0 0 8px 0}p{margin:3px 0}
-      ul{margin:10px 0 0;padding-left:18px;border-top:1px solid #000;padding-top:10px}
-    </style></head><body>${pages}</body></html>`;
-    try {
-      await Print.printAsync({ html });
-    } catch {
-      Alert.alert('Print Error', 'Could not open print dialog.');
-    }
-  };
-
   // Render a single label block for an order (shared HTML fragment builder).
   const renderLabelBlock = (order: any) => {
     const addr = order.customer_addresses;

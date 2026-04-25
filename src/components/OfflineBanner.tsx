@@ -5,7 +5,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, Animated } from 'react-native';
+import { StyleSheet, Animated } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import { Theme } from '../theme';
 import { ThemedText } from './ThemedText';

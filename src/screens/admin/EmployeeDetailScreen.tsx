@@ -17,7 +17,6 @@ import {
   Alert,
   StyleSheet,
   ActivityIndicator,
-  Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
@@ -33,7 +32,7 @@ import {
 } from '../../hooks/useResourceManager';
 import { useDeliveryHubs } from '../../hooks/useDeliveryHubs';
 import { useAllStaff } from '../../hooks/useStaffManagement';
-import type { Profile, StaffAttendance, StaffLeave, StaffSalary } from '../../types';
+import type { Profile, StaffAttendance, StaffLeave } from '../../types';
 import type { AdminScreenProps } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;

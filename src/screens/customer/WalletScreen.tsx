@@ -41,7 +41,7 @@ export function WalletScreen({ navigation }: { navigation: CustomerNavProp }) {
 
   const { session } = useAuth();
   const { data: wallet } = useWalletBalance();
-  const { data: transactions, isLoading: txLoading } = useWalletTransactions();
+  const { data: transactions } = useWalletTransactions();
   const { data: config } = useStoreConfig();
   const topup = useWalletTopup();
   const refreshWallet = useRefreshWallet();
@@ -190,7 +190,7 @@ export function WalletScreen({ navigation }: { navigation: CustomerNavProp }) {
         {(transactions ?? []).length === 0 ? (
           <EmptyState title="No transactions yet" />
         ) : (
-          (transactions ?? []).map((tx, idx, arr) => (
+          (transactions ?? []).map((tx, idx) => (
             <React.Fragment key={tx.id}>
               {idx > 0 && <View style={styles.txSep} />}
               <View style={styles.txRow}>

@@ -19,8 +19,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
-import { Divider } from '../../components/Divider';
-import { EmptyState } from '../../components/EmptyState';
 import {
   useTodayAttendance,
   useAttendanceHistory,
@@ -41,10 +39,6 @@ function getHoursWorked(clockIn: string | null, clockOut: string | null): string
   const hrs = Math.floor(diff / 3600000);
   const mins = Math.floor((diff % 3600000) / 60000);
   return `${hrs}h ${mins}m`;
-}
-
-function toDateStr(d: Date): string {
-  return d.toISOString().split('T')[0];
 }
 
 // ── Simple calendar date picker ──────────────────────────

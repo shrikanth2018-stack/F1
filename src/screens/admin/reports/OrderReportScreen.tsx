@@ -49,7 +49,7 @@ async function handlePrint(html: string) {
   }
 }
 
-async function handleDownload(html: string, period: Period) {
+async function handleDownload(html: string, _period: Period) {
   try {
     const Print = require('expo-print');
     const Sharing = require('expo-sharing');

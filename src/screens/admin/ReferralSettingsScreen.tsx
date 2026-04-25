@@ -19,7 +19,6 @@ import {
   TouchableOpacity,
   TextInput,
   Switch,
-  FlatList,
   StyleSheet,
   Alert,
   ActivityIndicator,
@@ -194,7 +193,7 @@ const rr = StyleSheet.create({
 export function ReferralSettingsScreen({ navigation }: { navigation: AdminNavProp }) {
   const { data: savedSettings, isLoading } = useReferralSettings();
   const updateSettings = useUpdateReferralSettings();
-  const { data: allReferrals = [], isLoading: refLoading, refetch } = useAllReferrals();
+  const { data: allReferrals = [] } = useAllReferrals();
 
   const [s, setS] = useState<Partial<ReferralSettings>>({});
   const [refTab, setRefTab] = useState<ReferralTab>('Pending');

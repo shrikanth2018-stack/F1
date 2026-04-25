@@ -5,7 +5,6 @@
  * Also provides mutation to add/update addresses.
  */
 
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../api/supabaseClient';
 import { useSupabaseQuery, useSupabaseMutation } from '../api/useSupabaseQuery';
 import { QUERY_KEYS } from '../utils/constants';

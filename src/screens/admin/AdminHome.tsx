@@ -26,7 +26,6 @@ import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { Divider } from '../../components/Divider';
 import { SettingsRow } from '../../components/SettingsRow';
-import { ErrorRetry } from '../../components/ErrorRetry';
 import { useAuth } from '../../hooks/useAuth';
 import { useRealtimeOrders } from '../../hooks/useRealtimeOrders';
 import { useAdminStats } from '../../hooks/useAdminStats';

@@ -28,7 +28,6 @@ import {
 import type { AdminScreenProps } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
-const S = Theme.typography.sizes.small + 2;
 
 const MEAL_CYCLES = ['Breakfast', 'Lunch', 'Snacks', 'Dinner'];
 

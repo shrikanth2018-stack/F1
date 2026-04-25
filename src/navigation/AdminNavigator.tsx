@@ -7,8 +7,6 @@
  */
 
 import React from 'react';
-import { View, TouchableOpacity, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { AdminHome } from '../screens/admin/AdminHome';
 import { MenuManageScreen } from '../screens/admin/MenuManageScreen';
@@ -41,48 +39,9 @@ import { SubscriptionReportScreen } from '../screens/admin/reports/SubscriptionR
 import { StaffReportScreen } from '../screens/admin/reports/StaffReportScreen';
 import { HubReportScreen } from '../screens/admin/reports/HubReportScreen';
 import { Theme } from '../theme';
-import { ThemedText } from '../components/ThemedText';
-import type { AdminNavProp, AdminStackParamList } from './types';
+import type { AdminStackParamList } from './types';
 
 const Stack = createNativeStackNavigator<AdminStackParamList>();
-
-const B = Theme.typography.sizes.body + 2;
-
-/** Placeholder for screens not yet built — shows the title + "Coming soon" */
-function PlaceholderScreen({ route, navigation }: { route: { name: string }; navigation: AdminNavProp }) {
-  return (
-    <SafeAreaView style={placeholder.container}>
-      <View style={placeholder.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <ThemedText variant="body" color="accent" style={placeholder.back}>‹ Back</ThemedText>
-        </TouchableOpacity>
-        <ThemedText variant="header" color="primary" style={placeholder.title}>{route.name}</ThemedText>
-        <View style={placeholder.spacer} />
-      </View>
-      <ThemedText variant="body" color="muted" style={placeholder.sub}>Coming soon</ThemedText>
-    </SafeAreaView>
-  );
-}
-
-const placeholder = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Theme.colors.background.primary,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.layout.divider,
-  },
-  back: { fontSize: B, minWidth: 60 },
-  title: { flex: 1, textAlign: 'center' },
-  spacer: { minWidth: 60 },
-  sub: { marginTop: Theme.spacing.md, paddingHorizontal: Theme.spacing.md, fontSize: B },
-});
 
 export function AdminNavigator() {
   return (
