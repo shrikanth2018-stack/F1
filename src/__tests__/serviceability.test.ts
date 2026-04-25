@@ -193,4 +193,53 @@ describe('checkZone — hub-extends fallback', () => {
     expect(r.result).toBe('serviceable');
     expect(r.hubId).toBe(99);
   });
+
+  it('returns first matching extending hub when multiple cover the same point (deterministic order)', async () => {
+    mockData.zones = [];
+    mockData.hubs = [
+      { id: 1, hub_name: 'First', polygon_geojson: hubPoly, extends_coverage: true },
+      { id: 2, hub_name: 'Second', polygon_geojson: hubPoly, extends_coverage: true },
+    ];
+    const r = await checkZone(25, 25);
+    // First in array wins — depends on DB row order but is deterministic per query
+    expect(r.hubId).toBe(1);
+  });
+
+  it('skips hubs with degenerate polygons (e.g. fewer than 3 vertices)', async () => {
+    mockData.zones = [];
+    mockData.hubs = [
+      { id: 1, hub_name: 'Bad', polygon_geojson: [{ lat: 0, lng: 0 }, { lat: 1, lng: 1 }], extends_coverage: true },
+      { id: 2, hub_name: 'Good', polygon_geojson: hubPoly, extends_coverage: true },
+    ];
+    const r = await checkZone(25, 25);
+    expect(r.hubId).toBe(2);
+  });
+
+  it('skips hubs with null polygon_geojson', async () => {
+    mockData.zones = [];
+    mockData.hubs = [
+      { id: 1, hub_name: 'NoPoly', polygon_geojson: null, extends_coverage: true },
+      { id: 2, hub_name: 'WithPoly', polygon_geojson: hubPoly, extends_coverage: true },
+    ];
+    const r = await checkZone(25, 25);
+    expect(r.hubId).toBe(2);
+  });
+});
+
+describe('checkZone — error handling', () => {
+  it('returns the EMPTY result when supabase query throws', async () => {
+    // Replace the mock for this test to throw
+    const original = require('@/api/supabaseClient').supabase.from;
+    require('@/api/supabaseClient').supabase.from = () => {
+      throw new Error('Network down');
+    };
+    try {
+      const r = await checkZone(5, 5);
+      expect(r.result).toBe('unknown');
+      expect(r.zoneId).toBeNull();
+      expect(r.hubId).toBeNull();
+    } finally {
+      require('@/api/supabaseClient').supabase.from = original;
+    }
+  });
 });

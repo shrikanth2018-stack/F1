@@ -123,6 +123,42 @@ describe('isCycleOrderable', () => {
   });
 });
 
+describe('getDispatchScenario — edge cases', () => {
+  it('cutoff exactly equal to delivery_start is treated as a normal (not cross-midnight) cycle', () => {
+    // Both 12:00. isCrossMidnight check is strict ` > `, so degenerate equal → normal path.
+    const cycle = makeCycle('12:00:00', '12:00:00');
+    expect(getDispatchScenario(cycle, tsAt(11, 59))).toBe('A');
+    expect(getDispatchScenario(cycle, tsAt(12, 0))).toBe('B');
+  });
+
+  it('order placed at exact cutoff minute is Scenario B (cutoff is exclusive)', () => {
+    const cycle = makeCycle('10:00:00', '12:00:00');
+    expect(getDispatchScenario(cycle, tsAt(10, 0))).toBe('B');
+  });
+
+  it('cross-midnight cycle with delivery_start at exactly 00:00 — order placed at 00:00 is BTW boundary', () => {
+    // cutoff 23:00 (1380), delivery_start 00:00 (0). Cross-midnight (1380 > 0).
+    // nowMinutes 0 → not < 0, so falls into B branch (>= delivery_start && < cutoff)
+    const cycle = makeCycle('23:00:00', '00:00:00');
+    expect(getDispatchScenario(cycle, tsAt(0, 0))).toBe('B');
+  });
+
+  it('cross-midnight cycle: order at exact cutoff minute is Scenario A (next-day window)', () => {
+    const cycle = makeCycle('22:00:00', '07:30:00');
+    expect(getDispatchScenario(cycle, tsAt(22, 0))).toBe('A');
+  });
+
+  it('order placed at midnight 00:00 in a normal cycle is Scenario A', () => {
+    const cycle = makeCycle('10:00:00', '12:00:00');
+    expect(getDispatchScenario(cycle, tsAt(0, 0))).toBe('A');
+  });
+
+  it('order at 23:59 in a normal cycle (well past cutoff) is Scenario B', () => {
+    const cycle = makeCycle('10:00:00', '12:00:00');
+    expect(getDispatchScenario(cycle, tsAt(23, 59))).toBe('B');
+  });
+});
+
 describe('formatTime12h', () => {
   it('formats midnight', () => {
     expect(formatTime12h('00:00')).toBe('12:00 AM');

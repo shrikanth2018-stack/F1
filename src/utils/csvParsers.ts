@@ -5,6 +5,50 @@
  * No file I/O, no DB — just text → typed rows.
  */
 
+/**
+ * Split a single CSV line into fields, honouring double-quoted fields that
+ * contain commas (e.g. `"Idli, Sambar Combo",Breakfast` → ['Idli, Sambar Combo','Breakfast']).
+ * Inside quotes, `""` becomes a literal `"` per RFC 4180.
+ */
+export function splitCsvLine(line: string): string[] {
+  const result: string[] = [];
+  let cell = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (line[i + 1] === '"') {
+          cell += '"';
+          i++;
+          continue;
+        }
+        inQuotes = false;
+        continue;
+      }
+      cell += ch;
+      continue;
+    }
+    if (ch === '"') {
+      inQuotes = true;
+      continue;
+    }
+    if (ch === ',') {
+      result.push(cell);
+      cell = '';
+      continue;
+    }
+    cell += ch;
+  }
+  result.push(cell);
+  return result;
+}
+
+/** Strip leading UTF-8 BOM if present. Excel saves CSVs with one. */
+function stripBom(text: string): string {
+  return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+}
+
 export type MenuRow = {
   name: string;
   cycle_name: string;
@@ -43,35 +87,35 @@ export function parseCoreItems(raw: string): Array<{ name: string; quantity: num
 }
 
 export function parseMenuCsv(text: string): MenuRow[] {
-  return text
-    .split('\n')
-    .slice(1) // skip header
+  return stripBom(text)
+    .split(/\r?\n/)                    // tolerate Windows \r\n
+    .slice(1)                          // skip header
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line) => {
-      const [name, cycle_name, ingredients, priceStr] = line.split(',');
+      const [name, cycle_name, ingredients, priceStr] = splitCsvLine(line);
       return {
         name: name?.trim() ?? '',
         cycle_name: cycle_name?.trim() ?? '',
         ingredients: ingredients?.trim() ?? '',
-        price: parseFloat(priceStr) || 0,
+        price: parseFloat(priceStr ?? '') || 0,
       };
     })
     .filter((r) => r.name && r.cycle_name);
 }
 
 export function parseEssentialsCsv(text: string): EssentialRow[] {
-  return text
-    .split('\n')
+  return stripBom(text)
+    .split(/\r?\n/)
     .slice(1)
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line) => {
-      const [name, cycle_name, priceStr, unit] = line.split(',');
+      const [name, cycle_name, priceStr, unit] = splitCsvLine(line);
       return {
         name: name?.trim() ?? '',
         cycle_name: cycle_name?.trim() ?? '',
-        price: parseFloat(priceStr) || 0,
+        price: parseFloat(priceStr ?? '') || 0,
         unit: unit?.trim() ?? '',
       };
     })
@@ -79,19 +123,19 @@ export function parseEssentialsCsv(text: string): EssentialRow[] {
 }
 
 export function parsePlansCsv(text: string): PlanRow[] {
-  return text
-    .split('\n')
+  return stripBom(text)
+    .split(/\r?\n/)
     .slice(1)
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line) => {
-      const [name, cycle_name, type, daysStr, priceStr, coreItemsRaw, savingsStr] = line.split(',');
+      const [name, cycle_name, type, daysStr, priceStr, coreItemsRaw, savingsStr] = splitCsvLine(line);
       return {
         name: name?.trim() ?? '',
         cycle_name: cycle_name?.trim() ?? '',
         type: type?.trim().toLowerCase() === 'essentials' ? ('essentials' as const) : ('food' as const),
-        duration_days: parseInt(daysStr, 10) || 30,
-        price: parseFloat(priceStr) || 0,
+        duration_days: parseInt(daysStr ?? '', 10) || 30,
+        price: parseFloat(priceStr ?? '') || 0,
         core_items: parseCoreItems(coreItemsRaw ?? ''),
         savings_amount: parseFloat(savingsStr ?? '0') || 0,
       };

@@ -144,4 +144,77 @@ describe('cartStore — cycle scoping', () => {
     expect(useCartStore.getState().getCycleItems(2)).toHaveLength(1);
     expect(useCartStore.getState().getCycleItems(3)).toEqual([]);
   });
+
+  it('clearCycle does NOT touch plans (different concern)', () => {
+    useCartStore.getState().addItem({ ...sampleItem, cycle_id: 1 });
+    useCartStore.getState().addPlan(samplePlanA);
+    useCartStore.getState().clearCycle(1);
+    expect(useCartStore.getState().plans).toHaveLength(1);
+  });
+
+  it('same menu_item_id in different cycles is treated as ONE record (current behavior)', () => {
+    // Note: addItem matches solely on menu_item_id, ignoring cycle_id.
+    // If admin reuses the same menu_item across cycles, the second add
+    // increments the first record's quantity. Documented for awareness.
+    useCartStore.getState().addItem({ ...sampleItem, cycle_id: 1 });
+    useCartStore.getState().addItem({ ...sampleItem, cycle_id: 2 });
+    expect(useCartStore.getState().items).toHaveLength(1);
+    expect(useCartStore.getState().items[0]?.quantity).toBe(2);
+  });
+});
+
+describe('cartStore — getDisplayTotal math', () => {
+  beforeEach(() => {
+    useCartStore.getState().clearCart();
+  });
+
+  it('returns 0 for an empty cart', () => {
+    expect(useCartStore.getState().getDisplayTotal()).toBe(0);
+  });
+
+  it('sums items by display_price × quantity', () => {
+    useCartStore.getState().addItem({ ...sampleItem, display_price: 120 });
+    useCartStore.getState().addItem({ ...sampleItem, display_price: 120 });
+    useCartStore.getState().addItem({ ...sampleItem, display_price: 120 });
+    expect(useCartStore.getState().getDisplayTotal()).toBe(360);
+  });
+
+  it('sums plan prices (one entry per plan, regardless of duration)', () => {
+    useCartStore.getState().addPlan(samplePlanA); // 2000
+    useCartStore.getState().addPlan(samplePlanB); // 1500
+    expect(useCartStore.getState().getDisplayTotal()).toBe(3500);
+  });
+
+  it('combines items + plans correctly', () => {
+    useCartStore.getState().addItem({ ...sampleItem, display_price: 120 });
+    useCartStore.getState().addItem({ ...sampleItem, display_price: 120 });
+    useCartStore.getState().addPlan(samplePlanA); // 2000
+    expect(useCartStore.getState().getDisplayTotal()).toBe(120 * 2 + 2000);
+  });
+
+  it('handles fractional prices without floating-point drift for normal cases', () => {
+    useCartStore.getState().addItem({ ...sampleItem, display_price: 99.5 });
+    useCartStore.getState().addItem({ ...sampleItem, display_price: 99.5 });
+    expect(useCartStore.getState().getDisplayTotal()).toBe(199);
+  });
+});
+
+describe('cartStore — getItemCount and getPlanCount', () => {
+  beforeEach(() => {
+    useCartStore.getState().clearCart();
+  });
+
+  it('getItemCount sums quantities across all items', () => {
+    useCartStore.getState().addItem(sampleItem);
+    useCartStore.getState().addItem(sampleItem);
+    useCartStore.getState().addItem({ ...sampleItem, menu_item_id: 11 });
+    expect(useCartStore.getState().getItemCount()).toBe(3);
+  });
+
+  it('getPlanCount returns the number of plan entries', () => {
+    expect(useCartStore.getState().getPlanCount()).toBe(0);
+    useCartStore.getState().addPlan(samplePlanA);
+    useCartStore.getState().addPlan(samplePlanB);
+    expect(useCartStore.getState().getPlanCount()).toBe(2);
+  });
 });
