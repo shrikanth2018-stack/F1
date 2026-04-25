@@ -50,6 +50,8 @@ export function useActiveHubs() {
 interface HubPayload {
   hub_name: string;
   hub_code?: string | null;
+  /** Required — DB column is NOT NULL. Admin form validates non-empty before submit. */
+  address_details: string;
   polygon_geojson?: { lat: number; lng: number }[] | null;
   center_lat?: number | null;
   center_lng?: number | null;
@@ -68,10 +70,7 @@ export function useAddHub() {
   const bf = useBranchFilter();
   return useSupabaseMutation<HubPayload, DeliveryHub>(
     (payload) =>
-      // address_details is NOT NULL in DB but optional in HubPayload (legacy);
-      // cast preserves runtime behavior — admin UI requires it.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (supabase.from('delivery_hubs') as any).insert({
+      supabase.from('delivery_hubs').insert({
         ...payload,
         is_active: true,
         branch_id: payload.branch_id ?? (bf.isActive ? bf.branchId : null),

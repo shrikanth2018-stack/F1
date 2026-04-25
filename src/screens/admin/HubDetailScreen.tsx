@@ -84,6 +84,7 @@ export function HubDetailScreen({ route, navigation }: AdminScreenProps<'HubDeta
   // Identity
   const [hubName, setHubName] = useState(existingHub?.hub_name ?? '');
   const [hubCode, setHubCode] = useState(existingHub?.hub_code ?? '');
+  const [addressDetails, setAddressDetails] = useState(existingHub?.address_details ?? '');
 
   // Economics — both optional
   const [deliveryFee, setDeliveryFee] = useState(
@@ -163,6 +164,10 @@ export function HubDetailScreen({ route, navigation }: AdminScreenProps<'HubDeta
       Alert.alert('Required', 'Please enter a hub name.');
       return;
     }
+    if (!addressDetails.trim()) {
+      Alert.alert('Required', 'Please enter the hub address.');
+      return;
+    }
     if (!driver) {
       Alert.alert('Required', 'Please assign a driver — branch driver who delivers to this hub.');
       return;
@@ -181,6 +186,7 @@ export function HubDetailScreen({ route, navigation }: AdminScreenProps<'HubDeta
     const payload = {
       hub_name: hubName.trim(),
       hub_code: hubCode.trim() || null,
+      address_details: addressDetails.trim(),
       polygon_geojson: vertices.length >= 3 ? vertices : null,
       center_lat: center.lat,
       center_lng: center.lng,
@@ -313,6 +319,19 @@ export function HubDetailScreen({ route, navigation }: AdminScreenProps<'HubDeta
             placeholder="e.g. HUB-001"
             placeholderTextColor={Theme.colors.text.muted}
             autoCapitalize="characters"
+          />
+        </View>
+        <View style={styles.hairline} />
+
+        <View style={styles.fieldRow}>
+          <ThemedText variant="small" color="muted" style={styles.fieldLabel}>Address *</ThemedText>
+          <TextInput
+            style={styles.fieldInput}
+            value={addressDetails}
+            onChangeText={setAddressDetails}
+            placeholder="e.g. Plot 42, Sector 7, Near park"
+            placeholderTextColor={Theme.colors.text.muted}
+            multiline
           />
         </View>
         <View style={styles.hairline} />

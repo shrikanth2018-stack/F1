@@ -19,7 +19,8 @@ export interface DeliveryHub {
   id: number;
   hub_name: string;
   hub_code: string | null;
-  address_details?: string;
+  /** Required free-text address (e.g. "Plot 42, Sector 7"). DB-enforced NOT NULL. */
+  address_details: string;
   contact_phone: string | null;
   polygon_geojson: { lat: number; lng: number }[] | null;
   center_lat: number | null;
