@@ -85,7 +85,11 @@ ul { list-style: none; }
 .hero-bg {
   position: absolute;
   inset: 0;
-  background-image: linear-gradient(135deg, #1a3d3a 0%, #4ECDC4 100%);
+  /* Photo on top, gradient as fallback if image ever fails to load.
+     JS in index.html overrides this with admin-uploaded URL if present. */
+  background-image:
+    url('https://images.unsplash.com/photo-1742281258189-3b933879867a?fm=jpg&q=80&w=2400&auto=format&fit=crop'),
+    linear-gradient(135deg, #1a3d3a 0%, #4ECDC4 100%);
   background-size: cover;
   background-position: center;
   z-index: 0;
