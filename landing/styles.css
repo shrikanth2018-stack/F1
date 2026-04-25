@@ -69,16 +69,19 @@ strong { color: #fff; }
   z-index: 99;
   background: transparent;   /* no background per request */
   color: #FFBF00;            /* yellow text */
-  font-size: 14px;
+  font-size: 28px;           /* 2x */
   font-weight: 500;
   text-align: center;
-  padding: 10px 0;
+  padding: 16px 0;
   border-bottom: 1px solid rgba(255, 191, 0, 0.15);
 }
 @media (max-width: 640px) {
-  .notice { top: 80px; }     /* match smaller header on mobile */
+  .notice {
+    top: 80px;                                  /* match smaller header on mobile */
+    font-size: 18px;
+    padding: 12px 0;
+  }
 }
-
 /* ── Hero ────────────────────────────────────────────────── */
 .hero {
   position: relative;
