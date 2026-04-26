@@ -39,6 +39,7 @@ import { formatPriceShort } from '../../utils/formatters';
 import { supabase } from '../../api/supabaseClient';
 import { RAZORPAY_KEY_ID } from '../../utils/env';
 import { trackOrderPlaced, trackOrderFailed } from '../../utils/analytics';
+import { infoDialog } from '../../utils/confirmDialog';
 
 /** Safe UUID generator — falls back to Math.random when crypto.randomUUID is unavailable (Expo Go, older Android) */
 function generateId(): string {
@@ -172,7 +173,7 @@ export function CheckoutScreen({ navigation, route }: any) {
     // pay. Block before any DB writes happen.
     if (Platform.OS === 'web' && paymentMethod === 'razorpay') {
       isPlacingRef.current = false;
-      Alert.alert(
+      await infoDialog(
         'Mobile App Required',
         'Online payment is only available on the 1stOne mobile app. Please open the app on your phone to complete this order, or pay from your wallet here if you have sufficient balance.',
       );

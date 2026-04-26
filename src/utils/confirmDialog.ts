@@ -57,3 +57,24 @@ export function confirmDialog(opts: ConfirmOptions): Promise<boolean> {
     ]);
   });
 }
+
+/**
+ * Show an info-only dialog (single OK button, no choice). Resolves when dismissed.
+ *
+ * Native: Alert.alert with one OK button.
+ * Web:    window.alert — RN-Web's Alert.alert can silently no-op even for
+ *         single-button info dialogs depending on build, so we always use
+ *         the browser's native alert() on web.
+ */
+export function infoDialog(title: string, message?: string): Promise<void> {
+  if (Platform.OS === 'web') {
+    if (typeof window !== 'undefined') {
+      window.alert(message ? `${title}\n\n${message}` : title);
+    }
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve) => {
+    Alert.alert(title, message, [{ text: 'OK', onPress: () => resolve() }]);
+  });
+}

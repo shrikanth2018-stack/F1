@@ -32,6 +32,7 @@ import { useStoreConfig } from '../../hooks/useStoreConfig';
 import { useAuth } from '../../hooks/useAuth';
 import { supabase } from '../../api/supabaseClient';
 import { RAZORPAY_KEY_ID } from '../../utils/env';
+import { infoDialog } from '../../utils/confirmDialog';
 import type { CustomerNavProp } from '../../navigation/types';
 
 const QUICK_AMOUNTS = [500, 1000, 2000];
@@ -51,7 +52,7 @@ export function WalletScreen({ navigation }: { navigation: CustomerNavProp }) {
 
   const handleTopup = (amount: number) => {
     if (Platform.OS === 'web') {
-      Alert.alert(
+      void infoDialog(
         'Mobile App Required',
         'Wallet top-up uses online payment which is only available on the 1stOne mobile app. Please open the app on your phone to add money.',
       );
