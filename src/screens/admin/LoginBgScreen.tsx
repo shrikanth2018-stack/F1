@@ -222,6 +222,30 @@ export function LoginBgScreen({ navigation }: { navigation: AdminNavProp }) {
       <Divider />
 
       <ScrollView contentContainerStyle={styles.content}>
+        {/* Special Offers — drill into existing screen so its 2 internal
+            tabs (active vs scheduled, etc.) and full editing flow stay
+            intact. Different concern from the simple image uploads below. */}
+        <ThemedText variant="small" color="muted" style={styles.sectionLabel}>
+          SPECIAL OFFER BANNERS
+        </ThemedText>
+        <ThemedText variant="small" color="muted" style={styles.specialOfferHint}>
+          In-app promo banners shown to customers on the home screen.
+          Each can be scheduled, drafted, or pushed live.
+        </ThemedText>
+        <TouchableOpacity
+          style={styles.drillBtn}
+          onPress={() => navigation.navigate('CustomerPush')}
+          activeOpacity={0.75}
+        >
+          <ThemedText variant="body" color="mint" style={{ fontSize: B }}>
+            Manage Special Offers  ›
+          </ThemedText>
+        </TouchableOpacity>
+
+        <View style={styles.sectionDivider}>
+          <Divider />
+        </View>
+
         <Uploader
           label="PHONE LOGIN BACKGROUND"
           dbColumn="login_bg_url"
@@ -245,30 +269,6 @@ export function LoginBgScreen({ navigation }: { navigation: AdminNavProp }) {
           successMessage="Landing page banner updated. Visitors to 1stone.in will see it on their next page load (no redeploy needed)."
           hint="Shown as the hero background on the public landing page. Landscape orientation (16:9) works best — at least 1920×1080."
         />
-
-        <View style={styles.sectionDivider}>
-          <Divider />
-        </View>
-
-        {/* Special Offers — drill into existing screen so its 2 internal
-            tabs (active vs scheduled, etc.) and full editing flow stay
-            intact. Different concern from the simple image uploads above. */}
-        <ThemedText variant="small" color="muted" style={styles.sectionLabel}>
-          SPECIAL OFFER BANNERS
-        </ThemedText>
-        <ThemedText variant="small" color="muted" style={styles.specialOfferHint}>
-          In-app promo banners shown to customers on the home screen.
-          Each can be scheduled, drafted, or pushed live.
-        </ThemedText>
-        <TouchableOpacity
-          style={styles.drillBtn}
-          onPress={() => navigation.navigate('CustomerPush')}
-          activeOpacity={0.75}
-        >
-          <ThemedText variant="body" color="mint" style={{ fontSize: B }}>
-            Manage Special Offers  ›
-          </ThemedText>
-        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
