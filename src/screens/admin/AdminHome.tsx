@@ -208,8 +208,7 @@ function ManageTab() {
       <View style={styles.section}>
         <ThemedText variant="small" color="muted" style={styles.sectionLabel}>MARKETING</ThemedText>
       </View>
-      <AdminRow label="Special Offer Banner" showChevron onPress={() => navigation.navigate('CustomerPush')} />
-      <AdminRow label="App + Website Backgrounds" showChevron onPress={() => navigation.navigate('LoginBg')} />
+      <AdminRow label="Banners & Backgrounds" showChevron onPress={() => navigation.navigate('LoginBg')} />
       <AdminRow label="Referral Settings" showChevron onPress={() => navigation.navigate('ReferralSettings')} />
       <AdminRow label="Customer Feedback" showChevron onPress={() => navigation.navigate('CustomerFeedback')} />
 
