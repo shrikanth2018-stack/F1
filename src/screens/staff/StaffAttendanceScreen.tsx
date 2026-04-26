@@ -165,14 +165,24 @@ export function StaffAttendanceScreen() {
   const handleClockIn = () => {
     Alert.alert('Clock In', 'Your GPS location will be recorded. Continue?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Clock In', onPress: () => clockIn.mutate() },
+      {
+        text: 'Clock In',
+        onPress: () => clockIn.mutate(undefined, {
+          onError: (e: Error) => Alert.alert('Clock In Failed', e.message),
+        }),
+      },
     ]);
   };
 
   const handleClockOut = () => {
     Alert.alert('Clock Out', 'Confirm clock out for today?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Clock Out', onPress: () => clockOut.mutate() },
+      {
+        text: 'Clock Out',
+        onPress: () => clockOut.mutate(undefined, {
+          onError: (e: Error) => Alert.alert('Clock Out Failed', e.message),
+        }),
+      },
     ]);
   };
 
