@@ -415,4 +415,430 @@ Webhook endpoints (verify-payment in particular) always return HTTP 200, even on
 
 ---
 
-*End of document.*
+# ANNEXURE A — Regular Maintenance and Operations Runbook
+
+This annexure is the operational playbook for keeping 1stOne F1 healthy. It is organized by frequency (what to do daily, weekly, monthly, etc.) and by scenario (what to do when X breaks).
+
+The intent is that a non-technical operator, working alone, can keep the app and web running with about 1–2 hours per month of attention, escalating to a developer (or a Claude session) only when something falls outside the runbook.
+
+## A.1 Maintenance Cadence
+
+### A.1.1 Daily — 5 minutes
+
+Open these dashboards once a day, ideally with your morning coffee:
+
+| Check | Where | What you're looking for |
+|---|---|---|
+| **Sentry errors** | https://sentry.io → 1stOne project | Any new errors in the last 24 hours. If unfamiliar, copy the error message + bring to next session. If clearly a single user issue, ignore. |
+| **Razorpay payments dashboard** | https://dashboard.razorpay.com | All Pending payments older than 30 minutes. These are stuck — investigate. |
+| **Support email inbox** | 1st0nedotin@gmail.com | Any customer complaints. Respond within 24 hours; document recurring issues. |
+| **Order count for the day** | Admin → Reports → Orders | Compared to a normal day. A 50%+ drop signals something is broken. |
+| **App Store / Play Console reviews** | Once apps are live | New 1- or 2-star reviews. Respond publicly when appropriate. |
+
+### A.1.2 Weekly — 30 minutes
+
+Once a week, do a deeper check:
+
+| Check | Where | What good looks like |
+|---|---|---|
+| **Push notification delivery rate** | Run SQL (see A.4) | Above 95% sent successfully. Drops indicate token expiry or device issue. |
+| **Failed orders** | Admin → Manage Running Orders → status filter "Failed" | Should be near zero. Any failures → check Sentry for the reason. |
+| **Wallet topup pending** | Run SQL (see A.4) | Any topups Pending > 1 hour are stuck. Customer either abandoned or webhook didn't fire. |
+| **Database storage growth** | Supabase → Reports → Database | Track how fast you're approaching free-tier limits (500 MB). |
+| **Customer signup count for the week** | Admin → Reports → Subscriptions | Trend tracking. Alert when it dips. |
+| **Cloudflare uptime** | Cloudflare → Analytics tab | Both 1stone.in and app.1stone.in should show 100% uptime. |
+
+### A.1.3 Monthly — 1 to 2 hours (scheduled with developer / Claude session)
+
+This is the regular maintenance window. Bring the following to the session:
+
+1. **Sentry top errors of the month** — copy from Sentry's "Issues" tab.
+2. **Order count + revenue snapshot** — Admin → Reports → Revenue.
+3. **Active subscription count** — Admin → Reports → Subscriptions.
+4. **Any user-reported bugs** — even small ones.
+5. **App Store / Play Console reviews summary** — anything below 4 stars.
+
+The session covers:
+
+- **Triage Sentry errors.** Decide which need fixing, which are noise.
+- **Run `npm audit`.** Review any new vulnerabilities. Apply patches if non-breaking.
+- **Check Expo SDK release notes.** If a new SDK is out, evaluate whether to upgrade. (Expo releases roughly every 6 months; aim to stay no more than one version behind.)
+- **Run smoke test queries.** Use the SQL in A.4 to verify nothing has silently degraded.
+- **Apply any urgent security patch.**
+- **Discuss any feature requests or bug reports**; plan code work for next session if needed.
+
+After the session, you should have:
+- A clear list of what was reviewed
+- A clear list of what was fixed
+- A clear list of what's deferred and why
+
+### A.1.4 Quarterly — 3 to 4 hours
+
+Once every three months, a deeper session:
+
+- **Major dependency review.** Compare current versions against latest. Decide on Expo SDK upgrade if available.
+- **Database performance review.** Run query analysis SQL (see A.4). Add indexes if any common query is slow.
+- **Storage usage trend.** Project when you'll cross Supabase free tier limits. Plan upgrade.
+- **Backup verification.** Supabase has automated backups, but verify you can actually restore by reading the most recent backup metadata.
+- **App store rebuild.** Build a fresh production binary even if no features changed — keeps you within Apple/Google's "active" requirements.
+- **Schema review.** Any tables growing unexpectedly fast? Any orphaned tables? Any RLS policies that don't fit current product?
+
+### A.1.5 Annually — Half a day
+
+Once a year:
+
+- **Apple Developer Program renewal.** $99 USD. Apple sends reminder emails 30 days out.
+- **Google Play Console.** $25 was a one-time fee, no renewal — but verify policy compliance hasn't shifted.
+- **GoDaddy domain renewal.** 1stone.in. Set auto-renew on; verify card on file.
+- **Razorpay account review.** Settlement schedule, fee structure, any pending disputes.
+- **Privacy policy + Terms review.** If any regulatory shift in India (e.g., DPDP Act updates), update PDFs in Supabase Storage.
+- **Security audit.** Re-run the original blueprint audit; verify no new gaps.
+- **Sentry plan review.** Are you within free-tier event limits? If approaching, consider paid tier.
+- **Major Expo SDK upgrade.** Aim to stay no more than one major version behind.
+- **App Store + Play Store screenshots refresh.** Outdated screenshots reduce conversion.
+
+## A.2 Emergency Response Playbook
+
+When something is on fire, follow these procedures.
+
+### A.2.1 Payments are failing
+
+**Symptoms:** Customers complain payment didn't go through. Razorpay dashboard shows declined or no records.
+
+**First 5 minutes:**
+1. Check https://dashboard.razorpay.com — is Razorpay itself reporting an outage?
+2. Check Razorpay → Settings → Webhooks → Recent deliveries. Are webhook attempts succeeding?
+3. Check Sentry → recent errors filtered to keyword "razorpay".
+4. Check Supabase → Edge Functions → verify-payment → Logs for last hour.
+
+**Likely causes:**
+- Razorpay outage — wait it out, post status update to customers via email.
+- Razorpay webhook secret rotated by mistake — verify in Cloudflare environment variables.
+- Live keys expired — Razorpay sometimes requires re-verification.
+- Supabase Edge Function down — rare; check Supabase status page.
+
+**Communication:** Email customers proactively if outage is greater than 30 minutes: "We're experiencing a payment issue. Please try again in 1 hour. If you've been charged but order didn't go through, we'll refund within 24 hours."
+
+**Recovery:** Once fixed, run the diagnostic SQL in A.4 to identify any orders stuck in Pending status. Manually reconcile with Razorpay's record.
+
+### A.2.2 The website (1stone.in) is down
+
+**Symptoms:** 1stone.in not loading; customers reporting can't see homepage.
+
+**First 5 minutes:**
+1. Open https://1stone.in in incognito. Confirm you can reproduce.
+2. Cloudflare dashboard → 1stone.in → Overview. Is the site marked Down?
+3. Cloudflare → Pages → f1 project → recent deploys. Any failed deploy?
+
+**Likely causes:**
+- Cloudflare outage — wait it out (rare).
+- DNS configuration broken — check Cloudflare DNS panel.
+- Recent deploy broke the site — roll back: Cloudflare Pages → Deployments → previous successful → Rollback.
+- Domain expired (annually). Check GoDaddy.
+
+**Communication:** Post on social media or via SMS to active customers if outage is greater than 30 minutes.
+
+### A.2.3 The mobile app is rejected from the App Store / Play Store
+
+**Symptoms:** Apple or Google sends rejection email.
+
+**Common rejection reasons:**
+- Privacy policy missing or unreachable URL.
+- Permission usage descriptions not matching app behavior.
+- Crash on first launch on a specific device.
+- Outdated SDK / API level (Google Play has minimum SDK requirements that update annually).
+- Login required but no test account provided.
+
+**Action:** Read the rejection carefully. Most are fixable in 1–2 hours. Bring the rejection email to a Claude session for triage.
+
+### A.2.4 Supabase database is unreachable
+
+**Symptoms:** All app actions fail. Sentry floods with database connection errors.
+
+**First 5 minutes:**
+1. https://status.supabase.com — is there an active incident?
+2. Supabase project dashboard → Status indicator.
+3. Try logging in — if dashboard is also down, it's their issue.
+
+**If Supabase is down:** Wait. They typically resolve within 30 minutes. Post update to customers if longer.
+
+**If Supabase is up but app fails:** Likely a query-side issue. Check Sentry for the actual error. Could be:
+- Database hit free-tier limits (storage, bandwidth, concurrent connections).
+- A migration broke a query.
+- RLS policy denying access where it shouldn't.
+
+### A.2.5 Push notifications aren't arriving
+
+**Symptoms:** No customer complaints (they don't know what they don't get), but you notice push_logs table has many "failed" entries, or Sentry shows Expo API errors.
+
+**Investigation:**
+1. Run the push diagnostic SQL in A.4.
+2. Check Expo's status page: https://status.expo.dev
+3. Check whether failed entries are concentrated to one user (token expired) or many (Expo or send-push broken).
+
+**Common cause:** A user's push token expires when they reinstall or change device. The send-push edge function flags these as "invalid_token" and deactivates the row. The user re-registers next time they open the app.
+
+### A.2.6 Suspected security breach
+
+**Symptoms:** Unusual order patterns, unauthorized admin access, suspicious API calls.
+
+**Immediate actions (in order):**
+1. **Toggle storm mode ON** (Admin → Feature Flags) — pauses new orders.
+2. **Rotate the service-role key** in Supabase dashboard. Update `app_config` table.
+3. **Check the auth log** — Supabase → Auth → Users. Look for unfamiliar new users.
+4. **Check edge function logs** for unusual call patterns.
+5. **Engage a developer immediately** — this is not a self-service incident.
+
+## A.3 Common Operations Scenarios
+
+These are predictable workflows that don't require code, just admin UI work.
+
+### A.3.1 Adding a new branch
+
+When opening a new branch (say, expanding from Siddapur to Sirsi):
+
+1. Admin → Manage → **Branches** → Add Branch. Enter name, address, contact phone.
+2. Switch the branch selector at the top (super-admin only) to the new branch.
+3. Admin → **Delivery Cycles** → create cycles for this branch (Breakfast, Lunch, Snacks, Dinner). Set cutoff times and delivery start times. Mark which are essentials.
+4. Admin → **Delivery Manager** → draw the delivery zones (polygons on map).
+5. Admin → **Delivery Hubs** → add hubs (each with assigned staff and driver).
+6. Admin → **Manage Menu** → create menu items per cycle (or import via CSV from Manage → Import Items).
+7. Admin → **Manage Plans** → create subscription plans per cycle.
+8. Admin → **Onboard Employee** → add staff and drivers, assign them to this branch.
+9. **Test:** sign in as a customer in that area, verify serviceability + ordering flow works.
+10. Marketing: update the landing page coverage section to mention the new city.
+
+Realistic time: 2–4 hours per new branch (assuming menu and plans are already designed).
+
+### A.3.2 Updating the menu
+
+For a one-off change (price update, item rename):
+1. Admin → **Manage Menu**.
+2. Tap the item → edit → save.
+
+For a full menu refresh (new season, recipe overhaul):
+1. Prepare a CSV of all new items (template downloadable from Admin → Import Items).
+2. Optionally deactivate all current items first (or use individual is_active toggles).
+3. Admin → **Import Items** → upload CSV → confirm.
+
+### A.3.3 Toggling Storm Mode
+
+When you need to pause all new orders (monsoon, kitchen closure, supply outage):
+
+1. Admin → **Feature Flags** → toggle `storm_mode_active` to true.
+2. Verify by trying to place a test order — should be blocked with "Orders Paused" message.
+3. Optionally also add an admin note to staff dashboard ("Kitchen closed today, no dispatches").
+4. To resume: toggle back to false.
+
+### A.3.4 Manual order cancellation by admin
+
+If a customer can't cancel via the app (window expired):
+1. Admin → **Manage Running Orders** → find the order.
+2. Tap → mark as Cancelled.
+3. Wallet payments: refund manually from Admin (run a wallet credit) or via SQL if needed.
+4. Razorpay payments: initiate refund through Razorpay dashboard.
+
+### A.3.5 Issuing a new push notification
+
+For a one-off announcement:
+1. Admin → **Special Offer Banners** → create a banner with text content.
+2. To also push as notification, use Admin → **Notification Manager** → trigger a manual push to all active users (or filter by branch).
+
+For changing how an automated notification reads:
+1. Admin → **Notification Templates**.
+2. Tap the relevant event_key (e.g., "order_confirmed").
+3. Edit title_template and body_template. Variables in {{double curly braces}} get filled at send time.
+
+## A.4 Useful Diagnostic SQL Queries
+
+Save this section. These are the queries you'll need most often.
+
+### A.4.1 Push notification delivery rate (last 7 days)
+
+```sql
+SELECT
+  DATE(sent_at) AS day,
+  COUNT(*) FILTER (WHERE status = 'sent') AS sent_count,
+  COUNT(*) FILTER (WHERE status = 'failed') AS failed_count,
+  COUNT(*) FILTER (WHERE status = 'invalid_token') AS invalid_token_count,
+  ROUND(100.0 * COUNT(*) FILTER (WHERE status = 'sent') / COUNT(*), 2) AS pct_success
+FROM push_logs
+WHERE sent_at > NOW() - INTERVAL '7 days'
+GROUP BY day
+ORDER BY day DESC;
+```
+
+Healthy: > 95% success rate. Drops below 80% indicate trouble.
+
+### A.4.2 Stuck wallet topups
+
+```sql
+SELECT
+  razorpay_order_id,
+  user_id,
+  amount,
+  status,
+  created_at,
+  NOW() - created_at AS age
+FROM pending_wallet_topups
+WHERE status = 'pending'
+  AND created_at < NOW() - INTERVAL '1 hour'
+ORDER BY created_at;
+```
+
+Each row is a customer who paid but didn't get credited. Investigate via Razorpay dashboard.
+
+### A.4.3 Recent failed payments
+
+```sql
+SELECT
+  o.id AS order_id,
+  o.status,
+  o.razorpay_order_id,
+  o.user_id,
+  o.total_amount,
+  o.created_at
+FROM orders o
+WHERE o.status IN ('Pending', 'Failed')
+  AND o.created_at > NOW() - INTERVAL '24 hours'
+ORDER BY o.created_at DESC;
+```
+
+### A.4.4 Active subscriptions overview
+
+```sql
+SELECT
+  COUNT(*) AS total_active,
+  COUNT(*) FILTER (WHERE is_paused) AS paused_count,
+  COUNT(*) FILTER (WHERE is_active AND NOT is_paused) AS active_now,
+  AVG(days_consumed) AS avg_days_consumed
+FROM user_subscriptions
+WHERE is_active = true;
+```
+
+### A.4.5 Slowest queries (run via Supabase dashboard's Query Performance)
+
+Supabase has a built-in slow query view at Dashboard → Database → Query Performance. Watch for queries taking more than 100 ms; those are candidates for indexing.
+
+### A.4.6 Daily order count trend
+
+```sql
+SELECT
+  DATE(created_at) AS day,
+  COUNT(*) AS order_count,
+  SUM(total_amount) AS total_revenue
+FROM orders
+WHERE created_at > NOW() - INTERVAL '30 days'
+  AND status NOT IN ('Cancelled', 'Failed')
+GROUP BY day
+ORDER BY day DESC;
+```
+
+### A.4.7 Customer signup trend
+
+```sql
+SELECT
+  DATE(created_at) AS day,
+  COUNT(*) AS new_customers
+FROM profiles
+WHERE role = 'customer'
+  AND created_at > NOW() - INTERVAL '30 days'
+GROUP BY day
+ORDER BY day DESC;
+```
+
+### A.4.8 Tables approaching size limits
+
+```sql
+SELECT
+  schemaname,
+  relname AS table_name,
+  pg_size_pretty(pg_total_relation_size(relid)) AS total_size,
+  n_live_tup AS row_count
+FROM pg_stat_user_tables
+WHERE schemaname = 'public'
+ORDER BY pg_total_relation_size(relid) DESC
+LIMIT 20;
+```
+
+This shows which tables are biggest. push_logs and orders usually grow fastest.
+
+## A.5 Key URLs and Dashboards
+
+Bookmark these. You'll use them constantly.
+
+| Service | URL | What you do here |
+|---|---|---|
+| GitHub repo | https://github.com/shrikanth2018-stack/F1 | Source code; check commits |
+| Supabase project | https://app.supabase.com (sign in to your account) | Database, Auth, Storage, Edge Functions, Logs |
+| Cloudflare dashboard | https://dash.cloudflare.com | Both Pages projects (f1 + 1stone-app), DNS, Custom domains |
+| Razorpay dashboard | https://dashboard.razorpay.com | Payments, settlements, webhooks, refunds |
+| Sentry | https://sentry.io | Error tracking, user-tagged crashes |
+| Expo dashboard | https://expo.dev | EAS builds, push notifications, project settings |
+| GoDaddy | https://account.godaddy.com | Domain renewal (1stone.in) |
+| Apple Developer | https://developer.apple.com/account | App Store, certificates, agreements |
+| Google Play Console | https://play.google.com/console | Play Store, releases, reviews |
+| MSG91 | (when activated) | SMS provider for OTP |
+| Public landing page | https://1stone.in | What customers see first |
+| Public web app | https://app.1stone.in | What admins/staff/customers use on web |
+
+## A.6 Escalation Matrix
+
+When to handle yourself, when to engage a developer:
+
+| Situation | First action | Escalate when |
+|---|---|---|
+| Single user complaint about a bug | Reproduce in admin app; check Sentry | If the bug is data-loss or charge-related, immediate developer call |
+| Sentry shows 1–2 errors per day | Note pattern, bring to monthly session | If error rate exceeds 50/day, immediate developer call |
+| Push notifications not arriving for one user | Verify their token in `push_notification_tokens`; have them reinstall | If multiple users, immediate developer call |
+| Customer can't log in | Check Supabase Auth → Users; resend OTP | If Supabase Auth itself broken, escalate |
+| Order stuck in Pending | Manually update via SQL or admin UI | If pattern (multiple stuck orders), escalate |
+| App crash on startup (single user) | Check Sentry for stack trace | If multiple users, immediate developer call |
+| Razorpay webhook failures | Check Razorpay → Webhook delivery; manually retry | If webhook secret rotated by mistake, immediate developer call |
+| Storm mode activated by mistake | Toggle off in feature flags | (No escalation needed) |
+| Schema migration needed | Always developer | (No self-service path) |
+| Security incident suspected | Storm mode ON, then immediately developer | (Treat as P0) |
+
+## A.7 Onboarding a New Operator (Future-Proofing)
+
+If you add a non-technical operator (say, a branch manager or family member helping run admin):
+
+1. Have them read the Master Document (sections 1–3) end to end.
+2. Walk them through the admin app on a real device with you sitting next to them.
+3. Give them read-only Supabase access (Supabase → Project Settings → Team Members → invite as Read-Only).
+4. Share the GitHub repo as Read-Only (View only).
+5. NEVER give them service-role keys or direct database write access.
+6. Train them on this annexure's daily and weekly checks.
+7. Establish: who responds to which type of incident.
+
+## A.8 Critical Numbers to Track
+
+These are the numbers to watch month-over-month. Capture them in a spreadsheet:
+
+| Metric | Source | Why it matters |
+|---|---|---|
+| Daily Active Users (customers) | Custom SQL on profiles + recent activity | Engagement health |
+| Weekly Order Count | A.4.6 query | Business activity |
+| Average Order Value | A.4.6 with revenue / count | Pricing optimization |
+| Active Subscription Count | A.4.4 query | Recurring revenue base |
+| Push Delivery Success Rate | A.4.1 query | Notification health |
+| Database Storage Used | Supabase dashboard | Capacity planning |
+| Sentry Errors per Week | Sentry dashboard | Code quality trend |
+| App Store Rating Average | App Store Connect | User satisfaction |
+| Customer Support Email Volume | Manual count | Where pain points live |
+
+## A.9 Final Words on Maintenance Philosophy
+
+Software is never "done." Every system bit-rots without attention. The good news: most maintenance is predictable.
+
+Three rules:
+
+1. **Set up alerts everywhere possible.** Sentry, Supabase, Razorpay, Cloudflare can all email you when something breaks. Don't rely on yourself to discover problems.
+2. **Don't ignore yellow lights.** Sentry showing 5 errors a week is a yellow light. Ignore for two months and you'll have a real problem.
+3. **Build a habit of monthly attention.** Calendar block, recurring, non-negotiable. Even if nothing seems wrong, you check anyway.
+
+The system you have today is solid. With these rhythms, it stays solid.
+
+---
+
+*End of master document. Annexure A complete.*
