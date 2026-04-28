@@ -431,7 +431,7 @@ Open these dashboards once a day, ideally with your morning coffee:
 |---|---|---|
 | **Sentry errors** | https://sentry.io → 1stOne project | Any new errors in the last 24 hours. If unfamiliar, copy the error message + bring to next session. If clearly a single user issue, ignore. |
 | **Razorpay payments dashboard** | https://dashboard.razorpay.com | All Pending payments older than 30 minutes. These are stuck — investigate. |
-| **Support email inbox** | 1st0nedotin@gmail.com | Any customer complaints. Respond within 24 hours; document recurring issues. |
+| **Support email inbox** | support@1stone.in (forwards to your Gmail) | Any customer complaints. Respond within 24 hours; document recurring issues. |
 | **Order count for the day** | Admin → Reports → Orders | Compared to a normal day. A 50%+ drop signals something is broken. |
 | **App Store / Play Console reviews** | Once apps are live | New 1- or 2-star reviews. Respond publicly when appropriate. |
 
