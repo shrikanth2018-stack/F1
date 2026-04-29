@@ -592,10 +592,13 @@ export function HomeScreen() {
         </ReAnimated.View>
       )}
 
-      {/* ── Food scroll (always rendered, hidden when essentials active) ── */}
+      {/* ── Food scroll — rendered only when food tab is active ── */}
+      {/* (display:'none' on a sibling ScrollView claims flex space on Android,
+           clipping the active list. Conditional render avoids that.) */}
+      {activeHomeTab === 'food' && (
       <ScrollView
         ref={foodScrollRef}
-        style={[styles.list, activeHomeTab !== 'food' && { display: 'none' }]}
+        style={styles.list}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         refreshControl={
@@ -635,12 +638,13 @@ export function HomeScreen() {
           </CycleGroup>
         ))}
       </ScrollView>
+      )}
 
-      {/* ── Essentials scroll (rendered only when feature enabled) ── */}
-      {essentialsEnabled && (
+      {/* ── Essentials scroll — rendered only when feature enabled and tab active ── */}
+      {essentialsEnabled && activeHomeTab === 'essentials' && (
         <ScrollView
           ref={essentialsScrollRef}
-          style={[styles.list, activeHomeTab !== 'essentials' && { display: 'none' }]}
+          style={styles.list}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
           refreshControl={

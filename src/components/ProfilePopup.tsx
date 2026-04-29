@@ -256,7 +256,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: Theme.spacing.sm,
     width: PANEL_W,
-    maxHeight: SCREEN_H * 0.65,
+    maxHeight: SCREEN_H * 0.82,
     backgroundColor: Theme.colors.background.primary,
     borderRadius: 16,
     borderWidth: 0.5,
