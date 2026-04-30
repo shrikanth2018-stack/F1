@@ -110,6 +110,10 @@ export default ({ config }) => {
     },
     updates: {
       url: 'https://u.expo.dev/81ff7f3c-8f25-4acc-9a4f-605bff80bdd2',
+      // Default is ON_LOAD but make it explicit so future SDK upgrades don't change behavior.
+      checkAutomatically: 'ON_LOAD',
+      // Apply downloaded updates on the next launch immediately (no cache stalling).
+      fallbackToCacheTimeout: 0,
     },
     runtimeVersion: {
       policy: 'sdkVersion',
