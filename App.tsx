@@ -25,6 +25,7 @@ import { AuthProvider, useAuth } from './src/hooks/useAuth';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { OfflineBanner } from './src/components/OfflineBanner';
 import { LoadingOverlay } from './src/components/LoadingOverlay';
+import { DialogHost } from './src/components/DialogHost';
 import { useUIStore } from './src/store/uiStore';
 import { QUERY_STALE_TIME } from './src/utils/constants';
 import { initSentry } from './src/utils/sentry';
@@ -77,6 +78,7 @@ function AppContent() {
       <OfflineBanner />
       <RootNavigator />
       <LoadingOverlay visible={isGlobalLoading} message={globalLoadingMessage} />
+      <DialogHost />
     </>
   );
 }

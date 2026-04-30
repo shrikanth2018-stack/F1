@@ -112,8 +112,7 @@ export function PlansScreen({ navigation, route }: any) {
     <SafeAreaView style={styles.container}>
       {/* Header — close-only (no back); returns to Home */}
       <View style={styles.header}>
-        <View style={styles.headerSpacer} />
-        <ThemedText variant="header" color="primary">Subscription Plans</ThemedText>
+        <ThemedText variant="header" color="primary" style={styles.headerTitle}>Subscription Plans</ThemedText>
         <TouchableOpacity
           onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Home' }] })}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -187,7 +186,7 @@ const styles = StyleSheet.create({
     paddingTop: Theme.spacing.md,
     paddingBottom: Theme.spacing.sm,
   },
-  headerSpacer: { width: 48 },
+  headerTitle: { flex: 1, textAlign: 'left' },
   toggleRow: {
     flexDirection: 'row',
     marginHorizontal: Theme.spacing.md,

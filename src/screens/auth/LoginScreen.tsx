@@ -13,6 +13,7 @@ import {
   TextInput,
   StyleSheet,
   KeyboardAvoidingView,
+  Keyboard,
   Platform,
   Alert,
   Linking,
@@ -87,6 +88,7 @@ export function LoginScreen({ onOTPSent, referralCode }: LoginScreenProps) {
   const [loading, setLoading] = useState(false);
   const [bgUrl, setBgUrl] = useState<string | null>(null);
   const inputRef = useRef<TextInput>(null);
+  const isSubmittingRef = useRef(false);
   const { signInWithPhone } = useAuth();
 
   useEffect(() => {
@@ -101,12 +103,15 @@ export function LoginScreen({ onOTPSent, referralCode }: LoginScreenProps) {
   }, []);
 
   const handleContinue = async () => {
+    if (isSubmittingRef.current) return;
     if (!isValidIndianPhone(phone)) {
       Alert.alert('Invalid Number', 'Please enter a valid 10-digit mobile number');
       return;
     }
 
+    isSubmittingRef.current = true;
     setLoading(true);
+    Keyboard.dismiss();
     const normalized = normalizePhone(phone);
 
     try {
@@ -117,8 +122,17 @@ export function LoginScreen({ onOTPSent, referralCode }: LoginScreenProps) {
       Alert.alert('Error', 'Something went wrong. Please try again.');
     } finally {
       setLoading(false);
+      isSubmittingRef.current = false;
     }
   };
+
+  // Auto-submit when 10 digits entered (matches OTPScreen 6-digit auto-verify pattern).
+  // Avoids forcing the user to scroll past the keyboard to find the LOGIN button.
+  useEffect(() => {
+    if (phone.length === 10 && isValidIndianPhone(phone)) {
+      handleContinue();
+    }
+  }, [phone]);
 
   const inner = (
     <KeyboardAvoidingView

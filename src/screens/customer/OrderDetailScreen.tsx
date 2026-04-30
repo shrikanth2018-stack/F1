@@ -173,15 +173,15 @@ export function OrderDetailScreen({ route, navigation }: any) {
           <View style={{ width: 40 }} />
         </View>
 
-        {/* Dispatch date + scheduled time */}
+        {/* Dispatch date + scheduled time — stacked, dispatch line right-aligned and smaller */}
         <View style={styles.section}>
           <View style={styles.statusRow}>
             <ThemedText variant="body" color="subtitle">
               {formatDateLong(order.dispatch_date)}
             </ThemedText>
             {dispatchCycle && (
-              <ThemedText variant="body" color="mint">
-                Scheduled to dispatch by : {dispatchTime}
+              <ThemedText variant="small" color="muted" style={styles.dispatchScheduledLine}>
+                Scheduled to dispatch by {dispatchTime}
               </ThemedText>
             )}
           </View>
@@ -353,9 +353,12 @@ const styles = StyleSheet.create({
     marginBottom: Theme.spacing.sm,
   },
   statusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: 'column',
+    alignItems: 'stretch',
+  },
+  dispatchScheduledLine: {
+    textAlign: 'right',
+    marginTop: 2,
   },
   timelineRow: {
     flexDirection: 'row',

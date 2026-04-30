@@ -191,28 +191,28 @@ interface CycleGroupProps {
 }
 
 function CycleGroup({ section, index, onOpenPopup, children }: CycleGroupProps) {
-  const anim = useRef(new Animated.Value(0)).current;
+  // Reanimated worklets — runs on UI thread, no JS-thread contention
+  // (mixing classic Animated with multiple staggered setTimeouts caused
+  // visible stutter on real Android devices, while iOS sim hid it.)
+  const opacity = useSharedValue(0);
+  const translateY = useSharedValue(20);
 
   useEffect(() => {
     const t = setTimeout(() => {
-      Animated.spring(anim, {
-        toValue: 1,
-        useNativeDriver: true,
-        damping: 13,
-        stiffness: 170,
-        mass: 0.8,
-      }).start();
+      opacity.value = withTiming(1, { duration: 280 });
+      translateY.value = withSpring(0, { damping: 13, stiffness: 170, mass: 0.8 });
     }, index * 80 + 40);
     return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const animated = {
-    opacity: anim,
-    transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }],
-  };
+  const animatedStyle = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+    transform: [{ translateY: translateY.value }],
+  }));
 
   return (
-    <Animated.View style={[styles.cycleGroup, animated]}>
+    <ReAnimated.View style={[styles.cycleGroup, animatedStyle]}>
       <View style={styles.groupLabelRow}>
         <ThemedText variant="subtitle" color="mint" style={styles.sectionTitle}>
           {section.title}
@@ -230,7 +230,7 @@ function CycleGroup({ section, index, onOpenPopup, children }: CycleGroupProps) 
       <View style={styles.groupContainer}>
         {children}
       </View>
-    </Animated.View>
+    </ReAnimated.View>
   );
 }
 

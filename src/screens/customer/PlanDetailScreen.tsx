@@ -174,8 +174,7 @@ export function PlanDetailScreen({ route, navigation }: any) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
-          <View style={{ width: 60 }} />
-          <ThemedText variant="header" color="primary">Plan Details</ThemedText>
+          <ThemedText variant="header" color="primary" style={styles.headerTitle}>Plan Details</ThemedText>
           <TouchableOpacity onPress={goHome} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
             <ThemedText variant="body" color="muted">Close</ThemedText>
           </TouchableOpacity>
@@ -197,8 +196,7 @@ export function PlanDetailScreen({ route, navigation }: any) {
     <SafeAreaView style={styles.container}>
       {/* Header — close-only */}
       <View style={styles.header}>
-        <View style={{ width: 60 }} />
-        <ThemedText variant="header" color="primary">Plan Details</ThemedText>
+        <ThemedText variant="header" color="primary" style={styles.headerTitle}>Plan Details</ThemedText>
         <TouchableOpacity onPress={goHome} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
           <ThemedText variant="body" color="muted">Close</ThemedText>
         </TouchableOpacity>
@@ -313,6 +311,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Theme.spacing.md,
     paddingVertical: Theme.spacing.sm,
   },
+  headerTitle: { flex: 1, textAlign: 'left' },
   section: { padding: Theme.spacing.md },
   sectionLabel: { letterSpacing: 1, marginBottom: Theme.spacing.sm },
   infoRow: {

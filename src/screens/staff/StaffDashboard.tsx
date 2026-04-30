@@ -32,6 +32,9 @@ import {
   Modal,
   TouchableWithoutFeedback,
   Text,
+  KeyboardAvoidingView,
+  Keyboard,
+  Platform,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -271,6 +274,8 @@ function OrderFormModal({
   const addFromCatalog = (item: { id: string; name: string }) => {
     setSearch('');
     setLineItems((prev) => [...prev, { id: item.id, name: item.name, qty: 1 }]);
+    // Dismiss keyboard so the line-items list below is visible after each add.
+    Keyboard.dismiss();
   };
 
   const addCustom = () => {
@@ -278,6 +283,7 @@ function OrderFormModal({
     if (!name) return;
     setSearch('');
     setLineItems((prev) => [...prev, { id: `custom_${Date.now()}`, name, qty: 1 }]);
+    Keyboard.dismiss();
   };
 
   const removeItem = (id: string) => setLineItems((prev) => prev.filter((i) => i.id !== id));
@@ -319,6 +325,11 @@ function OrderFormModal({
         <View style={formModal.backdrop} />
       </TouchableWithoutFeedback>
 
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={formModal.kavWrap}
+        pointerEvents="box-none"
+      >
       <View style={formModal.sheet}>
         {/* Header */}
         <View style={formModal.header}>
@@ -345,9 +356,9 @@ function OrderFormModal({
           )}
         </View>
 
-        {/* Suggestions */}
+        {/* Suggestions — bounded scroll so a long catalog doesn't push the line-items list off-screen */}
         {showSuggestions && (
-          <View style={formModal.suggestions}>
+          <ScrollView style={formModal.suggestions} keyboardShouldPersistTaps="handled" nestedScrollEnabled>
             {suggestions.map((item) => (
               <TouchableOpacity
                 key={item.id}
@@ -364,7 +375,7 @@ function OrderFormModal({
                 <ThemedText variant="small" color="mint">+ Add</ThemedText>
               </TouchableOpacity>
             )}
-          </View>
+          </ScrollView>
         )}
 
         {/* Line items */}
@@ -409,6 +420,7 @@ function OrderFormModal({
           </ThemedText>
         </TouchableOpacity>
       </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -457,9 +469,6 @@ function ProfilePopup({
 
         <Divider />
 
-        <TouchableOpacity style={popup.row} onPress={() => go('Attendance')}>
-          <ThemedText variant="body" color="primary">Clock In / Clock Out</ThemedText>
-        </TouchableOpacity>
         <TouchableOpacity style={popup.row} onPress={() => go('Attendance')}>
           <ThemedText variant="body" color="primary">Attendance</ThemedText>
         </TouchableOpacity>
@@ -1306,6 +1315,13 @@ const formModal = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: Theme.colors.layout.overlayMedium,
   },
+  // Anchors KeyboardAvoidingView to the bottom so only the sheet (not the backdrop) gets pushed up
+  kavWrap: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+  },
   sheet: {
     position: 'absolute',
     bottom: 0,
@@ -1350,6 +1366,7 @@ const formModal = StyleSheet.create({
     borderRadius: 6,
     marginBottom: Theme.spacing.sm,
     backgroundColor: Theme.colors.background.primary,
+    maxHeight: 220,
   },
   suggestionRow: {
     flexDirection: 'row',

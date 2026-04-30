@@ -11,7 +11,7 @@
  *   3. Non-serviceable addresses saved with notify-when-available note
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   ScrollView,
@@ -84,6 +84,30 @@ export function AddAddressScreen({ navigation, onComplete }: Props) {
     setLongitude(lng);
     await runChecks(lat, lng);
   };
+
+  // Auto-fetch GPS on mount so the map opens centered on user's current spot.
+  // Silent failure: if permission denied, user can still tap the map manually.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { status } = await Location.getForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          const req = await Location.requestForegroundPermissionsAsync();
+          if (req.status !== 'granted') return;
+        }
+        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        if (cancelled) return;
+        const { latitude: lat, longitude: lng } = loc.coords;
+        setLatitude(lat);
+        setLongitude(lng);
+        await runChecks(lat, lng);
+      } catch {
+        // Silent — user can pin manually or tap "Use my current location" button.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const handleAdd = async () => {
     if (!isNonEmpty(fullName)) {

@@ -1,37 +1,35 @@
 /**
  * 1stOne F1 — Cross-platform confirm dialog
  *
- * RN's Alert.alert() with multi-button + destructive style is broken on
- * React Native Web — the dialog often doesn't render and button onPress
- * callbacks don't fire. This helper uses window.confirm() on web and
- * Alert.alert() on native, with the same API.
+ * Native: routes through DialogHost (a singleton themed Modal mounted at app
+ *         root). This replaces the OS Alert.alert which always renders in
+ *         the system theme on Android and cannot be styled.
+ * Web:    uses window.confirm / window.alert — RN-Web's Alert.alert is
+ *         unreliable, and the browser primitives blend into the page fine.
  *
- * Use this for any destructive confirm (logout, cancel, delete) where
- * web compatibility matters. Plain informational Alert.alert() calls
- * (single OK button) work fine on web — leave those alone.
+ * Existing call sites continue to use confirmDialog({...}) and infoDialog(...)
+ * with the same signature; only the underlying implementation changed.
  */
 
-import { Alert, Platform } from 'react-native';
+import { Platform } from 'react-native';
 
 interface ConfirmOptions {
-  /** Title of the dialog. */
   title: string;
-  /** Body / question. */
   message?: string;
-  /** Label for the confirm button (e.g. "Sign Out", "Cancel Order"). */
   confirmLabel?: string;
-  /** Label for the dismiss button. */
   cancelLabel?: string;
-  /** Whether the confirm button is destructive (iOS shows it in red). */
   destructive?: boolean;
 }
 
-/**
- * Show a confirmation dialog. Resolves to true if user confirms, false otherwise.
- *
- * Native: uses Alert.alert with two buttons.
- * Web:    uses window.confirm — title + message are joined with a newline.
- */
+// Internal handler registered by DialogHost on mount. Until then, dialogs
+// fall back to a permissive resolve(false) so the app doesn't deadlock.
+let nativeHandler: ((opts: ConfirmOptions) => Promise<boolean>) | null = null;
+
+/** Internal — DialogHost calls this once on mount. Don't import from app code. */
+export function _registerDialogHandler(handler: (opts: ConfirmOptions) => Promise<boolean>) {
+  nativeHandler = handler;
+}
+
 export function confirmDialog(opts: ConfirmOptions): Promise<boolean> {
   const {
     title,
@@ -46,26 +44,14 @@ export function confirmDialog(opts: ConfirmOptions): Promise<boolean> {
     return Promise.resolve(typeof window !== 'undefined' && window.confirm(text));
   }
 
-  return new Promise((resolve) => {
-    Alert.alert(title, message, [
-      { text: cancelLabel, style: 'cancel', onPress: () => resolve(false) },
-      {
-        text: confirmLabel,
-        style: destructive ? 'destructive' : 'default',
-        onPress: () => resolve(true),
-      },
-    ]);
-  });
+  if (nativeHandler) {
+    return nativeHandler({ title, message, confirmLabel, cancelLabel, destructive });
+  }
+
+  // Fallback before DialogHost mounts (very early app boot). Treat as cancel.
+  return Promise.resolve(false);
 }
 
-/**
- * Show an info-only dialog (single OK button, no choice). Resolves when dismissed.
- *
- * Native: Alert.alert with one OK button.
- * Web:    window.alert — RN-Web's Alert.alert can silently no-op even for
- *         single-button info dialogs depending on build, so we always use
- *         the browser's native alert() on web.
- */
 export function infoDialog(title: string, message?: string): Promise<void> {
   if (Platform.OS === 'web') {
     if (typeof window !== 'undefined') {
@@ -74,7 +60,11 @@ export function infoDialog(title: string, message?: string): Promise<void> {
     return Promise.resolve();
   }
 
-  return new Promise((resolve) => {
-    Alert.alert(title, message, [{ text: 'OK', onPress: () => resolve() }]);
-  });
+  if (nativeHandler) {
+    // Single-button info dialog — DialogHost treats undefined cancelLabel as info-only.
+    return nativeHandler({ title, message, confirmLabel: 'OK', cancelLabel: undefined as any, destructive: false })
+      .then(() => undefined);
+  }
+
+  return Promise.resolve();
 }

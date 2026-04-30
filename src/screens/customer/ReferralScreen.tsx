@@ -347,7 +347,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: Theme.colors.layout.divider,
   },
-  title:  { flex: 1, textAlign: 'center' },
+  title:  { flex: 1, textAlign: 'left' },
 
   scroll: { paddingBottom: Theme.spacing.xl * 2 },
 
