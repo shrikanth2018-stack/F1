@@ -118,14 +118,16 @@ export function OTPScreen({ phone, onBack, onExistingUser, onNewUser }: OTPScree
       return;
     }
 
-    // Check if profile exists — use the auth-canonical phone from getUser()
-    // to avoid format mismatches between our normalizePhone and Supabase's stored value.
+    // Check if profile exists AND is complete (has full_name).
+    // The handle_new_user trigger creates a stub row with id+role+phone_number
+    // immediately on auth signup, so just-existing isn't enough — full_name
+    // signals a finished registration. Stub rows route to RegistrationScreen.
     const { data: { user: authUser } } = await supabase.auth.getUser();
     const canonicalPhone = authUser?.phone ?? phone;
 
     const { data: profile, error: profileErr } = await supabase
       .from('profiles')
-      .select('id')
+      .select('id, full_name')
       .or(`phone_number.eq.${canonicalPhone},phone_number.eq.${phone}`)
       .maybeSingle();
 
@@ -134,7 +136,9 @@ export function OTPScreen({ phone, onBack, onExistingUser, onNewUser }: OTPScree
 
     // If the query itself errored (RLS, network), treat as existing user —
     // better to let someone in than to force unnecessary re-registration.
-    if (profile || profileErr) {
+    if (profileErr) {
+      onExistingUser();
+    } else if (profile?.full_name && profile.full_name.trim().length > 0) {
       onExistingUser();
     } else {
       onNewUser();
