@@ -104,6 +104,10 @@ export function useSupplyCatalog(category: 'Vegetables' | 'Grocery' | 'Stationer
     },
     enabled: !!category,
     staleTime: 5 * 60_000,
+    // Always refetch when the form mounts. Guards against the cache returning
+    // a stale empty result (which can happen if a query fired during auth
+    // initialization or right after re-login).
+    refetchOnMount: 'always',
   });
 }
 

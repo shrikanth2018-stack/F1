@@ -19,6 +19,8 @@ import {
   Text,
   ActivityIndicator,
   RefreshControl,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Print from 'expo-print';
@@ -187,7 +189,7 @@ function OrderListTab({ onPrint }: { onPrint: () => void }) {
   const addItem = useAdminAddOrderItem();
 
   const [addName, setAddName] = useState('');
-  const [addQty, setAddQty] = useState('1');
+  const [addQty, setAddQty] = useState('0');
   const [addCat, setAddCat] = useState<Category>('Vegetables');
   const [showAddForm, setShowAddForm] = useState(false);
 
@@ -199,7 +201,9 @@ function OrderListTab({ onPrint }: { onPrint: () => void }) {
     addItem.mutate(
       { name, qty, category: addCat },
       {
-        onSuccess: () => { setAddName(''); setAddQty('1'); setShowAddForm(false); },
+        // Stay open so admin can add multiple items in a row.
+        // Cancel button (or tab change) closes the form.
+        onSuccess: () => { setAddName(''); setAddQty('0'); },
         onError: (e: any) => Alert.alert('Error', e.message),
       },
     );
@@ -227,10 +231,14 @@ function OrderListTab({ onPrint }: { onPrint: () => void }) {
   })).filter((g) => g.items.length > 0);
 
   return (
-    <View style={{ flex: 1 }}>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={{ flex: 1 }}
+    >
       <ScrollView
         style={styles.tabContent}
         contentContainerStyle={styles.listPad}
+        keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl refreshing={isLoading} onRefresh={refetch} tintColor={Theme.colors.action.primary} />
         }
@@ -276,38 +284,39 @@ function OrderListTab({ onPrint }: { onPrint: () => void }) {
             <Divider />
           </View>
         ))}
-
-        {/* Add item form */}
-        {showAddForm && (
-          <AddItemForm
-            addCat={addCat}
-            setAddCat={setAddCat}
-            addName={addName}
-            setAddName={setAddName}
-            addQty={addQty}
-            setAddQty={setAddQty}
-            isPending={addItem.isPending}
-            onAdd={handleAdd}
-            onCancel={() => setShowAddForm(false)}
-          />
-        )}
       </ScrollView>
 
-      {/* Footer */}
-      <View style={styles.footer}>
-        {!showAddForm && (
+      {/* Add Item form — outside ScrollView so the items list scrolls
+          independently above it; form stays visible while adding. */}
+      {showAddForm && (
+        <AddItemForm
+          addCat={addCat}
+          setAddCat={setAddCat}
+          addName={addName}
+          setAddName={setAddName}
+          addQty={addQty}
+          setAddQty={setAddQty}
+          isPending={addItem.isPending}
+          onAdd={handleAdd}
+          onCancel={() => setShowAddForm(false)}
+        />
+      )}
+
+      {/* Footer — hidden while adding so the form has room above the keyboard */}
+      {!showAddForm && (
+        <View style={styles.footer}>
           <TouchableOpacity onPress={() => setShowAddForm(true)}>
             <ThemedText variant="body" color="accent" style={{ fontSize: B }}>+ Add Item</ThemedText>
           </TouchableOpacity>
-        )}
-        <View style={{ flex: 1 }} />
-        {items.length > 0 && (
-          <TouchableOpacity onPress={onPrint}>
-            <ThemedText variant="body" color="mint" style={{ fontSize: B }}>Print All ›</ThemedText>
-          </TouchableOpacity>
-        )}
-      </View>
-    </View>
+          <View style={{ flex: 1 }} />
+          {items.length > 0 && (
+            <TouchableOpacity onPress={onPrint}>
+              <ThemedText variant="body" color="mint" style={{ fontSize: B }}>Print All ›</ThemedText>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+    </KeyboardAvoidingView>
   );
 }
 
@@ -454,14 +463,26 @@ function AddItemForm({
         ))}
       </ScrollView>
 
-      <TextInput
-        style={styles.addInput}
-        placeholder="Type item name…"
-        placeholderTextColor={Theme.colors.text.muted}
-        value={addName}
-        onChangeText={setAddName}
-        autoCorrect={false}
-      />
+      {/* Name + Qty on a single row to keep the form compact */}
+      <View style={styles.addNameQtyRow}>
+        <TextInput
+          style={[styles.addInput, styles.addNameInput]}
+          placeholder="Type item name…"
+          placeholderTextColor={Theme.colors.text.muted}
+          value={addName}
+          onChangeText={setAddName}
+          autoCorrect={false}
+        />
+        <TextInput
+          style={[styles.addInput, styles.addQtyInput]}
+          placeholder="Qty"
+          placeholderTextColor={Theme.colors.text.muted}
+          keyboardType="number-pad"
+          value={addQty}
+          onChangeText={setAddQty}
+          textAlign="center"
+        />
+      </View>
 
       {(suggestions.length > 0 || showCustomAdd) && (
         <View style={styles.suggestions}>
@@ -487,14 +508,6 @@ function AddItemForm({
         </View>
       )}
 
-      <TextInput
-        style={styles.addInput}
-        placeholder="Quantity"
-        placeholderTextColor={Theme.colors.text.muted}
-        keyboardType="number-pad"
-        value={addQty}
-        onChangeText={setAddQty}
-      />
       <View style={styles.addFormBtns}>
         <TouchableOpacity onPress={onCancel} style={styles.addCancelBtn}>
           <ThemedText variant="body" color="muted" style={{ fontSize: B }}>Cancel</ThemedText>
@@ -766,6 +779,12 @@ const styles = StyleSheet.create({
     fontSize: B,
     marginBottom: Theme.spacing.sm,
   },
+  addNameQtyRow: {
+    flexDirection: 'row',
+    gap: Theme.spacing.sm,
+  },
+  addNameInput: { flex: 1 },
+  addQtyInput: { width: 64 },
   suggestions: {
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: Theme.colors.layout.divider,

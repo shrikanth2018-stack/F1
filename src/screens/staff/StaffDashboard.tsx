@@ -238,6 +238,9 @@ function useSupplyCatalog(type: OrderFormType) {
     },
     enabled: !!type,
     staleTime: 5 * 60_000,
+    // Refetch when the modal opens — protects against stale empty cache
+    // (e.g., from a previous session or pre-auth state).
+    refetchOnMount: 'always',
   });
 }
 
@@ -262,14 +265,14 @@ function OrderFormModal({
 
   if (!type) return null;
 
-  // Suggestions: all unadded catalog items when search is empty;
-  // narrowed by prefix match when the user types.
+  // Type-to-search only — empty search shows nothing (matches admin Stock Manager).
+  // Avoids overwhelming the user with the full catalog on modal open.
   const addedIds = new Set(lineItems.map((i) => i.id));
   const suggestions = search.trim().length > 0
     ? catalog.filter(
         (c) => c.name.toLowerCase().startsWith(search.toLowerCase()) && !addedIds.has(c.id)
       )
-    : catalog.filter((c) => !addedIds.has(c.id));
+    : [];
 
   // Allow adding a custom entry if no exact match in catalog
   const exactMatch = catalog.some((c) => c.name.toLowerCase() === search.trim().toLowerCase());
