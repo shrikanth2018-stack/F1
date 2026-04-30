@@ -129,6 +129,17 @@ export function OrderDetailScreen({ route, navigation }: any) {
   const dispatchCycle = (cycles ?? []).find((c) => c.id === order.cycle_id);
   const dispatchTime = formatTime12h(dispatchCycle?.delivery_start);
 
+  // Hide the "Scheduled to dispatch by" line once the dispatch window has passed.
+  // delivery_start is HH:MM (e.g., "07:30"); combine with order.dispatch_date.
+  const dispatchPassed = (() => {
+    if (!dispatchCycle?.delivery_start || !order.dispatch_date) return false;
+    const [hh, mm] = dispatchCycle.delivery_start.split(':').map(Number);
+    if (Number.isNaN(hh) || Number.isNaN(mm)) return false;
+    const dispatchAt = new Date(order.dispatch_date);
+    dispatchAt.setHours(hh, mm, 0, 0);
+    return Date.now() > dispatchAt.getTime();
+  })();
+
   const windowHours = config?.cancellation_window_hours ?? 2;
   const ageHours = (Date.now() - new Date(order.created_at).getTime()) / 3_600_000;
 
@@ -179,8 +190,8 @@ export function OrderDetailScreen({ route, navigation }: any) {
             <ThemedText variant="body" color="subtitle">
               {formatDateLong(order.dispatch_date)}
             </ThemedText>
-            {dispatchCycle && (
-              <ThemedText variant="small" color="muted" style={styles.dispatchScheduledLine}>
+            {dispatchCycle && !dispatchPassed && (
+              <ThemedText variant="small" color="mint" style={styles.dispatchScheduledLine}>
                 Scheduled to dispatch by {dispatchTime}
               </ThemedText>
             )}

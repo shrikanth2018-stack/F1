@@ -64,7 +64,11 @@ type PackingSubTab = 'Food' | 'Essentials';
 type OrderFormType = 'Vegetables' | 'Grocery' | 'Stationery' | null;
 
 const LOGO_URL = supabase.storage.from('assets').getPublicUrl('logo.png').data.publicUrl;
-const ROUTE_MAP_URL = supabase.storage.from('assets').getPublicUrl('routemap.pdf').data.publicUrl;
+// Direct URL string (matches Privacy/Terms PDF pattern) so Linking.openURL
+// opens it inline in the browser instead of triggering a download.
+// The Supabase SDK's getPublicUrl was appending params that signaled
+// attachment behavior to Android.
+const ROUTE_MAP_URL = 'https://wcvqxzqqwcxlcgrjyunf.supabase.co/storage/v1/object/public/assets/routemap.pdf';
 
 // Text size offsets for this screen
 const BODY2 = Theme.typography.sizes.body + 2;
@@ -330,7 +334,7 @@ function OrderFormModal({
         style={formModal.kavWrap}
         pointerEvents="box-none"
       >
-      <View style={formModal.sheet}>
+      <View style={formModal.sheet} pointerEvents="auto">
         {/* Header */}
         <View style={formModal.header}>
           <ThemedText variant="subtitle" color="primary">{type} Order</ThemedText>
@@ -1315,18 +1319,15 @@ const formModal = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: Theme.colors.layout.overlayMedium,
   },
-  // Anchors KeyboardAvoidingView to the bottom so only the sheet (not the backdrop) gets pushed up
+  // Full-screen flex container — sheet sits at the bottom via justifyContent.
+  // KeyboardAvoidingView resizes this on keyboard open without breaking the
+  // sheet's layout (avoids the position:absolute conflict that broke v1.0.2).
   kavWrap: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'flex-end',
   },
   sheet: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
+    width: '100%',
     backgroundColor: Theme.colors.background.secondary,
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,

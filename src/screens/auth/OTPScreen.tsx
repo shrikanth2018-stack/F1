@@ -8,16 +8,14 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
-  TextInput,
   ImageBackground,
   StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
-  Alert,
   TouchableOpacity,
   ActivityIndicator,
 } from 'react-native';
 import { Theme } from '../../theme';
+import { NumberKeypad } from '../../components/NumberKeypad';
+import { infoDialog } from '../../utils/confirmDialog';
 import { useAuth } from '../../hooks/useAuth';
 import { supabase } from '../../api/supabaseClient';
 import { isValidOTP } from '../../utils/validators';
@@ -88,7 +86,6 @@ export function OTPScreen({ phone, onBack, onExistingUser, onNewUser }: OTPScree
   const [resendCountdown, setResendCountdown] = useState(30);
   const [resending, setResending] = useState(false);
   const isVerifyingRef = useRef(false);
-  const inputRef = useRef<TextInput>(null);
   const { verifyOTP, signInWithPhone } = useAuth();
 
   useEffect(() => {
@@ -105,7 +102,7 @@ export function OTPScreen({ phone, onBack, onExistingUser, onNewUser }: OTPScree
   const handleVerify = async () => {
     if (isVerifyingRef.current) return;
     if (!isValidOTP(otp)) {
-      Alert.alert('Invalid OTP', 'Please enter the 6-digit code');
+      await infoDialog('Invalid OTP', 'Please enter the 6-digit code');
       return;
     }
 
@@ -116,7 +113,7 @@ export function OTPScreen({ phone, onBack, onExistingUser, onNewUser }: OTPScree
     if (error) {
       setLoading(false);
       isVerifyingRef.current = false;
-      Alert.alert('Verification Failed', error.message);
+      await infoDialog('Verification Failed', error.message);
       setOtp('');
       return;
     }
@@ -163,46 +160,26 @@ export function OTPScreen({ phone, onBack, onExistingUser, onNewUser }: OTPScree
     const { error } = await signInWithPhone(phone);
     setResending(false);
     if (error) {
-      Alert.alert('Resend Failed', error.message);
+      await infoDialog('Resend Failed', error.message);
       return;
     }
     setOtp('');
     setResendCountdown(30);
-    Alert.alert('OTP Sent', 'A new code has been sent to your phone.');
+    await infoDialog('OTP Sent', 'A new code has been sent to your phone.');
   };
 
   const inner = (
-    <KeyboardAvoidingView
-      style={styles.kav}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <View style={styles.inner}>
-        <Text style={styles.title}>Enter OTP</Text>
-        <Text style={styles.subtitle}>Sent to {formatPhone(phone)}</Text>
+    <View style={styles.inner}>
+      <Text style={styles.title}>Enter OTP</Text>
+      <Text style={styles.subtitle}>Sent to {formatPhone(phone)}</Text>
 
-        {/* Passcode dot field */}
-        <TouchableOpacity
-          style={styles.dotWrap}
-          activeOpacity={1}
-          onPress={() => inputRef.current?.focus()}
-        >
-          <PasscodeDots value={otp} />
-          <TextInput
-            ref={inputRef}
-            style={styles.hiddenInput}
-            keyboardType="number-pad"
-            maxLength={6}
-            value={otp}
-            onChangeText={setOtp}
-            autoFocus
-            caretHidden
-            accessibilityLabel="One-time password"
-            accessibilityHint="Enter the 6-digit code sent to your phone"
-          />
-        </TouchableOpacity>
+      {/* Passcode dot row — read-only, fed by NumberKeypad below */}
+      <View style={styles.dotWrap}>
+        <PasscodeDots value={otp} />
+      </View>
 
-        {/* Loading indicator while auto-verifying */}
-        {loading && <ActivityIndicator color={Theme.colors.text.mint} style={styles.loader} />}
+      {/* Loading indicator while auto-verifying */}
+      {loading && <ActivityIndicator color={Theme.colors.text.mint} style={styles.loader} />}
 
         {/* Resend OTP — disabled with countdown for first 30s */}
         <TouchableOpacity
@@ -228,18 +205,22 @@ export function OTPScreen({ phone, onBack, onExistingUser, onNewUser }: OTPScree
           </Text>
         </TouchableOpacity>
 
-        {/* Change phone — replaces the Back button */}
-        <TouchableOpacity
-          style={styles.changePhoneBtn}
-          onPress={onBack}
-          activeOpacity={0.6}
-          accessibilityRole="button"
-          accessibilityLabel="Change phone number"
-        >
-          <Text style={styles.changePhoneText}>Change Phone Number</Text>
-        </TouchableOpacity>
+      {/* Change phone — replaces the Back button */}
+      <TouchableOpacity
+        style={styles.changePhoneBtn}
+        onPress={onBack}
+        activeOpacity={0.6}
+        accessibilityRole="button"
+        accessibilityLabel="Change phone number"
+      >
+        <Text style={styles.changePhoneText}>Change Phone Number</Text>
+      </TouchableOpacity>
+
+      {/* In-app number keypad — feeds otp state, autoVerify still triggers at 6 digits */}
+      <View style={styles.keypadWrap}>
+        <NumberKeypad value={otp} onChange={setOtp} maxLength={6} />
       </View>
-    </KeyboardAvoidingView>
+    </View>
   );
 
   if (!bgUrl) {
@@ -260,12 +241,15 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: Theme.colors.layout.overlayHeavy,
   },
-  kav: { flex: 1 },
   inner: {
     flex: 1,
-    justifyContent: 'center',
+    paddingTop: Theme.spacing.xl * 2,
     alignItems: 'center',
     paddingHorizontal: Theme.spacing.xl,
+  },
+  keypadWrap: {
+    width: '100%',
+    marginTop: Theme.spacing.lg,
   },
   title: {
     fontFamily: Theme.typography.fontFamily,
@@ -287,15 +271,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: Theme.spacing.xl,
     paddingVertical: Theme.spacing.sm,
-  },
-  hiddenInput: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    color: 'transparent',
-    backgroundColor: 'transparent',
   },
   loader: {
     marginBottom: Theme.spacing.lg,

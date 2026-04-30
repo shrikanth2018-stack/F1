@@ -10,12 +10,7 @@ import {
   Image,
   ImageBackground,
   Text,
-  TextInput,
   StyleSheet,
-  KeyboardAvoidingView,
-  Keyboard,
-  Platform,
-  Alert,
   Linking,
   ScrollView,
   ActivityIndicator,
@@ -23,6 +18,8 @@ import {
 } from 'react-native';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
+import { NumberKeypad } from '../../components/NumberKeypad';
+import { infoDialog } from '../../utils/confirmDialog';
 import { isValidIndianPhone, normalizePhone } from '../../utils/validators';
 import { useAuth } from '../../hooks/useAuth';
 import { supabase } from '../../api/supabaseClient';
@@ -87,7 +84,6 @@ export function LoginScreen({ onOTPSent, referralCode }: LoginScreenProps) {
   const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
   const [bgUrl, setBgUrl] = useState<string | null>(null);
-  const inputRef = useRef<TextInput>(null);
   const isSubmittingRef = useRef(false);
   const { signInWithPhone } = useAuth();
 
@@ -105,125 +101,100 @@ export function LoginScreen({ onOTPSent, referralCode }: LoginScreenProps) {
   const handleContinue = async () => {
     if (isSubmittingRef.current) return;
     if (!isValidIndianPhone(phone)) {
-      Alert.alert('Invalid Number', 'Please enter a valid 10-digit mobile number');
+      await infoDialog('Invalid Number', 'Please enter a valid 10-digit mobile number');
       return;
     }
 
     isSubmittingRef.current = true;
     setLoading(true);
-    Keyboard.dismiss();
     const normalized = normalizePhone(phone);
 
     try {
       const { error } = await signInWithPhone(normalized);
-      if (error) { Alert.alert('Error', error.message); return; }
+      if (error) { await infoDialog('Error', error.message); return; }
       onOTPSent(normalized);
     } catch {
-      Alert.alert('Error', 'Something went wrong. Please try again.');
+      await infoDialog('Error', 'Something went wrong. Please try again.');
     } finally {
       setLoading(false);
       isSubmittingRef.current = false;
     }
   };
 
-  // Auto-submit when 10 digits entered (matches OTPScreen 6-digit auto-verify pattern).
-  // Avoids forcing the user to scroll past the keyboard to find the LOGIN button.
-  useEffect(() => {
-    if (phone.length === 10 && isValidIndianPhone(phone)) {
-      handleContinue();
-    }
-  }, [phone]);
-
   const inner = (
-    <KeyboardAvoidingView
-      style={styles.kav}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    <ScrollView
+      contentContainerStyle={styles.scroll}
+      keyboardShouldPersistTaps="handled"
+      bounces={false}
     >
-      <ScrollView
-        contentContainerStyle={styles.scroll}
-        keyboardShouldPersistTaps="handled"
-        bounces={false}
-      >
-        <View style={styles.body}>
-          {/* Logo */}
-          <Image
-            source={{ uri: `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/public/assets/logo.png` }}
-            style={styles.logo}
-            resizeMode="contain"
-          />
+      <View style={styles.body}>
+        {/* Logo */}
+        <Image
+          source={{ uri: `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/public/assets/logo.png` }}
+          style={styles.logo}
+          resizeMode="contain"
+        />
 
-          {/* Referral hint */}
-          {referralCode && (
-            <ThemedText variant="small" color="mint" style={{ textAlign: 'center', marginBottom: 12 }}>
-              {`Referral code "${referralCode}" will be applied after signup`}
-            </ThemedText>
+        {/* Referral hint */}
+        {referralCode && (
+          <ThemedText variant="small" color="mint" style={{ textAlign: 'center', marginBottom: 12 }}>
+            {`Referral code "${referralCode}" will be applied after signup`}
+          </ThemedText>
+        )}
+
+        {/* Title */}
+        <Text style={styles.title}>Enter mobile</Text>
+
+        {/* Passcode dot row — read-only display, fed by NumberKeypad below */}
+        <View style={styles.dotWrap}>
+          <PasscodeDots value={phone} />
+        </View>
+
+        {/* LOGIN | REGISTER button — manual tap (no auto-submit on phone) */}
+        <TouchableOpacity
+          style={styles.loginBtn}
+          activeOpacity={0.85}
+          onPress={handleContinue}
+          disabled={loading || phone.length < 10}
+          accessibilityRole="button"
+          accessibilityLabel="Login or Register"
+          accessibilityState={{ disabled: loading || phone.length < 10, busy: loading }}
+        >
+          {loading ? (
+            <ActivityIndicator color={Theme.colors.text.mint} />
+          ) : (
+            <Text style={[styles.loginBtnText, phone.length < 10 && styles.loginBtnDisabled]}>
+              LOGIN  |  REGISTER
+            </Text>
           )}
+        </TouchableOpacity>
 
-          {/* Title */}
-          <Text style={styles.title}>Enter mobile</Text>
-
-          {/* Passcode dot field */}
-          <TouchableOpacity
-            style={styles.dotWrap}
-            activeOpacity={1}
-            onPress={() => inputRef.current?.focus()}
-          >
-            <PasscodeDots value={phone} />
-            <TextInput
-              ref={inputRef}
-              style={styles.hiddenInput}
-              keyboardType="number-pad"
-              maxLength={10}
-              value={phone}
-              onChangeText={setPhone}
-              autoFocus
-              caretHidden
-              accessibilityLabel="Phone number"
-              accessibilityHint="Enter your 10-digit mobile number"
-            />
-          </TouchableOpacity>
-
-          {/* LOGIN | REGISTER button */}
-          <TouchableOpacity
-            style={styles.loginBtn}
-            activeOpacity={0.85}
-            onPress={handleContinue}
-            disabled={loading || phone.length < 10}
-            accessibilityRole="button"
-            accessibilityLabel="Login or Register"
-            accessibilityState={{ disabled: loading || phone.length < 10, busy: loading }}
-          >
-            {loading ? (
-              <ActivityIndicator color={Theme.colors.text.mint} />
-            ) : (
-              <Text style={[styles.loginBtnText, phone.length < 10 && styles.loginBtnDisabled]}>
-                LOGIN  |  REGISTER
-              </Text>
-            )}
-          </TouchableOpacity>
+        {/* In-app number keypad — replaces OS keyboard */}
+        <View style={styles.keypadWrap}>
+          <NumberKeypad value={phone} onChange={setPhone} maxLength={10} />
         </View>
+      </View>
 
-        {/* Footer */}
-        <View style={styles.footer}>
-          <Text style={styles.footLine}>By continuing, you agree to our</Text>
-          <Text style={styles.footLine}>
-            <Text
-              style={styles.footLink}
-              onPress={() => Linking.openURL('https://wcvqxzqqwcxlcgrjyunf.supabase.co/storage/v1/object/public/assets/Terms.pdf')}
-            >
-              Terms of Service
-            </Text>
-            {'  and  '}
-            <Text
-              style={styles.footLink}
-              onPress={() => Linking.openURL('https://wcvqxzqqwcxlcgrjyunf.supabase.co/storage/v1/object/public/assets/Privacy-Policy.pdf')}
-            >
-              Privacy Policy
-            </Text>
+      {/* Footer */}
+      <View style={styles.footer}>
+        <Text style={styles.footLine}>By continuing, you agree to our</Text>
+        <Text style={styles.footLine}>
+          <Text
+            style={styles.footLink}
+            onPress={() => Linking.openURL('https://wcvqxzqqwcxlcgrjyunf.supabase.co/storage/v1/object/public/assets/Terms.pdf')}
+          >
+            Terms of Service
           </Text>
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+          {'  and  '}
+          <Text
+            style={styles.footLink}
+            onPress={() => Linking.openURL('https://wcvqxzqqwcxlcgrjyunf.supabase.co/storage/v1/object/public/assets/Privacy-Policy.pdf')}
+          >
+            Privacy Policy
+          </Text>
+        </Text>
+      </View>
+    </ScrollView>
   );
 
   if (!bgUrl) {
@@ -244,7 +215,6 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: Theme.colors.layout.overlayHeavy,
   },
-  kav: { flex: 1 },
   scroll: { flexGrow: 1 },
   body: {
     alignItems: 'center',
@@ -252,9 +222,13 @@ const styles = StyleSheet.create({
     paddingTop: Theme.spacing.xl * 2,
   },
   logo: {
-    width: 220,
-    height: 220,
-    marginBottom: Theme.spacing.xl + Theme.spacing.lg,
+    width: 180,
+    height: 180,
+    marginBottom: Theme.spacing.lg,
+  },
+  keypadWrap: {
+    width: '100%',
+    marginTop: Theme.spacing.lg,
   },
   title: {
     fontFamily: Theme.typography.fontFamily,
@@ -269,15 +243,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: Theme.spacing.xl,
     paddingVertical: Theme.spacing.sm,
-  },
-  hiddenInput: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    color: 'transparent',
-    backgroundColor: 'transparent',
   },
   loginBtn: {
     width: '100%',
