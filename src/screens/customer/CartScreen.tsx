@@ -26,6 +26,7 @@ import { useSmartEssentialsCart } from '../../hooks/useSmartEssentialsCart';
 import { useDeliveryCycles } from '../../hooks/useDeliveryCycles';
 import { formatPriceShort, formatDateShort } from '../../utils/formatters';
 import { formatTime12h } from '../../utils/timeEngine';
+import { confirmDialog } from '../../utils/confirmDialog';
 
 export function CartScreen({ navigation, route }: any) {
   const insets = useSafeAreaInsets();
@@ -230,7 +231,17 @@ export function CartScreen({ navigation, route }: any) {
           <ThemedText variant="body" color="accent">‹ Back</ThemedText>
         </TouchableOpacity>
         <ThemedText variant="header" color="primary">Cart</ThemedText>
-        <TouchableOpacity onPress={() => { clearFood(); clearEss(); }}>
+        <TouchableOpacity
+          onPress={async () => {
+            const ok = await confirmDialog({
+              title: 'Clear cart?',
+              message: 'This will remove all items and any subscription plans from your cart.',
+              confirmLabel: 'Clear All',
+              destructive: true,
+            });
+            if (ok) { clearFood(); clearEss(); }
+          }}
+        >
           <ThemedText variant="small" color="muted">Clear All</ThemedText>
         </TouchableOpacity>
       </View>

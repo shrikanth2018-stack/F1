@@ -5,13 +5,12 @@
  * and points transaction history (logic added later).
  */
 
-import React, { useState } from 'react';
+import React from 'react';
 import {
   View,
   ScrollView,
   TouchableOpacity,
   StyleSheet,
-  Switch,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
@@ -24,7 +23,6 @@ import type { CustomerNavProp } from '../../navigation/types';
 export function LoyaltyPointsScreen({ navigation }: { navigation: CustomerNavProp }) {
   const insets = useSafeAreaInsets();
   const { data: wallet } = useWalletBalance();
-  const [redeemEnabled, setRedeemEnabled] = useState(false);
 
   const points = wallet?.loyaltyPoints ?? 0;
 
@@ -50,27 +48,6 @@ export function LoyaltyPointsScreen({ navigation }: { navigation: CustomerNavPro
           {points.toLocaleString('en-IN')}
         </ThemedText>
         <ThemedText variant="small" color="subtitle">Available Points</ThemedText>
-      </View>
-
-      <Divider />
-
-      {/* Redeem toggle — dummy for now */}
-      <View style={styles.redeemRow}>
-        <View style={styles.redeemInfo}>
-          <ThemedText variant="body" color="primary">Redeem on next order</ThemedText>
-          <ThemedText variant="small" color="muted">
-            Apply points as discount at checkout
-          </ThemedText>
-        </View>
-        <Switch
-          value={redeemEnabled}
-          onValueChange={setRedeemEnabled}
-          trackColor={{
-            false: Theme.colors.background.tertiary,
-            true: Theme.colors.status.success,
-          }}
-          thumbColor={Theme.colors.text.primary}
-        />
       </View>
 
       <Divider />
@@ -121,17 +98,6 @@ const styles = StyleSheet.create({
   pointsAmount: {
     fontSize: 40,
     marginBottom: Theme.spacing.xs,
-  },
-  redeemRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.md,
-  },
-  redeemInfo: {
-    flex: 1,
-    marginRight: Theme.spacing.md,
   },
   txTitle: {
     paddingHorizontal: Theme.spacing.md,

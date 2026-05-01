@@ -21,24 +21,21 @@ import { ThemedText } from '../../../components/ThemedText';
 import { EmptyState } from '../../../components/EmptyState';
 import { useOrdersDetailReport } from '../../../hooks/useReports';
 import type { AdminNavProp } from '../../../navigation/types';
+import {
+  ReportPeriodPicker,
+  defaultCustomRange,
+  getPeriodRange,
+  periodLabel,
+  type Period,
+  type DateRange,
+} from '../../../components/ReportPeriodPicker';
 
-type Period = 'Weekly' | 'Monthly' | 'Quarterly';
 type ViewMode = 'Cycle wise' | 'Menu wise';
 
-const PERIODS: Period[] = ['Weekly', 'Monthly', 'Quarterly'];
 const VIEWS: ViewMode[] = ['Cycle wise', 'Menu wise'];
 
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
-
-function getPeriodRange(period: Period) {
-  const end = new Date();
-  const start = new Date();
-  if (period === 'Weekly') start.setDate(start.getDate() - 7);
-  else if (period === 'Monthly') start.setDate(start.getDate() - 30);
-  else start.setDate(start.getDate() - 90);
-  return { start: start.toISOString().split('T')[0], end: end.toISOString().split('T')[0] };
-}
 
 async function handlePrint(html: string) {
   try {
@@ -62,7 +59,7 @@ async function handleDownload(html: string, _period: Period) {
 
 function buildHtml(
   viewMode: ViewMode,
-  period: Period,
+  periodTitle: string,
   cycleRows: { date: string; cycleName: string; count: number }[],
   menuRows: { date: string; itemName: string; qty: number }[],
   total: number
@@ -77,7 +74,7 @@ function buildHtml(
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
   <style>body{font-family:sans-serif;font-size:12px;padding:20px}h2{margin-bottom:4px}p{color:#666;margin-bottom:16px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ddd;padding:6px 10px;text-align:left}th{background:#f4f4f4}tfoot td{font-weight:bold;background:#f9f9f9}</style>
   </head><body>
-  <h2>Orders Report — ${period} (${viewMode})</h2>
+  <h2>Orders Report — ${periodTitle} (${viewMode})</h2>
   <p>Generated: ${new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
   <table>
     <thead><tr><th>Date</th><th>${col2}</th><th>${col3}</th></tr></thead>
@@ -89,8 +86,9 @@ function buildHtml(
 
 export function OrderReportScreen({ navigation }: { navigation: AdminNavProp }) {
   const [period, setPeriod] = useState<Period>('Monthly');
+  const [customRange, setCustomRange] = useState<DateRange>(defaultCustomRange);
   const [viewMode, setViewMode] = useState<ViewMode>('Cycle wise');
-  const { start, end } = useMemo(() => getPeriodRange(period), [period]);
+  const { start, end } = useMemo(() => getPeriodRange(period, customRange), [period, customRange]);
   const { data, isLoading } = useOrdersDetailReport(start, end);
 
   const cycleRows = data?.cycleRows ?? [];
@@ -99,8 +97,8 @@ export function OrderReportScreen({ navigation }: { navigation: AdminNavProp }) 
   const displayRows = viewMode === 'Cycle wise' ? cycleRows : menuRows;
 
   const html = useMemo(
-    () => buildHtml(viewMode, period, cycleRows, menuRows, total),
-    [viewMode, period, cycleRows, menuRows, total]
+    () => buildHtml(viewMode, periodLabel(period, customRange), cycleRows, menuRows, total),
+    [viewMode, period, customRange, cycleRows, menuRows, total]
   );
 
   const hasData = displayRows.length > 0;
@@ -116,18 +114,12 @@ export function OrderReportScreen({ navigation }: { navigation: AdminNavProp }) 
         <View style={{ minWidth: 60 }} />
       </View>
 
-      {/* Period toggle */}
-      <View style={styles.toggleRow}>
-        {PERIODS.map((p, i) => (
-          <React.Fragment key={p}>
-            {i > 0 && <ThemedText variant="body" color="muted" style={styles.pipe}>|</ThemedText>}
-            <TouchableOpacity onPress={() => setPeriod(p)}>
-              <ThemedText variant="body" color={period === p ? 'primary' : 'muted'}
-                style={[styles.txt, period === p && styles.active]}>{p}</ThemedText>
-            </TouchableOpacity>
-          </React.Fragment>
-        ))}
-      </View>
+      <ReportPeriodPicker
+        period={period}
+        customRange={customRange}
+        onChangePeriod={setPeriod}
+        onChangeCustomRange={setCustomRange}
+      />
 
       {/* View mode toggle */}
       <View style={[styles.toggleRow, styles.toggleRowBorder]}>

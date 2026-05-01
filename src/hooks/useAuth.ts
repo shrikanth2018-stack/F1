@@ -93,14 +93,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     );
 
-    // Proactively refresh session when app returns to foreground.
-    // Prevents 401s after the device has been idle long enough for the JWT to
-    // drift close to expiry — supabase-js auto-refreshes in background but
-    // the timer can be paused by the OS when the app is suspended.
+    // Proactively refresh JWT when app returns to foreground.
+    // Beyond preventing 401s after long idle, this picks up server-side claim
+    // changes — e.g. a customer promoted to driver via admin assignment will
+    // see "My Deliveries" without manual logout. Failures are tolerated; the
+    // existing session is preserved so a transient network blip doesn't sign
+    // the user out.
     const handleAppState = (nextState: AppStateStatus) => {
       if (nextState === 'active') {
-        supabase.auth.getSession().then(({ data: { session: refreshed } }) => {
-          setSession(extractRole(refreshed));
+        supabase.auth.refreshSession().then(({ data: { session: refreshed }, error }) => {
+          if (!error && refreshed) setSession(extractRole(refreshed));
         });
       }
     };
@@ -140,20 +142,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Best-effort: delete this device's push token row so the previous user
     // doesn't keep receiving pushes after logout (shared-device case).
     if (session?.user.id && Device.isDevice) {
+      // Race the cleanup against a 3s timeout — a slow/dead network must not
+      // block the user from signing out.
       try {
-        const projectId = Constants.expoConfig?.extra?.eas?.projectId;
-        const tokenData = await Notifications.getExpoPushTokenAsync(
-          projectId ? { projectId } : undefined,
-        );
-        if (tokenData.data) {
-          await supabase
-            .from('push_notification_tokens')
-            .delete()
-            .eq('user_id', session.user.id)
-            .eq('token', tokenData.data);
-        }
+        await Promise.race([
+          (async () => {
+            const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+            const tokenData = await Notifications.getExpoPushTokenAsync(
+              projectId ? { projectId } : undefined,
+            );
+            if (tokenData.data) {
+              await supabase
+                .from('push_notification_tokens')
+                .delete()
+                .eq('user_id', session.user.id)
+                .eq('token', tokenData.data);
+            }
+          })(),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('push-token cleanup timed out')), 3000),
+          ),
+        ]);
       } catch (e) {
-        console.warn('[useAuth] push token cleanup failed:', e);
+        console.warn('[useAuth] push token cleanup failed or timed out:', e);
       }
     }
 

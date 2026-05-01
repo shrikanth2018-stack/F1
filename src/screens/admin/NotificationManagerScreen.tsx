@@ -52,6 +52,20 @@ const EVENT_VARS: Record<string, string[]> = {
   'winback.dormant':                 [],
 };
 
+// Sample values used by the Preview button so admins can see what the push
+// will actually look like before saving.
+const SAMPLE_VARS: Record<string, string> = {
+  order_id: '1234',
+  amount: '500',
+  shortfall: '50',
+  plan_name: '30-Day Lunch',
+  start_date: 'Sun, 11 May',
+};
+
+function renderSample(text: string): string {
+  return text.replace(/\{\{(\w+)\}\}/g, (_match, key) => SAMPLE_VARS[key] ?? `{{${key}}}`);
+}
+
 function TemplateCard({ template }: { template: NotificationTemplate }) {
   const update = useUpdateNotificationTemplate();
   const [title, setTitle] = useState(template.title_template);
@@ -137,13 +151,23 @@ function TemplateCard({ template }: { template: NotificationTemplate }) {
         )}
       </View>
 
-      {dirty && (
-        <TouchableOpacity onPress={save} disabled={update.isPending} style={styles.saveRow}>
-          {update.isPending
-            ? <ActivityIndicator color={Theme.colors.text.mint} size="small" />
-            : <ThemedText variant="body" color="mint">Save changes  ›</ThemedText>}
+      <View style={styles.actionRow}>
+        <TouchableOpacity
+          onPress={() => Alert.alert(
+            renderSample(title) || '(empty title)',
+            renderSample(body) || '(empty body)',
+          )}
+        >
+          <ThemedText variant="body" color="accent">Preview  ›</ThemedText>
         </TouchableOpacity>
-      )}
+        {dirty && (
+          <TouchableOpacity onPress={save} disabled={update.isPending}>
+            {update.isPending
+              ? <ActivityIndicator color={Theme.colors.text.mint} size="small" />
+              : <ThemedText variant="body" color="mint">Save changes  ›</ThemedText>}
+          </TouchableOpacity>
+        )}
+      </View>
     </View>
   );
 }
@@ -223,9 +247,11 @@ const styles = StyleSheet.create({
   },
   bodyInput: { minHeight: 64 },
   varsHint: { marginTop: 4 },
-  saveRow: {
+  actionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingVertical: Theme.spacing.sm,
     marginTop: Theme.spacing.sm,
-    alignItems: 'flex-end',
   },
 });

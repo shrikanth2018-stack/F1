@@ -192,6 +192,44 @@ function OrderListTab({ onPrint }: { onPrint: () => void }) {
   const [addQty, setAddQty] = useState('0');
   const [addCat, setAddCat] = useState<Category>('Vegetables');
   const [showAddForm, setShowAddForm] = useState(false);
+  const [adjustingCategory, setAdjustingCategory] = useState<Category | null>(null);
+  const [adjustPct, setAdjustPct] = useState('');
+
+  const handleApplyAdjust = (cat: Category) => {
+    const pct = parseFloat(adjustPct);
+    if (!isFinite(pct) || pct === 0) {
+      Alert.alert('Invalid', 'Enter a non-zero percentage (e.g. -20 to reduce, +10 to increase).');
+      return;
+    }
+    if (pct < -90) {
+      Alert.alert('Too aggressive', 'Reductions below -90% are not allowed.');
+      return;
+    }
+    const catItems = items.filter((i) => i.category === cat);
+    if (catItems.length === 0) return;
+
+    const factor = 1 + pct / 100;
+    Alert.alert(
+      `Adjust ${cat}?`,
+      `Apply ${pct > 0 ? '+' : ''}${pct}% to ${catItems.length} item${catItems.length !== 1 ? 's' : ''} in ${cat}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Apply',
+          onPress: () => {
+            for (const item of catItems) {
+              const next = Math.max(1, Math.round(item.qty * factor));
+              if (next !== item.qty) {
+                updateQty.mutate({ id: item.id, qty: next });
+              }
+            }
+            setAdjustingCategory(null);
+            setAdjustPct('');
+          },
+        },
+      ],
+    );
+  };
 
   const handleAdd = () => {
     const name = addName.trim();
@@ -251,11 +289,36 @@ function OrderListTab({ onPrint }: { onPrint: () => void }) {
 
         {grouped.map(({ cat, items: catItems }) => (
           <View key={cat}>
-            <View style={styles.section}>
+            <View style={styles.sectionHeader}>
               <ThemedText variant="small" color="muted" style={{ fontSize: S, letterSpacing: 1 }}>
                 {cat.toUpperCase()}
               </ThemedText>
+              <TouchableOpacity onPress={() => {
+                setAdjustingCategory(adjustingCategory === cat ? null : cat);
+                setAdjustPct('');
+              }}>
+                <ThemedText variant="small" color="accent" style={{ fontSize: S }}>
+                  {adjustingCategory === cat ? 'Cancel' : 'Adjust by %'}
+                </ThemedText>
+              </TouchableOpacity>
             </View>
+            {adjustingCategory === cat && (
+              <View style={styles.adjustRow}>
+                <TextInput
+                  value={adjustPct}
+                  onChangeText={setAdjustPct}
+                  placeholder="-20 to reduce, +10 to increase"
+                  placeholderTextColor={Theme.colors.text.muted}
+                  keyboardType="numbers-and-punctuation"
+                  style={styles.adjustInput}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                <TouchableOpacity onPress={() => handleApplyAdjust(cat)}>
+                  <ThemedText variant="body" color="mint" style={{ fontSize: B }}>Apply ›</ThemedText>
+                </TouchableOpacity>
+              </View>
+            )}
             {catItems.map((item) => (
               <View key={item.id} style={styles.orderItemRow}>
                 <View style={{ flex: 1 }}>
@@ -664,10 +727,30 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: Theme.spacing.lg },
   emptyText: { textAlign: 'center', lineHeight: 24 },
 
-  section: {
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: Theme.spacing.md,
     paddingTop: Theme.spacing.md,
     paddingBottom: Theme.spacing.xs,
+  },
+  adjustRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Theme.spacing.md,
+    paddingBottom: Theme.spacing.sm,
+    gap: Theme.spacing.sm,
+  },
+  adjustInput: {
+    flex: 1,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Theme.colors.layout.divider,
+    borderRadius: 6,
+    paddingHorizontal: Theme.spacing.sm,
+    paddingVertical: Theme.spacing.sm,
+    color: Theme.colors.text.primary,
+    fontSize: B,
   },
 
   // Request cards

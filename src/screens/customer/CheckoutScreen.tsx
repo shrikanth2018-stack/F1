@@ -322,19 +322,30 @@ export function CheckoutScreen({ navigation, route }: any) {
         // Confirm via Edge Function (service role bypasses RLS). Webhook is the fallback.
         try {
           const { data: { session: freshSession } } = await supabase.auth.getSession();
-          const { error: confirmErr } = await supabase.functions.invoke('confirm-order', {
-            headers: { Authorization: `Bearer ${freshSession?.access_token}` },
-            body: {
-              order_id: order.id,
-              razorpay_payment_id: rzpResult?.razorpay_payment_id,
-              razorpay_order_id: order.razorpay_order_id,
-              razorpay_signature: rzpResult?.razorpay_signature,
-            },
-          });
-          if (!confirmErr) queryClient.invalidateQueries({ queryKey: QUERY_KEYS.MY_ORDERS });
+          const confirmBody = {
+            order_id: order.id,
+            razorpay_payment_id: rzpResult?.razorpay_payment_id,
+            razorpay_order_id: order.razorpay_order_id,
+            razorpay_signature: rzpResult?.razorpay_signature,
+          };
+          for (let attempt = 1; attempt <= 2; attempt++) {
+            const { error: confirmErr } = await supabase.functions.invoke('confirm-order', {
+              headers: { Authorization: `Bearer ${freshSession?.access_token}` },
+              body: confirmBody,
+            });
+            if (!confirmErr) break;
+            if (attempt === 1) await new Promise((r) => setTimeout(r, 1000));
+          }
         } catch {
           // Webhook will resolve — silent fail is intentional.
         }
+      }
+
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.MY_ORDERS });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.WALLET });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.PROFILE });
+      if (activePlans.length > 0) {
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.SUBSCRIPTIONS });
       }
 
       trackOrderPlaced(order.id ?? '', order.total_amount ?? estimatedTotal, paymentMethod, cartType);

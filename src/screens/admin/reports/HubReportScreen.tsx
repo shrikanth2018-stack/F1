@@ -12,6 +12,7 @@ import {
   View,
   ScrollView,
   TouchableOpacity,
+  TextInput,
   Alert,
   StyleSheet,
 } from 'react-native';
@@ -22,13 +23,27 @@ import { EmptyState } from '../../../components/EmptyState';
 import { useHubReport, type HubStat } from '../../../hooks/useHubReport';
 import { formatPriceShort } from '../../../utils/formatters';
 
-type Period = 'Today' | 'Weekly' | 'Monthly' | 'Quarterly';
-const PERIODS: Period[] = ['Today', 'Weekly', 'Monthly', 'Quarterly'];
+type Period = 'Today' | 'Weekly' | 'Monthly' | 'Quarterly' | 'Custom';
+type DateRange = { start: string; end: string };
+const PERIODS: Period[] = ['Today', 'Weekly', 'Monthly', 'Quarterly', 'Custom'];
 
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
 
-function getPeriodRange(period: Period) {
+function defaultCustomRange(): DateRange {
+  const end = new Date().toISOString().split('T')[0];
+  const start = new Date();
+  start.setDate(start.getDate() - 7);
+  return { start: start.toISOString().split('T')[0], end };
+}
+
+function periodLabel(period: Period, custom: DateRange): string {
+  if (period === 'Custom') return `${custom.start} to ${custom.end}`;
+  return period;
+}
+
+function getPeriodRange(period: Period, custom: DateRange): DateRange {
+  if (period === 'Custom') return custom;
   const end = new Date();
   const start = new Date();
   if (period === 'Today') {
@@ -46,7 +61,7 @@ function getPeriodRange(period: Period) {
   };
 }
 
-function buildHtml(period: Period, hubs: HubStat[], totals: any): string {
+function buildHtml(periodTitle: string, hubs: HubStat[], totals: any): string {
   const rows = hubs
     .map(
       (h) =>
@@ -74,7 +89,7 @@ function buildHtml(period: Period, hubs: HubStat[], totals: any): string {
     th{background:#f4f4f4}tfoot td{font-weight:bold;background:#f9f9f9}
   </style>
   </head><body>
-  <h2>Hub Delivery Report — ${period}</h2>
+  <h2>Hub Delivery Report — ${periodTitle}</h2>
   <p>Generated: ${new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
   <table>
     <thead>
@@ -237,13 +252,14 @@ function StatusCell({
 // ── Screen ───────────────────────────────────────────────
 export function HubReportScreen({ navigation }: any) {
   const [period, setPeriod] = useState<Period>('Weekly');
-  const { start, end } = getPeriodRange(period);
+  const [customRange, setCustomRange] = useState<DateRange>(defaultCustomRange);
+  const { start, end } = getPeriodRange(period, customRange);
   const { data, isLoading, isError, refetch } = useHubReport(start, end);
 
   const hubs = data?.hubs ?? [];
   const totals = data?.totals ?? { total_orders: 0, delivered: 0, revenue: 0, pending: 0 };
 
-  const html = buildHtml(period, hubs, totals);
+  const html = buildHtml(periodLabel(period, customRange), hubs, totals);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -276,6 +292,35 @@ export function HubReportScreen({ navigation }: any) {
           </TouchableOpacity>
         ))}
       </View>
+
+      {period === 'Custom' && (
+        <View style={styles.customRow}>
+          <View style={styles.dateField}>
+            <ThemedText variant="small" color="muted" style={styles.dateLabel}>FROM</ThemedText>
+            <TextInput
+              value={customRange.start}
+              onChangeText={(start) => setCustomRange({ ...customRange, start })}
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor={Theme.colors.text.muted}
+              style={styles.dateInput}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+          </View>
+          <View style={styles.dateField}>
+            <ThemedText variant="small" color="muted" style={styles.dateLabel}>TO</ThemedText>
+            <TextInput
+              value={customRange.end}
+              onChangeText={(end) => setCustomRange({ ...customRange, end })}
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor={Theme.colors.text.muted}
+              style={styles.dateInput}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+          </View>
+        </View>
+      )}
 
       {/* Summary strip */}
       {hubs.length > 0 && (
@@ -443,5 +488,24 @@ const styles = StyleSheet.create({
   footerDivider: {
     width: StyleSheet.hairlineWidth,
     backgroundColor: Theme.colors.layout.divider,
+  },
+
+  customRow: {
+    flexDirection: 'row',
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.sm,
+    gap: Theme.spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Theme.colors.layout.divider,
+  },
+  dateField: { flex: 1 },
+  dateLabel: { fontSize: S, marginBottom: 4, letterSpacing: 1 },
+  dateInput: {
+    fontFamily: Theme.typography.fontFamily,
+    fontSize: B,
+    color: Theme.colors.text.primary,
+    paddingVertical: Theme.spacing.xs,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Theme.colors.layout.divider,
   },
 });

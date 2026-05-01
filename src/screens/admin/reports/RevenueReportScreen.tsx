@@ -21,24 +21,20 @@ import { ThemedText } from '../../../components/ThemedText';
 import { EmptyState } from '../../../components/EmptyState';
 import { useRevenueDetailReport } from '../../../hooks/useReports';
 import type { AdminNavProp } from '../../../navigation/types';
-
-type Period = 'Weekly' | 'Monthly' | 'Quarterly';
-const PERIODS: Period[] = ['Weekly', 'Monthly', 'Quarterly'];
+import {
+  ReportPeriodPicker,
+  defaultCustomRange,
+  getPeriodRange,
+  periodLabel,
+  type Period,
+  type DateRange,
+} from '../../../components/ReportPeriodPicker';
 
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
 
-function getPeriodRange(period: Period) {
-  const end = new Date();
-  const start = new Date();
-  if (period === 'Weekly') start.setDate(start.getDate() - 7);
-  else if (period === 'Monthly') start.setDate(start.getDate() - 30);
-  else start.setDate(start.getDate() - 90);
-  return { start: start.toISOString().split('T')[0], end: end.toISOString().split('T')[0] };
-}
-
 function buildHtml(
-  period: Period,
+  periodTitle: string,
   rows: { date: string; orders: number; revenue: number; tax: number }[],
   totals: { orders: number; revenue: number; tax: number }
 ): string {
@@ -48,7 +44,7 @@ function buildHtml(
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
   <style>body{font-family:sans-serif;font-size:12px;padding:20px}h2{margin-bottom:4px}p{color:#666;margin-bottom:16px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ddd;padding:6px 10px;text-align:left}th{background:#f4f4f4}tfoot td{font-weight:bold;background:#f9f9f9}</style>
   </head><body>
-  <h2>Revenue Report — ${period}</h2>
+  <h2>Revenue Report — ${periodTitle}</h2>
   <p>Generated: ${new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
   <table>
     <thead><tr><th>Date</th><th>Orders</th><th>Revenue</th><th>Tax</th></tr></thead>
@@ -80,14 +76,18 @@ async function handleDownload(html: string) {
 
 export function RevenueReportScreen({ navigation }: { navigation: AdminNavProp }) {
   const [period, setPeriod] = useState<Period>('Monthly');
-  const { start, end } = useMemo(() => getPeriodRange(period), [period]);
+  const [customRange, setCustomRange] = useState<DateRange>(defaultCustomRange);
+  const { start, end } = useMemo(() => getPeriodRange(period, customRange), [period, customRange]);
   const { data, isLoading } = useRevenueDetailReport(start, end);
 
   const rows = data?.rows ?? [];
   const totals = data?.totals ?? { orders: 0, revenue: 0, tax: 0 };
   const hasData = rows.length > 0;
 
-  const html = useMemo(() => buildHtml(period, rows, totals), [period, rows, totals]);
+  const html = useMemo(
+    () => buildHtml(periodLabel(period, customRange), rows, totals),
+    [period, customRange, rows, totals]
+  );
 
   return (
     <SafeAreaView style={styles.container}>
@@ -100,18 +100,12 @@ export function RevenueReportScreen({ navigation }: { navigation: AdminNavProp }
         <View style={{ minWidth: 60 }} />
       </View>
 
-      {/* Period toggle */}
-      <View style={styles.toggleRow}>
-        {PERIODS.map((p, i) => (
-          <React.Fragment key={p}>
-            {i > 0 && <ThemedText variant="body" color="muted" style={styles.pipe}>|</ThemedText>}
-            <TouchableOpacity onPress={() => setPeriod(p)}>
-              <ThemedText variant="body" color={period === p ? 'primary' : 'muted'}
-                style={[styles.txt, period === p && styles.active]}>{p}</ThemedText>
-            </TouchableOpacity>
-          </React.Fragment>
-        ))}
-      </View>
+      <ReportPeriodPicker
+        period={period}
+        customRange={customRange}
+        onChangePeriod={setPeriod}
+        onChangeCustomRange={setCustomRange}
+      />
 
       {/* Column header */}
       <View style={styles.colHeader}>

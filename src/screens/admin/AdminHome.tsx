@@ -15,6 +15,7 @@ import {
   View,
   Image,
   ScrollView,
+  TextInput,
   TouchableOpacity,
   RefreshControl,
   Alert,
@@ -160,85 +161,143 @@ function ReportsTab() {
 }
 
 // ── Manage Tab ───────────────────────────────────────────
+
+type ManageRowDef = { label: string; screen: string };
+
+const ALL_MANAGE_ROWS: ManageRowDef[] = [
+  { label: 'Manage Running Orders', screen: 'AdminOrders' },
+  { label: 'Manage Running Subscriptions', screen: 'AdminSubscriptions' },
+  { label: 'Menu Manager', screen: 'MenuManage' },
+  { label: 'Essentials Manager', screen: 'EssentialsCatalogManage' },
+  { label: 'Subscriptions Manager', screen: 'PlansManage' },
+  { label: 'Delivery Manager', screen: 'DeliveryManage' },
+  { label: 'Note to Staff', screen: 'PushNotifications' },
+  { label: 'Manage Notifications', screen: 'NotificationManager' },
+  { label: 'Banners & Backgrounds', screen: 'LoginBg' },
+  { label: 'Referral Settings', screen: 'ReferralSettings' },
+  { label: 'Customer Feedback', screen: 'CustomerFeedback' },
+  { label: 'Resource Manager', screen: 'ResourceManager' },
+  { label: 'Expense Manager', screen: 'ExpenseManager' },
+  { label: 'Stock Manager', screen: 'StockManager' },
+  { label: 'Operations Manager', screen: 'StoreConfig' },
+];
+
 function ManageTab() {
   const navigation = useNavigation<any>();
+  const [query, setQuery] = useState('');
+  const trimmed = query.trim().toLowerCase();
+  const isSearching = trimmed.length > 0;
+  const matches = isSearching
+    ? ALL_MANAGE_ROWS.filter((r) => r.label.toLowerCase().includes(trimmed))
+    : [];
 
   return (
     <ScrollView
       style={styles.tabContent}
       contentContainerStyle={styles.tabScroll}
       showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
     >
-      {/* BRANCH — visible to super-admins only */}
-      <BranchRow />
-      <AdminRow label="Manage Running Orders" showChevron onPress={() => navigation.navigate('AdminOrders')} />
-      <AdminRow label="Manage Running Subscriptions" showChevron onPress={() => navigation.navigate('AdminSubscriptions')} />
-
-      <Divider />
-
-      {/* MENU */}
-      <View style={styles.section}>
-        <ThemedText variant="small" color="muted" style={styles.sectionLabel}>MENU</ThemedText>
+      <View style={styles.searchWrap}>
+        <TextInput
+          value={query}
+          onChangeText={setQuery}
+          placeholder="Search admin tools..."
+          placeholderTextColor={Theme.colors.text.muted}
+          style={styles.searchInput}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
       </View>
 
-      <AdminRow label="Menu Manager" showChevron onPress={() => navigation.navigate('MenuManage')} />
-      <AdminRow label="Essentials Manager" showChevron onPress={() => navigation.navigate('EssentialsCatalogManage')} />
-      <AdminRow label="Subscriptions Manager" showChevron onPress={() => navigation.navigate('PlansManage')} />
+      {isSearching ? (
+        matches.length === 0 ? (
+          <ThemedText variant="body" color="muted" style={styles.noResults}>
+            No matches for "{query.trim()}"
+          </ThemedText>
+        ) : (
+          matches.map((r) => (
+            <AdminRow
+              key={r.screen}
+              label={r.label}
+              showChevron
+              onPress={() => navigation.navigate(r.screen)}
+            />
+          ))
+        )
+      ) : (
+        <>
+          {/* BRANCH — visible to super-admins only */}
+          <BranchRow />
+          <AdminRow label="Manage Running Orders" showChevron onPress={() => navigation.navigate('AdminOrders')} />
+          <AdminRow label="Manage Running Subscriptions" showChevron onPress={() => navigation.navigate('AdminSubscriptions')} />
 
-      <Divider />
+          <Divider />
 
-      {/* DELIVERY */}
-      <View style={styles.section}>
-        <ThemedText variant="small" color="muted" style={styles.sectionLabel}>DELIVERY</ThemedText>
-      </View>
-      <AdminRow label="Delivery Manager" showChevron onPress={() => navigation.navigate('DeliveryManage')} />
+          {/* MENU */}
+          <View style={styles.section}>
+            <ThemedText variant="small" color="muted" style={styles.sectionLabel}>MENU</ThemedText>
+          </View>
 
-      <Divider />
+          <AdminRow label="Menu Manager" showChevron onPress={() => navigation.navigate('MenuManage')} />
+          <AdminRow label="Essentials Manager" showChevron onPress={() => navigation.navigate('EssentialsCatalogManage')} />
+          <AdminRow label="Subscriptions Manager" showChevron onPress={() => navigation.navigate('PlansManage')} />
 
-      {/* NOTIFICATIONS */}
-      <View style={styles.section}>
-        <ThemedText variant="small" color="muted" style={styles.sectionLabel}>NOTIFICATIONS</ThemedText>
-      </View>
-      <AdminRow label="Note to Staff" showChevron onPress={() => navigation.navigate('PushNotifications')} />
-      <AdminRow label="Manage Notifications" showChevron onPress={() => navigation.navigate('NotificationManager')} />
+          <Divider />
 
-      <Divider />
+          {/* DELIVERY */}
+          <View style={styles.section}>
+            <ThemedText variant="small" color="muted" style={styles.sectionLabel}>DELIVERY</ThemedText>
+          </View>
+          <AdminRow label="Delivery Manager" showChevron onPress={() => navigation.navigate('DeliveryManage')} />
 
-      {/* MARKETING */}
-      <View style={styles.section}>
-        <ThemedText variant="small" color="muted" style={styles.sectionLabel}>MARKETING</ThemedText>
-      </View>
-      <AdminRow label="Banners & Backgrounds" showChevron onPress={() => navigation.navigate('LoginBg')} />
-      <AdminRow label="Referral Settings" showChevron onPress={() => navigation.navigate('ReferralSettings')} />
-      <AdminRow label="Customer Feedback" showChevron onPress={() => navigation.navigate('CustomerFeedback')} />
+          <Divider />
 
-      <Divider />
+          {/* NOTIFICATIONS */}
+          <View style={styles.section}>
+            <ThemedText variant="small" color="muted" style={styles.sectionLabel}>NOTIFICATIONS</ThemedText>
+          </View>
+          <AdminRow label="Note to Staff" showChevron onPress={() => navigation.navigate('PushNotifications')} />
+          <AdminRow label="Manage Notifications" showChevron onPress={() => navigation.navigate('NotificationManager')} />
 
-      {/* RESOURCES */}
-      <View style={styles.section}>
-        <ThemedText variant="small" color="muted" style={styles.sectionLabel}>RESOURCES</ThemedText>
-      </View>
-      <AdminRow label="Resource Manager" showChevron onPress={() => navigation.navigate('ResourceManager')} />
+          <Divider />
 
-      <Divider />
+          {/* MARKETING */}
+          <View style={styles.section}>
+            <ThemedText variant="small" color="muted" style={styles.sectionLabel}>MARKETING</ThemedText>
+          </View>
+          <AdminRow label="Banners & Backgrounds" showChevron onPress={() => navigation.navigate('LoginBg')} />
+          <AdminRow label="Referral Settings" showChevron onPress={() => navigation.navigate('ReferralSettings')} />
+          <AdminRow label="Customer Feedback" showChevron onPress={() => navigation.navigate('CustomerFeedback')} />
 
-      {/* FINANCE */}
-      <View style={styles.section}>
-        <ThemedText variant="small" color="muted" style={styles.sectionLabel}>FINANCE</ThemedText>
-      </View>
-      <AdminRow label="Expense Manager" showChevron onPress={() => navigation.navigate('ExpenseManager')} />
-      <AdminRow label="Stock Manager" showChevron onPress={() => navigation.navigate('StockManager')} />
+          <Divider />
 
-      <Divider />
+          {/* RESOURCES */}
+          <View style={styles.section}>
+            <ThemedText variant="small" color="muted" style={styles.sectionLabel}>RESOURCES</ThemedText>
+          </View>
+          <AdminRow label="Resource Manager" showChevron onPress={() => navigation.navigate('ResourceManager')} />
 
-      {/* OPERATIONS */}
-      <View style={styles.section}>
-        <ThemedText variant="small" color="muted" style={styles.sectionLabel}>OPERATIONS</ThemedText>
-      </View>
-      <AdminRow label="Operations Manager" showChevron onPress={() => navigation.navigate('StoreConfig')} />
+          <Divider />
 
-      <Divider />
+          {/* FINANCE */}
+          <View style={styles.section}>
+            <ThemedText variant="small" color="muted" style={styles.sectionLabel}>FINANCE</ThemedText>
+          </View>
+          <AdminRow label="Expense Manager" showChevron onPress={() => navigation.navigate('ExpenseManager')} />
+          <AdminRow label="Stock Manager" showChevron onPress={() => navigation.navigate('StockManager')} />
 
+          <Divider />
+
+          {/* OPERATIONS */}
+          <View style={styles.section}>
+            <ThemedText variant="small" color="muted" style={styles.sectionLabel}>OPERATIONS</ThemedText>
+          </View>
+          <AdminRow label="Operations Manager" showChevron onPress={() => navigation.navigate('StoreConfig')} />
+
+          <Divider />
+        </>
+      )}
     </ScrollView>
   );
 }
@@ -352,4 +411,26 @@ const styles = StyleSheet.create({
     gap: Theme.spacing.sm,
   },
   retryLink: { marginTop: Theme.spacing.xs },
+
+  searchWrap: {
+    paddingHorizontal: Theme.spacing.md,
+    paddingTop: Theme.spacing.md,
+    paddingBottom: Theme.spacing.sm,
+  },
+  searchInput: {
+    fontFamily: Theme.typography.fontFamily,
+    fontSize: Theme.typography.sizes.body + 1,
+    color: Theme.colors.text.primary,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Theme.colors.layout.divider,
+    borderRadius: 8,
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.sm,
+  },
+  noResults: {
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.lg,
+    textAlign: 'center',
+    fontSize: MR,
+  },
 });

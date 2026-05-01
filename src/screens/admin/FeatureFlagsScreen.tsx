@@ -25,7 +25,10 @@ const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
 
 // Flags removed from product — hide from UI even if rows exist in DB
-const HIDDEN_FLAGS = new Set(['loyalty_program', 'route_pdf_generation']);
+// storm_mode_active is hidden here — its canonical surface is the toggle in
+// Operations Manager (StoreConfig). Both surfaces write to the same source of
+// truth; showing it twice invites operator confusion.
+const HIDDEN_FLAGS = new Set(['loyalty_program', 'route_pdf_generation', 'storm_mode_active']);
 
 // Flags wired in app code — show as active toggles.
 // Per-flag helper notes shown on the admin row (empty object = no notes today).
@@ -36,6 +39,10 @@ export function FeatureFlagsScreen({ navigation }: { navigation: AdminNavProp })
   const updateFlag = useUpdateFeatureFlag();
 
   const handleToggle = (flag: any) => {
+    const apply = (value: boolean) => updateFlag.mutate(
+      { id: flag.id, flag_value: value },
+      { onError: (e: any) => Alert.alert('Update Failed', e?.message ?? 'Could not update flag.') },
+    );
     const turningOff = flag.flag_value === true;
     if (turningOff) {
       Alert.alert(
@@ -46,12 +53,12 @@ export function FeatureFlagsScreen({ navigation }: { navigation: AdminNavProp })
           {
             text: 'Disable',
             style: 'destructive',
-            onPress: () => updateFlag.mutate({ id: flag.id, flag_value: false }),
+            onPress: () => apply(false),
           },
         ]
       );
     } else {
-      updateFlag.mutate({ id: flag.id, flag_value: true });
+      apply(true);
     }
   };
 

@@ -388,11 +388,37 @@ serve(async (req) => {
     if (rpcError || !newOrderId) {
       // Rollback wallet debit if the order could not be persisted
       if (payment_method === 'wallet' && walletAmountUsed > 0) {
-        await supabase.rpc('increment_wallet_balance', {
-          p_user_id: user.id,
-          p_amount: walletAmountUsed,
-          p_description: 'Order placement failed — refund',
-        });
+        let refundFailed = false;
+        let refundErrMessage = '';
+        try {
+          const { error: refundErr } = await supabase.rpc('increment_wallet_balance', {
+            p_user_id: user.id,
+            p_amount: walletAmountUsed,
+            p_description: 'Order placement failed — refund',
+          });
+          if (refundErr) {
+            refundFailed = true;
+            refundErrMessage = refundErr.message;
+          }
+        } catch (e: any) {
+          refundFailed = true;
+          refundErrMessage = e?.message ?? String(e);
+        }
+        if (refundFailed) {
+          // Wallet was debited, order insert failed, refund also failed — money is
+          // sitting unrecoverable. Log loud so support can manually reconcile.
+          const ref = new Date().toISOString();
+          console.error('[place-order] WALLET REFUND FAILED — manual reconciliation needed', {
+            user_id: user.id,
+            amount: walletAmountUsed,
+            original_error: rpcError?.message ?? 'unknown',
+            refund_error: refundErrMessage,
+            reference: ref,
+          });
+          return json({
+            error: `Order failed and we could not auto-refund your wallet. Our team has been notified — please contact support with this reference: ${ref}`,
+          }, 500);
+        }
       }
       throw new Error(`place_order_atomic failed: ${rpcError?.message ?? 'unknown'}`);
     }
