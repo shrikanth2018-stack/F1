@@ -48,12 +48,21 @@ export function RegistrationScreen({ phone, onComplete, onBack }: RegistrationSc
       onBack();
       return;
     }
-    await supabase.from('profiles').upsert({
+    // Conflict by id (PK) so we reliably UPDATE the stub row created by
+    // the handle_new_user trigger — phone_number formats can differ
+    // (Supabase auth stores '919...', app normalizes to '+919...'), so
+    // matching by id is format-agnostic.
+    const { error } = await supabase.from('profiles').upsert({
       id: user.id,
       phone_number: phone,
       full_name: name.trim(),
-    }, { onConflict: 'phone_number' });
+    }, { onConflict: 'id' });
     setLoading(false);
+
+    if (error) {
+      Alert.alert('Could not save profile', error.message);
+      return;
+    }
 
     onComplete(name.trim());
   };
