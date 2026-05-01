@@ -27,6 +27,7 @@ import { FeedbackScreen } from '../screens/customer/FeedbackScreen';
 import { PlansScreen } from '../screens/customer/PlansScreen';
 import { LoyaltyPointsScreen } from '../screens/customer/LoyaltyPointsScreen';
 import { HubDashboardScreen } from '../screens/customer/HubDashboardScreen';
+import { DriverDashboardScreen } from '../screens/customer/DriverDashboardScreen';
 import { Theme } from '../theme';
 import type { CustomerStackParamList } from './types';
 
@@ -70,6 +71,7 @@ export function CustomerNavigator() {
         options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
       />
       <Stack.Screen name="HubDashboard" component={HubDashboardScreen} />
+      <Stack.Screen name="DriverDashboard" component={DriverDashboardScreen} />
     </Stack.Navigator>
   );
 }

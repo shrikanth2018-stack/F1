@@ -124,6 +124,7 @@ export function ProfilePopup() {
   const setProfileVisible = useUIStore((s) => s.setProfileVisible);
   const referralEnabled = useFeatureFlag('referral_system', true);
   const isHubManager = session?.role === 'customer' && session?.assignedHubId != null;
+  const isDriver = session?.isDriver === true;
 
   const [modalMounted, setModalMounted] = useState(false);
   const opacity = useSharedValue(0);
@@ -224,6 +225,12 @@ export function ProfilePopup() {
           {isHubManager && (
             <IOSGroup>
               <IOSRow label="My Hub Dashboard" onPress={() => go('HubDashboard')} />
+            </IOSGroup>
+          )}
+
+          {isDriver && (
+            <IOSGroup>
+              <IOSRow label="My Deliveries" onPress={() => go('DriverDashboard')} />
             </IOSGroup>
           )}
 

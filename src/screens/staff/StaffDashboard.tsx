@@ -59,7 +59,7 @@ import { useQuery } from '@tanstack/react-query';
 import type { OrderStatus } from '../../types';
 import { confirmDialog } from '../../utils/confirmDialog';
 
-type StaffTab = 'Kitchen' | 'Packing' | 'Delivery';
+type StaffTab = 'Kitchen' | 'Packing';
 type PackingSubTab = 'Food' | 'Essentials';
 type OrderFormType = 'Vegetables' | 'Grocery' | 'Stationery' | null;
 
@@ -68,7 +68,6 @@ const LOGO_URL = supabase.storage.from('assets').getPublicUrl('logo.png').data.p
 // opens it inline in the browser instead of triggering a download.
 // The Supabase SDK's getPublicUrl was appending params that signaled
 // attachment behavior to Android.
-const ROUTE_MAP_URL = 'https://wcvqxzqqwcxlcgrjyunf.supabase.co/storage/v1/object/public/assets/routemap.pdf';
 
 // Text size offsets for this screen
 const BODY2 = Theme.typography.sizes.body + 2;
@@ -518,9 +517,8 @@ export function StaffDashboard() {
 
   // Active admin notes targeting the current tab (+ broadcasts targeting 'all')
   const tabKey: NoteTarget =
-    activeTab === 'Kitchen'  ? 'kitchen'  :
-    activeTab === 'Packing'  ? 'packing'  :
-    activeTab === 'Delivery' ? 'delivery' : 'all';
+    activeTab === 'Kitchen' ? 'kitchen' :
+    activeTab === 'Packing' ? 'packing' : 'all';
   const { data: tabNotes = [] } = useStaffNoteForTab(tabKey);
 
   useRealtimeOrders(true);
@@ -544,15 +542,9 @@ export function StaffDashboard() {
     [orders, packingSubTab]
   );
 
-  const deliveryOrdersAll = useMemo(
-    () => (orders ?? []).filter((o) => ['Dispatched', 'Received at Hub', 'On the Way'].includes(o.status)),
-    [orders]
-  );
-
-  // Driver-code chip filter for Delivery tab. null = "All".
-  const [driverFilter, setDriverFilter] = useState<string | null>(null);
-
-  // Derive the driver code for any order: hub's driver_code for hub-bound, else zone's.
+  // Derive the driver code/label for any order — used by Packing's print-by-driver
+  // grouping. The Delivery tab that historically used this has moved to
+  // DriverDashboardScreen + admin DeliveryManager Live tab.
   const getDriverInfoFor = useCallback((o: any): { code: string | null; label: string } => {
     const addr = o?.customer_addresses;
     if (o?.delivery_method === 'hub') {
@@ -565,21 +557,6 @@ export function StaffDashboard() {
     const code = zone?.driver_code ?? null;
     return { code, label: code ? `Driver ${code}` : 'Unassigned' };
   }, []);
-
-  // Distinct driver codes visible today — powers the filter chip row.
-  const availableDriverCodes = useMemo(() => {
-    const codes = new Set<string>();
-    for (const o of deliveryOrdersAll) {
-      const { code } = getDriverInfoFor(o);
-      if (code) codes.add(code);
-    }
-    return Array.from(codes).sort();
-  }, [deliveryOrdersAll, getDriverInfoFor]);
-
-  const deliveryOrders = useMemo(() => {
-    if (!driverFilter) return deliveryOrdersAll;
-    return deliveryOrdersAll.filter((o) => getDriverInfoFor(o).code === driverFilter);
-  }, [deliveryOrdersAll, driverFilter, getDriverInfoFor]);
 
   // Build item_id → ingredients map from the full menu catalog.
   // Used by the kitchen aggregator to break each meal into its components.
@@ -640,20 +617,6 @@ export function StaffDashboard() {
   const handleCall = (phone?: string) => {
     if (!phone) return;
     Linking.openURL(`tel:${phone}`);
-  };
-
-  const handleMap = (address?: any) => {
-    if (!address) return;
-    const q = encodeURIComponent(`${address.address_line ?? ''} ${address.city ?? ''}`);
-    Linking.openURL(`https://maps.apple.com/?q=${q}`);
-  };
-
-  const handleRouteMap = async () => {
-    try {
-      await Linking.openURL(ROUTE_MAP_URL);
-    } catch {
-      Alert.alert('Cannot Open', 'Could not open the route map. Please check your connection.');
-    }
   };
 
   // ── Print helpers (expo-print) ───────────────────────────
@@ -834,7 +797,9 @@ export function StaffDashboard() {
     );
   };
 
-  // ── Packing / Delivery row ───────────────────
+  // ── Packing row ───────────────────
+  // Delivery flow has moved to DriverDashboardScreen (drivers) and the
+  // admin DeliveryManager Live tab. This row is Packing-only now.
   const renderOrderRow = ({ item }: { item: any }) => {
     const address = item.customer_addresses;
     const phone = address?.phone_number || item.profiles?.phone_number;
@@ -843,28 +808,10 @@ export function StaffDashboard() {
       .join(', ');
 
     let nextStatus: OrderStatus | null = null;
-    if (activeTab === 'Packing') {
-      if (item.status === 'Ready') nextStatus = 'Packed';
-      else if (item.status === 'Packed') nextStatus = 'Dispatched';
-    } else if (activeTab === 'Delivery') {
-      // Hub orders: Dispatched → Received at Hub → On the Way → Delivered
-      // Direct orders: Dispatched → On the Way → Delivered
-      if (item.delivery_method === 'hub') {
-        if (item.status === 'Dispatched') nextStatus = 'Received at Hub';
-        else if (item.status === 'Received at Hub') nextStatus = 'On the Way';
-        else if (item.status === 'On the Way') nextStatus = 'Delivered';
-      } else {
-        if (item.status === 'Dispatched') nextStatus = 'On the Way';
-        else if (item.status === 'On the Way') nextStatus = 'Delivered';
-      }
-    }
+    if (item.status === 'Ready') nextStatus = 'Packed';
+    else if (item.status === 'Packed') nextStatus = 'Dispatched';
 
-    const canAdvance = activeTab === 'Packing'
-      ? item.status === 'Ready' || item.status === 'Packed'
-      : ['Dispatched', 'Received at Hub', 'On the Way'].includes(item.status);
-
-    const driverInfo = activeTab === 'Delivery' ? getDriverInfoFor(item) : null;
-    const driverUnassigned = driverInfo && !driverInfo.code;
+    const canAdvance = item.status === 'Ready' || item.status === 'Packed';
 
     return (
       <View style={styles.orderRow}>
@@ -877,16 +824,6 @@ export function StaffDashboard() {
             {address && (
               <ThemedText variant="small" color="muted" numberOfLines={1} style={styles.rowSmall}>
                 {address.full_name}
-              </ThemedText>
-            )}
-            {driverInfo && (
-              <ThemedText
-                variant="small"
-                color={driverUnassigned ? 'accent' : 'mint'}
-                numberOfLines={1}
-                style={[styles.rowSmall, driverUnassigned && { color: Theme.colors.status.error }]}
-              >
-                {driverInfo.label}
               </ThemedText>
             )}
           </View>
@@ -908,35 +845,22 @@ export function StaffDashboard() {
           <TouchableOpacity style={styles.circleIcon} onPress={() => handleCall(phone)}>
             <Text style={styles.circleIconText}>☎</Text>
           </TouchableOpacity>
-          {activeTab === 'Delivery' && (
-            <>
-              <TouchableOpacity style={styles.circleIcon} onPress={() => handleMap(address)}>
-                <Text style={styles.circleIconText}>⊙</Text>
-              </TouchableOpacity>
-              {address && (
-                <TouchableOpacity
-                  style={styles.circleIcon}
-                  onPress={() => Alert.alert('Address', `${address.full_name}\n${address.address_line}${address.landmark ? '\n' + address.landmark : ''}${address.city ? '\n' + address.city : ''}`)}
-                >
-                  <Text style={styles.circleIconText}>⊞</Text>
-                </TouchableOpacity>
-              )}
-            </>
-          )}
-          {activeTab === 'Packing' && (
-            <TouchableOpacity
-              style={styles.circleIcon}
-              onPress={() => handlePrintOrderLabel(item)}
-            >
-              <Text style={styles.circleIconText}>⊟</Text>
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity
+            style={styles.circleIcon}
+            onPress={() => handlePrintOrderLabel(item)}
+          >
+            <Text style={styles.circleIconText}>⊟</Text>
+          </TouchableOpacity>
         </View>
       </View>
     );
   };
 
-  const TABS: StaffTab[] = ['Kitchen', 'Packing', 'Delivery'];
+  // Delivery flow has moved out of the staff dashboard:
+  //  - Drivers (staff with delivery_hubs/zones.driver_user_id) get
+  //    DriverDashboardScreen via customer ProfilePopup → "My Deliveries"
+  //  - Admin gets the live view via Manage → Delivery Manager → Live tab
+  const TABS: StaffTab[] = ['Kitchen', 'Packing'];
 
   return (
     <SafeAreaView style={styles.container}>
@@ -1008,31 +932,6 @@ export function StaffDashboard() {
         </View>
       )}
 
-      {/* Driver code filter chips (Delivery tab only) */}
-      {activeTab === 'Delivery' && availableDriverCodes.length > 0 && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.subTabs}
-          contentContainerStyle={{ paddingHorizontal: Theme.spacing.md, gap: Theme.spacing.md }}
-        >
-          <TouchableOpacity onPress={() => setDriverFilter(null)} style={styles.subTab}>
-            <ThemedText variant="body" color={driverFilter === null ? 'primary' : 'muted'}>All</ThemedText>
-          </TouchableOpacity>
-          {availableDriverCodes.map((code) => (
-            <TouchableOpacity key={code} onPress={() => setDriverFilter(code)} style={styles.subTab}>
-              <ThemedText
-                variant="body"
-                color={driverFilter === code ? 'primary' : 'muted'}
-                style={driverFilter === code ? styles.subTabTextActive : undefined}
-              >
-                {code}
-              </ThemedText>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      )}
-
       {/* Content */}
       {isError ? (
         <ErrorRetry message="Failed to load orders" onRetry={refetch} />
@@ -1047,7 +946,7 @@ export function StaffDashboard() {
         />
       ) : (
         <FlatList
-          data={activeTab === 'Packing' ? packingOrders : deliveryOrders}
+          data={packingOrders}
           keyExtractor={(item) => String(item.id)}
           renderItem={renderOrderRow}
           refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} tintColor={Theme.colors.action.primary} />}
@@ -1102,16 +1001,6 @@ export function StaffDashboard() {
           </TouchableOpacity>
           <TouchableOpacity onPress={handlePrintSummary}>
             <ThemedText variant="body" color="mint" style={styles.footerText}>Summary  ›</ThemedText>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {/* Footer — Delivery */}
-      {activeTab === 'Delivery' && (
-        <View style={styles.footer}>
-          <View />
-          <TouchableOpacity onPress={handleRouteMap}>
-            <ThemedText variant="body" color="mint" style={styles.footerText}>Route Map  ›</ThemedText>
           </TouchableOpacity>
         </View>
       )}

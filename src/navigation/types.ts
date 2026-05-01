@@ -69,6 +69,7 @@ export type CustomerStackParamList = {
   Plans: { initialTab?: 'food' | 'essentials' } | undefined;
   LoyaltyPoints: undefined;
   HubDashboard: undefined;
+  DriverDashboard: undefined;
 };
 
 export type CustomerScreenProps<T extends keyof CustomerStackParamList> =

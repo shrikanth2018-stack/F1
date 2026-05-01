@@ -43,6 +43,7 @@ function extractRole(session: Session | null): AuthSession | null {
     const role: UserRole = payload.user_role || 'customer';
     const assignedHubId: number | null = payload.assigned_hub_id ?? null;
     const branchId: number | null = payload.branch_id ?? null;
+    const isDriver: boolean = payload.is_driver === true;
 
     return {
       user: {
@@ -52,6 +53,7 @@ function extractRole(session: Session | null): AuthSession | null {
       role,
       assignedHubId,
       branchId,
+      isDriver,
     };
   } catch {
     return {
@@ -62,6 +64,7 @@ function extractRole(session: Session | null): AuthSession | null {
       role: 'customer',
       assignedHubId: null,
       branchId: null,
+      isDriver: false,
     };
   }
 }

@@ -135,14 +135,18 @@ export function RootNavigator() {
     );
   }
 
-  // Signed in — go to role navigator
+  // Signed in — go to role navigator.
+  // Driver-staff (staff role + delivery_hubs/zones.driver_user_id set) is routed
+  // through CustomerNavigator with the "My Deliveries" link in ProfilePopup.
+  // They retain role='staff' so RLS still grants order read/write.
   if (session) {
+    const isDriverStaff = session.role === 'staff' && session.isDriver;
     return (
       <NavigationContainer ref={navigationRef} theme={darkTheme}>
         <ErrorBoundary>
           {session.role === 'admin' && <AdminNavigator />}
-          {session.role === 'staff' && <StaffNavigator />}
-          {(session.role === 'customer' || !['admin', 'staff'].includes(session.role)) && <CustomerNavigator />}
+          {session.role === 'staff' && !isDriverStaff && <StaffNavigator />}
+          {(isDriverStaff || session.role === 'customer' || !['admin', 'staff'].includes(session.role)) && <CustomerNavigator />}
         </ErrorBoundary>
       </NavigationContainer>
     );

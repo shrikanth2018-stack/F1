@@ -30,6 +30,9 @@ export interface AuthSession {
   role: UserRole;
   assignedHubId: number | null;
   branchId: number | null;
+  /** Set to true if the user is assigned as driver on any delivery_hub or delivery_zone.
+   *  Drivers retain role='staff' for RLS but are routed through CustomerNavigator. */
+  isDriver: boolean;
 }
 
 export interface Branch {
