@@ -308,16 +308,17 @@ function OrderFormModal({
     }
     setSubmitting(true);
     try {
-      await supabase.from('staff_order_requests').insert({
+      const { error: insertErr } = await supabase.from('staff_order_requests').insert({
         request_type: type,
         items: lineItems.map((i) => ({ name: i.name, qty: i.qty })),
         status: 'Pending',
         submitted_by: session?.user.id ?? null,
       });
+      if (insertErr) throw insertErr;
       Alert.alert('Submitted', `${type} order sent to admin for approval.`);
       onClose();
-    } catch {
-      Alert.alert('Error', 'Failed to submit. Try again.');
+    } catch (e: any) {
+      Alert.alert('Submit failed', e?.message ?? 'Could not submit the order. Try again.');
     } finally {
       setSubmitting(false);
     }

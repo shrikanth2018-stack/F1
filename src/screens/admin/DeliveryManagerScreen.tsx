@@ -52,8 +52,8 @@ const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
 
 
-type DeliveryTab = 'Cycles' | 'Zones & Fees' | 'Hubs' | 'Live';
-const TABS: DeliveryTab[] = ['Cycles', 'Zones & Fees', 'Hubs', 'Live'];
+type DeliveryTab = 'Live' | 'Hubs' | 'Zones & Fees' | 'Cycles';
+const TABS: DeliveryTab[] = ['Live', 'Hubs', 'Zones & Fees', 'Cycles'];
 
 // Default map region — central India; overridden by device location when available
 const DEFAULT_REGION: Region = {
@@ -1061,7 +1061,7 @@ function LiveDeliveriesTab() {
 
 // ── Main screen ──────────────────────────────────────────────
 export function DeliveryManagerScreen({ navigation }: { navigation: AdminNavProp }) {
-  const [activeTab, setActiveTab] = useState<DeliveryTab>('Cycles');
+  const [activeTab, setActiveTab] = useState<DeliveryTab>('Live');
 
   const { data: allCycles = [] } = useAllDeliveryCycles();
 

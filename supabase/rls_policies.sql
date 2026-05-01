@@ -43,8 +43,25 @@ $$;
 
 -- ════════════════════════════════════════════════════════════════
 -- PROFILES
+--
+-- Customers may only modify their own full_name + phone_number on their
+-- own row. All privileged column changes (role, branch_id,
+-- assigned_hub_id, employee_id, designation, monthly_salary, benefits,
+-- shift_timing, joining_date, loyalty_points, wallet_balance,
+-- referral_code, referred_by) must flow through SECURITY DEFINER
+-- functions (elevate_employee, assign_hub_operator, wallet/loyalty
+-- atomic RPCs) or service-role edge functions (apply-referral) — these
+-- bypass the column grants below.
 -- ════════════════════════════════════════════════════════════════
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+
+-- Default role to 'customer' so a self-INSERT can never come up rolless.
+ALTER TABLE public.profiles ALTER COLUMN role SET DEFAULT 'customer';
+
+-- Column-level grants — narrow what authenticated users can write.
+REVOKE INSERT, UPDATE ON public.profiles FROM authenticated;
+GRANT  INSERT (id, full_name, phone_number) ON public.profiles TO authenticated;
+GRANT  UPDATE (full_name, phone_number)     ON public.profiles TO authenticated;
 
 DROP POLICY IF EXISTS profiles_self_read ON public.profiles;
 CREATE POLICY profiles_self_read ON public.profiles
@@ -52,9 +69,18 @@ CREATE POLICY profiles_self_read ON public.profiles
     id = auth.uid() OR public.is_staff_or_admin()
   );
 
+-- Allow users to insert their own profile row (the handle_new_user
+-- trigger normally creates it; this exists so PostgREST's upsert path
+-- doesn't error when ON CONFLICT routes to UPDATE).
+DROP POLICY IF EXISTS profiles_self_insert ON public.profiles;
+CREATE POLICY profiles_self_insert ON public.profiles
+  FOR INSERT WITH CHECK (id = auth.uid() OR public.is_admin());
+
 DROP POLICY IF EXISTS profiles_self_update ON public.profiles;
 CREATE POLICY profiles_self_update ON public.profiles
-  FOR UPDATE USING (id = auth.uid() OR public.is_admin());
+  FOR UPDATE
+  USING      (id = auth.uid() OR public.is_admin())
+  WITH CHECK (id = auth.uid() OR public.is_admin());
 
 DROP POLICY IF EXISTS profiles_admin_all ON public.profiles;
 CREATE POLICY profiles_admin_all ON public.profiles
