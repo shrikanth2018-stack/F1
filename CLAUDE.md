@@ -17,7 +17,7 @@ npx expo start --web
 npm run lint
 ```
 
-No test runner is configured — there are no test files in this project.
+Tests use Jest (jest-expo preset) with 9 test files in `src/__tests__/`.
 
 ## Environment Variables
 
@@ -42,7 +42,7 @@ Auth is phone-based OTP via Supabase. The user's role is extracted from a JWT cu
 
 ### Hook Pattern
 
-Business logic lives in 27 domain-specific hooks in `src/hooks/`, not in components. Each domain (orders, subscriptions, attendance, wallet, etc.) has its own hook file that composes `useSupabaseQuery`/`useSupabaseMutation` with Zustand stores and local business logic.
+Business logic lives in 41 domain-specific hooks in `src/hooks/`, not in components. Each domain (orders, subscriptions, attendance, wallet, etc.) has its own hook file that composes `useSupabaseQuery`/`useSupabaseMutation` with Zustand stores and local business logic.
 
 ### Offline-First for Staff
 
@@ -50,8 +50,8 @@ Staff operations (attendance, deliveries) are queued locally in `staffQueueStore
 
 ### Navigation Structure
 
-- `CustomerNavigator` — Stack only, 13 screens
-- `StaffNavigator` — Stack only, 4 screens; `StaffDashboard` has top tabs (Kitchen/Packing/Delivery)
+- `CustomerNavigator` — Stack only, 18 screens
+- `StaffNavigator` — Stack only, 5 screens; `StaffDashboard` has top tabs (Kitchen/Packing/Delivery)
 - `AdminNavigator` — Bottom tabs (Reports + Settings Hub), each tab has its own drill-down stack
 
 ### Theme / Styling
