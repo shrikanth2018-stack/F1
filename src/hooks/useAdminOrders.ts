@@ -11,6 +11,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../api/supabaseClient';
+import { invalidateOrderQueries } from '../api/invalidateOrderQueries';
 import { QUERY_KEYS, QUERY_STALE_TIME } from '../utils/constants';
 import { useBranchFilter } from './useBranchFilter';
 import type { OrderStatus } from '../types';
@@ -162,9 +163,7 @@ export function useAdminCancelOrder() {
       firePush(orderId, 'Cancelled', userId);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.ORDERS });
-      queryClient.invalidateQueries({ queryKey: ['admin_orders'] });
-      queryClient.invalidateQueries({ queryKey: ['admin_stats'] });
+      invalidateOrderQueries(queryClient);
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.WALLET });
     },
   });

@@ -222,6 +222,12 @@
 - **Sprint slot:** Sprint 2 milestone, blocking branch 2 launch.
 - **Status:** Queued.
 
+### MF-05: Customer-cancel cross-screen invalidation — apply BF-09 helper to useCancelOrder
+- **Why captured:** BF-09 fixed admin- and driver-side mutations to invalidate every order-related query cache via the new `src/api/invalidateOrderQueries.ts` helper. The customer-initiated cancel path (`useCancelOrder` in `src/hooks/useOrders.ts`) has the same partial-invalidation pattern in the opposite direction: when a customer cancels their own order, an admin viewing the same order in `AdminOrderDetailScreen` or `AdminOrdersScreen` (or a driver who had it on their list) won't see the cancellation until they navigate away and back. Same root cause as BF-09; same one-line fix (replace whatever partial invalidations the hook has with a single `invalidateOrderQueries(queryClient)` call).
+- **Why not folded into BF-09:** the original BF-09 user report was specifically about admin/driver flows. Keeping that commit narrow per smallest-safe-change rule.
+- **Surface:** `useCancelOrder` hook. One-line change in its `onSuccess` (plus an import) once the BF-09 helper is in place.
+- **Status:** Queued. Trivial follow-up; safe to ship at any time.
+
 ---
 
 ## Real-app verification queue (Sprint 0)
@@ -606,6 +612,40 @@ Data already selected by `useStaffOrders` (`customer_addresses(*, delivery_zones
 
 - `nextDeliveryStatus` is now inlined in two places (`DeliveryOrderRow.tsx` and `AdminOrderDetailScreen.tsx`). Could be extracted to a util once a third caller emerges; not urgent today.
 - The driver-chip / routing-label format is similarly inlined (BF-07's `getDriverInfo` in DeliveryManagerScreen has been deleted; AdminOrdersScreen and AdminOrderDetailScreen each have their own inline copy of "use hub_name for hub-routed, zone_name for zone-direct"). Same pattern — extract when a third caller appears.
+
+---
+
+### BF-09: Order-status mutations don't refresh Driver / Admin screens — RESOLVED 2026-05-03
+
+**Symptom:** On `DriverDashboardScreen` and `AdminOrdersScreen` (Manage Running Orders), tapping the status pill (or "Cancel + Refund" in `AdminOrderDetailScreen`) triggered the mutation correctly — server state advanced — but the screen didn't re-render with the new status. User had to navigate away and back, or sign out/in, to see the update. Mutations worked; query invalidation didn't reach the right screen.
+
+**Audit findings (read-only, 2026-05-03):**
+
+| Surface | Hook | Query key | Invalidated by mutation today? |
+|---|---|---|---|
+| StaffDashboard (Kitchen + Packing) | `useStaffOrders()` | `['orders', 'staff', today, …]` | ✓ via partial match on `QUERY_KEYS.STAFF_ORDERS` |
+| HubDashboardScreen | `useStaffOrders()` (same hook) | Same shape | ✓ same partial match — **wasn't actually broken;** user's hypothesis was wrong about Hub |
+| DriverDashboardScreen | Local `useQuery` | `['driver_orders', userId, today]` | ✗ never invalidated |
+| AdminOrdersScreen (BF-08 list) | Local `useQuery` (`useOrdersForDate`) | `['admin_orders_manage', date]` | ✗ never invalidated |
+| AdminOrderDetailScreen (BF-08 detail) | Local `useQuery` (`useAdminOrderDetail`) | `['admin_order_detail', orderId]` | ✗ at cache level — masked by manual `refetch()` calls in handler closures |
+
+**Root cause:** `useUpdateOrderStatus.onSuccess` invalidated only `QUERY_KEYS.STAFF_ORDERS`. `useAdminCancelOrder.onSuccess` invalidated `QUERY_KEYS.ORDERS`, `['admin_orders']`, `['admin_stats']`, `QUERY_KEYS.WALLET` — also a partial set. Neither covered the BF-08 admin screen keys (`['admin_orders_manage']`, `['admin_order_detail']`) or the driver key. Each screen had its own query key; the mutations had ad-hoc lists of keys to invalidate; the lists drifted.
+
+**Fix — centralized helper:**
+
+New file `src/api/invalidateOrderQueries.ts` exports `invalidateOrderQueries(queryClient)` — one function that invalidates the canonical list of order-related query keys (StaffOrders, customer Orders, driver_orders, admin_orders, admin_orders_manage, admin_order_detail, admin_stats). Each order-mutating hook's `onSuccess` calls this single function. When a new order-touching screen lands with a new query key, the key is appended once to the helper's list and every existing mutation automatically picks it up — no foot-gun.
+
+Hooks updated:
+- `useUpdateOrderStatus` (`src/hooks/useStaffOrders.ts`) — `onSuccess` now calls `invalidateOrderQueries(queryClient)`. Previous explicit `STAFF_ORDERS` invalidate now redundant (helper covers it) and removed.
+- `useAdminCancelOrder` (`src/hooks/useAdminOrders.ts`) — `onSuccess` now calls `invalidateOrderQueries(queryClient)`. Wallet invalidate stays as a separate line since wallet isn't an order query — the cancel-refund consequence is independent.
+
+**Not changed by explicit decision:**
+
+- `AdminOrderDetailScreen`'s manual `refetch()` calls in handler closures are now redundant (cache invalidation now handles it) but were left in place. Cleanup queued separately — not folded into BF-09.
+- `useCancelOrder` (customer-initiated cancel in `src/hooks/useOrders.ts`) has the same partial-invalidation pattern for the admin/driver side. Not changed in this commit. Queued as **MF-05** in Open decisions.
+- `useAdminUpdateOrder` (`src/hooks/useAdminOrders.ts:86`) has the same gap pattern but is exported and never called anywhere in the `src/` tree — dead export. Leaving alone; either revive (call the helper) or delete in a Sprint 3 cleanup pass.
+
+**Verification path:** with this commit deployed and Metro reloaded, retry the BF-04 walkthrough — as a driver, tap the status pill on a Dispatched order; the row should immediately reflect the new status without navigation. As an admin, tap "Advance Status" or "Cancel + Refund" in `AdminOrderDetailScreen`; the detail screen reflects immediately (manual `refetch()` covers this case), AND on back navigation the AdminOrdersScreen list shows the new status pill without staleness.
 
 ---
 

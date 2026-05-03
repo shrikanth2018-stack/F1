@@ -11,6 +11,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import NetInfo from '@react-native-community/netinfo';
 import { supabase } from '../api/supabaseClient';
+import { invalidateOrderQueries } from '../api/invalidateOrderQueries';
 import { useStaffQueueStore } from '../store/staffQueueStore';
 import { QUERY_KEYS, QUERY_STALE_TIME } from '../utils/constants';
 import { useBranchFilter } from './useBranchFilter';
@@ -150,7 +151,7 @@ export function useUpdateOrderStatus() {
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.STAFF_ORDERS });
+      invalidateOrderQueries(queryClient);
     },
   });
 }
