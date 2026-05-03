@@ -398,7 +398,7 @@ Spec (clarified by Shrikanth, 2026-05-03): Kitchen and Packing show **all today'
 **Items NOT changed by explicit decision (2026-05-03):**
 
 - `DriverDashboardScreen` visibility — keep current `['Dispatched', 'Received at Hub', 'On the Way']` whitelist. Drivers operationally don't need to see Confirmed/Preparing orders; they have no action to take on those.
-- Admin `DeliveryManagerScreen` Live tab — same whitelist kept. "Live" semantically means "in flight right now"; full-day admin view is a different tab if/when needed.
+- ~~Admin `DeliveryManagerScreen` Live tab — same whitelist kept. "Live" semantically means "in flight right now"; full-day admin view is a different tab if/when needed.~~ **— SUPERSEDED 2026-05-03 by BF-07. Live tab now shows all today's orders, every status (Cancelled included). See BF-07 entry below.**
 
 **Hub operator persona — corrected 2026-05-03 (was previously misreported as missing):**
 
@@ -502,6 +502,56 @@ WHERE phone_number = '913333333333' AND branch_id IS NULL;
 Same shape as the earlier 666 backfill. Run in SQL Editor when convenient.
 
 **Multi-branch readiness items queued — see MF-02 and MF-03 in Open decisions section.** Both block branch 2 launch.
+
+---
+
+### BF-07: Admin Delivery Manager Live tab — widen visibility to full-day pipeline — RESOLVED 2026-05-03
+
+**Spec change supersedes the BF-04 "Items NOT changed" decision for the Live tab specifically.** The DriverDashboardScreen narrow whitelist remains correct (per BF-04) — drivers still don't need pre-dispatch visibility.
+
+**Why:** earlier "Live = in flight right now" framing was too narrow. Admin needs full-day pipeline visibility for operational oversight — what's been generated, where each order sits in the kitchen → packing → dispatch → delivery flow, which hub or zone it's routed to, and which orders got cancelled. Active-only view forced admin to context-switch between Live and Reports for a cohesive picture.
+
+**New spec:** Live tab shows all today's orders, every status, immediately after generation. Same per-order row format (`DeliveryOrderRow`) already in use. Cancelled **included** (admin oversight legitimately needs cancellation visibility for refund triage; status pill is auto-disabled for Cancelled, so the row is read-only).
+
+**Action gating unchanged:** `DeliveryOrderRow`'s status pill calls `nextDeliveryStatus(current, deliveryMethod)` which returns null for non-delivery statuses (Confirmed, Preparing, Ready, Packed, Delivered, Cancelled). Pill auto-disables for those. Admin can see the full pipeline but cannot bypass kitchen/packing workflows from Live — appropriate division of concerns.
+
+**Driver chip — zone name now explicit:** Driver chip now shows zone name for zone-direct orders, mirroring how hub name was already shown for hub orders. Symmetric routing label per row.
+
+- Hub orders (unchanged): `${driver_code} → ${hub_name}` (e.g., `"C-1234 → Main Hub"`).
+- Zone-direct orders (changed from `Driver ${code}`): `${driver_code} → ${zone_name}` (e.g., `"C-5678 → Siddapur Central"`).
+- Unassigned (both branches): `Unassigned → ${hub_name}` or `Unassigned → ${zone_name}`.
+
+Data already selected by `useStaffOrders` (`customer_addresses(*, delivery_zones(driver_code, zone_name), delivery_hubs(driver_code, hub_name))`) — no extra fetch.
+
+**Fix:** two edits in `src/screens/admin/DeliveryManagerScreen.tsx`, both in `LiveDeliveriesTab`.
+
+1. Visibility filter (line ~1000-1005): drop the status whitelist.
+   ```diff
+   -  const activeOrders = React.useMemo(
+   -    () => (orders ?? []).filter((o: any) =>
+   -      ['Dispatched', 'Received at Hub', 'On the Way'].includes(o.status),
+   -    ),
+   -    [orders],
+   -  );
+   +  const activeOrders = orders ?? [];
+   ```
+
+2. `getDriverInfo` zone branch: surface `zone.zone_name` to the chip.
+   ```diff
+       const zone = addr?.delivery_zones;
+       const code = zone?.driver_code ?? null;
+   -    return { code, label: code ? `Driver ${code}` : 'Unassigned' };
+   +    const zoneName = zone?.zone_name ?? 'Zone';
+   +    return { code, label: code ? `${code} → ${zoneName}` : `Unassigned → ${zoneName}` };
+   ```
+
+**No other changes:**
+- `DeliveryOrderRow` component itself is untouched — still receives the same `getDriverInfo` callback signature, status pill logic unchanged.
+- `useStaffOrders` query unchanged.
+- `DriverDashboardScreen` and other consumers of `DeliveryOrderRow` are not affected — `getDriverInfo` is local to `LiveDeliveriesTab`.
+- No DB / RPC / Edge Function changes.
+
+**Variable naming note:** the `activeOrders` variable name is slightly misleading post-widening but is kept to minimize diff. Rename can ride a future refactor.
 
 ---
 

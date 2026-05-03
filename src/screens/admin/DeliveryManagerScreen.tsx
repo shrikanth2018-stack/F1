@@ -997,12 +997,13 @@ function LiveDeliveriesTab() {
   const { data: orders = [], isLoading, error, refetch, isRefetching } = useStaffOrders();
   const { mutateAsync: updateStatus, isPending: isUpdating } = useUpdateOrderStatus();
 
-  const activeOrders = React.useMemo(
-    () => (orders ?? []).filter((o: any) =>
-      ['Dispatched', 'Received at Hub', 'On the Way'].includes(o.status),
-    ),
-    [orders],
-  );
+  // Spec (BF-07, 2026-05-03): all today's orders, every status, including
+  // Cancelled (admin oversight legitimately needs cancellation visibility for
+  // refund triage). Status pill in DeliveryOrderRow auto-disables outside the
+  // delivery transition window ({Dispatched, Received at Hub, On the Way}),
+  // so admin can see the full pipeline but only act on in-flight rows from
+  // this tab — kitchen and packing transitions stay owned by their dashboards.
+  const activeOrders = orders ?? [];
 
   const getDriverInfo = React.useCallback((o: any): DriverInfo => {
     const addr = o?.customer_addresses;
@@ -1012,9 +1013,12 @@ function LiveDeliveriesTab() {
       const hubName = hub?.hub_name ?? 'Hub';
       return { code, label: code ? `${code} → ${hubName}` : `Unassigned → ${hubName}` };
     }
+    // BF-07: zone-direct orders now show zone name explicitly, mirroring
+    // how hub orders show hub name. Symmetric routing label per row.
     const zone = addr?.delivery_zones;
     const code = zone?.driver_code ?? null;
-    return { code, label: code ? `Driver ${code}` : 'Unassigned' };
+    const zoneName = zone?.zone_name ?? 'Zone';
+    return { code, label: code ? `${code} → ${zoneName}` : `Unassigned → ${zoneName}` };
   }, []);
 
   const handleAdvance = async (
