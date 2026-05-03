@@ -77,18 +77,21 @@ Deno.serve(async (req: Request) => {
     const e164        = `+91${ten}`;
     const phoneStored = `91${ten}`; // Supabase stores phone without leading '+'
 
-    // 3. Find or create auth user
+    // 3. Find or create auth user.
+    // The auth.users table is not exposed via PostgREST (Supabase intentionally
+    // hides the `auth` schema; .schema('auth').from('users') returns PGRST106
+    // "Invalid schema" regardless of which key is used). Lookup goes through
+    // the SECURITY DEFINER RPC public.auth_user_id_by_phone instead — see
+    // supabase/sql/add_auth_user_id_by_phone_rpc.sql.
     let authUserId: string | null = null;
-    const { data: found, error: lookupErr } = await adminClient
-      .schema('auth')
-      .from('users')
-      .select('id')
-      .eq('phone', phoneStored)
-      .maybeSingle();
+    const { data: foundId, error: lookupErr } = await adminClient.rpc(
+      'auth_user_id_by_phone',
+      { p_phone: phoneStored },
+    );
     if (lookupErr) return json({ error: `Auth lookup failed: ${lookupErr.message}` }, 500);
 
-    if (found?.id) {
-      authUserId = found.id;
+    if (foundId) {
+      authUserId = foundId as string;
     } else {
       const { data: created, error: createErr } = await adminClient.auth.admin.createUser({
         phone: e164,

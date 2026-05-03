@@ -400,6 +400,41 @@ Spec (clarified by Shrikanth, 2026-05-03): Kitchen and Packing show **all today'
 
 ---
 
+### BF-05: Admin staff elevation broken — RESOLVED 2026-05-03
+
+Two unrelated bugs in the admin elevation flow, surfaced sequentially while elevating "Customer 3 Driver" (phone `913333333333`) to staff. Fixed in two commits.
+
+**BF-05a — Client-side phone-format mismatch (shipped: commit `dae7772`):**
+
+- **Symptom:** Admin enters phone, screen says "No account found, must register via OTP first" even though the customer profile exists with `last_sign_in_at` within hours.
+- **Root cause:** `OnboardEmployeeScreen.tsx` input handler stripped to digits then `slice(0, 10)` (first 10), and the lookup compared against `profiles.phone_number` without prefixing `91`. The DB stores `91XXXXXXXXXX` (12 chars, Supabase Auth E.164 minus `+`); client compared 10 chars. Exact match → never hit OTP-registered profiles.
+- **Fix:** Two one-liners in `OnboardEmployeeScreen.tsx` — `slice(0, 10)` → `slice(-10)`, and lookup `phone` → `` `91${phone}` ``. Edge Function and `useResourceManager` unchanged (Edge Function was already format-tolerant via its own `slice(-10) + '91'` normalization).
+- **Deploy:** Code-only; pushed at `dae7772`.
+
+**BF-05b — Edge Function `auth.users` lookup blocked by PostgREST (this commit):**
+
+- **Symptom:** After BF-05a landed, admin taps Onboard ›, Edge Function returns `Auth lookup failed: Invalid schema: auth` (PGRST106). Elevation never reached the role-flip step.
+- **Root cause:** `elevate-employee/index.ts:83-87` used `adminClient.schema('auth').from('users').select('id').eq('phone', phoneStored)`. PostgREST refuses to route requests to the `auth` schema regardless of which key authenticates — only `public` and `graphql_public` are exposed by default, and exposing `auth` is a Supabase anti-pattern. Service role doesn't override this; the gateway rejects before reaching Postgres.
+- **Fix:** New SECURITY DEFINER RPC `public.auth_user_id_by_phone(p_phone TEXT) RETURNS UUID`, locked down to `service_role` only via REVOKE/GRANT. Edge Function calls `adminClient.rpc('auth_user_id_by_phone', { p_phone })` instead of `.schema('auth').from('users')`. Same control flow afterwards: existing user → use their UUID; missing → fall through to `auth.admin.createUser`. RPC captured in repo as `supabase/sql/add_auth_user_id_by_phone_rpc.sql` (idempotent `CREATE OR REPLACE` + REVOKE/GRANT pattern).
+- **Deploy:** SQL Editor paste of the new SQL file (must run *before* Edge Function deploy), then `supabase functions deploy elevate-employee`. Verify with `SELECT proname, prosecdef FROM pg_proc WHERE proname = 'auth_user_id_by_phone';` — expects 1 row with `prosecdef = true`.
+- **Grep audit (this commit):** repo-wide grep for `.schema('auth')` and `.from('users')` with auth context returned exactly one hit each, both at `elevate-employee/index.ts:83-84` — the lines this fix replaces. No other code paths affected. The two `auth.users` mentions on lines 9-10 of the same file are docstrings, not code.
+
+**What `913333333333` elevation now exercises end-to-end (post-fix):**
+
+1. Admin types phone (any of `913333333333` / `3333333333` / `+91-...` — `slice(-10)` handles all).
+2. Client lookup `profiles.phone_number = '913333333333'` finds Customer 3 Driver, name auto-fills.
+3. Admin taps Onboard ›, payload posts to `elevate-employee` Edge Function.
+4. Edge Function calls `auth_user_id_by_phone('913333333333')` RPC, gets the UUID directly from `auth.users`.
+5. Edge Function calls `elevate_to_staff(uuid, ...)` RPC — atomic profile upsert (`role = 'staff'`) + first-month salary row + employee_id allocation from sequence.
+6. `custom_access_token_hook` injects `user_role: 'staff'` on the user's next sign-in. From then on, `RootNavigator` routes them per the corrected persona model: pure staff → `StaffDashboard`; staff also assigned in `delivery_zones/hubs.driver_user_id` → customer home + `DriverDashboardScreen` via profile menu (driver persona, BF-04 corrected entry above).
+
+**Sprint 3 cleanup queued (separate from BF-05 scope):**
+
+- Phone-format drift exists at other admin lookup sites (per BF-03 cleanup note). BF-05a fixed only the elevation screen. Broader grep + `normalizePhone` helper deferred.
+- `phone_confirm: true` policy in `auth.admin.createUser` not reviewed in this PR (kept narrow). Queue separately if it ever matters.
+
+---
+
 ### BF-03 (original entry): New-customer onboarding gets stuck on RegistrationScreen — fix in progress 2026-05-02
 
 **Symptom:** First-time user enters phone → OTP → reaches RegistrationScreen → enters name → taps Continue → screen stays put. No error, no toast, no spinner stuck. Reproduced by Shrikanth with phone `88888...` on 2026-04-30; profile WAS created in DB (`Customer 8` in `profiles` table) but UI never advanced to AddAddressScreen.
