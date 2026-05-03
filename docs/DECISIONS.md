@@ -674,6 +674,25 @@ Hooks updated:
 
 ---
 
+### BF-12: Hub operator UPDATE on orders blocked by RLS — RESOLVED 2026-05-03
+
+**Symptom:** Hub operator (customer-role with `profiles.assigned_hub_id` set, per BF-04's corrected persona model) tapped the status pill on a Received at Hub order from `HubDashboardScreen`. Mutation fired client-side, BF-11's persona gating correctly computed the next status, but the server's RLS dropped the UPDATE silently. Surfaced as the 6th layer in the BF-04 hub-flow walkthrough — server-side authorization gap that the previous five fixes (FK, screen merge, invalidation, layout, persona gating) all skipped past.
+
+**Why:** the existing UPDATE policy `orders_staff_update` on `orders` only granted rows to staff/admin via `is_staff_or_admin()`. A customer-role hub operator failed that check; no other policy covered them. Even with BF-11's correct client-side gating saying "yes, hub op can advance Received at Hub → On the Way," PostgreSQL's RLS evaluator answered "no, the row isn't yours to update."
+
+**Fix:** new RLS policy `orders_hub_operator_update` permitting UPDATE when:
+- caller's `user_role = 'customer'` (per BF-04 persona model — staff/admin go through `orders_staff_update`)
+- order's `hub_id` is non-null AND matches `auth.jwt() ->> 'assigned_hub_id'` cast to integer
+- `USING` and `WITH CHECK` apply the same predicate (prevents the hub op from changing `hub_id` mid-update to detach the order from their hub)
+
+Reads `assigned_hub_id` from the JWT (injected by `custom_access_token_hook`) — no profiles table lookup, fast policy evaluation. Same pattern as the existing `staff_hub_orders` SELECT policy.
+
+**Status-transition gating stays at the application layer** (BF-11's persona-aware `nextDeliveryStatus`). RLS only enforces "hub op can update their own hub's orders"; the app constrains which statuses are valid.
+
+**Captured as `supabase/sql/add_orders_hub_operator_update_policy.sql`** for repo consistency. Already deployed live via SQL Editor to unblock the BF-04 walkthrough; this commit captures the migration in repo so a fresh DB rebuild includes the policy. Idempotent (`DROP IF EXISTS` + `CREATE`).
+
+---
+
 ### BF-03 (original entry): New-customer onboarding gets stuck on RegistrationScreen — fix in progress 2026-05-02
 
 **Symptom:** First-time user enters phone → OTP → reaches RegistrationScreen → enters name → taps Continue → screen stays put. No error, no toast, no spinner stuck. Reproduced by Shrikanth with phone `88888...` on 2026-04-30; profile WAS created in DB (`Customer 8` in `profiles` table) but UI never advanced to AddAddressScreen.
