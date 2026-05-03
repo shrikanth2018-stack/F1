@@ -327,7 +327,7 @@ export function OnboardEmployeeScreen({ navigation }: { navigation: AdminNavProp
     supabase
       .from('profiles')
       .select('full_name')
-      .eq('phone_number', phone)
+      .eq('phone_number', `91${phone}`)
       .maybeSingle()
       .then(({ data }) => {
         if (data?.full_name) {
@@ -436,7 +436,7 @@ export function OnboardEmployeeScreen({ navigation }: { navigation: AdminNavProp
             <TextInput
               style={[fi.input, { flex: 1 }]}
               value={phone}
-              onChangeText={(v) => setPhone(v.replace(/\D/g, '').slice(0, 10))}
+              onChangeText={(v) => setPhone(v.replace(/\D/g, '').slice(-10))}
               placeholder="10-digit mobile"
               placeholderTextColor={Theme.colors.text.muted}
               keyboardType="phone-pad"
