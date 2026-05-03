@@ -193,6 +193,17 @@
 - **Phase 1 finding:** Matches. `cancel-order` Edge Function enforces both `cancellation_window_hours` (age from order creation) and the cycle's cutoff time (cannot cancel after the kitchen has the order). Wallet portion refunded automatically via `increment_wallet_balance` RPC. Razorpay portion noted in response, manual admin action required.
 - **Status:** No discrepancy. No action needed.
 
+### MF-01: Admin staff demotion / termination — feature not built (decision needed)
+- **Verified by Shrikanth, 2026-05-03:** the admin app has no UI to demote a staff member back to customer (a.k.a. terminate / revoke staff role). The `elevate-employee` flow is one-way (customer → staff). There is no inverse path.
+- **Surface where this hits:** `profiles.role` is a text column, set to `'staff'` for elevated employees. There is no admin button to flip it back to `'customer'`, no Edge Function for it, no resource-manager screen path.
+- **Concrete blocker today:** persona "One Hub Staff" (phone `914444444444`, profile id `1cd6c6d9-481a-4cf1-817b-204e08299708`) has `role = 'staff'` with leftover designation "Hub Manager" from an earlier design iteration. Per the corrected hub-operator persona model (see BF-04's corrected "Hub operator persona" subsection), hub operators must be *customers* — so this profile needs to be demoted before being assigned as a hub operator (`profiles.assigned_hub_id`). Cannot be done in-app today.
+- **Decision needed:**
+  - **(a) Build the demote feature now** — small admin UI button + Edge Function (likely `demote-staff` matching the `elevate-employee` shape) + audit log entry. Properly closes the staff lifecycle.
+  - **(b) Defer and pick a different test customer** for the hub operator persona (e.g., phone 555… or a fresh number). Don't block the hub-operator test on this.
+  - **(c) Make a one-off backend correction** for the 444 profile outside the admin UI (manual SQL update) and queue the proper feature for later.
+- **Claude's recommendation (for Shrikanth's call):** option **(b)** for the immediate test — unblocks the hub operator verification without dragging in feature work. Then queue **(a)** as proper feature work post-test, since other staff lifecycle events (resignation, termination, role change) will need the same flow eventually. Option (c) makes the live DB diverge from the admin UI's reach, which is exactly the kind of drift this project has been actively cleaning up — better to avoid.
+- **Status:** Awaiting Shrikanth's call.
+
 ---
 
 ## Real-app verification queue (Sprint 0)
@@ -371,11 +382,15 @@ Spec (clarified by Shrikanth, 2026-05-03): Kitchen and Packing show **all today'
 - `DriverDashboardScreen` visibility — keep current `['Dispatched', 'Received at Hub', 'On the Way']` whitelist. Drivers operationally don't need to see Confirmed/Preparing orders; they have no action to take on those.
 - Admin `DeliveryManagerScreen` Live tab — same whitelist kept. "Live" semantically means "in flight right now"; full-day admin view is a different tab if/when needed.
 
-**Queued gap — Hub operator persona (future feature, not built):**
+**Hub operator persona — corrected 2026-05-03 (was previously misreported as missing):**
 
-- No `HubDashboardScreen` exists. The name appears as a stale comment in `DeliveryOrderRow.tsx:5` but the screen was never built — no file, no navigation route, no role check, no entry point.
-- Today, hub-routed orders are visible only to the assigned hub driver via `DriverDashboardScreen` (filtered by `delivery_hubs.driver_user_id = userId`). There is no separate visibility for a non-driving hub operator (someone who would receive orders at the hub for customer pickup).
-- **Decision needed when ready to onboard a real hub operator:** (a) fold into `DriverDashboardScreen` with JWT-claim branching (e.g., an `is_hub_operator` claim adds a non-driving hub-receive flow), or (b) build a dedicated `HubDashboardScreen`. Don't act on this until there's an actual hub operator to onboard.
+- **Earlier audit was wrong.** The hub operator screen DOES exist at `src/screens/customer/HubDashboardScreen.tsx`. The original BF-04 entry stated it was missing — that was based on an incomplete file inspection (only checked under `src/screens/staff/`, didn't look in `src/screens/customer/`). Corrected here.
+- **Intended persona model (verified by Shrikanth, 2026-05-03):**
+  - **Hub operator** = a *customer* (not staff) with `profiles.assigned_hub_id` set. Reaches `HubDashboardScreen` via their profile menu. Role stays `customer`.
+  - **Driver** = a *staff* member who is also assigned in `delivery_zones.driver_user_id` or `delivery_hubs.driver_user_id`. Despite being staff, they land on customer home (not `StaffDashboard`) and access `DriverDashboardScreen` via the profile menu's "My Deliveries" entry.
+  - **`StaffDashboard` (Kitchen / Packing)** = home only for on-site kitchen and packing staff.
+- **No queued gap remains for the hub operator persona** — screen and design are both in place. The earlier "Phase 1 / Phase 2 missing feature" framing was based on incomplete inspection and is retracted.
+- A separate, real gap surfaced while testing this — see **MF-01** in the Open decisions section: there's no admin UI to demote a staff member back to customer, which blocks reusing an existing staff profile as a hub operator.
 
 **Sprint 3 cleanup queued (separate from BF-04 scope):**
 
