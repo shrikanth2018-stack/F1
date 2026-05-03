@@ -335,6 +335,56 @@ git push
 - `handle_new_user` Postgres trigger referenced in code comments but not in any SQL file — either create the trigger or remove the misleading comments.
 - Phone format inconsistency: doc says `+91XXX`, live data is `91XXX` (no `+`). Resolve before broader launch.
 
+### BF-04: Staff dashboard Kitchen + Packing tabs broken — RESOLVED 2026-05-03
+
+**Symptom:** Staff "One Staff" (phone 6666) signed in, navigated to Kitchen tab — saw "Failed to load orders / Retry" instead of today's 3 known orders (335, 336, 337). Packing tab and DriverDashboardScreen also blank.
+
+**Diagnosis trail (read-only investigation, all 2026-05-03):**
+
+1. **Timezone (UTC vs IST):** ruled out — `server_today_utc = today_in_ist = '2026-05-03'`.
+2. **Branch_id mismatch:** ruled out — JWT carries `branch_id = 1`, matches the orders.
+3. **Hub filter silent drop:** ruled out — JWT has `assigned_hub_id: null`, so the `hubDeliveryActive && assignedHubId != null` clause is false and the filter never fires.
+4. **No orders for the date:** ruled out — Q2 confirmed 3 orders exist with correct `dispatch_date = '2026-05-03'` and `branch_id = 1`.
+5. **RLS blocking the staff JWT:** ruled out via `SET LOCAL request.jwt.claims` simulation in SQL Editor — the staff JWT can read both `orders` and `order_items` because `is_staff_or_admin()` returns TRUE (it reads from `auth.jwt() ->> user_role`, not from profiles). Note: Phase 1's "RLS off in dev" claim is no longer accurate — RLS is now enabled on all relevant tables.
+6. **Actual cause:** moving the TEMP DEBUG `console.log` BEFORE the `if (error) throw error` line surfaced the real failure: `PGRST200 — Could not find a relationship between 'orders' and 'customer_addresses' in the schema cache`. The FK constraint `orders.delivery_address_id → customer_addresses(id)` was never defined on the live DB. PostgREST's nested SELECT through this relationship (used by `useStaffOrders`) requires the FK to exist; without it, the entire query throws and the staff dashboard shows the error retry banner.
+
+**Fix part 1 — schema (deployed live 2026-05-03):**
+
+- Pre-check: orphan rows = 0; safe to add FK without data cleanup.
+- `ALTER TABLE orders ADD CONSTRAINT orders_delivery_address_id_fkey FOREIGN KEY (delivery_address_id) REFERENCES customer_addresses(id)` + `NOTIFY pgrst, 'reload schema'`.
+- Captured as `supabase/sql/add_orders_delivery_address_fkey.sql` — idempotent (DO-block constraint guard), matches yesterday's `add_address_zone_hub_serviceability.sql` pattern. So a fresh DB rebuild stays consistent with production.
+
+**Fix part 2 — visibility drift (4 edits in `src/screens/staff/StaffDashboard.tsx`):**
+
+Spec (clarified by Shrikanth, 2026-05-03): Kitchen and Packing show **all today's orders, every status**, with action toggles gated to the relevant transition window. Cancelled orders are excluded entirely from operator views (history-only). Driver and Admin Live tabs intentionally keep their existing active-status whitelists.
+
+- **Edit A** — Kitchen visibility filter: dropped `['Confirmed', 'Preparing', 'Ready'].includes(o.status)` whitelist; kept `o.order_type === 'food'`; added `o.status !== 'Cancelled'`.
+- **Edit B** — Aggregator: replaced status whitelist with `o.status !== 'Cancelled'`. Extended `statusOrder` sort array to cover all live statuses (Confirmed, Preparing, Ready, Packed, Dispatched, Received at Hub, On the Way, Delivered) so newly-visible statuses sort sensibly instead of clustering at -1.
+- **Edit C** — Kitchen toggle gating + label: `disabled` is now driven by `!canAct` where `canAct = item.status === 'Confirmed' || item.status === 'Preparing'`. Toggle label shows actual `item.status` (was misleading "Confirmed"/"Ready" two-state). Border color uses the existing `statusColor()` helper for all statuses.
+- **Edit D** — Packing visibility filter: dropped `['Ready', 'Packed', 'Dispatched'].includes(o.status)` whitelist; added `o.status !== 'Cancelled'` exclusion in both food and essentials branches. Packing's action gating (`canAdvance = Ready || Packed`) was already correct — unchanged.
+- TEMP DEBUG instrumentation from the BF-04 diagnosis removed from `useStaffOrders.ts`.
+
+**Verified live (2026-05-03):** After Fix part 1, simulator showed 2 aggregated kitchen rows (Idli Vada Combo × 2 across orders 335+337, Goli Bajji × 1 from order 336). Fix part 2 follows in the same commit; full pipeline visibility verifiable by force-quitting + re-launching the app.
+
+**Items NOT changed by explicit decision (2026-05-03):**
+
+- `DriverDashboardScreen` visibility — keep current `['Dispatched', 'Received at Hub', 'On the Way']` whitelist. Drivers operationally don't need to see Confirmed/Preparing orders; they have no action to take on those.
+- Admin `DeliveryManagerScreen` Live tab — same whitelist kept. "Live" semantically means "in flight right now"; full-day admin view is a different tab if/when needed.
+
+**Queued gap — Hub operator persona (future feature, not built):**
+
+- No `HubDashboardScreen` exists. The name appears as a stale comment in `DeliveryOrderRow.tsx:5` but the screen was never built — no file, no navigation route, no role check, no entry point.
+- Today, hub-routed orders are visible only to the assigned hub driver via `DriverDashboardScreen` (filtered by `delivery_hubs.driver_user_id = userId`). There is no separate visibility for a non-driving hub operator (someone who would receive orders at the hub for customer pickup).
+- **Decision needed when ready to onboard a real hub operator:** (a) fold into `DriverDashboardScreen` with JWT-claim branching (e.g., an `is_hub_operator` claim adds a non-driving hub-receive flow), or (b) build a dedicated `HubDashboardScreen`. Don't act on this until there's an actual hub operator to onboard.
+
+**Sprint 3 cleanup queued (separate from BF-04 scope):**
+
+- `feature_flags.branch_management_active = FALSE` while `store_config.branch_management_active = TRUE` — drift between the two sources of the same toggle. Today the dashboard reads `feature_flags`, so the branch filter is currently bypassed in the staff query (`bf.isActive = false`).
+- Phase 1's "RLS is off in dev" claim is now incorrect — RLS is enabled on all relevant tables. Doc to update.
+- The missing `orders.delivery_address_id` FK is now fixed live and in the repo migration file, but the source `schema.sql` still doesn't declare it inline on the orders table. One-line audit + patch when convenient.
+
+---
+
 ### BF-03 (original entry): New-customer onboarding gets stuck on RegistrationScreen — fix in progress 2026-05-02
 
 **Symptom:** First-time user enters phone → OTP → reaches RegistrationScreen → enters name → taps Continue → screen stays put. No error, no toast, no spinner stuck. Reproduced by Shrikanth with phone `88888...` on 2026-04-30; profile WAS created in DB (`Customer 8` in `profiles` table) but UI never advanced to AddAddressScreen.

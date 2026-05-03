@@ -138,9 +138,7 @@ function aggregateKitchenItems(
   orders: any[],
   ingredientsByItemId: Record<number, string | null>,
 ): AggregateItem[] {
-  const relevant = orders.filter((o) =>
-    ['Confirmed', 'Preparing', 'Ready'].includes(o.status)
-  );
+  const relevant = orders.filter((o) => o.status !== 'Cancelled');
   const map = new Map<string, AggregateItem>();
 
   const mergeInto = (
@@ -193,7 +191,10 @@ function aggregateKitchenItems(
     }
   }
 
-  const statusOrder = ['Confirmed', 'Preparing', 'Ready'];
+  const statusOrder = [
+    'Confirmed', 'Preparing', 'Ready',
+    'Packed', 'Dispatched', 'Received at Hub', 'On the Way', 'Delivered',
+  ];
   return Array.from(map.values()).sort(
     (a, b) => statusOrder.indexOf(a.status) - statusOrder.indexOf(b.status)
   );
@@ -529,16 +530,16 @@ export function StaffDashboard() {
 
   // ── Order filters ────────────────────────────
   const kitchenOrders = useMemo(
-    () => (orders ?? []).filter((o) => ['Confirmed', 'Preparing', 'Ready'].includes(o.status) && o.order_type === 'food'),
+    () => (orders ?? []).filter((o) => o.order_type === 'food' && o.status !== 'Cancelled'),
     [orders]
   );
 
   const packingOrders = useMemo(
     () => (orders ?? []).filter((o) => {
-      const inStatus = ['Ready', 'Packed', 'Dispatched'].includes(o.status);
+      if (o.status === 'Cancelled') return false;
       return packingSubTab === 'Food'
-        ? inStatus && o.order_type === 'food'
-        : inStatus && o.order_type === 'essential';
+        ? o.order_type === 'food'
+        : o.order_type === 'essential';
     }),
     [orders, packingSubTab]
   );
@@ -770,7 +771,7 @@ export function StaffDashboard() {
 
   // ── Kitchen row ──────────────────────────────
   const renderKitchenItem = ({ item }: { item: AggregateItem }) => {
-    const isReady = item.status === 'Ready';
+    const canAct = item.status === 'Confirmed' || item.status === 'Preparing';
     return (
       <View style={styles.kitchenRow}>
         <ThemedText variant="body" color="primary" style={[{ flex: 1 }, styles.rowText]}>
@@ -782,16 +783,16 @@ export function StaffDashboard() {
             : `× ${item.total_quantity}`}
         </ThemedText>
         <TouchableOpacity
-          style={[styles.statusToggle, { borderColor: isReady ? Theme.colors.status.success : Theme.colors.status.info }]}
-          disabled={isReady || updateStatus.isPending}
+          style={[styles.statusToggle, { borderColor: statusColor(item.status) }]}
+          disabled={!canAct || updateStatus.isPending}
           onPress={() => {
             for (const id of item.order_ids) {
               updateStatus.mutate({ orderId: id, status: 'Ready' });
             }
           }}
         >
-          <Text style={[styles.statusToggleText, { color: isReady ? Theme.colors.status.success : Theme.colors.status.info }]}>
-            {isReady ? 'Ready' : 'Confirmed'}
+          <Text style={[styles.statusToggleText, { color: statusColor(item.status) }]}>
+            {item.status}
           </Text>
         </TouchableOpacity>
       </View>
