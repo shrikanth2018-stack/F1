@@ -175,11 +175,15 @@ export function AdminOrdersScreen({ navigation }: { navigation: AdminNavProp }) 
         ListEmptyComponent={!isLoading ? <EmptyState title="No orders for this date" /> : null}
         ItemSeparatorComponent={() => <Divider />}
         renderItem={({ item }: { item: any }) => {
+          // Routing label: hub takes precedence (more specific). Reads what's
+          // actually populated on the address rather than trusting
+          // order.delivery_method, which can be null/'direct' even when the
+          // customer's address has a hub assigned.
           const addr = item.customer_addresses;
           const routingLabel =
-            item.delivery_method === 'hub'
-              ? (addr?.delivery_hubs?.hub_name ?? '—')
-              : (addr?.delivery_zones?.zone_name ?? '—');
+            addr?.delivery_hubs?.hub_name
+            || addr?.delivery_zones?.zone_name
+            || 'Unassigned';
           const status = item.status ?? '';
           return (
             <TouchableOpacity
