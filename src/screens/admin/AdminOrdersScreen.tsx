@@ -263,7 +263,7 @@ const styles = StyleSheet.create({
   },
   chip: {
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: Theme.spacing.xs,
     borderRadius: 14,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: Theme.colors.layout.divider,
