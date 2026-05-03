@@ -128,7 +128,7 @@ export function useOnboardEmployee() {
       const { data: { session } } = await supabase.auth.getSession();
       const { data, error } = await supabase.functions.invoke('elevate-employee', {
         headers: { Authorization: `Bearer ${session?.access_token}` },
-        body: { ...payload, branch_id: bf.isActive ? bf.branchId : null },
+        body: { ...payload, branch_id: bf.branchId ?? 1 },
       });
 
       if (error || data?.error) {

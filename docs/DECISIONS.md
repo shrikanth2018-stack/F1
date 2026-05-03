@@ -204,6 +204,24 @@
 - **Claude's recommendation (for Shrikanth's call):** option **(b)** for the immediate test — unblocks the hub operator verification without dragging in feature work. Then queue **(a)** as proper feature work post-test, since other staff lifecycle events (resignation, termination, role change) will need the same flow eventually. Option (c) makes the live DB diverge from the admin UI's reach, which is exactly the kind of drift this project has been actively cleaning up — better to avoid.
 - **Status:** Awaiting Shrikanth's call.
 
+### MF-02: Branch picker on OnboardEmployeeScreen — required before multi-branch launch
+- **Why captured:** the BF-06 fix lands a `bf.branchId ?? 1` fallback for staff elevation. That's correct only as long as either (a) every admin's JWT has the same `branch_id = 1` (single-branch reality today), or (b) we remain single-branch. When branch 2 ships, super-admins onboarding staff into a specific branch must pick it explicitly — the JWT no longer disambiguates.
+- **Surface:** `src/screens/admin/OnboardEmployeeScreen.tsx` has zero `branch_id` references today (verified via grep during BF-06 trace). A picker would slot into the existing form pattern (chip picker like Designation/Shift, or a dropdown if the branch list grows). The form already has a Hub picker — same pattern is reusable.
+- **Trigger:** activate this work before flipping `feature_flags.branch_management_active = true`. See MF-03 for the broader audit that feeds into multi-branch launch.
+- **Status:** Queued.
+
+### MF-03: Multi-branch readiness audit (blocks branch 2 launch)
+- **Why captured:** the codebase has been written in single-branch mode with `feature_flags.branch_management_active = false`. Several places either don't tag rows with `branch_id`, hardcode it, or read from drifted sources (e.g., the `feature_flags.branch_management_active` vs `store_config.branch_management_active` drift flagged in BF-04 Sprint 3 cleanup notes). Before branch 2 ships, a sweep is needed to confirm every branch-aware path actually works under multi-branch. Cost-of-failure is high (cross-branch data leak), so the audit happens before any branch 2 rollout, not during.
+- **Read-only audit checklist (no code yet):**
+  - Every place orders / customers / addresses / hubs / zones / staff get tagged with `branch_id` on creation. Confirm each has a non-null branch source (form field, JWT claim, or default).
+  - The `feature_flags.branch_management_active` flip itself — safe to set true with current data, or does it break queries? Specifically resolves the `feature_flags` vs `store_config` drift BF-04 already flagged.
+  - `useStaffOrders` branch filter behavior — currently bypassed because `bf.isActive=false`; verify it activates correctly when toggled.
+  - Admin reports' branch-aggregation — Reports → Revenue / Subscriptions / Hubs / Staff: confirm branch filtering is applied where appropriate, and aggregated correctly (or scoped) when viewed by a branch admin vs super-admin.
+  - RLS policies' branch scoping — are policies in place that prevent staff/admin from reading another branch's data when `branch_id` doesn't match the JWT claim? Cross-check against the policies surfaced in BF-04 diagnosis.
+- **Outcome:** a checklist of fixes needed before branch 2 is added. Could be a few one-liners (BF-06 shape) or could surface bigger gaps. Either way, the audit ships first, the fixes ship second, branch 2 ships third.
+- **Sprint slot:** Sprint 2 milestone, blocking branch 2 launch.
+- **Status:** Queued.
+
 ---
 
 ## Real-app verification queue (Sprint 0)
@@ -442,6 +460,48 @@ Two unrelated bugs in the admin elevation flow, surfaced sequentially while elev
 
 - Phone-format drift exists at other admin lookup sites (per BF-03 cleanup note). BF-05a fixed only the elevation screen. Broader grep + `normalizePhone` helper deferred.
 - `phone_confirm: true` policy in `auth.admin.createUser` not reviewed in this PR (kept narrow). Queue separately if it ever matters.
+
+---
+
+### BF-06: profiles.branch_id NULL after staff elevation — RESOLVED 2026-05-03
+
+**Symptom:** After elevating "Customer 3 Driver" (phone `913333333333`) via Onboard Employee, `profiles.branch_id` came back NULL. Existing staff `666` ("One Staff") has `branch_id = 1`. Discrepancy means any branch-filtered query against new staff silently excludes them — including `useStaffOrders` branch filter when `feature_flags.branch_management_active` eventually flips on.
+
+**Trace — which layer dropped the value:**
+
+| Layer | What it does with `branch_id` | Verdict |
+|---|---|---|
+| Form `OnboardEmployeeScreen.tsx` | Zero `branch_id` mentions; no branch picker. Form contributes nothing. | No layer-1 contribution |
+| Hook `useResourceManager.ts:131` | `body: { ...payload, branch_id: bf.isActive ? bf.branchId : null }`. Today `feature_flags.branch_management_active = false` → `bf.isActive = false` → ternary always evaluates `null`. | **Drop point.** |
+| Edge Function `elevate-employee/index.ts:65, 121` | Destructures `branch_id = null` from body, forwards to RPC as `p_branch_id`. Faithful pass-through. | No drop here |
+| RPC `elevate_employee.sql:33, 53, 57, 69` | Accepts `p_branch_id BIGINT`, writes via INSERT and ON CONFLICT UPDATE `branch_id = EXCLUDED.branch_id`. Receives null, writes null. | No drop here |
+
+**Root cause:** Hook line 131 was written under the assumption "if multi-branch is off, we don't care about branch." That works for *reads* (filtering doesn't matter when there's only one branch) but is wrong for *writes* during elevation — every staff still needs a branch tag, the value just defaults to `1` in single-branch mode.
+
+**Why 666 has `branch_id = 1`:** per earlier session notes, 666 was *backfilled* manually after the fact, not written correctly during elevation. The elevation flow has been silently writing NULL since this hook was authored.
+
+**Fix:** One-line change in `src/hooks/useResourceManager.ts:131`:
+```diff
+-        body: { ...payload, branch_id: bf.isActive ? bf.branchId : null },
++        body: { ...payload, branch_id: bf.branchId ?? 1 },
+```
+
+`bf.branchId ?? 1` is forward-compatible:
+- Today's branch admins get `bf.branchId = 1` from JWT — correct.
+- Super-admins (no JWT branch_id) get the `?? 1` fallback — correct for single-branch today.
+- When multi-branch launches, branch admins automatically scope new staff to their own branch with no further code change. Super-admins still need a picker (queued as MF-02).
+
+**Open backfill (manual SQL, not part of this commit):**
+
+```sql
+UPDATE profiles
+SET branch_id = 1
+WHERE phone_number = '913333333333' AND branch_id IS NULL;
+```
+
+Same shape as the earlier 666 backfill. Run in SQL Editor when convenient.
+
+**Multi-branch readiness items queued — see MF-02 and MF-03 in Open decisions section.** Both block branch 2 launch.
 
 ---
 
