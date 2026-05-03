@@ -32,6 +32,7 @@ import { ExpenseManagerScreen } from '../screens/admin/ExpenseManagerScreen';
 import { StockManagerScreen } from '../screens/admin/StockManagerScreen';
 import { HubDetailScreen } from '../screens/admin/HubDetailScreen';
 import { AdminOrdersScreen } from '../screens/admin/AdminOrdersScreen';
+import { AdminOrderDetailScreen } from '../screens/admin/AdminOrderDetailScreen';
 import { AdminSubscriptionsScreen } from '../screens/admin/AdminSubscriptionsScreen';
 import { OrderReportScreen } from '../screens/admin/reports/OrderReportScreen';
 import { RevenueReportScreen } from '../screens/admin/reports/RevenueReportScreen';
@@ -96,6 +97,7 @@ export function AdminNavigator() {
 
       {/* Manage — Operations */}
       <Stack.Screen name="AdminOrders" component={AdminOrdersScreen} />
+      <Stack.Screen name="AdminOrderDetail" component={AdminOrderDetailScreen} />
       <Stack.Screen name="AdminSubscriptions" component={AdminSubscriptionsScreen} />
       <Stack.Screen name="StoreConfig" component={StoreConfigScreen} />
       <Stack.Screen name="FeatureFlags" component={FeatureFlagsScreen} />

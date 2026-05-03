@@ -39,6 +39,7 @@ export type AdminStackParamList = {
   StockManager: undefined;
   // Operations
   AdminOrders: undefined;
+  AdminOrderDetail: { orderId: number };
   AdminSubscriptions: undefined;
   StoreConfig: undefined;
   FeatureFlags: undefined;

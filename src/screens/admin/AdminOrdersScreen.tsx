@@ -1,14 +1,20 @@
 /**
  * 1stOne F1 — Admin Running Orders Screen
- * Lists orders by date with cancel + wallet refund.
+ *
+ * Single canonical admin view of orders for a given date. Each row shows
+ * order # · zone-or-hub label · status pill. Tapping a row navigates to
+ * AdminOrderDetailScreen for full context + actions (cancel, advance status,
+ * call customer, open in Maps).
+ *
+ * Filter chips at top narrow by status; search box narrows by partial
+ * order number. Both compose. Filters are component-lifetime only.
  */
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   FlatList,
   TouchableOpacity,
-  Alert,
   StyleSheet,
   ActivityIndicator,
   ScrollView,
@@ -22,9 +28,8 @@ import { Divider } from '../../components/Divider';
 import { EmptyState } from '../../components/EmptyState';
 import { ErrorRetry } from '../../components/ErrorRetry';
 import { DispatchBadge } from '../../components/DispatchBadge';
-import { useAdminCancelOrder } from '../../hooks/useAdminOrders';
 import { supabase } from '../../api/supabaseClient';
-import { formatPriceShort, formatDateShort } from '../../utils/formatters';
+import { formatDateShort } from '../../utils/formatters';
 import type { AdminNavProp } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
@@ -35,8 +40,6 @@ const STATUS_VARIANT: Record<string, 'success' | 'warning' | 'info' | 'error'> =
   Dispatched: 'warning', 'On the Way': 'warning', Delivered: 'success',
   'Received at Hub': 'info', Cancelled: 'error', Pending: 'warning', Failed: 'error',
 };
-
-const CANCELLABLE = new Set(['Pending', 'Confirmed', 'Preparing', 'Ready', 'Packed']);
 
 const STATUS_OPTIONS = [
   'All', 'Confirmed', 'Preparing', 'Ready', 'Packed',
@@ -54,41 +57,22 @@ function useOrdersForDate(date: string) {
   return useQuery({
     queryKey: ['admin_orders_manage', date],
     queryFn: async () => {
+      // Row-level data only: id, status, routing label. Customer name,
+      // items, payment, and full address load in AdminOrderDetailScreen
+      // when admin taps a row.
       const { data, error } = await supabase
         .from('orders')
-        .select('id, user_id, status, total_amount, wallet_amount_used, payment_method, order_type, cycle_id')
+        .select(`
+          id, status, delivery_method,
+          customer_addresses(
+            delivery_hubs(hub_name),
+            delivery_zones(zone_name)
+          )
+        `)
         .eq('dispatch_date', date)
         .order('created_at', { ascending: false });
       if (error) throw error;
-
-      if (!data || data.length === 0) return [];
-
-      const userIds = [...new Set(data.map((o) => o.user_id).filter((id): id is string => id != null))];
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('id, full_name, phone_number')
-        .in('id', userIds);
-
-      const profileMap = Object.fromEntries((profiles ?? []).map((p) => [p.id, p]));
-
-      const orderIds = data.map((o) => o.id);
-      const { data: items } = await supabase
-        .from('order_items')
-        .select('order_id, item_name, quantity')
-        .in('order_id', orderIds);
-
-      const itemsMap: Record<number, { item_name: string; quantity: number }[]> = {};
-      for (const item of items ?? []) {
-        const oid = item.order_id ?? 0;
-        if (!itemsMap[oid]) itemsMap[oid] = [];
-        itemsMap[oid].push({ item_name: item.item_name ?? '', quantity: item.quantity ?? 0 });
-      }
-
-      return data.map((o) => ({
-        ...o,
-        profile: o.user_id ? (profileMap[o.user_id] ?? null) : null,
-        items: itemsMap[o.id] ?? [],
-      }));
+      return data ?? [];
     },
   });
 }
@@ -100,7 +84,6 @@ export function AdminOrdersScreen({ navigation }: { navigation: AdminNavProp }) 
   const date = getDateStr(dateOffset);
 
   const { data: orders, isLoading, error, refetch } = useOrdersForDate(date);
-  const { mutateAsync: cancelOrder } = useAdminCancelOrder();
 
   const filteredOrders = useMemo(() => {
     const all = orders ?? [];
@@ -111,45 +94,6 @@ export function AdminOrdersScreen({ navigation }: { navigation: AdminNavProp }) 
       return true;
     });
   }, [orders, statusFilter, searchTerm]);
-
-  const handleCancel = useCallback((order: any) => {
-    const walletRefund = Number(order.wallet_amount_used ?? 0);
-    const razorpayDue = Number(order.total_amount) - walletRefund;
-    const customer = order.profile?.full_name ?? order.profile?.phone_number ?? `#${order.id}`;
-
-    const refundNote = walletRefund > 0
-      ? `₹${walletRefund} returned to wallet instantly.${razorpayDue > 0 ? `\n₹${razorpayDue} Razorpay — process manually.` : ''}`
-      : razorpayDue > 0
-        ? `₹${razorpayDue} Razorpay — process manually.`
-        : 'No refund due.';
-
-    Alert.alert(
-      `Cancel Order #${order.id}?`,
-      `${customer}\n\n${refundNote}`,
-      [
-        { text: 'Keep', style: 'cancel' },
-        {
-          text: 'Cancel Order',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await cancelOrder({
-                orderId: order.id,
-                walletAmountUsed: walletRefund,
-                userId: order.user_id,
-                reason: 'Cancelled by admin',
-              });
-              Alert.alert('Done', walletRefund > 0
-                ? `Order cancelled. ₹${walletRefund} refunded to wallet.`
-                : 'Order cancelled.');
-            } catch (e: any) {
-              Alert.alert('Error', e?.message ?? 'Failed to cancel order');
-            }
-          },
-        },
-      ]
-    );
-  }, [cancelOrder]);
 
   if (error) return <ErrorRetry message="Could not load orders" onRetry={refetch} />;
 
@@ -226,38 +170,39 @@ export function AdminOrdersScreen({ navigation }: { navigation: AdminNavProp }) 
 
       <FlatList
         data={filteredOrders}
-        keyExtractor={(item) => item.id.toString()}
+        keyExtractor={(item: any) => item.id.toString()}
         contentContainerStyle={styles.list}
         ListEmptyComponent={!isLoading ? <EmptyState title="No orders for this date" /> : null}
         ItemSeparatorComponent={() => <Divider />}
-        renderItem={({ item }) => {
-          const customer = item.profile?.full_name ?? item.profile?.phone_number ?? `Order #${item.id}`;
-          const itemsLabel = item.items.length > 0
-            ? item.items.map((i: any) => `${i.item_name} x${i.quantity}`).join(', ')
-            : '—';
+        renderItem={({ item }: { item: any }) => {
+          const addr = item.customer_addresses;
+          const routingLabel =
+            item.delivery_method === 'hub'
+              ? (addr?.delivery_hubs?.hub_name ?? '—')
+              : (addr?.delivery_zones?.zone_name ?? '—');
+          const status = item.status ?? '';
           return (
-            <View style={styles.row}>
-              <View style={styles.rowTop}>
-                <ThemedText variant="body" color="primary" style={styles.txt}>
-                  #{item.id} — {customer}
-                </ThemedText>
-                <DispatchBadge label={item.status ?? ''} variant={STATUS_VARIANT[item.status ?? ''] ?? 'info'} />
-              </View>
-              <ThemedText variant="small" color="subtitle" style={[styles.sub, { marginBottom: 4 }]}>
-                {itemsLabel}
+            <TouchableOpacity
+              style={styles.row}
+              activeOpacity={0.6}
+              onPress={() => navigation.navigate('AdminOrderDetail', { orderId: item.id })}
+            >
+              <ThemedText variant="body" color="primary" style={styles.rowId}>
+                #{item.id}
               </ThemedText>
-              <View style={styles.rowBottom}>
-                <ThemedText variant="small" color="muted" style={styles.sub}>
-                  {formatPriceShort(item.total_amount ?? 0)}
-                  {(item.wallet_amount_used ?? 0) > 0 ? `  (₹${item.wallet_amount_used} wallet)` : ''}
-                </ThemedText>
-                {CANCELLABLE.has(item.status ?? '') && (
-                  <TouchableOpacity onPress={() => handleCancel(item)} activeOpacity={0.6}>
-                    <ThemedText variant="small" style={styles.cancelText}>Cancel</ThemedText>
-                  </TouchableOpacity>
-                )}
-              </View>
-            </View>
+              <ThemedText
+                variant="body"
+                color="subtitle"
+                numberOfLines={1}
+                style={styles.rowRouting}
+              >
+                {routingLabel}
+              </ThemedText>
+              <DispatchBadge
+                label={status}
+                variant={STATUS_VARIANT[status] ?? 'info'}
+              />
+            </TouchableOpacity>
           );
         }}
       />
@@ -296,21 +241,16 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   list: { paddingBottom: Theme.spacing.xl },
-  row: { paddingHorizontal: Theme.spacing.md, paddingVertical: Theme.spacing.sm + 2 },
-  rowTop: {
+  row: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 4,
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.sm + 4,
+    gap: Theme.spacing.sm,
   },
-  rowBottom: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  cancelText: { color: Theme.colors.status.error, fontWeight: '600', fontSize: S },
+  rowId: { fontSize: B, fontWeight: '600', minWidth: 56 },
+  rowRouting: { fontSize: S, flex: 1 },
   txt: { fontSize: B },
-  sub: { fontSize: S },
 
   chipRow: {
     paddingHorizontal: Theme.spacing.md,
