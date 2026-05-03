@@ -125,6 +125,7 @@ export function DriverDashboardScreen({ navigation }: CustomerScreenProps<'Drive
               order={item}
               onAdvanceStatus={handleAdvanceStatus}
               isUpdating={isUpdating}
+              persona="driver"
             />
           )}
         />

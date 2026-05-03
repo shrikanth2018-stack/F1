@@ -40,6 +40,7 @@ import { supabase } from '../../api/supabaseClient';
 import { useAdminCancelOrder } from '../../hooks/useAdminOrders';
 import { useUpdateOrderStatus } from '../../hooks/useStaffOrders';
 import { formatPriceShort, formatDateLong } from '../../utils/formatters';
+import { nextDeliveryStatus } from '../../utils/deliveryStatus';
 import type { AdminScreenProps } from '../../navigation/types';
 import type { OrderStatus } from '../../types';
 
@@ -53,21 +54,6 @@ const STATUS_VARIANT: Record<string, 'success' | 'warning' | 'info' | 'error'> =
   Dispatched: 'warning', 'On the Way': 'warning', Delivered: 'success',
   'Received at Hub': 'info', Cancelled: 'error', Pending: 'warning', Failed: 'error',
 };
-
-// Mirrors DeliveryOrderRow.tsx:37-47 — single source of truth for the
-// delivery transition map. Inlined rather than imported because the
-// function lives inside a component file (not exported).
-function nextDeliveryStatus(current: string, deliveryMethod: string | null): OrderStatus | null {
-  if (deliveryMethod === 'hub') {
-    if (current === 'Dispatched') return 'Received at Hub';
-    if (current === 'Received at Hub') return 'On the Way';
-    if (current === 'On the Way') return 'Delivered';
-  } else {
-    if (current === 'Dispatched') return 'On the Way';
-    if (current === 'On the Way') return 'Delivered';
-  }
-  return null;
-}
 
 function useAdminOrderDetail(orderId: number) {
   return useQuery({
@@ -233,7 +219,9 @@ export function AdminOrderDetailScreen({
     : 'Unrouted';
   const driverCode = routingHub?.driver_code ?? routingZone?.driver_code ?? null;
 
-  const next = nextDeliveryStatus(o.status, o.delivery_method ?? null);
+  // Admin gets the full-flow override (BF-11). Explicit at the callsite even
+  // though 'admin' is the default — documents the persona choice here.
+  const next = nextDeliveryStatus(o.status, o.delivery_method ?? null, 'admin');
   const canAdvance = next != null;
   const canCancel = CANCELLABLE.has(o.status);
 

@@ -610,7 +610,7 @@ Data already selected by `useStaffOrders` (`customer_addresses(*, delivery_zones
 
 **Sprint 3 cleanup deferred:**
 
-- `nextDeliveryStatus` is now inlined in two places (`DeliveryOrderRow.tsx` and `AdminOrderDetailScreen.tsx`). Could be extracted to a util once a third caller emerges; not urgent today.
+- ~~`nextDeliveryStatus` is now inlined in two places (`DeliveryOrderRow.tsx` and `AdminOrderDetailScreen.tsx`). Could be extracted to a util once a third caller emerges; not urgent today.~~ **— RESOLVED 2026-05-03 by BF-11.** Extracted to `src/utils/deliveryStatus.ts` when persona-aware gating was introduced; both call sites now import from the util.
 - The driver-chip / routing-label format is similarly inlined (BF-07's `getDriverInfo` in DeliveryManagerScreen has been deleted; AdminOrdersScreen and AdminOrderDetailScreen each have their own inline copy of "use hub_name for hub-routed, zone_name for zone-direct"). Same pattern — extract when a third caller appears.
 
 ---
@@ -646,6 +646,31 @@ Hooks updated:
 - `useAdminUpdateOrder` (`src/hooks/useAdminOrders.ts:86`) has the same gap pattern but is exported and never called anywhere in the `src/` tree — dead export. Leaving alone; either revive (call the helper) or delete in a Sprint 3 cleanup pass.
 
 **Verification path:** with this commit deployed and Metro reloaded, retry the BF-04 walkthrough — as a driver, tap the status pill on a Dispatched order; the row should immediately reflect the new status without navigation. As an admin, tap "Advance Status" or "Cancel + Refund" in `AdminOrderDetailScreen`; the detail screen reflects immediately (manual `refetch()` covers this case), AND on back navigation the AdminOrdersScreen list shows the new status pill without staleness.
+
+---
+
+### BF-11: nextDeliveryStatus persona gating — driver vs hub-operator vs admin — RESOLVED 2026-05-03
+
+**Symptom:** A driver assigned to a hub-routed order could advance it all the way through `Dispatched → Received at Hub → On the Way → Delivered` from `DriverDashboardScreen`, bypassing the hub operator's role entirely. The status-pill gating in `DeliveryOrderRow` only branched on `deliveryMethod`, not on the calling persona.
+
+**Correct gating (verified by Shrikanth, 2026-05-03):**
+
+| Order's `delivery_method` | Driver advances | Hub Operator advances | Admin advances |
+|---|---|---|---|
+| `'hub'` | `Dispatched → Received at Hub` (one step, then stops) | `Received at Hub → On the Way → Delivered` | full flow (omnipotent override) |
+| `'direct'` | `Dispatched → On the Way → Delivered` (full flow) | N/A — defensive null | full flow |
+
+**Fix:** Extracted `nextDeliveryStatus()` to `src/utils/deliveryStatus.ts` as the single source of truth. New signature accepts `persona: AdvancePersona = 'admin'`; default keeps backward-compat for any caller that hasn't been updated. Three call sites pass persona explicitly:
+
+- `DriverDashboardScreen` → `<DeliveryOrderRow persona="driver" />`
+- `HubDashboardScreen` → `<DeliveryOrderRow persona="hub_operator" />`
+- `AdminOrderDetailScreen` → `nextDeliveryStatus(o.status, o.delivery_method, 'admin')` (explicit at callsite even though it matches the default — documents intent)
+
+**Closes BF-08's queued cleanup item:** the duplicate `nextDeliveryStatus` copies in `DeliveryOrderRow.tsx` and `AdminOrderDetailScreen.tsx` (flagged as Sprint 3 cleanup in BF-08) are now consolidated into the new util. Annotation added on that BF-08 line above.
+
+**Defensive `hub_operator` + `'direct'` returns null** — should never happen in practice (visibility filter in `useStaffOrders` excludes direct orders from hub op via `hub_id` match), but defensive in case visibility ever drifts.
+
+**Files:** new `src/utils/deliveryStatus.ts`; `src/components/DeliveryOrderRow.tsx` (drop local copy, import, add `persona?: AdvancePersona` prop with default `'admin'`); `src/screens/customer/DriverDashboardScreen.tsx` (pass `persona="driver"`); `src/screens/customer/HubDashboardScreen.tsx` (pass `persona="hub_operator"`); `src/screens/admin/AdminOrderDetailScreen.tsx` (drop inline copy, import, pass `'admin'` explicitly).
 
 ---
 

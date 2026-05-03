@@ -18,6 +18,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, Alert, Linking, StyleSheet } from 'react-native';
 import { Theme } from '../theme';
 import { ThemedText } from './ThemedText';
+import { nextDeliveryStatus, type AdvancePersona } from '../utils/deliveryStatus';
 import type { OrderStatus } from '../types';
 
 const BODY2 = Theme.typography.sizes.body + 2;
@@ -32,18 +33,6 @@ function statusColor(status: string): string {
     case 'Cancelled': return Theme.colors.status.error;
     default: return Theme.colors.text.muted;
   }
-}
-
-function nextDeliveryStatus(current: string, deliveryMethod: string | null): OrderStatus | null {
-  if (deliveryMethod === 'hub') {
-    if (current === 'Dispatched') return 'Received at Hub';
-    if (current === 'Received at Hub') return 'On the Way';
-    if (current === 'On the Way') return 'Delivered';
-  } else {
-    if (current === 'Dispatched') return 'On the Way';
-    if (current === 'On the Way') return 'Delivered';
-  }
-  return null;
 }
 
 export interface DriverInfo {
@@ -62,6 +51,12 @@ export interface DeliveryOrderRowProps {
   getDriverInfo?: (order: any) => DriverInfo;
   /** Disable status pill while a mutation is in flight */
   isUpdating?: boolean;
+  /**
+   * Persona of the calling screen — gates the status pill's transitions.
+   * Default 'admin' (full flow); Driver and Hub screens pass 'driver' /
+   * 'hub_operator' respectively. See src/utils/deliveryStatus.ts.
+   */
+  persona?: AdvancePersona;
 }
 
 export function DeliveryOrderRow({
@@ -70,6 +65,7 @@ export function DeliveryOrderRow({
   showDriverInfo = false,
   getDriverInfo,
   isUpdating = false,
+  persona = 'admin',
 }: DeliveryOrderRowProps) {
   const address = order.customer_addresses;
   const phone = address?.phone_number || order.profiles?.phone_number;
@@ -77,7 +73,7 @@ export function DeliveryOrderRow({
     .map((oi: any) => `${oi.item_name} ×${oi.quantity}`)
     .join(', ');
 
-  const next = nextDeliveryStatus(order.status, order.delivery_method);
+  const next = nextDeliveryStatus(order.status, order.delivery_method, persona);
   const canAdvance = next != null && !isUpdating;
 
   const driverInfo = showDriverInfo && getDriverInfo ? getDriverInfo(order) : null;

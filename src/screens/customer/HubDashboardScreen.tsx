@@ -87,6 +87,7 @@ export function HubDashboardScreen({ navigation }: CustomerScreenProps<'HubDashb
               order={item}
               onAdvanceStatus={handleAdvanceStatus}
               isUpdating={isUpdating}
+              persona="hub_operator"
             />
           )}
         />
