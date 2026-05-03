@@ -121,6 +121,7 @@ export function AdminOrdersScreen({ navigation }: { navigation: AdminNavProp }) 
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
+        style={styles.chipScrollView}
         contentContainerStyle={styles.chipRow}
       >
         {STATUS_OPTIONS.map((opt) => {
@@ -230,7 +231,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: Theme.spacing.md,
+    paddingVertical: Theme.spacing.sm,
   },
   dateArrow: {
     paddingHorizontal: Theme.spacing.lg,
@@ -256,9 +257,14 @@ const styles = StyleSheet.create({
   rowRouting: { fontSize: S, flex: 1 },
   txt: { fontSize: B },
 
+  chipScrollView: {
+    flexGrow: 0,
+    flexShrink: 0,
+  },
   chipRow: {
     paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
+    paddingVertical: Theme.spacing.xs,
+    alignItems: 'center',
     gap: Theme.spacing.sm,
   },
   chip: {
@@ -279,7 +285,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: Theme.spacing.md,
-    paddingBottom: Theme.spacing.sm,
+    paddingBottom: Theme.spacing.xs,
   },
   searchInput: {
     flex: 1,
