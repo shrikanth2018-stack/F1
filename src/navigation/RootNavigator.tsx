@@ -3,13 +3,12 @@
  *
  * Auth state machine:
  *   'phone'   → LoginScreen (checks DB: known vs new)
- *   'name'    → RegistrationScreen (new user: collects name, sends OTP)
+ *   'name'    → OnboardingScreen (new user: combined name + address + location capture)
  *   'otp'     → OTPScreen (verifies; new users get profile created)
- *   'address' → AddAddressScreen (new users only, onboarding step)
  *
  * After session is live:
- *   needsOnboarding=true → show address collection before the app
- *   needsOnboarding=false → role-based navigator
+ *   step === 'name' → OnboardingScreen (atomic name + address save in one tx)
+ *   otherwise       → role-based navigator (admin / staff / customer)
  */
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -24,9 +23,8 @@ import { StaffNavigator } from './StaffNavigator';
 import { AdminNavigator } from './AdminNavigator';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { LoginScreen } from '../screens/auth/LoginScreen';
-import { RegistrationScreen } from '../screens/auth/RegistrationScreen';
+import { OnboardingScreen } from '../screens/auth/OnboardingScreen';
 import { OTPScreen } from '../screens/auth/OTPScreen';
-import { AddAddressScreen } from '../screens/customer/AddAddressScreen';
 import { Theme } from '../theme';
 
 type AuthStep = 'phone' | 'otp' | 'name';
@@ -118,22 +116,24 @@ export function RootNavigator() {
   // where onAuthStateChange sets session before onNewUser() sets step='name'.
   if (step === 'name') {
     return (
-      <RegistrationScreen
+      <OnboardingScreen
         phone={pendingPhone}
-        onComplete={(name) => {
-          setPendingName(name);
-          setNeedsOnboarding(true);
+        onComplete={() => {
+          // Atomic save already wrote profile + first address.
+          // Clear the step and onboarding flags; the session-driven
+          // render below takes over from here.
+          //
+          // setStep('phone') is a sentinel — 'phone' is the default
+          // state for "show LoginScreen if no session." Session is
+          // live by this point, so the `if (session)` branch further
+          // down wins and renders the role navigator. The 'phone'
+          // value is never observed visually.
+          setStep('phone');
+          setNeedsOnboarding(false);
         }}
         // Session is already live here — the only safe back is to sign out and restart.
         onBack={() => signOut()}
       />
-    );
-  }
-
-  // New user completed registration — collect first address before entering app.
-  if (session && needsOnboarding) {
-    return (
-      <AddAddressScreen onComplete={() => setNeedsOnboarding(false)} />
     );
   }
 
