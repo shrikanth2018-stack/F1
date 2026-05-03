@@ -66,7 +66,7 @@ export function PhonePicker({
       const { data } = await supabase
         .from('profiles')
         .select('id, full_name, phone_number, role, employee_id')
-        .eq('phone_number', phone)
+        .eq('phone_number', `91${phone}`)
         .maybeSingle();
 
       if (cancelled) return;
@@ -114,7 +114,7 @@ export function PhonePicker({
         <TextInput
           style={styles.input}
           value={phone}
-          onChangeText={setPhone}
+          onChangeText={(v) => setPhone(v.replace(/\D/g, '').slice(-10))}
           placeholder={labelPlaceholder}
           placeholderTextColor={Theme.colors.text.muted}
           keyboardType="phone-pad"

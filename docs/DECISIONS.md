@@ -419,6 +419,16 @@ Two unrelated bugs in the admin elevation flow, surfaced sequentially while elev
 - **Deploy:** SQL Editor paste of the new SQL file (must run *before* Edge Function deploy), then `supabase functions deploy elevate-employee`. Verify with `SELECT proname, prosecdef FROM pg_proc WHERE proname = 'auth_user_id_by_phone';` — expects 1 row with `prosecdef = true`.
 - **Grep audit (this commit):** repo-wide grep for `.schema('auth')` and `.from('users')` with auth context returned exactly one hit each, both at `elevate-employee/index.ts:83-84` — the lines this fix replaces. No other code paths affected. The two `auth.users` mentions on lines 9-10 of the same file are docstrings, not code.
 
+**BF-05c — `PhonePicker` (Create Zone, Hub Detail) — same phone-format drift, different surface (this commit):**
+
+- **Symptom:** Admin opens Resource Manager → Create Zone, types `3333333333` (or `913333333333`) into the Driver field. Picker shows "Not a staff member. Elevate them via Manage → Staff first." even though `913333333333` is `role='staff'` in profiles (employee_id `1ST-2026-001` from BF-05a/b elevation). Same surface used by Hub Detail driver / hub-operator assignment.
+- **Root cause:** `src/components/PhonePicker.tsx` is shared between `DeliveryManagerScreen` (Create Zone) and `HubDetailScreen` (driver / hub-operator). Line 69 did `.eq('phone_number', phone)` against the 12-digit DB value — same 10-vs-12-digit drift as BF-05a. Line 117 had `onChangeText={setPhone}` with no digit filter at all, relying solely on `maxLength={10}` for length capping; pasting `+91-9876543210` would have stored non-digit characters in state. The "wrong end chopped" failure mode is the same as BF-05a.
+- **Fix:** Two one-liners in `src/components/PhonePicker.tsx`:
+  - Line 117: `onChangeText={setPhone}` → `onChangeText={(v) => setPhone(v.replace(/\D/g, '').slice(-10))}` (adds digit filter + last-10 slice).
+  - Line 69: `.eq('phone_number', phone)` → `` .eq('phone_number', `91${phone}`) ``.
+- **Audit conclusion (repo-wide grep, this commit):** `.eq('phone_number', ...)` callsites: exactly 2 — `OnboardEmployeeScreen.tsx:330` (fixed in BF-05a) and `PhonePicker.tsx:69` (this fix). `slice(0, 10)` in admin/staff/hooks input handlers: zero hits. **PhonePicker was the last remaining drift surface.** Sprint 3 `normalizePhone` helper refactor is now nice-to-have rather than urgent — no new callsites need it today.
+- **Deploy:** Code-only; pushed.
+
 **What `913333333333` elevation now exercises end-to-end (post-fix):**
 
 1. Admin types phone (any of `913333333333` / `3333333333` / `+91-...` — `slice(-10)` handles all).
