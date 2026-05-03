@@ -505,7 +505,11 @@ Same shape as the earlier 666 backfill. Run in SQL Editor when convenient.
 
 ---
 
-### BF-07: Admin Delivery Manager Live tab — widen visibility to full-day pipeline — RESOLVED 2026-05-03
+### BF-07: Admin Delivery Manager Live tab — widen visibility to full-day pipeline — SUPERSEDED 2026-05-03 by BF-08
+
+> **Superseded.** The Live tab was fully removed from `DeliveryManagerScreen` in BF-08 (commit `feat(BF-08, 3/3)`). Pipeline visibility now lives in `AdminOrdersScreen` ("Manage Running Orders"). The BF-07 visibility-filter widening doesn't need a separate code revert because the entire `LiveDeliveriesTab` component and its imports were deleted in BF-08 commit 3 — the widened filter went away with the function. The driver-chip symmetric formatting (zone name explicit) was re-homed inline in `AdminOrdersScreen` rows in BF-08 commit 2. Historical reasoning below preserved for the audit trail.
+
+#### BF-07 historical entry (kept for trail)
 
 **Spec change supersedes the BF-04 "Items NOT changed" decision for the Live tab specifically.** The DriverDashboardScreen narrow whitelist remains correct (per BF-04) — drivers still don't need pre-dispatch visibility.
 
@@ -552,6 +556,56 @@ Data already selected by `useStaffOrders` (`customer_addresses(*, delivery_zones
 - No DB / RPC / Edge Function changes.
 
 **Variable naming note:** the `activeOrders` variable name is slightly misleading post-widening but is kept to minimize diff. Rename can ride a future refactor.
+
+---
+
+### BF-08: Merge Delivery Manager → Live into Manage Running Orders — RESOLVED 2026-05-03
+
+**Why:** read-only audit (during the BF-07 design pause) found two admin order-management surfaces — `AdminOrdersScreen` ("Manage Running Orders") and `DeliveryManagerScreen → Live` — overlapping on full-day visibility but diverging on action affordances (cancel vs. status-advance) and data dimension (customer-centric vs. driver/hub-centric). After BF-07 widened Live's visibility to match AdminOrdersScreen's, the two screens became near-duplicates on the visibility axis. Maintaining both raised the future-bug surface and the operator-confusion cost ("which screen do I use for X?"). Merging consolidates the canonical entry point.
+
+**Design (verified by Shrikanth, 2026-05-03):**
+
+- `AdminOrdersScreen` becomes the single canonical admin view of orders for any date.
+- Row layout collapsed to a single line per order: `#ID  ·  zone-or-hub label  ·  status pill`. No items, no price, no customer name, no row-level Cancel button. Maximizes vertical density (~4× more orders visible per screen).
+- Filtering: status filter chip row at top (All / Confirmed / Preparing / Ready / Packed / Dispatched / Received at Hub / On the Way / Delivered / Cancelled) + order # search input. Both compose; persistence is component-lifetime (`useState` only).
+- Tappable row → new `AdminOrderDetailScreen` for full context + actions.
+- `DeliveryManager → Live` tab removed entirely. Other tabs (Hubs, Zones & Fees, Cycles) unchanged.
+
+**`AdminOrderDetailScreen` action surface:**
+
+- Customer name + phone (Call action via `tel:`)
+- Address (Open in Maps action)
+- Items list with quantities
+- Payment summary (total, wallet portion, Razorpay portion, method)
+- Status pill + routing label (Hub or Zone) + driver code (read-only)
+- **Advance Status** button — gated to delivery transitions `{Dispatched → Received at Hub → On the Way → Delivered}`, mirroring `DeliveryOrderRow.tsx:37-47` `nextDeliveryStatus` logic (inlined).
+- **Cancel + auto-refund** button — gated to cancellable statuses `{Pending, Confirmed, Preparing, Ready, Packed}` via existing `useAdminCancelOrder` hook.
+- Read-only meta: dispatch_date, cycle_id, created_at.
+
+**Three commits, one push:**
+
+1. `feat(BF-08, 1/3)` — Add status filter + order# search to AdminOrdersScreen. No row layout changes, no Live changes.
+2. `feat(BF-08, 2/3)` — Collapse rows to single line, expand list query to fetch hub/zone names via nested PostgREST select, tappable rows, new `AdminOrderDetailScreen` with the action set above. Existing row-level Cancel button removed (intentional — see Behavior change below). New navigation route `AdminOrderDetail { orderId: number }` registered in `AdminStackParamList` and `AdminNavigator`.
+3. `feat(BF-08, 3/3)` — Remove Live tab from `DeliveryManagerScreen.tsx` (drop `LiveDeliveriesTab` function, drop unused imports `FlatList` / `RefreshControl` / `DeliveryOrderRow` / `DriverInfo` / `useStaffOrders` / `useUpdateOrderStatus` / `OrderStatus`, change default tab from `'Live'` to `'Hubs'`, simplify the tab render switch). Plus this DECISIONS.md update (BF-07 supersede annotation + BF-08 entry).
+
+**Hooks reused unchanged:** `useAdminCancelOrder` (cancel + auto-refund), `useUpdateOrderStatus` (status advance). Both already supported the use-case shape; only their callers changed.
+
+**Behavior change:** the row-level Cancel button on AdminOrdersScreen is removed. Admin can no longer cancel an order from the list view without opening detail first. Intentional — forces a context glance before the destructive action.
+
+**No-change list:**
+
+- `OrderDetailScreen.tsx` (customer) — untouched. Customer cancel flow still goes through customer-side `useCancelOrder` (window-gated), not the admin hook.
+- `DeliveryOrderRow` component — untouched. Still used by `DriverDashboardScreen` and `HubDashboardScreen`.
+- `StaffDashboard` (Kitchen / Packing) — untouched.
+- `DriverDashboardScreen`, `HubDashboardScreen` — untouched.
+- `AdminHome` menu — "Manage Running Orders" link unchanged. "Delivery Manager" link unchanged (that screen still has Hubs / Zones & Fees / Cycles).
+- `useStaffOrders`, `useUpdateOrderStatus`, `useAdminCancelOrder` hooks — no changes; only their callers shifted.
+- DB / RPC / Edge Functions / RLS — none.
+
+**Sprint 3 cleanup deferred:**
+
+- `nextDeliveryStatus` is now inlined in two places (`DeliveryOrderRow.tsx` and `AdminOrderDetailScreen.tsx`). Could be extracted to a util once a third caller emerges; not urgent today.
+- The driver-chip / routing-label format is similarly inlined (BF-07's `getDriverInfo` in DeliveryManagerScreen has been deleted; AdminOrdersScreen and AdminOrderDetailScreen each have their own inline copy of "use hub_name for hub-routed, zone_name for zone-direct"). Same pattern — extract when a third caller appears.
 
 ---
 

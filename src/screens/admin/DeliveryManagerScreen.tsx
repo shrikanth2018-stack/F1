@@ -24,21 +24,18 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
-import { FlatList, RefreshControl } from 'react-native';
 import { ZoneMap } from '../../components/ZoneMap';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { Divider } from '../../components/Divider';
 import { EmptyState } from '../../components/EmptyState';
 import { ErrorRetry } from '../../components/ErrorRetry';
-import { DeliveryOrderRow, type DriverInfo } from '../../components/DeliveryOrderRow';
 import { PhonePicker, type PickedProfile } from '../../components/PhonePicker';
 import { useAllDeliveryCycles, useUpdateDeliveryCycle, useAddDeliveryCycle } from '../../hooks/useMenuManagement';
 import { useDeliveryZones, useAddZone, useUpdateZone, useDeleteZone } from '../../hooks/useDeliveryZones';
 import { useActiveHubs, useDeliveryHubs, useToggleHub } from '../../hooks/useDeliveryHubs';
-import { useStaffOrders, useUpdateOrderStatus } from '../../hooks/useStaffOrders';
 import { supabase } from '../../api/supabaseClient';
-import type { DeliveryCycle, DeliveryZone, DeliveryHub, OrderStatus } from '../../types';
+import type { DeliveryCycle, DeliveryZone, DeliveryHub } from '../../types';
 import type { AdminNavProp } from '../../navigation/types';
 
 type Region = {
@@ -52,8 +49,8 @@ const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
 
 
-type DeliveryTab = 'Live' | 'Hubs' | 'Zones & Fees' | 'Cycles';
-const TABS: DeliveryTab[] = ['Live', 'Hubs', 'Zones & Fees', 'Cycles'];
+type DeliveryTab = 'Hubs' | 'Zones & Fees' | 'Cycles';
+const TABS: DeliveryTab[] = ['Hubs', 'Zones & Fees', 'Cycles'];
 
 // Default map region — central India; overridden by device location when available
 const DEFAULT_REGION: Region = {
@@ -990,82 +987,9 @@ const ht = StyleSheet.create({
   hubActions: { flexDirection: 'row', alignItems: 'center', gap: Theme.spacing.sm },
 });
 
-// ── Live Deliveries Tab ──────────────────────────────────────
-// All today's active-status orders (Dispatched / Received at Hub / On the Way)
-// across all hubs and zones. Shows driver chip per row.
-function LiveDeliveriesTab() {
-  const { data: orders = [], isLoading, error, refetch, isRefetching } = useStaffOrders();
-  const { mutateAsync: updateStatus, isPending: isUpdating } = useUpdateOrderStatus();
-
-  // Spec (BF-07, 2026-05-03): all today's orders, every status, including
-  // Cancelled (admin oversight legitimately needs cancellation visibility for
-  // refund triage). Status pill in DeliveryOrderRow auto-disables outside the
-  // delivery transition window ({Dispatched, Received at Hub, On the Way}),
-  // so admin can see the full pipeline but only act on in-flight rows from
-  // this tab — kitchen and packing transitions stay owned by their dashboards.
-  const activeOrders = orders ?? [];
-
-  const getDriverInfo = React.useCallback((o: any): DriverInfo => {
-    const addr = o?.customer_addresses;
-    if (o?.delivery_method === 'hub') {
-      const hub = addr?.delivery_hubs;
-      const code = hub?.driver_code ?? null;
-      const hubName = hub?.hub_name ?? 'Hub';
-      return { code, label: code ? `${code} → ${hubName}` : `Unassigned → ${hubName}` };
-    }
-    // BF-07: zone-direct orders now show zone name explicitly, mirroring
-    // how hub orders show hub name. Symmetric routing label per row.
-    const zone = addr?.delivery_zones;
-    const code = zone?.driver_code ?? null;
-    const zoneName = zone?.zone_name ?? 'Zone';
-    return { code, label: code ? `${code} → ${zoneName}` : `Unassigned → ${zoneName}` };
-  }, []);
-
-  const handleAdvance = async (
-    orderId: number,
-    next: OrderStatus,
-    customerUserId: string | null,
-  ) => {
-    try {
-      await updateStatus({ orderId, status: next, userId: customerUserId ?? undefined });
-    } catch (e: any) {
-      Alert.alert('Could not update status', e?.message ?? 'Please try again.');
-    }
-  };
-
-  if (error) {
-    return <ErrorRetry message="Failed to load deliveries" onRetry={refetch} />;
-  }
-
-  return (
-    <FlatList
-      data={activeOrders}
-      keyExtractor={(o: any) => String(o.id)}
-      refreshControl={
-        <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={Theme.colors.text.mint} />
-      }
-      ItemSeparatorComponent={() => <Divider />}
-      ListEmptyComponent={
-        !isLoading
-          ? <EmptyState title="No active deliveries today" subtitle="Once orders move to Dispatched, they'll appear here." />
-          : null
-      }
-      renderItem={({ item }) => (
-        <DeliveryOrderRow
-          order={item}
-          onAdvanceStatus={handleAdvance}
-          isUpdating={isUpdating}
-          showDriverInfo
-          getDriverInfo={getDriverInfo}
-        />
-      )}
-    />
-  );
-}
-
 // ── Main screen ──────────────────────────────────────────────
 export function DeliveryManagerScreen({ navigation }: { navigation: AdminNavProp }) {
-  const [activeTab, setActiveTab] = useState<DeliveryTab>('Live');
+  const [activeTab, setActiveTab] = useState<DeliveryTab>('Hubs');
 
   const { data: allCycles = [] } = useAllDeliveryCycles();
 
@@ -1127,10 +1051,8 @@ export function DeliveryManagerScreen({ navigation }: { navigation: AdminNavProp
         </ScrollView>
       ) : activeTab === 'Zones & Fees' ? (
         <ZonesTab />
-      ) : activeTab === 'Hubs' ? (
-        <HubsTab navigation={navigation} />
       ) : (
-        <LiveDeliveriesTab />
+        <HubsTab navigation={navigation} />
       )}
 
       <AddCycleModal
