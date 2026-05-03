@@ -3,7 +3,7 @@
  * Lists orders by date with cancel + wallet refund.
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   FlatList,
@@ -11,6 +11,8 @@ import {
   Alert,
   StyleSheet,
   ActivityIndicator,
+  ScrollView,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
@@ -35,6 +37,12 @@ const STATUS_VARIANT: Record<string, 'success' | 'warning' | 'info' | 'error'> =
 };
 
 const CANCELLABLE = new Set(['Pending', 'Confirmed', 'Preparing', 'Ready', 'Packed']);
+
+const STATUS_OPTIONS = [
+  'All', 'Confirmed', 'Preparing', 'Ready', 'Packed',
+  'Dispatched', 'Received at Hub', 'On the Way', 'Delivered', 'Cancelled',
+] as const;
+type StatusFilter = typeof STATUS_OPTIONS[number];
 
 function getDateStr(offset = 0) {
   const d = new Date();
@@ -87,10 +95,22 @@ function useOrdersForDate(date: string) {
 
 export function AdminOrdersScreen({ navigation }: { navigation: AdminNavProp }) {
   const [dateOffset, setDateOffset] = useState(0);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('All');
+  const [searchTerm, setSearchTerm] = useState('');
   const date = getDateStr(dateOffset);
 
   const { data: orders, isLoading, error, refetch } = useOrdersForDate(date);
   const { mutateAsync: cancelOrder } = useAdminCancelOrder();
+
+  const filteredOrders = useMemo(() => {
+    const all = orders ?? [];
+    const term = searchTerm.trim();
+    return all.filter((o) => {
+      if (statusFilter !== 'All' && o.status !== statusFilter) return false;
+      if (term && !String(o.id).includes(term)) return false;
+      return true;
+    });
+  }, [orders, statusFilter, searchTerm]);
 
   const handleCancel = useCallback((order: any) => {
     const walletRefund = Number(order.wallet_amount_used ?? 0);
@@ -153,6 +173,51 @@ export function AdminOrdersScreen({ navigation }: { navigation: AdminNavProp }) 
         </TouchableOpacity>
       </View>
 
+      {/* Status filter chips */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.chipRow}
+      >
+        {STATUS_OPTIONS.map((opt) => {
+          const active = statusFilter === opt;
+          return (
+            <TouchableOpacity
+              key={opt}
+              style={[styles.chip, active && styles.chipActive]}
+              onPress={() => setStatusFilter(opt)}
+              activeOpacity={0.7}
+            >
+              <ThemedText
+                variant="small"
+                color={active ? 'mint' : 'muted'}
+                style={[styles.chipText, active && styles.chipTextActive]}
+              >
+                {opt}
+              </ThemedText>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+
+      {/* Order # search */}
+      <View style={styles.searchRow}>
+        <TextInput
+          style={styles.searchInput}
+          value={searchTerm}
+          onChangeText={setSearchTerm}
+          placeholder="Search order #"
+          placeholderTextColor={Theme.colors.text.muted}
+          keyboardType="numeric"
+          returnKeyType="search"
+        />
+        {searchTerm.length > 0 && (
+          <TouchableOpacity onPress={() => setSearchTerm('')} style={styles.searchClear} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <ThemedText variant="body" color="muted">×</ThemedText>
+          </TouchableOpacity>
+        )}
+      </View>
+
       <Divider />
 
       {isLoading && (
@@ -160,7 +225,7 @@ export function AdminOrdersScreen({ navigation }: { navigation: AdminNavProp }) 
       )}
 
       <FlatList
-        data={orders ?? []}
+        data={filteredOrders}
         keyExtractor={(item) => item.id.toString()}
         contentContainerStyle={styles.list}
         ListEmptyComponent={!isLoading ? <EmptyState title="No orders for this date" /> : null}
@@ -246,4 +311,40 @@ const styles = StyleSheet.create({
   cancelText: { color: Theme.colors.status.error, fontWeight: '600', fontSize: S },
   txt: { fontSize: B },
   sub: { fontSize: S },
+
+  chipRow: {
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.sm,
+    gap: Theme.spacing.sm,
+  },
+  chip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Theme.colors.layout.divider,
+  },
+  chipActive: {
+    borderColor: Theme.colors.text.mint,
+    backgroundColor: Theme.colors.text.mint + '15',
+  },
+  chipText: { fontSize: S - 1 },
+  chipTextActive: { fontWeight: '600' },
+
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Theme.spacing.md,
+    paddingBottom: Theme.spacing.sm,
+  },
+  searchInput: {
+    flex: 1,
+    color: Theme.colors.text.primary,
+    fontFamily: Theme.typography.fontFamily,
+    fontSize: B,
+    paddingVertical: Theme.spacing.xs,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Theme.colors.layout.divider,
+  },
+  searchClear: { paddingHorizontal: Theme.spacing.sm },
 });
