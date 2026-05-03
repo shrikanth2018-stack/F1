@@ -260,6 +260,10 @@
 - **Interpretation:** No wallet-paid subscription has been active during a daily-manifest run yet. The bug has not had a chance to fire in practice. Code analysis confirms it WILL fire the moment a wallet-paid sub is active during a cron run.
 - **Implication for BF-01 fix:** Purely preventive. No remediation step needed. We're fixing before the first real customer encounters the bug.
 
+### V-06: End-to-end order-flow regression test
+- **Why captured:** today's BF-04 walkthrough surfaced 6 sequential layers of breakage in the hub-routed order lifecycle (RLS SELECT, RLS UPDATE WITH CHECK, RLS UPDATE USING, status state machine, persona-aware action gating, and hub-operator UPDATE permission). All fixed today as BF-04 → BF-12. To prevent regressions when the surrounding scaffolding shifts again, before launch (or whenever feels right), backfill a small set of orders covering every combination — zone-direct food, hub-routed food, zone-direct essentials, hub-routed essentials, subscription-generated, customer-cancelled, admin-cancelled — and walk through each path with each persona (Customer, Staff, Driver, Hub Operator, Admin). Confirm visibility, gating, action affordances at every step.
+- **Status:** Queued for a future deliberate session, ideally just before launch or after any major architectural change to the order/persona model.
+
 ---
 
 ## Hard principle: verify before fix
@@ -676,20 +680,17 @@ Hooks updated:
 
 ### BF-12: Hub operator UPDATE on orders blocked by RLS — RESOLVED 2026-05-03
 
-**Symptom:** Hub operator (customer-role with `profiles.assigned_hub_id` set, per BF-04's corrected persona model) tapped the status pill on a Received at Hub order from `HubDashboardScreen`. Mutation fired client-side, BF-11's persona gating correctly computed the next status, but the server's RLS dropped the UPDATE silently. Surfaced as the 6th layer in the BF-04 hub-flow walkthrough — server-side authorization gap that the previous five fixes (FK, screen merge, invalidation, layout, persona gating) all skipped past.
+**Symptom:** Hub operator (`914444444444`, `role='customer'`, `assigned_hub_id=19`) couldn't UPDATE order status from Received at Hub onwards. Mutation fired client-side; BF-11's persona-aware gating correctly computed the next status; but the server rejected with RLS error: `new row violates row-level security policy for table "orders"`. Surfaced as the 6th sequential layer of breakage in the BF-04 hub-flow walkthrough (after the FK, screen merge, query invalidation, chip layout, persona gating fixes).
 
-**Why:** the existing UPDATE policy `orders_staff_update` on `orders` only granted rows to staff/admin via `is_staff_or_admin()`. A customer-role hub operator failed that check; no other policy covered them. Even with BF-11's correct client-side gating saying "yes, hub op can advance Received at Hub → On the Way," PostgreSQL's RLS evaluator answered "no, the row isn't yours to update."
+**Root cause:** the existing UPDATE policy `orders_staff_update` requires `is_staff_or_admin()`. Hub operators are customers (per BF-04's corrected persona model), so they fail the staff check. No hub-operator-specific UPDATE policy existed.
 
-**Fix:** new RLS policy `orders_hub_operator_update` permitting UPDATE when:
-- caller's `user_role = 'customer'` (per BF-04 persona model — staff/admin go through `orders_staff_update`)
-- order's `hub_id` is non-null AND matches `auth.jwt() ->> 'assigned_hub_id'` cast to integer
-- `USING` and `WITH CHECK` apply the same predicate (prevents the hub op from changing `hub_id` mid-update to detach the order from their hub)
+**Fix:** new RLS policy `orders_hub_operator_update` allowing UPDATE when `auth.jwt() ->> 'assigned_hub_id'` (cast to integer) matches `orders.hub_id`. WITH CHECK enforces the same predicate as USING — prevents the hub op from detaching the order from their hub mid-update. Persona-specific transition gating (Received at Hub → On the Way → Delivered only) is enforced client-side via BF-11's `nextDeliveryStatus(persona='hub_operator')` — layered defense: server says "yes, this hub op may write to this row"; client says "yes, this status transition is valid for this persona."
 
 Reads `assigned_hub_id` from the JWT (injected by `custom_access_token_hook`) — no profiles table lookup, fast policy evaluation. Same pattern as the existing `staff_hub_orders` SELECT policy.
 
-**Status-transition gating stays at the application layer** (BF-11's persona-aware `nextDeliveryStatus`). RLS only enforces "hub op can update their own hub's orders"; the app constrains which statuses are valid.
+**Applied live to DB; persisted in repo** as new file `supabase/sql/add_orders_hub_operator_update_policy.sql` (idempotent `DROP IF EXISTS` / `CREATE` pattern). A fresh DB rebuild from `supabase/sql/` now includes the policy.
 
-**Captured as `supabase/sql/add_orders_hub_operator_update_policy.sql`** for repo consistency. Already deployed live via SQL Editor to unblock the BF-04 walkthrough; this commit captures the migration in repo so a fresh DB rebuild includes the policy. Idempotent (`DROP IF EXISTS` + `CREATE`).
+**Closes the BF-04 walkthrough's hub-flow test path.** End-to-end with all twelve fixes layered in: customer order → kitchen → packing → driver → hub → hub operator → delivered, all gated correctly per persona.
 
 ---
 
