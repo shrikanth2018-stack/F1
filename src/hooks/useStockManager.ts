@@ -1,11 +1,17 @@
 /**
- * 1stOne F1 — useStockManager
+ * 1stOne F1 — useStockManager — BF-17 Solution D
  *
- * Hooks for the Admin Stock Manager:
- *   - Staff supply requests  (Pending → Approved / Rejected)
- *   - Active order list      (approved items + admin-added items)
- *   - Print batch            (snapshot current list → supply_batches, clears active)
- *   - Batch history          (past prints, reprint)
+ * Hooks for the Admin Stock Manager (post-simplification):
+ *   - Supply catalog        (autocomplete source for Add Item)
+ *   - Active order list     (unified view: staff-mirrored + admin-added)
+ *   - Add / update / remove on supply_order_items
+ *   - Print batch           (snapshot current list → supply_batches, clears active)
+ *   - Batch history         (past prints, reprint)
+ *
+ * The previous explicit Pending → Approve workflow was retired in BF-17.
+ * Staff submissions auto-mirror into supply_order_items via a server-side
+ * BEFORE INSERT trigger; admin's edit-in-place is the implicit approval.
+ *
  * Filtered by branch when branch_management_active is on.
  */
 
@@ -14,77 +20,19 @@ import { supabase } from '../api/supabaseClient';
 import { useAuth } from './useAuth';
 import { QUERY_STALE_TIME } from '../utils/constants';
 import { useBranchFilter } from './useBranchFilter';
-import type { SupplyRequest, SupplyOrderItem, SupplyBatch } from '../types';
+import type { SupplyOrderItem, SupplyBatch } from '../types';
 
 // ── Staff supply requests ────────────────────────────────
-
-export function usePendingSupplyRequests() {
-  const bf = useBranchFilter();
-
-  return useQuery({
-    queryKey: ['supply_requests', 'pending', bf.isActive ? bf.branchId ?? 'all' : 'off'],
-    queryFn: async () => {
-      let query = supabase
-        .from('staff_order_requests')
-        .select('*, profiles!staff_order_requests_submitted_by_fkey(full_name, employee_id)')
-        .eq('status', 'Pending')
-        .order('created_at', { ascending: true });
-
-      if (bf.isActive && bf.branchId != null) {
-        query = query.eq('branch_id', bf.branchId);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-      return (data ?? []) as (SupplyRequest & { profiles: any })[];
-    },
-    staleTime: QUERY_STALE_TIME,
-  });
-}
-
-export function useReviewSupplyRequest() {
-  const { session } = useAuth();
-  const bf = useBranchFilter();
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async ({
-      requestId,
-      action,
-      items,
-      category,
-    }: {
-      requestId: number;
-      action: 'Approved' | 'Rejected';
-      items?: { name: string; qty: number }[];
-      category?: string;
-    }) => {
-      const { error } = await supabase
-        .from('staff_order_requests')
-        .update({ status: action, approved_by: session?.user.id ?? null })
-        .eq('id', requestId);
-      if (error) throw new Error(error.message);
-
-      // When approved, push items into the active order list
-      if (action === 'Approved' && items?.length) {
-        const rows = items.map((i) => ({
-          name: i.name,
-          qty: i.qty,
-          category: category ?? 'Stationery',
-          request_id: requestId,
-          batch_id: null,
-          added_by: session?.user.id ?? null,
-          branch_id: bf.isActive ? bf.branchId : null,
-        }));
-        const { error: e2 } = await supabase.from('supply_order_items').insert(rows);
-        if (e2) throw new Error(e2.message);
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['supply_requests'] });
-      queryClient.invalidateQueries({ queryKey: ['supply_order_items'] });
-    },
-  });
-}
+//
+// Note (BF-17, 2026-05-04): the explicit Pending → Approve workflow
+// was retired. Staff submissions are auto-mirrored into supply_order_items
+// by a server-side BEFORE INSERT trigger
+// (supabase/sql/staff_order_requests_mirror_trigger.sql) which also flips
+// status to 'Approved' on insert. The staff_order_requests table is
+// preserved as audit-only — every submission leaves a durable trail.
+// usePendingSupplyRequests / useReviewSupplyRequest hooks were removed
+// because the unified view (admin Stock Manager Current Order) makes
+// them unnecessary. Admin's edit-in-place IS the approval.
 
 // ── Supply catalog (autocomplete source) ─────────────────
 
@@ -148,13 +96,25 @@ export function useAdminAddOrderItem() {
       qty: number;
       category: 'Vegetables' | 'Grocery' | 'Stationery';
     }) => {
-      const { error } = await supabase.from('supply_order_items').insert({
-        ...payload,
-        request_id: null,
-        batch_id: null,
-        added_by: session?.user.id ?? null,
-        branch_id: bf.isActive ? bf.branchId : null,
-      });
+      // BF-17: admin's Add Item goes through the shared merge RPC. If a
+      // row with the same category + name (case-insensitive, trimmed) +
+      // branch already exists in the active list (batch_id IS NULL), its
+      // qty gets incremented; otherwise a new row is inserted. Same RPC
+      // is called by the staff_order_requests_mirror trigger so both
+      // paths share one merge implementation.
+      // RPC name cast: database.types.ts is auto-generated and hasn't
+      // been regenerated since the new RPC was added — same class as
+      // useCompleteOnboarding's complete_onboarding_atomic. Runtime
+      // works; cast bypasses the strict type-check until types are
+      // regenerated.
+      const { error } = await supabase.rpc('add_or_merge_supply_order_item' as never, {
+        p_name: payload.name,
+        p_qty: payload.qty,
+        p_category: payload.category,
+        p_request_id: null,
+        p_added_by: session?.user.id ?? null,
+        p_branch_id: bf.isActive ? bf.branchId : null,
+      } as never);
       if (error) throw new Error(error.message);
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['supply_order_items'] }),

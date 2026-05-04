@@ -1,10 +1,16 @@
 /**
- * 1stOne F1 — Stock Manager (Admin)
+ * 1stOne F1 — Stock Manager (Admin) — BF-17 Solution D
  *
- * 3 tabs:
- *   Requests  — pending staff supply requests; approve / reject inline
- *   Order List — current consolidated order (approved + admin-added); edit qty, remove; Print All footer
- *   History   — past print batches; reprint option
+ * 2 tabs:
+ *   Current Order — unified view of all items waiting to be ordered
+ *                   (staff submissions arrive auto-mirrored from
+ *                   staff_order_requests_mirror trigger; admin's Add Item
+ *                   inserts directly). Edit qty, remove, Print All footer.
+ *   History       — past print batches; reprint option.
+ *
+ * The previous 3-tab Pending → Approve → Active model was retired:
+ * staff submissions are auto-approved-on-insert and appear in the unified
+ * list immediately. Admin's edit-in-place IS the approval. Print finalizes.
  */
 
 import React, { useState } from 'react';
@@ -29,8 +35,6 @@ import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { Divider } from '../../components/Divider';
 import {
-  usePendingSupplyRequests,
-  useReviewSupplyRequest,
   useActiveOrderList,
   useAdminAddOrderItem,
   useUpdateOrderItemQty,
@@ -43,7 +47,7 @@ import {
 import type { SupplyOrderItem } from '../../types';
 import type { AdminNavProp } from '../../navigation/types';
 
-type StockTab = 'Requests' | 'Order List' | 'History';
+type StockTab = 'Current Order' | 'History';
 type Category = 'Vegetables' | 'Grocery' | 'Stationery';
 
 const CATEGORIES: Category[] = ['Vegetables', 'Grocery', 'Stationery'];
@@ -51,145 +55,24 @@ const CATEGORIES: Category[] = ['Vegetables', 'Grocery', 'Stationery'];
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
 
-// ── Requests Tab ─────────────────────────────────────────
+// ── Current Order Tab ────────────────────────────────────
+// (Previously "Order List" — renamed to reflect BF-17's unified
+// model. Function name kept as OrderListTab to minimise diff; tab
+// label is "Current Order".)
 
-function RequestsTab() {
-  const { data: requests = [], isLoading, refetch } = usePendingSupplyRequests();
-  const review = useReviewSupplyRequest();
-
-  const handleApprove = (req: any) => {
-    Alert.alert(
-      'Approve Request',
-      `Approve ${req.request_type} order from ${req.profiles?.full_name ?? 'staff'}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Approve',
-          onPress: () =>
-            review.mutate(
-              {
-                requestId: req.id,
-                action: 'Approved',
-                items: req.items,
-                category: req.request_type,
-              },
-              { onError: (e: any) => Alert.alert('Error', e.message) },
-            ),
-        },
-      ],
-    );
-  };
-
-  const handleReject = (req: any) => {
-    Alert.alert(
-      'Reject Request',
-      `Reject this ${req.request_type} order?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Reject',
-          style: 'destructive',
-          onPress: () =>
-            review.mutate(
-              { requestId: req.id, action: 'Rejected' },
-              { onError: (e: any) => Alert.alert('Error', e.message) },
-            ),
-        },
-      ],
-    );
-  };
-
-  if (isLoading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator color={Theme.colors.action.primary} />
-      </View>
-    );
-  }
-
-  if (requests.length === 0) {
-    return (
-      <View style={styles.center}>
-        <ThemedText variant="body" color="muted" style={styles.emptyText}>
-          No pending requests
-        </ThemedText>
-      </View>
-    );
-  }
-
-  return (
-    <FlatList
-      data={requests}
-      keyExtractor={(r) => String(r.id)}
-      contentContainerStyle={styles.listPad}
-      refreshControl={
-        <RefreshControl refreshing={isLoading} onRefresh={refetch} tintColor={Theme.colors.action.primary} />
-      }
-      renderItem={({ item: req }) => (
-        <View style={styles.requestCard}>
-          {/* Header row */}
-          <View style={styles.requestHeader}>
-            <View style={[styles.catBadge, { backgroundColor: catColor(req.request_type) }]}>
-              <Text style={styles.catBadgeText}>{req.request_type}</Text>
-            </View>
-            <ThemedText variant="small" color="muted" style={{ fontSize: S }}>
-              {req.profiles?.employee_id ?? ''}  {req.profiles?.full_name ?? 'Staff'}
-            </ThemedText>
-          </View>
-
-          {/* Items list */}
-          {(req.items as { name: string; qty: number }[]).map((item, idx) => (
-            <View key={idx} style={styles.requestItemRow}>
-              <ThemedText variant="body" color="primary" style={{ fontSize: B, flex: 1 }}>
-                {item.name}
-              </ThemedText>
-              <ThemedText variant="body" color="muted" style={{ fontSize: B }}>
-                ×{item.qty}
-              </ThemedText>
-            </View>
-          ))}
-
-          {/* Actions */}
-          <View style={styles.requestActions}>
-            <TouchableOpacity
-              style={[styles.actionBtn, styles.rejectBtn]}
-              onPress={() => handleReject(req)}
-              disabled={review.isPending}
-            >
-              <Text style={[styles.actionBtnText, { color: Theme.colors.status.error }]}>Reject</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.actionBtn, styles.approveBtn]}
-              onPress={() => handleApprove(req)}
-              disabled={review.isPending}
-            >
-              <Text style={[styles.actionBtnText, { color: Theme.colors.status.success }]}>
-                Approve ›
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          <ThemedText variant="small" color="muted" style={[styles.reqDate, { fontSize: S }]}>
-            {new Date(req.created_at).toLocaleDateString('en-IN', {
-              day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
-            })}
-          </ThemedText>
-        </View>
-      )}
-    />
-  );
-}
-
-// ── Order List Tab ───────────────────────────────────────
-
-function OrderListTab({ onPrint }: { onPrint: () => void }) {
+function OrderListTab({
+  onPrint,
+  onPrintAll,
+}: {
+  onPrint: (category: Category) => void;
+  onPrintAll: () => void;
+}) {
   const { data: items = [], isLoading, refetch } = useActiveOrderList();
   const updateQty = useUpdateOrderItemQty();
   const remove = useRemoveOrderItem();
   const addItem = useAdminAddOrderItem();
 
   const [addName, setAddName] = useState('');
-  const [addQty, setAddQty] = useState('0');
   const [addCat, setAddCat] = useState<Category>('Vegetables');
   const [showAddForm, setShowAddForm] = useState(false);
   const [adjustingCategory, setAdjustingCategory] = useState<Category | null>(null);
@@ -231,17 +114,16 @@ function OrderListTab({ onPrint }: { onPrint: () => void }) {
     );
   };
 
-  const handleAdd = () => {
-    const name = addName.trim();
-    const qty = parseInt(addQty, 10);
+  // BF-17 polish: staff-style add. Picking a suggestion (or the
+  // custom row) inserts with qty=1; admin uses ± inline to adjust.
+  // Form stays open so admin can add multiple items in a row.
+  const handlePick = (rawName: string) => {
+    const name = rawName.trim();
     if (!name) { Alert.alert('Name required'); return; }
-    if (!qty || qty < 1) { Alert.alert('Enter a valid quantity'); return; }
     addItem.mutate(
-      { name, qty, category: addCat },
+      { name, qty: 1, category: addCat },
       {
-        // Stay open so admin can add multiple items in a row.
-        // Cancel button (or tab change) closes the form.
-        onSuccess: () => { setAddName(''); setAddQty('0'); },
+        onSuccess: () => { setAddName(''); },
         onError: (e: any) => Alert.alert('Error', e.message),
       },
     );
@@ -283,16 +165,22 @@ function OrderListTab({ onPrint }: { onPrint: () => void }) {
       >
         {items.length === 0 && !isLoading && (
           <ThemedText variant="body" color="muted" style={[styles.emptyText, { marginTop: Theme.spacing.lg }]}>
-            No items in the current order list.{'\n'}Approve staff requests or add items manually.
+            No items yet.{'\n'}Add items below — staff submissions appear here automatically.
           </ThemedText>
         )}
 
         {grouped.map(({ cat, items: catItems }) => (
           <View key={cat}>
             <View style={styles.sectionHeader}>
-              <ThemedText variant="small" color="muted" style={{ fontSize: S, letterSpacing: 1 }}>
+              <ThemedText variant="small" color="muted" style={{ fontSize: S, letterSpacing: 1, flex: 1 }}>
                 {cat.toUpperCase()}
               </ThemedText>
+              <TouchableOpacity
+                onPress={() => onPrint(cat)}
+                style={{ marginRight: Theme.spacing.md }}
+              >
+                <ThemedText variant="small" color="mint" style={{ fontSize: S }}>Print ›</ThemedText>
+              </TouchableOpacity>
               <TouchableOpacity onPress={() => {
                 setAdjustingCategory(adjustingCategory === cat ? null : cat);
                 setAdjustPct('');
@@ -350,22 +238,21 @@ function OrderListTab({ onPrint }: { onPrint: () => void }) {
       </ScrollView>
 
       {/* Add Item form — outside ScrollView so the items list scrolls
-          independently above it; form stays visible while adding. */}
+          independently above it; form stays visible while adding.
+          BF-17: Print moved to per-category section header (above);
+          footer is just "+ Add Item". */}
       {showAddForm && (
         <AddItemForm
           addCat={addCat}
           setAddCat={setAddCat}
           addName={addName}
           setAddName={setAddName}
-          addQty={addQty}
-          setAddQty={setAddQty}
           isPending={addItem.isPending}
-          onAdd={handleAdd}
+          onPick={handlePick}
           onCancel={() => setShowAddForm(false)}
         />
       )}
 
-      {/* Footer — hidden while adding so the form has room above the keyboard */}
       {!showAddForm && (
         <View style={styles.footer}>
           <TouchableOpacity onPress={() => setShowAddForm(true)}>
@@ -373,7 +260,7 @@ function OrderListTab({ onPrint }: { onPrint: () => void }) {
           </TouchableOpacity>
           <View style={{ flex: 1 }} />
           {items.length > 0 && (
-            <TouchableOpacity onPress={onPrint}>
+            <TouchableOpacity onPress={onPrintAll}>
               <ThemedText variant="body" color="mint" style={{ fontSize: B }}>Print All ›</ThemedText>
             </TouchableOpacity>
           )}
@@ -473,27 +360,27 @@ function HistoryTab() {
   );
 }
 
-// ── Add Item Form (with catalog autocomplete) ────────────
+// ── Add Item Form (catalog autocomplete; staff-style add) ────
+//
+// BF-17 polish: tap a suggestion (or the custom row) to add the
+// item with qty=1 — no separate qty input, no Add button. Adjust
+// qty inline on the row using ± after it appears in the list.
 
 function AddItemForm({
   addCat,
   setAddCat,
   addName,
   setAddName,
-  addQty,
-  setAddQty,
   isPending,
-  onAdd,
+  onPick,
   onCancel,
 }: {
   addCat: Category;
   setAddCat: (c: Category) => void;
   addName: string;
   setAddName: (s: string) => void;
-  addQty: string;
-  setAddQty: (s: string) => void;
   isPending: boolean;
-  onAdd: () => void;
+  onPick: (name: string) => void;
   onCancel: () => void;
 }) {
   const { data: catalog = [] } = useSupplyCatalog(addCat);
@@ -507,9 +394,14 @@ function AddItemForm({
 
   return (
     <View style={styles.addForm}>
-      <ThemedText variant="body" color="primary" style={[styles.addFormTitle, { fontSize: B }]}>
-        Add Item
-      </ThemedText>
+      <View style={styles.addFormHeader}>
+        <ThemedText variant="body" color="primary" style={[styles.addFormTitle, { fontSize: B }]}>
+          Add Item
+        </ThemedText>
+        <TouchableOpacity onPress={onCancel}>
+          <ThemedText variant="body" color="muted" style={{ fontSize: B }}>Cancel</ThemedText>
+        </TouchableOpacity>
+      </View>
 
       {/* Category chips */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: Theme.spacing.sm }}>
@@ -526,26 +418,16 @@ function AddItemForm({
         ))}
       </ScrollView>
 
-      {/* Name + Qty on a single row to keep the form compact */}
-      <View style={styles.addNameQtyRow}>
-        <TextInput
-          style={[styles.addInput, styles.addNameInput]}
-          placeholder="Type item name…"
-          placeholderTextColor={Theme.colors.text.muted}
-          value={addName}
-          onChangeText={setAddName}
-          autoCorrect={false}
-        />
-        <TextInput
-          style={[styles.addInput, styles.addQtyInput]}
-          placeholder="Qty"
-          placeholderTextColor={Theme.colors.text.muted}
-          keyboardType="number-pad"
-          value={addQty}
-          onChangeText={setAddQty}
-          textAlign="center"
-        />
-      </View>
+      {/* Name input only — qty defaults to 1; adjust ± inline after add */}
+      <TextInput
+        style={[styles.addInput, styles.addNameInput]}
+        placeholder="Type item name…"
+        placeholderTextColor={Theme.colors.text.muted}
+        value={addName}
+        onChangeText={setAddName}
+        autoCorrect={false}
+        editable={!isPending}
+      />
 
       {(suggestions.length > 0 || showCustomAdd) && (
         <View style={styles.suggestions}>
@@ -553,36 +435,29 @@ function AddItemForm({
             <TouchableOpacity
               key={item.id}
               style={styles.suggestionRow}
-              onPress={() => setAddName(item.name)}
+              onPress={() => onPick(item.name)}
+              disabled={isPending}
             >
               <ThemedText variant="body" color="primary" style={{ fontSize: B, flex: 1 }}>
                 {item.name}
               </ThemedText>
-              <ThemedText variant="small" color="mint" style={{ fontSize: S }}>Pick</ThemedText>
+              <ThemedText variant="small" color="mint" style={{ fontSize: S }}>Add ›</ThemedText>
             </TouchableOpacity>
           ))}
           {showCustomAdd && (
-            <View style={styles.suggestionRow}>
+            <TouchableOpacity
+              style={styles.suggestionRow}
+              onPress={() => onPick(addName)}
+              disabled={isPending}
+            >
               <ThemedText variant="body" color="subtitle" style={{ fontSize: B, flex: 1 }}>
                 "{addName.trim()}" (custom)
               </ThemedText>
-            </View>
+              <ThemedText variant="small" color="mint" style={{ fontSize: S }}>Add ›</ThemedText>
+            </TouchableOpacity>
           )}
         </View>
       )}
-
-      <View style={styles.addFormBtns}>
-        <TouchableOpacity onPress={onCancel} style={styles.addCancelBtn}>
-          <ThemedText variant="body" color="muted" style={{ fontSize: B }}>Cancel</ThemedText>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={onAdd}
-          disabled={isPending}
-          style={styles.addSaveBtn}
-        >
-          <ThemedText variant="body" color="mint" style={{ fontSize: B }}>Add ›</ThemedText>
-        </TouchableOpacity>
-      </View>
     </View>
   );
 }
@@ -590,31 +465,39 @@ function AddItemForm({
 // ── Main Screen ──────────────────────────────────────────
 
 export function StockManagerScreen({ navigation }: { navigation: AdminNavProp }) {
-  const [activeTab, setActiveTab] = useState<StockTab>('Requests');
-  const { data: pendingRequests = [] } = usePendingSupplyRequests();
+  const [activeTab, setActiveTab] = useState<StockTab>('Current Order');
   const { data: activeItems = [] } = useActiveOrderList();
   const printBatch = usePrintBatch();
 
-  const TABS: StockTab[] = ['Requests', 'Order List', 'History'];
+  const TABS: StockTab[] = ['Current Order', 'History'];
 
-  const handlePrintAll = async () => {
-    if (activeItems.length === 0) {
-      Alert.alert('Empty', 'No items in the order list.');
+  // BF-17: shared print flow — scope is either a single category
+  // ('Vegetables' | 'Grocery' | 'Stationery') or 'all' for the whole
+  // active list. Per-category from each section header; "Print All"
+  // from the footer for single-supplier or convenience prints.
+  const runPrint = async (scope: Category | 'all') => {
+    const targetItems = scope === 'all'
+      ? activeItems
+      : activeItems.filter((i) => i.category === scope);
+
+    if (targetItems.length === 0) {
+      Alert.alert('Empty', scope === 'all' ? 'No items in the order list.' : `No ${scope} items to print.`);
       return;
     }
 
+    const label = scope === 'all' ? 'all items' : scope;
     Alert.alert(
-      'Print & Archive',
-      `Print all ${activeItems.length} items and archive this batch? The current list will be cleared.`,
+      scope === 'all' ? 'Print All?' : `Print ${scope}?`,
+      `Print ${targetItems.length} ${label === 'all items' ? 'item' : label.toLowerCase() + ' item'}${targetItems.length !== 1 ? 's' : ''} and archive this batch? These items will be cleared from the current list.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Print & Archive',
           onPress: async () => {
-            printBatch.mutate(activeItems, {
+            printBatch.mutate(targetItems, {
               onSuccess: async (_batchId) => {
                 const html = buildOrderListHTML(
-                  activeItems.map((i) => ({ name: i.name, qty: i.qty, category: i.category })),
+                  targetItems.map((i) => ({ name: i.name, qty: i.qty, category: i.category })),
                 );
                 try {
                   const { uri } = await Print.printToFileAsync({ html });
@@ -623,7 +506,7 @@ export function StockManagerScreen({ navigation }: { navigation: AdminNavProp })
                     mimeType: 'application/pdf',
                   });
                 } catch {
-                  Alert.alert('Archived', 'Batch archived. PDF export failed — reprint from History.');
+                  Alert.alert('Archived', `Batch archived. PDF export failed — reprint from History.`);
                 }
               },
               onError: (e: any) => Alert.alert('Error', e.message),
@@ -633,6 +516,9 @@ export function StockManagerScreen({ navigation }: { navigation: AdminNavProp })
       ],
     );
   };
+
+  const handlePrintCategory = (cat: Category) => runPrint(cat);
+  const handlePrintAll = () => runPrint('all');
 
   return (
     <SafeAreaView style={styles.container}>
@@ -647,47 +533,31 @@ export function StockManagerScreen({ navigation }: { navigation: AdminNavProp })
 
       {/* Pipe-separated tabs */}
       <View style={styles.topTabs}>
-        {TABS.map((tab, idx) => {
-          const badge =
-            tab === 'Requests' && pendingRequests.length > 0
-              ? ` (${pendingRequests.length})`
-              : '';
-          return (
-            <React.Fragment key={tab}>
-              {idx > 0 && (
-                <ThemedText variant="body" color="muted" style={styles.pipe}>|</ThemedText>
-              )}
-              <TouchableOpacity style={styles.topTab} onPress={() => setActiveTab(tab)}>
-                <ThemedText
-                  variant="body"
-                  color={activeTab === tab ? 'primary' : 'muted'}
-                  style={[styles.tabText, activeTab === tab && styles.tabTextActive]}
-                >
-                  {tab}{badge}
-                </ThemedText>
-              </TouchableOpacity>
-            </React.Fragment>
-          );
-        })}
+        {TABS.map((tab, idx) => (
+          <React.Fragment key={tab}>
+            {idx > 0 && (
+              <ThemedText variant="body" color="muted" style={styles.pipe}>|</ThemedText>
+            )}
+            <TouchableOpacity style={styles.topTab} onPress={() => setActiveTab(tab)}>
+              <ThemedText
+                variant="body"
+                color={activeTab === tab ? 'primary' : 'muted'}
+                style={[styles.tabText, activeTab === tab && styles.tabTextActive]}
+              >
+                {tab}
+              </ThemedText>
+            </TouchableOpacity>
+          </React.Fragment>
+        ))}
       </View>
 
       {/* Content */}
-      {activeTab === 'Requests' && <RequestsTab />}
-      {activeTab === 'Order List' && <OrderListTab onPrint={handlePrintAll} />}
+      {activeTab === 'Current Order' && (
+        <OrderListTab onPrint={handlePrintCategory} onPrintAll={handlePrintAll} />
+      )}
       {activeTab === 'History' && <HistoryTab />}
     </SafeAreaView>
   );
-}
-
-// ── Helpers ──────────────────────────────────────────────
-
-function catColor(cat: string): string {
-  switch (cat) {
-    case 'Vegetables': return '#4CAF5020';
-    case 'Grocery': return '#FF980020';
-    case 'Stationery': return '#2196F320';
-    default: return Theme.colors.layout.divider;
-  }
 }
 
 // ── Styles ───────────────────────────────────────────────
@@ -840,7 +710,13 @@ const styles = StyleSheet.create({
     borderColor: Theme.colors.text.mint,
     borderRadius: 8,
   },
-  addFormTitle: { marginBottom: Theme.spacing.sm },
+  addFormHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Theme.spacing.sm,
+  },
+  addFormTitle: { marginBottom: 0 },
   catChip: {
     paddingHorizontal: Theme.spacing.sm,
     paddingVertical: 4,
