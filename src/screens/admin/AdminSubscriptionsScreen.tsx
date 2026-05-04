@@ -23,6 +23,7 @@ import { Divider } from '../../components/Divider';
 import { EmptyState } from '../../components/EmptyState';
 import { ErrorRetry } from '../../components/ErrorRetry';
 import { useAdminSubscriptions, useAdminCancelSubscription } from '../../hooks/useSubscriptions';
+import { useStoreConfig } from '../../hooks/useStoreConfig';
 import { supabase } from '../../api/supabaseClient';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { QUERY_KEYS } from '../../utils/constants';
@@ -63,6 +64,7 @@ export function AdminSubscriptionsScreen({ navigation }: any) {
   const { data: subs, isLoading, error, refetch } = useAdminSubscriptions();
   const { mutateAsync: cancelSub } = useAdminCancelSubscription();
   const { mutateAsync: refundWallet } = useWalletRefund();
+  const { data: storeConfig } = useStoreConfig();
 
   const [target, setTarget] = useState<CancelTarget | null>(null);
   const [refundStr, setRefundStr] = useState('');
@@ -74,8 +76,20 @@ export function AdminSubscriptionsScreen({ navigation }: any) {
     const daysConsumed = sub.days_consumed ?? 0;
     const daysRemaining = Math.max(0, daysTotal - daysConsumed);
     const planPrice = plan.price ?? 0;
+
+    // BF-21 (D-03a): proration is on the all-inclusive figure customer paid
+    // (food + tax + delivery fee), not just plan.price. Customer paid
+    //   plan.price + (plan.price * tax_rate%) + delivery_fee
+    // at purchase; refund the unconsumed proportion of that total.
+    // Uses store_config defaults — drift between purchase-time and
+    // cancel-time config is rare in practice; if it ever matters,
+    // future enhancement could fetch the original purchase order's
+    // actual total_amount instead.
+    const taxRate = storeConfig?.tax_rate_percentage ?? 5;
+    const deliveryFee = storeConfig?.delivery_fee ?? 0;
+    const allInclusive = planPrice * (1 + taxRate / 100) + deliveryFee;
     const prorated = daysTotal > 0
-      ? Math.round((planPrice / daysTotal) * daysRemaining)
+      ? Math.round((allInclusive / daysTotal) * daysRemaining)
       : 0;
 
     setTarget({
@@ -88,7 +102,7 @@ export function AdminSubscriptionsScreen({ navigation }: any) {
       paymentMethod: sub.payment_method ?? 'wallet',
     });
     setRefundStr(String(prorated));
-  }, []);
+  }, [storeConfig]);
 
   const handleConfirm = useCallback(async () => {
     if (!target) return;
