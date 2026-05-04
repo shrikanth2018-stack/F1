@@ -69,9 +69,10 @@ CREATE POLICY profiles_self_read ON public.profiles
     id = auth.uid() OR public.is_staff_or_admin()
   );
 
--- Allow users to insert their own profile row (the handle_new_user
--- trigger normally creates it; this exists so PostgREST's upsert path
--- doesn't error when ON CONFLICT routes to UPDATE).
+-- Allow users to insert their own profile row.
+-- complete_onboarding_atomic RPC upserts (INSERT ... ON CONFLICT (id)
+-- DO UPDATE); this policy permits the INSERT branch when the row
+-- doesn't yet exist for this auth.uid().
 DROP POLICY IF EXISTS profiles_self_insert ON public.profiles;
 CREATE POLICY profiles_self_insert ON public.profiles
   FOR INSERT WITH CHECK (id = auth.uid() OR public.is_admin());

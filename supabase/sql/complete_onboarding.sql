@@ -41,9 +41,9 @@ BEGIN
     RAISE EXCEPTION 'unauthorized: p_user_id does not match auth.uid()';
   END IF;
 
-  -- Upsert the profile. The handle_new_user trigger may have
-  -- already created the row (id + phone_number set); we update
-  -- full_name. If no trigger ran, this INSERT creates the row.
+  -- Upsert the profile. A row may already exist from a prior
+  -- partial onboarding attempt (UPDATE path); otherwise INSERT
+  -- creates it. Both paths are atomic with the address INSERT below.
   INSERT INTO profiles (id, phone_number, full_name)
   VALUES (p_user_id, p_phone_number, p_full_name)
   ON CONFLICT (id) DO UPDATE

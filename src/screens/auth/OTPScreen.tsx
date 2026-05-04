@@ -119,9 +119,10 @@ export function OTPScreen({ phone, onBack, onExistingUser, onNewUser }: OTPScree
     }
 
     // Check if profile exists AND is complete (has full_name).
-    // The handle_new_user trigger creates a stub row with id+role+phone_number
-    // immediately on auth signup, so just-existing isn't enough — full_name
-    // signals a finished registration. Stub rows route to OnboardingScreen.
+    // A profile row may exist from a prior partial onboarding attempt,
+    // so just-existing isn't enough — full_name presence signals that
+    // complete_onboarding_atomic ran successfully. Incomplete or missing
+    // profiles route to OnboardingScreen.
     const { data: { user: authUser } } = await supabase.auth.getUser();
     const canonicalPhone = authUser?.phone ?? phone;
 
