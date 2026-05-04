@@ -371,6 +371,11 @@ export function CheckoutScreen({ navigation, route }: any) {
           'Order & Subscription Activated!',
           'Your receipt is in My Orders; the plan is active in My Subscriptions.'
         );
+      } else {
+        Alert.alert(
+          'Order Placed!',
+          'You can track your order in the Orders tab.'
+        );
       }
       // Sub-only flow: ensure we don't linger on the now-empty filtered Cart — land on Home.
       if (isSubscriptionOnly) {
