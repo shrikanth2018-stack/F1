@@ -73,7 +73,7 @@ export function useAddHub() {
       supabase.from('delivery_hubs').insert({
         ...payload,
         is_active: true,
-        branch_id: payload.branch_id ?? (bf.isActive ? bf.branchId : null),
+        branch_id: payload.branch_id ?? bf.branchIdForWrite,
       }).select().single(),
     [QUERY_KEYS.HUBS]
   );

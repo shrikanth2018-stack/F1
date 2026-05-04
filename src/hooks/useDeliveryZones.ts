@@ -49,7 +49,7 @@ export function useAddZone() {
       supabase.from('delivery_zones').insert({
         ...payload,
         is_active: true,
-        branch_id: payload.branch_id ?? (bf.isActive ? bf.branchId : null),
+        branch_id: payload.branch_id ?? bf.branchIdForWrite,
       }),
     [QUERY_KEYS.ZONES as unknown as string[]]
   );

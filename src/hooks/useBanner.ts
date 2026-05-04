@@ -67,7 +67,7 @@ export function useUpsertBanner() {
       const { error } = await supabase.from('banners').insert({
         ...payload,
         is_live: true,
-        branch_id: bf.isActive ? bf.branchId : null,
+        branch_id: bf.branchIdForWrite,
       });
       if (error) throw new Error(error.message);
     },

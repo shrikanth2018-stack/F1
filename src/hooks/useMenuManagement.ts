@@ -59,7 +59,7 @@ export function useAddMenuItem() {
         ...item,
         is_active: true,
         sort_order: item.sort_order ?? 0,
-        branch_id: bf.isActive ? bf.branchId : null,
+        branch_id: bf.branchIdForWrite,
       });
       if (error) throw error;
     },
@@ -178,7 +178,7 @@ export function useAddDeliveryCycle() {
         essentials_label: payload.essentials_label ?? null,
         sort_order: payload.sort_order ?? 99,
         is_active: true,
-        branch_id: bf.isActive ? bf.branchId : null,
+        branch_id: bf.branchIdForWrite,
       };
       const { error } = await supabase
         .from('delivery_cycles')

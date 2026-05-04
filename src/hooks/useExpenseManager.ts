@@ -124,7 +124,7 @@ export function useBusinessExpenses() {
         vendor: payload.vendor || null,
         recorded_by: session?.user.id ?? null,
         paid_at: payload.is_paid ? new Date().toISOString() : null,
-        branch_id: bf.isActive ? bf.branchId : null,
+        branch_id: bf.branchIdForWrite,
       });
       if (error) throw new Error(error.message);
     },

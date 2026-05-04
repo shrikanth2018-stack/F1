@@ -64,7 +64,7 @@ export function useAddEssential() {
         .insert({
           ...item,
           is_active: true,
-          branch_id: bf.isActive ? bf.branchId : null,
+          branch_id: bf.branchIdForWrite,
         });
       if (error) throw new Error(error.message);
     },

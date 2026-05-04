@@ -67,7 +67,7 @@ export function useUpsertNote() {
             target_tab,
             note_text,
             is_active,
-            branch_id: bf.isActive ? bf.branchId : null,
+            branch_id: bf.branchIdForWrite,
           },
           // Matches the composite UNIQUE (target_tab, branch_id) constraint.
           // NULLS NOT DISTINCT keeps single-branch / super-admin setups happy

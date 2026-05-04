@@ -113,7 +113,7 @@ export function useAdminAddOrderItem() {
         p_category: payload.category,
         p_request_id: null,
         p_added_by: session?.user.id ?? null,
-        p_branch_id: bf.isActive ? bf.branchId : null,
+        p_branch_id: bf.branchIdForWrite,
       } as never);
       if (error) throw new Error(error.message);
     },
@@ -173,7 +173,7 @@ export function usePrintBatch() {
           printed_by: session?.user.id ?? null,
           items_snapshot: snapshot,
           note: null,
-          branch_id: bf.isActive ? bf.branchId : null,
+          branch_id: bf.branchIdForWrite,
         })
         .select('id')
         .single();

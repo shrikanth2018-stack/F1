@@ -86,7 +86,7 @@ export function useAddPlan() {
           price: plan.price,
           plan_items: plan.plan_items,
           is_active: true,
-          branch_id: bf.isActive ? bf.branchId : null,
+          branch_id: bf.branchIdForWrite,
         });
       if (error) throw new Error(error.message);
     },
