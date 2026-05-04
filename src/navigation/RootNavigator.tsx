@@ -1,14 +1,21 @@
 /**
- * 1stOne F1 — Root Navigator
+ * 1stOne F1 — Root Navigator (BF-18)
  *
- * Auth state machine:
- *   'phone'   → LoginScreen (checks DB: known vs new)
- *   'name'    → OnboardingScreen (new user: combined name + address + location capture)
- *   'otp'     → OTPScreen (verifies; new users get profile created)
+ * Auth state machine (post-BF-18 consolidation):
+ *   'login'   → LoginScreen (unified phone + OTP entry; emits onExistingUser
+ *               or onNewUser(phone) on successful verify)
+ *   'name'    → OnboardingScreen (new user: combined name + address +
+ *               location capture, atomic save)
  *
  * After session is live:
  *   step === 'name' → OnboardingScreen (atomic name + address save in one tx)
  *   otherwise       → role-based navigator (admin / staff / customer)
+ *
+ * The previous separate 'otp' step + OTPScreen have been folded into
+ * LoginScreen as an internal phase machine (see BF-18). RootNavigator
+ * no longer routes the phone string between auth screens — LoginScreen
+ * owns its own phone+OTP state and passes the verified phone via
+ * onNewUser(phone).
  */
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -24,10 +31,9 @@ import { AdminNavigator } from './AdminNavigator';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { LoginScreen } from '../screens/auth/LoginScreen';
 import { OnboardingScreen } from '../screens/auth/OnboardingScreen';
-import { OTPScreen } from '../screens/auth/OTPScreen';
 import { Theme } from '../theme';
 
-type AuthStep = 'phone' | 'otp' | 'name';
+type AuthStep = 'login' | 'name';
 
 const darkTheme = {
   dark: true,
@@ -51,7 +57,7 @@ export function RootNavigator() {
   const { session, isLoading, signOut } = useAuth();
   // Register push token when signed in; no-ops when session is null
   usePushNotifications();
-  const [step, setStep] = useState<AuthStep>('phone');
+  const [step, setStep] = useState<AuthStep>('login');
   const [pendingPhone, setPendingPhone] = useState('');
   const [, setPendingName] = useState('');
   const [, setIsNewUser] = useState(false);
@@ -87,7 +93,7 @@ export function RootNavigator() {
   // Reset auth flow state whenever session is cleared (logout)
   useEffect(() => {
     if (!session && !isLoading) {
-      setStep('phone');
+      setStep('login');
       setPendingPhone('');
       setPendingName('');
       setIsNewUser(false);
@@ -123,12 +129,12 @@ export function RootNavigator() {
           // Clear the step and onboarding flags; the session-driven
           // render below takes over from here.
           //
-          // setStep('phone') is a sentinel — 'phone' is the default
+          // setStep('login') is a sentinel — 'login' is the default
           // state for "show LoginScreen if no session." Session is
           // live by this point, so the `if (session)` branch further
-          // down wins and renders the role navigator. The 'phone'
+          // down wins and renders the role navigator. The 'login'
           // value is never observed visually.
-          setStep('phone');
+          setStep('login');
           setNeedsOnboarding(false);
         }}
         // Session is already live here — the only safe back is to sign out and restart.
@@ -155,30 +161,18 @@ export function RootNavigator() {
   }
 
   // --- Not signed in: auth flow ---
-
-  if (step === 'otp') {
-    return (
-      <OTPScreen
-        phone={pendingPhone}
-        onBack={() => setStep('phone')}
-        onExistingUser={() => {
-          // session already set — onAuthStateChange triggers re-render to role navigator
-        }}
-        onNewUser={() => {
-          setIsNewUser(true);
-          setStep('name');
-        }}
-      />
-    );
-  }
-
-  // Default: phone step
+  // BF-18: LoginScreen owns the entire phone+OTP entry as one screen with
+  // an internal phase machine. RootNavigator only sees the verify outcome.
   return (
     <LoginScreen
       referralCode={pendingReferralCode ?? undefined}
-      onOTPSent={(phone) => {
+      onExistingUser={() => {
+        // session already set — onAuthStateChange triggers re-render to role navigator
+      }}
+      onNewUser={(phone) => {
         setPendingPhone(phone);
-        setStep('otp');
+        setIsNewUser(true);
+        setStep('name');
       }}
     />
   );
