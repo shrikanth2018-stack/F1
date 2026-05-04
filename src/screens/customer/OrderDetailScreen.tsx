@@ -86,8 +86,8 @@ export function OrderDetailScreen({ route, navigation }: any) {
             setIsCancelling(true);
             try {
               const result = await cancelOrder({ order_id: order.id });
-              const serverWallet = (result as any)?.data?.wallet_refunded ?? walletRefund;
-              const serverRzp = (result as any)?.data?.razorpay_refund_due ?? 0;
+              const serverWallet = (result as any)?.wallet_refunded ?? walletRefund;
+              const serverRzp = (result as any)?.razorpay_refund_due ?? 0;
               refetch();
 
               let msg = 'Your order has been cancelled.';

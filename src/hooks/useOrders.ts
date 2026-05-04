@@ -5,9 +5,10 @@
  * useMyOrders uses infinite-scroll pagination (20 orders per page).
  */
 
-import { useInfiniteQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../api/supabaseClient';
 import { useSupabaseQuery, useSupabaseMutation } from '../api/useSupabaseQuery';
+import { invalidateOrderQueries } from '../api/invalidateOrderQueries';
 import { QUERY_KEYS } from '../utils/constants';
 import { useAuth } from './useAuth';
 import type { Order } from '../types';
@@ -52,8 +53,10 @@ export function useOrderDetail(orderId: number) {
 }
 
 export function useCancelOrder() {
-  return useSupabaseMutation<{ order_id: number }>(
-    async (payload) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (payload: { order_id: number }) => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('Not authenticated');
 
@@ -69,10 +72,13 @@ export function useCancelOrder() {
         throw new Error(message);
       }
 
-      return { data, error: null, count: null, status: 200, statusText: 'OK' } as any;
+      return data;
     },
-    [QUERY_KEYS.MY_ORDERS as unknown as string[], QUERY_KEYS.ORDERS as unknown as string[], QUERY_KEYS.WALLET as unknown as string[]]
-  );
+    onSuccess: () => {
+      invalidateOrderQueries(queryClient);
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.WALLET });
+    },
+  });
 }
 
 export function useConfirmOrder() {
