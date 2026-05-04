@@ -106,11 +106,17 @@
 - Removed the last copy of revoked Razorpay test keys (rzp_test_SaAGRu9UhPaeqz et al.) from disk. Hygiene improvement.
 - File content preserved in this session's transcript + `PHASE1_OUTPUT.md` if ever needed for reconstruction.
 
-### CL-09: QUEUED — `DEPLOY_SQL_ORDER.md` minor staleness
-- Surfaced 2026-05-02 by Claude Code while reading the file during CL-08.
-- Still lists `subscribe` deploy at line 47 (function deleted).
-- Says "6 edge functions" when current reality is 12 deployed.
-- Fix in next Claude Code action.
+### CL-09: PARTIALLY RESOLVED — `DEPLOY_SQL_ORDER.md` staleness
+- Original 2026-05-02 issues (`subscribe` deploy reference at old line 47, "6 edge functions" wording) **already cleaned silently** between 2026-05-02 and 2026-05-04. Current file lists 12 functions correctly, no `subscribe` mention.
+- New staleness surfaced 2026-05-04: §4 RLS section still describes RLS as "intentionally OFF during development" — but RLS has been enabled since BF-04 (2026-05-03). Same drift exists in `schema.sql` line 5 comment. Edits drafted in Cowork and saved on disk, BUT both files are untracked due to in-progress `supabase/` → `supabase/sql/` reorg in working tree. Edits will ride along when reorg is committed (see new task #10).
+- **Status:** Original issues resolved. Newly-surfaced RLS-section drift edit deferred to reorg-completion commit.
+
+### CL-10: SHIPPED 2026-05-04 — `handle_new_user` trigger references removed
+- **Commit:** `77fe7ec` on `main`. Pushed 2026-05-04. Stats: 3 files changed, +11 / −9.
+- **What:** Three locations referenced a Postgres trigger that has never existed in the repo's SQL files (`OTPScreen.tsx:122`, `complete_onboarding.sql:44`, `rls_policies.sql:72`). Per BF-03 architecture, profile rows are created by `complete_onboarding_atomic` RPC, not by an auto-trigger. Comments updated to describe actual behavior.
+- **Risk:** Zero. Comment-only edits; no SQL trigger created; no app/DB behavior change.
+- **Discovery:** Logged from BF-03 follow-up notes (DECISIONS.md lines 832-833) + reaffirmed during today's doc/SQL clean-up batch investigation.
+- **Items NOT in this commit (deferred to supabase reorg-completion commit):** `schema.sql` inline FK block + `DEPLOY_SQL_ORDER.md` §4 RLS section rewrite. Both edits saved to disk on untracked-new-path files. See task #10.
 
 ### CL-07: COMPLETED 2026-05-02 — `CLAUDE.md` count corrections
 - Hook count: 27 → 41 (Phase 1 said 39; recent commits added more).
@@ -152,6 +158,31 @@
 ---
 
 ## Open decisions
+
+### D-08: Multi-branch readiness is a launch gate (2026-05-04)
+- **Decision (Shrikanth, 2026-05-04):** The app must be fully ready to add a second branch *before* the production bundle ships to Play Store. Multi-branch readiness is no longer "Sprint 2 / pre-branch-2-launch" — it is a launch gate. We will not ship a build that has known multi-branch gaps.
+- **Why:** Single-branch mode is permissive — several `branch_id` paths silently default to NULL or `1` without breaking anything because there is only one branch. The moment a second branch is added post-launch, those gaps surface as cross-branch data leaks, branch-filtered queries returning empty, or admin views aggregating wrong. Closing those gaps post-launch means production downtime or hot-fix scrambling. Closing them pre-launch is cheap, deliberate, and verifiable end-to-end.
+- **Implication for queued work:** MF-02 (branch picker on `OnboardEmployeeScreen` for super-admins) and MF-03 (multi-branch readiness audit) are reclassified from "blocks branch 2 launch" to **"blocks initial launch."** Both must complete and pass V-06 before the Play Store bundle ships.
+- **Customer-side gap surfaced 2026-05-04:** `complete_onboarding_atomic` RPC does not set `branch_id` on new customer profiles. Invisible in single-branch mode (no branch filter is currently active on customer rows); becomes a real bug at branch 2. MF-03 audit must surface and close this and any other analogous gaps before bundling.
+- **Status:** Active rule going forward.
+
+### D-07: Scope freeze through launch + perfection-review program (2026-05-04)
+- **Decision (Shrikanth, 2026-05-04):** From now through launch, the app's feature surface is closed. No new screens, flows, hooks, Edge Functions, or capabilities. The app is currently live to testers only with no real customer data — pre-launch energy goes into making the existing surface flawless, not widening the surface.
+- **Three permitted work modes:**
+  1. **BF (bug fix) — reactive.** Fix things that are broken when discovered. Optimize for foundation-correct fix at the right layer (per D-06), root-cause not symptom-masking. Verify-before-fix discipline (empirical evidence before code).
+  2. **MF (foundation work) — infrastructure.** Architectural improvements to stability/performance/maintainability of the existing surface. Often surfaced during BF/FT work; queued separately.
+  3. **FT (fine-tune) — proactive perfection.** Deliberate per-flow review of an existing flow. Walk every file in the flow's path (screens + hooks + Edge Functions + RPCs + RLS); surface every gap between current behavior and flawless behavior; propose fixes one at a time. Output is a punch list of FT-NN items each going through the standard proposal → approval → code → verify → commit gate.
+- **"Fine-tune" definition:** Not "small adjustments." It's the primary work mode for this phase. UI rough edges, error-handling gaps, race conditions, optimistic-UI lies, missing logs, drift between client estimates and server reality, missing offline behavior — all in scope.
+- **Guardrails:** If a fix or fine-tune proposal seems to require new functionality (a new screen, new hook, new Edge Function) to land cleanly, the proposal flags exactly why and waits for explicit approval to extend scope. No backdoor for adding flows.
+- **Sequence:** Today's existing prioritized list (MF-05, V-04/V-01, phone format, doc/SQL clean-ups, V-06 afternoon) ships first. After V-06 passes (the launch go/no-go regression test), the per-flow perfection-review program begins. Roughly 14 flow groups in scope: customer onboarding, food browse+cart+checkout, essentials browse+cart+checkout, order tracking + cancel, subscription purchase + management, wallet top-up, push notifications, staff Kitchen/Packing, driver delivery, hub-operator delivery, admin order management, admin staff lifecycle, admin reports/settings, scheduled jobs.
+- **Status:** Active rule going forward.
+
+### D-06: Working-rule shift — best fix for long-term stability, not smallest diff (2026-05-04)
+- **Context:** The original Phase 2 working rule #1 was "Smallest safe change wins." It served well as a guard against scope creep but began to under-serve the project as the codebase matured — the BF-09 fix (centralizing `invalidateOrderQueries`) is a clear example where the smallest possible patch would have left the same foot-gun in place for the next screen to step on.
+- **Decision (Shrikanth, 2026-05-04):** Replace "smallest safe change wins" with **"best fix for long-term stability wins."** The optimization target shifts from minimum-diff to foundation-correct: pick the change that leaves the codebase more stable, more maintainable, and more aligned with the architecture. Sometimes that's still a one-line patch; sometimes it's a small helper extraction or fixing at the right layer.
+- **Guardrails preserved:** no speculative refactors, no "while we're here" cleanups outside what the fix needs, no rewriting working code to match a preferred pattern. Approval gate before any code is written stays intact. If a fix needs to grow beyond the immediate symptom, the proposal flags exactly why and waits for approval.
+- **Files updated this session:** `Dcos/phase2-working-rules.md` (lines 17 + 93), `Dcos/phase2-kickoff-context-primer.md` (line 82), `docs/CLAUDE_CODE_WORKING_RULES.md` (lines 17 + 93), `docs/CLAUDE_CODE_CONTEXT_PRIMER.md` (line 82), and the resume-prompt blockquote in this file at line 348. Historical references to "smallest safe change" inside BF-02's description (D-01 section, ~line 804) were left untouched — that wording describes the actual reasoning at the time of the fix and is part of the audit trail.
+- **Status:** Resolved. Active rule going forward.
 
 ### D-02: Webhook safety-net strategy — RESOLVED
 - **Resolution 2026-05-02:** Webhook is already configured and active. Shrikanth verified by live subscription-payment test: `verify-payment` fired and activated correctly. No setup work needed.
@@ -222,11 +253,47 @@
 - **Sprint slot:** Sprint 2 milestone, blocking branch 2 launch.
 - **Status:** Queued.
 
-### MF-05: Customer-cancel cross-screen invalidation — apply BF-09 helper to useCancelOrder
-- **Why captured:** BF-09 fixed admin- and driver-side mutations to invalidate every order-related query cache via the new `src/api/invalidateOrderQueries.ts` helper. The customer-initiated cancel path (`useCancelOrder` in `src/hooks/useOrders.ts`) has the same partial-invalidation pattern in the opposite direction: when a customer cancels their own order, an admin viewing the same order in `AdminOrderDetailScreen` or `AdminOrdersScreen` (or a driver who had it on their list) won't see the cancellation until they navigate away and back. Same root cause as BF-09; same one-line fix (replace whatever partial invalidations the hook has with a single `invalidateOrderQueries(queryClient)` call).
-- **Why not folded into BF-09:** the original BF-09 user report was specifically about admin/driver flows. Keeping that commit narrow per smallest-safe-change rule.
-- **Surface:** `useCancelOrder` hook. One-line change in its `onSuccess` (plus an import) once the BF-09 helper is in place.
-- **Status:** Queued. Trivial follow-up; safe to ship at any time.
+### MF-05: Customer-cancel cross-screen invalidation — SHIPPED 2026-05-04
+- **Commit:** `953e9c9` on `main`. Pushed to GitHub 2026-05-04. Stats: 2 files changed, +14 / −8 lines.
+- **What shipped (Option 2 — foundation-correct, not minimum-diff):**
+  - `src/hooks/useOrders.ts` — `useCancelOrder` converted from `useSupabaseMutation` (key-list invalidation) to raw `useMutation` mirroring BF-09 family (`useUpdateOrderStatus`, `useAdminCancelOrder`). `onSuccess` now calls `invalidateOrderQueries(queryClient)` plus separate `WALLET` invalidation. Future order-fetching screens get picked up automatically by the helper — no per-hook drift.
+  - `src/screens/customer/OrderDetailScreen.tsx` lines 89–90 — pre-existing latent access-path bug closed: `(result as any)?.data?.X` → `(result as any)?.X` for both `wallet_refunded` and `razorpay_refund_due`. The synthetic envelope was already being unwrapped by `useSupabaseMutation`, so `result.data.X` was already `undefined` and the post-cancel alert had been silently falling back to local estimates.
+- **Why Option 2 over the smallest-diff path:** First fix landed under D-06. The minimum-diff option (append missing keys to the `useSupabaseMutation` array) would have left the same drift foot-gun BF-09 was created to eliminate, and would not have fixed the latent screen-side bug we caught while reading the actual file. Option 2 is two foundation-correct one-line edits in two files.
+- **Same-device verification (simulator, 2026-05-04 evening):**
+  - Razorpay-paid order #340 cancel → alert shows `₹115.5 Razorpay refund will be processed within 5–7 business days` (server-confirmed `razorpay_refund_due`).
+  - Wallet-paid order #341 cancel → alert shows `₹99.75 has been returned to your wallet` (server-confirmed `wallet_refunded`).
+  - Order-detail screen post-cancel updates correctly via local `refetch()`.
+- **Cross-device verification — DEFERRED to 2026-05-05 morning.** The primary MF-05 win (Admin 777 / Staff 666 watching the same order on a second device, auto-flipping to Cancelled within ~2s without manual refresh) requires the build on a real device, gated by tonight's Play Store push. Confidence is high regardless because the helper is the same `invalidateOrderQueries` that BF-09 already verified for the admin/driver direction; this commit just extends it to the third caller.
+- **Discovered during testing — separate finding logged as BF-13:** wallet-paid order *placement* shows no order-confirmation message. NOT in MF-05 scope — different flow (place-order, not cancel-order). Queued for next.
+
+### MF-06: Staging Supabase project — pre-launch foundation (queued post-V-06)
+- **Why captured:** Today every SQL migration, RLS change, and Edge Function deploy goes straight to prod. The app is tester-only with no real customer data, so the immediate corruption risk is contained, but the "ship → watch → roll back" loop is the only safety net. A staging project mirroring prod schema lets us verify changes before promotion. Sprint 2 items like "carefully enable RLS in production" become "test on staging Friday, ship Monday" instead of "deploy and watch."
+- **Shape:** Second Supabase project (free tier OK). Schema + RLS policies + a few seed personas, no real data needed. All SQL files in `supabase/sql/` applied to staging first in `DEPLOY_SQL_ORDER.md` sequence. Two `.env` files; one toggle in the app. Edge Functions deploy to staging first, prod second. Half-day setup + ongoing maintenance discipline (every new migration applied to both, in order).
+- **Win:** Confidence layer that lets us run faster *and* sleep better — D-06 / D-07 perfection work especially benefits because every fine-tune lands on staging first.
+- **Status:** Queued — post-V-06.
+
+### MF-08: Production-only tables / RPCs not tracked in repo SQL — source-of-truth audit (queued post-V-06)
+- **Why captured:** During BF-14 / BF-15 / BF-17 (2026-05-04) we hit RLS gaps on `supply_catalog` and `staff_order_requests` that we couldn't audit from the repo because those tables (plus `supply_order_items`, `supply_batches`) aren't defined in any `.sql` file in `supabase/sql/`. They live only in the auto-generated `src/types/database.types.ts`. Same root pattern as BF-04's missing `orders.delivery_address_id` FK — production DB has shape that the repo's bootstrap script can't reproduce. A fresh DB rebuild from `supabase/sql/` would not produce these tables at all.
+- **Scope of audit:**
+  - List every table referenced from `database.types.ts` that has no corresponding `CREATE TABLE` in `supabase/sql/`.
+  - List every RPC referenced from app code (`supabase.rpc(...)`) that has no corresponding `CREATE OR REPLACE FUNCTION` in `supabase/sql/`. (Already known: `complete_onboarding_atomic`, possibly others.)
+  - For each: write a tracked SQL file recreating its schema + RLS, idempotent, runnable in DEPLOY_SQL_ORDER.md sequence.
+  - Re-run `supabase gen types typescript` to regenerate `database.types.ts` so the auto-cast `as never` workarounds (BF-17, useCompleteOnboarding) can be removed.
+- **Companion task #15** (regenerate types) is the smallest piece of MF-08 — captures whatever's in production into the type system. The full MF-08 audit captures the SQL into the repo.
+- **Status:** Queued post-V-06. Not blocking launch (production works), but blocking durable repo correctness.
+
+### MF-07: Automated test coverage + pre-push gate (queued post-V-06)
+- **Why captured:** Jest (jest-expo preset) is configured with 9 test files in `src/__tests__/`, but tests don't gate commits. Today's safety net is verify-before-commit run manually by Shrikanth. Works at this pace; doesn't scale post-launch when commits land more frequently or more than one Claude session is active in a day.
+- **Shape:** Measure current coverage. Backfill targeted tests for highest-risk layers first — Edge Functions (`cancel-order`, `place-order`, `verify-payment`, `confirm-order`), the RPCs they call (`increment_wallet_balance`, `complete_onboarding_atomic`, `elevate_to_staff`, `auth_user_id_by_phone`), hook business logic (`useCancelOrder`, `useUpdateOrderStatus`, `useAdminCancelOrder`, subscription hooks). Add pre-push git hook (or CI equivalent) that fails the push if Jest fails.
+- **Status:** Queued — post-V-06.
+
+---
+
+## Fine-tune backlog (FT)
+
+> Per-flow perfection-review findings (per D-07 mode 3). Each item: which flow, what's not perfect, proposed fix shape, status. Items are surfaced during deliberate per-flow reviews and land via the standard proposal → approval → code → verify → commit gate.
+
+*(empty — population begins after V-06 passes)*
 
 ---
 
@@ -345,11 +412,68 @@ Twelve-bug streak. BF-04 through BF-12 all shipped and pushed. Working tree clea
 
 **To resume in the morning, paste this to a fresh Claude Code session:**
 
-> I'm resuming work on the 1stOne F1 app. Yesterday (2026-05-03) was a long bug-fix day — twelve fixes shipped (BF-04 through BF-12, with BF-07 superseded by BF-08 mid-session). Working tree is clean, latest commit `ab84151` (or whatever the day-end-checkpoint commit is — check `git log -1`). Read `docs/DECISIONS.md` to see the full state — specifically the "Day-end checkpoint — 2026-05-03 evening" entry which lists exactly what shipped, the live data state on Supabase, the persona roster, and today's prioritized plan. Start with item 1 (MF-05 customer-cancel invalidation), then V-04 + V-01 live tests, then phone format unification, then doc/SQL clean-ups. Afternoon is V-06 — the end-to-end order-flow regression test that's the launch go/no-go. Same working rules as before: structured proposal first, smallest safe change wins, plain English, push back when unsafe.
+> I'm resuming work on the 1stOne F1 app. Yesterday (2026-05-03) was a long bug-fix day — twelve fixes shipped (BF-04 through BF-12, with BF-07 superseded by BF-08 mid-session). Working tree is clean, latest commit `ab84151` (or whatever the day-end-checkpoint commit is — check `git log -1`). Read `docs/DECISIONS.md` to see the full state — specifically the "Day-end checkpoint — 2026-05-03 evening" entry which lists exactly what shipped, the live data state on Supabase, the persona roster, and today's prioritized plan. Start with item 1 (MF-05 customer-cancel invalidation), then V-04 + V-01 live tests, then phone format unification, then doc/SQL clean-ups. Afternoon is V-06 — the end-to-end order-flow regression test that's the launch go/no-go. Same working rules as before: structured proposal first, **best fix for long-term stability wins** (D-06, 2026-05-04 — replaces the old "smallest safe change wins"), plain English, push back when unsafe.
 
 ---
 
 ## Bug fix backlog
+
+### BF-18: Login + OTP unified into one screen with progressive disclosure — SHIPPED 2026-05-04
+- **Commit:** `716e0e0` on `main`. Pushed 2026-05-04. Stats: 3 files changed, +328 / −423 (net −95).
+- **What:** Replaced the LoginScreen → OTPScreen two-screen auth entry with a single LoginScreen that owns an internal phase machine (`'phone' | 'otp'`). Phone reaches 10 valid digits → auto-send OTP → screen morphs in place: 10-dot phone area becomes 6-dot OTP area, title changes "Enter mobile" → "Enter OTP", subtitle shows the entered phone with an inline `Change phone ›` link, mint "LOGIN | REGISTER" text (no boxed button) becomes the manual verify action. Resend OTP after 30s countdown.
+- **Why:** Shrikanth's "first version fault" framing — having a separate OTP page felt redundant. Modern auth UX is progressive disclosure on one screen. The custom NumberKeypad style is preserved on both phases. Spec-driven specifics: no submit button on phone phase (auto-send replaces it), manual tap on OTP phase (auto-verify-on-6-digits removed for mistake tolerance), boxed button replaced with plain centered mint text.
+- **Files:**
+  - **Rewrite:** `src/screens/auth/LoginScreen.tsx` — adds the phase machine, pulls in OTP verification + resend countdown logic from OTPScreen, removes the boxed action button (kept as plain mint text), removes auto-verify behavior, adds Change-phone affordance.
+  - **Delete:** `src/screens/auth/OTPScreen.tsx` — captured via `git rm`. Routing logic preserved (existing user → Home via session, new user → OnboardingScreen via `onNewUser(phone)`).
+  - **Modify:** `src/navigation/RootNavigator.tsx` — `AuthStep` type `'phone' | 'otp' | 'name'` → `'login' | 'name'`. LoginScreen no longer needs phone routed to it externally; LoginScreen owns its own phone+OTP state and emits `onExistingUser` / `onNewUser(phone)`.
+- **Out of scope (explicit):** OTP autofill from SMS. iOS's autofill (`textContentType="oneTimeCode"`) requires the system keyboard, which conflicts with the custom NumberKeypad. Shrikanth wanted to preserve the keypad. Manual OTP entry stays on both platforms. Future paths if customers ask for autofill: (a) Android SMS Retriever via `react-native-otp-verify` library — works alongside the custom keypad on Android; iOS would still be manual; (b) clipboard-paste convenience link — works cross-platform but requires user to copy from SMS first. Both are independent additions; neither requires touching BF-18's unified screen.
+- **Verified end-to-end on simulator:**
+  - Phone-to-OTP auto-send (10th digit fires send, dots morph 10 → 6, title and subtitle update).
+  - Manual verify (tap LOGIN | REGISTER on 6-digit OTP routes correctly).
+  - Change phone returns to phone phase preserving digits (typo correction without re-entry).
+  - Resend OTP with 30s countdown.
+  - Wrong OTP shows error and clears for retry.
+  - Existing user routes to Home; new user routes to OnboardingScreen.
+- **Real-device verification (queued for 2026-05-05 morning post Play Store push):** confirms behavior on actual Android + iOS devices, especially the auto-send timing and keyboard / dot rendering at real device sizes.
+
+### BF-17: Stock Manager simplification (Solution D) — SHIPPED 2026-05-04
+- **Commit:** `0fda489` on `main`. Pushed 2026-05-04. Stats: 2 files changed, +168 / −332 (net −164).
+- **What:** Replaced the 3-tab Pending → Approve → Active model with a 2-tab unified view (Current Order + History). Dropped explicit Approve/Reject workflow; staff submissions auto-mirror into supply_order_items via a server-side trigger; admin's Add Item adopts staff-style UX (no qty input — pick adds with qty=1, adjust ± inline). Print became per-category (each section header has its own Print › link) plus a Print All footer for whole-list prints.
+- **Why:** The 3-tab structure forced admin (the approver) to also be a contributor in a separate flow, and the BF-16 attempt to bridge them via a "append-or-create Pending request" RPC was UX-awkward. Shrikanth's "first version fault" framing led to Solution D: collapse the data model in the UI, treat admin's edit-in-place AS the approval, finalize via Print.
+- **Server-side:** new file `supabase/sql/staff_order_requests_mirror_trigger.sql` containing two functions + one trigger:
+  - `add_or_merge_supply_order_item(name, qty, category, request_id, added_by, branch_id)` — shared merge RPC. Looks for an existing active row matching `(category, lower(trim(name)), branch_id)` with `batch_id IS NULL`; if found, increments qty; otherwise inserts. Single source of truth for merge semantics, used by both the trigger and the admin add hook.
+  - `mirror_staff_request_to_supply_items()` — AFTER INSERT trigger function on `staff_order_requests`. Iterates over `NEW.items`, calls the merge RPC for each, then updates the row's status to 'Approved'. AFTER (not BEFORE) so the FK constraint `supply_order_items.request_id → staff_order_requests(id)` validates against the now-committed row.
+  - `staff_order_requests_mirror` — the trigger binding.
+- **Backfill:** the SQL file's first deploy included a one-time migration that mirrored existing Pending rows into supply_order_items and flipped their status to Approved. (User had 4 Pending rows pre-deploy; all migrated cleanly.)
+- **Client-side:** `src/hooks/useStockManager.ts` — dropped `usePendingSupplyRequests` and `useReviewSupplyRequest` (their explicit-approve workflow is gone); `useAdminAddOrderItem` rewritten to call the merge RPC. `src/screens/admin/StockManagerScreen.tsx` — dropped the entire `RequestsTab` component, dropped `catColor` helper, simplified `StockTab` type to `'Current Order' | 'History'`, restructured `AddItemForm` (removed qty input, suggestion taps add with qty=1 directly), added per-category Print › link in section headers, kept Print All in footer for global print convenience. Empty-state copy updated.
+- **Risk:** Touches a real data flow (staff → admin) plus user-facing UI. Verified incrementally on simulator: supply_catalog autocomplete (BF-14), staff submission (BF-15), unified Current Order display, fresh-submission live mirror, per-category and Print All flows, merge-by-name on duplicate adds.
+- **Trail of detours:** BF-16 attempted Solution A (admin add appends to Pending request via RPC) — scrapped mid-implementation when Shrikanth requested architectural simplification. The BF-16 RPC SQL file was never deployed (schema cache error confirmed); the file remains in repo as a tombstone awaiting `git rm` in this commit. First BF-17 trigger attempt used BEFORE INSERT, hit FK violation on supply_order_items.request_id → staff_order_requests(id) — fixed by switching to AFTER INSERT and using UPDATE for status flip instead of `NEW.status :=`. Admin's same-name duplicate-row issue surfaced post-trigger — fixed by extracting the shared merge RPC.
+- **Discovered during work — separate finding logged:** `supply_catalog`, `staff_order_requests`, `supply_order_items`, `supply_batches` tables exist only in `src/types/database.types.ts` (auto-generated). No `CREATE TABLE` for any of them in `supabase/sql/`. Foundation gap; logged as MF-08 below.
+
+### BF-15: staff_order_requests RLS — INSERT/SELECT policies for staff — SHIPPED 2026-05-04
+- **Symptom:** After BF-14 unblocked supply_catalog reads, staff could see catalog items and build a line-item list, but the Submit step failed with `new row violates row-level security policy for table "staff_order_requests"`. Same root cause class as BF-14 — admin-only ALL policy with no staff-permissive INSERT policy.
+- **Fix:** New file `supabase/sql/add_staff_order_requests_policies.sql`. Two scoped policies:
+  - `staff_order_requests_self_insert` — `WITH CHECK (submitted_by = auth.uid() AND public.is_staff_or_admin())`. Staff can only submit their own request rows; customers blocked entirely.
+  - `staff_order_requests_self_read` — `USING (submitted_by = auth.uid() OR public.is_admin())`. Staff sees only their own requests; admin sees all (admin's existing ALL-permissive policy ORs with this).
+- **Verified live** by repeating staff submission — succeeded with the alert "Vegetables order sent to admin for approval." Logged at the time before BF-17's trigger landed.
+
+### BF-14: supply_catalog read RLS — staff autocomplete returns empty — SHIPPED 2026-05-04
+- **Symptom:** In staff-side stock ordering modal (Vegetables / Grocery / Stationery), typing the first letter of an item name returned no autocomplete suggestions. Same input + query path as admin Stock Manager Add Item (which worked correctly).
+- **Investigation:** Code on both sides was functionally identical — same `useSupplyCatalog(category)` hook, same `.from('supply_catalog').eq('category', category).eq('is_active', true)` query, same client-side filter. Bug was in the data layer, not React.
+- **Root cause:** `supply_catalog` had a single RLS policy `supply_catalog_admin` covering ALL operations gated behind `is_admin()`. Staff JWT failed the check, query returned silently empty.
+- **Fix:** New file `supabase/sql/add_supply_catalog_staff_read_policy.sql`. Adds a SELECT-only policy `supply_catalog_staff_read` permitting `is_staff_or_admin()`. Customers don't need this table — that scope is correct.
+- **Verified live** — staff modal autocomplete populated correctly post-fix (Carrot, Beans, Beetroot etc. selectable).
+- **Companion finding:** the `supply_catalog` table itself isn't in any `.sql` file in the repo. See MF-08.
+
+### BF-13: Wallet-paid order placement missing confirmation alert — SHIPPED 2026-05-04
+- **Commit:** `5df6c2c` on `main`. Pushed 2026-05-04. Stats: 1 file changed, +5 / −0 lines.
+- **Symptom:** When customer 555 placed an order via wallet payment, no order-confirmation alert appeared after successful checkout. Razorpay-paid orders DO show a confirmation correctly.
+- **Surfaced during:** MF-05 testing 2026-05-04 evening on simulator. Customer placed orders via both payment methods to set up cancel testing; only the Razorpay path showed a confirmation; the wallet path silently completed.
+- **Root cause (file + line + cause):** `src/screens/customer/CheckoutScreen.tsx` lines 361–374. The success-alert conditional had three branches wired (`razorpay+plans`, `razorpay+regular`, `wallet+plans`) but no terminal `else` for the most common case: **wallet + regular order** (no subscription plan). Customer paid, order went through, navigation popped back to Home with no feedback.
+- **Fix (foundation-correct, right layer):** Added the missing `else` branch with "Order Placed!" / "You can track your order in the Orders tab." copy. Three existing branches untouched — no restructuring, no rewording. Wallet payments deliberately skip the "Payment received." prefix used by Razorpay paths because the wallet UI already shows the deduction in real-time.
+- **Verification on simulator:** Wallet-paid food order showed correct alert. Three regression spot-checks (wallet+plan, razorpay+regular, razorpay+plan) all unchanged.
+- **Risk:** Zero. UI-only change. No DB / Edge Function / payment / auth / sync impact.
+- **Discovery → ship in same session.** Demonstrated the speedup pattern: investigation in Cowork (file + line + cause identified before any CC turn), single CC round-trip to apply + show diff, simulator test, commit. ~12 minutes end-to-end vs. typical 25-30 with full proposal-review cycle.
 
 ### Day-end checkpoint — 2026-05-02 evening
 

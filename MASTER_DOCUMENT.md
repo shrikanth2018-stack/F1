@@ -336,9 +336,21 @@ This is the complete list of external services and software libraries the projec
 
 These are non-obvious facts that future developers, ops teams, or you-in-six-months should know.
 
-### 9.1 Phone Numbers Use E.164 Format Internally
+### 9.1 Phone Numbers — Canonical Format
 
-All phone numbers in the system are stored as +91XXXXXXXXXX (the international E.164 format). The login and registration flows accept 10-digit Indian numbers and normalize them to this format before sending to Supabase. Any external system that integrates with the database (analytics dashboards, CRM imports) must use the same format or users won't be found.
+**Canonical format throughout Supabase (DB and Auth):** `91XXXXXXXXXX` — 12 digits, no `+` prefix.
+
+- **DB storage:** Both `auth.users.phone` (Supabase-managed) and `profiles.phone_number` (app-managed) store this form.
+- **Supabase Auth Dashboard** (admin "Add user" form): also accepts only this form. `+91XXX` is rejected by the dashboard.
+- **Empirical confirmation:** verified by Shrikanth via direct dashboard entry and live DB inspection 2026-05-04.
+
+**App-side quirk — `normalizePhone()`:** `src/utils/validators.ts` line 23 currently produces `+91XXXXXXXXXX` (with `+`) before passing to `supabase.auth.signInWithOtp({ phone })`. Supabase's JS SDK is tolerant of the `+` — it strips the prefix before storage and login works fine — so this is benign in production. But the `+` is inconsistent with the canonical form used everywhere else in the system. A future FT cleanup may simplify `normalizePhone()` to produce `91XXXXXXXXXX` directly so app code matches the platform's canonical form.
+
+**Display format (UI):** `+91 XXXXX XXXXX` — produced by `formatPhone()` in `src/utils/formatters.ts`. Cosmetic only; never written to DB or Auth.
+
+**Implication for DB lookups:** any code that queries `profiles.phone_number` must use the 12-digit no-`+` form (e.g., `` `91${tenDigitInput}` ``). Today's lookup sites: `OnboardEmployeeScreen.tsx:330` and `PhonePicker.tsx:69` — both fixed during BF-05a/c.
+
+**Implication for external integrations:** analytics dashboards, CRM imports, ops queries, etc. must use `91XXXXXXXXXX` (no `+`) when matching by phone.
 
 ### 9.2 The Custom Access Token Hook is Critical to Login
 

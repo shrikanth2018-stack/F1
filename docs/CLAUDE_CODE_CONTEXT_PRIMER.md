@@ -79,7 +79,7 @@ Some of these can be verified by reading code (V-01, V-02). Others require live 
 - Translate technical terms the first time they appear in a response.
 - For change requests: produce the structured response (Understanding → Root cause → Impact check → Approach → Rollback → Approval gate) before writing code.
 - For questions, status checks, clarifications: just answer.
-- Smallest safe change wins. Preserve existing behavior unless explicitly approved otherwise.
+- Best fix for long-term stability wins — right-sized for the problem and the foundation, not minimum-diff. Preserve existing behavior unless explicitly approved otherwise.
 - Push back if my requested change is unsafe or misguided — don't just comply.
 
 ## What to do right now
