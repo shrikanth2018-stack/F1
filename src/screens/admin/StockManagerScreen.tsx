@@ -623,55 +623,6 @@ const styles = StyleSheet.create({
     fontSize: B,
   },
 
-  // Request cards
-  requestCard: {
-    marginHorizontal: Theme.spacing.md,
-    marginBottom: Theme.spacing.sm,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Theme.colors.layout.divider,
-    borderRadius: 8,
-    padding: Theme.spacing.sm,
-  },
-  requestHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Theme.spacing.sm,
-    marginBottom: Theme.spacing.xs,
-  },
-  catBadge: {
-    paddingHorizontal: Theme.spacing.sm,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  catBadgeText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: Theme.colors.text.primary,
-  },
-  requestItemRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 4,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.layout.divider,
-  },
-  requestActions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: Theme.spacing.sm,
-    marginTop: Theme.spacing.sm,
-  },
-  actionBtn: {
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.xs,
-    borderRadius: 6,
-    borderWidth: 1,
-  },
-  rejectBtn: { borderColor: Theme.colors.status.error },
-  approveBtn: { borderColor: Theme.colors.status.success },
-  actionBtnText: { fontSize: 14, fontWeight: '500' },
-  reqDate: { marginTop: 4, textAlign: 'right' },
-
   // Order list items
   orderItemRow: {
     flexDirection: 'row',
@@ -738,12 +689,7 @@ const styles = StyleSheet.create({
     fontSize: B,
     marginBottom: Theme.spacing.sm,
   },
-  addNameQtyRow: {
-    flexDirection: 'row',
-    gap: Theme.spacing.sm,
-  },
   addNameInput: { flex: 1 },
-  addQtyInput: { width: 64 },
   suggestions: {
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: Theme.colors.layout.divider,
@@ -760,10 +706,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: Theme.colors.layout.divider,
   },
-  addFormBtns: { flexDirection: 'row', justifyContent: 'flex-end', gap: Theme.spacing.md },
-  addCancelBtn: { padding: Theme.spacing.xs },
-  addSaveBtn: { padding: Theme.spacing.xs },
-
   // Footer
   footer: {
     flexDirection: 'row',

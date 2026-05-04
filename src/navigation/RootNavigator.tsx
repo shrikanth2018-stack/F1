@@ -59,10 +59,6 @@ export function RootNavigator() {
   usePushNotifications();
   const [step, setStep] = useState<AuthStep>('login');
   const [pendingPhone, setPendingPhone] = useState('');
-  const [, setPendingName] = useState('');
-  const [, setIsNewUser] = useState(false);
-  /** True after new-user OTP verify — show address screen before the app */
-  const [needsOnboarding, setNeedsOnboarding] = useState(false);
   /** Referral code carried in from a deep link (1stone://referral?code=XXX) */
   const [pendingReferralCode, setPendingReferralCode] = useState<string | null>(null);
   /** Ensures auto-apply fires once per pending code, not on every session refresh */
@@ -95,9 +91,6 @@ export function RootNavigator() {
     if (!session && !isLoading) {
       setStep('login');
       setPendingPhone('');
-      setPendingName('');
-      setIsNewUser(false);
-      setNeedsOnboarding(false);
       referralAppliedRef.current = null;
     }
   }, [session, isLoading]);
@@ -126,8 +119,7 @@ export function RootNavigator() {
         phone={pendingPhone}
         onComplete={() => {
           // Atomic save already wrote profile + first address.
-          // Clear the step and onboarding flags; the session-driven
-          // render below takes over from here.
+          // Clear the step; the session-driven render below takes over.
           //
           // setStep('login') is a sentinel — 'login' is the default
           // state for "show LoginScreen if no session." Session is
@@ -135,7 +127,6 @@ export function RootNavigator() {
           // down wins and renders the role navigator. The 'login'
           // value is never observed visually.
           setStep('login');
-          setNeedsOnboarding(false);
         }}
         // Session is already live here — the only safe back is to sign out and restart.
         onBack={() => signOut()}
@@ -171,7 +162,6 @@ export function RootNavigator() {
       }}
       onNewUser={(phone) => {
         setPendingPhone(phone);
-        setIsNewUser(true);
         setStep('name');
       }}
     />

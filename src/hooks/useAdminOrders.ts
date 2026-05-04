@@ -83,47 +83,6 @@ async function firePush(orderId: number, status: string, userId: string) {
   }).catch((e) => console.error('[push admin]', e));
 }
 
-/** Admin: update any order's status */
-export function useAdminUpdateOrder() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async ({
-      orderId,
-      status,
-      notes,
-      userId,
-    }: {
-      orderId: number;
-      status: OrderStatus;
-      notes?: string;
-      userId?: string;
-    }) => {
-      const update: Record<string, unknown> = {
-        status,
-        updated_at: new Date().toISOString(),
-      };
-      if (notes !== undefined) update.notes = notes;
-
-      const { error } = await supabase
-        .from('orders')
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .update(update as any)
-        .eq('id', orderId);
-
-      if (error) throw error;
-
-      if (userId) firePush(orderId, status, userId);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.ORDERS });
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.STAFF_ORDERS });
-      queryClient.invalidateQueries({ queryKey: ['admin_orders'] });
-      queryClient.invalidateQueries({ queryKey: ['admin_stats'] });
-    },
-  });
-}
-
 /** Admin: cancel order + refund wallet_amount_used if any */
 export function useAdminCancelOrder() {
   const queryClient = useQueryClient();

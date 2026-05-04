@@ -62,3 +62,10 @@ generate_*.js
 APP_REVIEW.*
 TECHNICAL_AUDIT.*
 Old Audits/
+
+# Local-only docs / scratchpads (kept out of git per cleanup batch 2026-05-04)
+# PHASE1 audit outputs are historical context — useful locally, no need in repo.
+PHASE1_*.md
+# Dcos/ holds duplicate / scratchpad copies of canonical docs that already
+# live in /docs/ and /MASTER_DOCUMENT.md. Avoiding the drift surface.
+Dcos/
