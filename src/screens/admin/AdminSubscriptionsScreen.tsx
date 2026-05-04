@@ -24,31 +24,16 @@ import { EmptyState } from '../../components/EmptyState';
 import { ErrorRetry } from '../../components/ErrorRetry';
 import { useAdminSubscriptions, useAdminCancelSubscription } from '../../hooks/useSubscriptions';
 import { useStoreConfig } from '../../hooks/useStoreConfig';
-import { supabase } from '../../api/supabaseClient';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { QUERY_KEYS } from '../../utils/constants';
 import { formatDateShort } from '../../utils/formatters';
 
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
 
-function useWalletRefund() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ userId, amount, subId }: { userId: string; amount: number; subId: number }) => {
-      if (amount <= 0) return;
-      const { error } = await supabase.rpc('increment_wallet_balance', {
-        p_user_id: userId,
-        p_amount: amount,
-        p_description: `Prorated refund — subscription #${subId} cancelled by admin`,
-      });
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.WALLET });
-    },
-  });
-}
+// BF-20 (D-03b, 2026-05-04): the previous local useWalletRefund mini-hook
+// (which separately invoked increment_wallet_balance after deactivation)
+// was retired. The atomic admin_cancel_subscription_atomic RPC now does
+// deactivate + wallet credit in one Postgres transaction. See
+// useAdminCancelSubscription in useSubscriptions.ts.
 
 interface CancelTarget {
   id: number;
@@ -63,7 +48,6 @@ interface CancelTarget {
 export function AdminSubscriptionsScreen({ navigation }: any) {
   const { data: subs, isLoading, error, refetch } = useAdminSubscriptions();
   const { mutateAsync: cancelSub } = useAdminCancelSubscription();
-  const { mutateAsync: refundWallet } = useWalletRefund();
   const { data: storeConfig } = useStoreConfig();
 
   const [target, setTarget] = useState<CancelTarget | null>(null);
@@ -109,10 +93,9 @@ export function AdminSubscriptionsScreen({ navigation }: any) {
     const refundAmount = Number(refundStr) || 0;
     setIsSaving(true);
     try {
-      await cancelSub({ subscriptionId: target.id });
-      if (refundAmount > 0) {
-        await refundWallet({ userId: target.user_id, amount: refundAmount, subId: target.id });
-      }
+      // BF-20: single atomic call. Deactivates + credits wallet in one
+      // Postgres transaction. If refundAmount = 0, just deactivates.
+      await cancelSub({ subscriptionId: target.id, refundAmount });
       setTarget(null);
       Alert.alert(
         'Subscription Cancelled',
@@ -125,7 +108,7 @@ export function AdminSubscriptionsScreen({ navigation }: any) {
     } finally {
       setIsSaving(false);
     }
-  }, [target, refundStr, cancelSub, refundWallet]);
+  }, [target, refundStr, cancelSub]);
 
   if (error) return <ErrorRetry message="Could not load subscriptions" onRetry={refetch} />;
 

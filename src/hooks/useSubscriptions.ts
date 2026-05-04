@@ -142,7 +142,12 @@ export function useAdminSubscriptions() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('user_subscriptions')
-        .select('*, subscription_plans(plan_name, duration_days, plan_type), profiles!user_subscriptions_user_id_fkey(full_name, phone_number)')
+        // BF-21 (2026-05-04): include price in the subscription_plans join.
+        // Without it, plan.price was undefined and the proration formula
+        // computed ₹0 for every cancellation. Pre-existing query gap that
+        // shipped silently from before BF-21 — the new all-inclusive
+        // proration formula needs price to produce a non-zero refund.
+        .select('*, subscription_plans(plan_name, duration_days, plan_type, price), profiles!user_subscriptions_user_id_fkey(full_name, phone_number)')
         .eq('is_active', true)
         .order('created_at', { ascending: false });
       if (error) throw error;
@@ -151,19 +156,42 @@ export function useAdminSubscriptions() {
   });
 }
 
+/**
+ * BF-20 (D-03b, 2026-05-04): atomic cancel + refund.
+ *
+ * Calls the admin_cancel_subscription_atomic RPC which deactivates the
+ * subscription and credits the wallet (if refund > 0) in a single
+ * Postgres transaction. Replaces the previous two-step client-side
+ * flow that risked "cancelled but not refunded" if the network failed
+ * between the two ops.
+ *
+ * If refundAmount = 0, the subscription is just deactivated (the
+ * wallet credit step is a no-op inside the RPC).
+ */
 export function useAdminCancelSubscription() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ subscriptionId }: { subscriptionId: number }) => {
-      const { error } = await supabase
-        .from('user_subscriptions')
-        .update({ is_active: false, is_paused: false, updated_at: new Date().toISOString() })
-        .eq('id', subscriptionId);
-      if (error) throw error;
+    mutationFn: async ({
+      subscriptionId,
+      refundAmount,
+    }: {
+      subscriptionId: number;
+      refundAmount: number;
+    }) => {
+      // RPC name cast: database.types.ts is auto-generated and won't
+      // know about this RPC until regenerated (task #15, post-launch FT).
+      // Same pattern as useStockManager.useAdminAddOrderItem and
+      // useCompleteOnboarding.
+      const { error } = await supabase.rpc('admin_cancel_subscription_atomic' as never, {
+        p_subscription_id: subscriptionId,
+        p_refund_amount:   refundAmount,
+      } as never);
+      if (error) throw new Error(error.message);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin_subscriptions'] });
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.SUBSCRIPTIONS });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.WALLET });
     },
   });
 }
