@@ -41,20 +41,26 @@ After step 4, toggle the hook in the dashboard:
 ## 2. Edge Functions — deploy from repo root
 
 ```bash
-supabase functions deploy place-order    --no-verify-jwt
-supabase functions deploy verify-payment --no-verify-jwt
-supabase functions deploy wallet-topup   --no-verify-jwt
-supabase functions deploy subscribe      --no-verify-jwt
-supabase functions deploy apply-referral --no-verify-jwt
-supabase functions deploy send-push      --no-verify-jwt
+supabase functions deploy place-order              --no-verify-jwt
+supabase functions deploy verify-payment           --no-verify-jwt
+supabase functions deploy wallet-topup             --no-verify-jwt
+supabase functions deploy apply-referral           --no-verify-jwt
+supabase functions deploy send-push                --no-verify-jwt
+supabase functions deploy cancel-order             --no-verify-jwt
+supabase functions deploy confirm-order            --no-verify-jwt
+supabase functions deploy confirm-topup            --no-verify-jwt
+supabase functions deploy dormant-user-check       --no-verify-jwt
+supabase functions deploy elevate-employee         --no-verify-jwt
+supabase functions deploy low-wallet-check         --no-verify-jwt
+supabase functions deploy subscription-expiry-push --no-verify-jwt
 ```
 
 Environment variables (Supabase Dashboard → Edge Functions → Secrets):
 
 | Key                      | Required by                    |
 |--------------------------|--------------------------------|
-| `RAZORPAY_KEY_ID`        | place-order, wallet-topup, subscribe |
-| `RAZORPAY_KEY_SECRET`    | place-order, wallet-topup, subscribe |
+| `RAZORPAY_KEY_ID`        | place-order, wallet-topup |
+| `RAZORPAY_KEY_SECRET`    | place-order, wallet-topup |
 | `RAZORPAY_WEBHOOK_SECRET`| verify-payment (HMAC signature) |
 
 `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are injected automatically.
@@ -67,23 +73,22 @@ Razorpay dashboard → Webhooks → Add:
 - Events: `payment.captured`, `payment.failed`, `order.paid`
 - Secret: same value as `RAZORPAY_WEBHOOK_SECRET`
 
-## 4. RLS — **run at launch, NOT before**
+## 4. RLS — currently active
 
 ```
-supabase/rls_policies.sql
+supabase/sql/rls_policies.sql
 ```
 
-RLS is intentionally OFF during development. When closing for launch:
+RLS is **enabled** on every user-facing table as of BF-04 (2026-05-03). The policy set in `rls_policies.sql` is live in dev (and will be the same in prod). Earlier versions of this runbook described RLS as deferred-to-launch; that's outdated.
 
-1. Verify every Edge Function uses the service-role key (already done).
-2. Verify every client read uses the authenticated anon key (already done).
-3. Run `rls_policies.sql` in SQL editor. This enables RLS on every user-facing
-   table and installs the policy set.
-4. Smoke-test: `customer` can see their own orders, `staff` sees the kitchen queue,
-   `admin` sees everything.
+Architecture in active use:
 
-Rollback: `ALTER TABLE <x> DISABLE ROW LEVEL SECURITY;` per table, or drop the
-policies individually. No data loss either way.
+1. Every Edge Function uses the service-role key, which bypasses RLS by design.
+2. Every client read uses the authenticated anon key — RLS policies gate access by `auth.uid()` and JWT claims (`user_role`, `assigned_hub_id`, `branch_id`).
+3. `rls_policies.sql` is idempotent (`DROP POLICY IF EXISTS ... CREATE POLICY ...`) — safe to re-run when policies need to be updated or audited.
+4. Smoke-test (any time): `customer` can see their own orders, `staff` sees the kitchen queue, `admin` sees everything, `hub_operator` (a customer with `assigned_hub_id`) can read and update orders for their assigned hub.
+
+Rollback (only if a policy is actively breaking something): `ALTER TABLE <x> DISABLE ROW LEVEL SECURITY;` per table, or drop offending policies individually. No data loss either way.
 
 ## 5. Verification queries
 
