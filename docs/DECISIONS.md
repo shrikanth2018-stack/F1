@@ -126,12 +126,12 @@
 
 ### CL-01 (original entry): Delete dead code for `subscription-cron` and `subscribe`
 
-### CL-02: Decide fate of the 23:00 IST nightly backup
-- **What:** After fixing the underlying `generate_daily_manifest` SQL function, decide whether to keep the 23:00 batch as a safety net or remove it.
-- **Why:** Both the per-minute tick and the nightly batch share the same underlying function, so any bug in the function fires twice. A safety net is valuable, but only if the underlying logic is correct. Per Shrikanth: keep for now, revisit after function is fixed.
-- **Risk:** Removing too early loses safety-net coverage for late-day subscription purchases. Keeping forever amplifies any silent failures.
-- **When:** Sprint 1 (after function is fixed) — revisit decision.
-- **Status:** Queued. Decision pending function fix.
+### CL-02: 23:00 IST nightly subscription manifest backup — RESOLVED 2026-05-04 (REMOVED)
+- **Decision (Shrikanth, 2026-05-04):** Remove the nightly cron. The per-minute `kitchen-cutoff-push-tick` reliably handles every cycle's manifest at the cycle cutoff time (Breakfast 06:00, Lunch 10:30, Snacks 14:30, Dinner 18:00 IST). Late-day subscription purchases are picked up by the *next* cycle's tick — for an overnight purchase, that's the 06:00 IST breakfast cutoff the following morning. The 23:00 IST nightly batch was redundant safety-netting on top of an already-reliable system; removing it eliminates the "any bug in `generate_daily_manifest` fires twice" risk that BF-01/BF-02 surfaced earlier.
+- **Action taken:** `SELECT cron.unschedule('generate-daily-manifest');` run in Supabase SQL Editor. Verified by `SELECT jobname, schedule, active FROM cron.job;` — returns exactly four jobs (`kitchen-cutoff-push-tick`, `dormant-user-check`, `low-wallet-check`, `subscription-expiry-push`); `generate-daily-manifest` no longer scheduled.
+- **What stays:** the SQL function `public.generate_daily_manifest()` itself remains in production — `kitchen-cutoff-push-tick` continues to call it on every cycle cutoff. We removed only the redundant scheduling, not the function.
+- **Operational note:** without the nightly backup, if `kitchen-cutoff-push-tick` ever silently fails for a stretch (cron paused, function errors out, etc.), there's no automatic recovery beyond manually re-running `generate_daily_manifest()` for affected dates. Worth periodically inspecting `manifest_run_log` for gaps. Not a reason to keep the backup — D-06 says foundation-correct beats redundant — just flagging the monitoring shift.
+- **Status:** Resolved.
 
 ### CL-03 + CL-04: COMPLETED 2026-05-02 — `confirm-order-payment` and `razorpay-webhook` Edge Functions deleted from Supabase
 - Both deleted via Supabase dashboard.
@@ -224,16 +224,14 @@
 - **Phase 1 finding:** Matches. `cancel-order` Edge Function enforces both `cancellation_window_hours` (age from order creation) and the cycle's cutoff time (cannot cancel after the kitchen has the order). Wallet portion refunded automatically via `increment_wallet_balance` RPC. Razorpay portion noted in response, manual admin action required.
 - **Status:** No discrepancy. No action needed.
 
-### MF-01: Admin staff demotion / termination — feature not built (decision needed)
-- **Verified by Shrikanth, 2026-05-03:** the admin app has no UI to demote a staff member back to customer (a.k.a. terminate / revoke staff role). The `elevate-employee` flow is one-way (customer → staff). There is no inverse path.
-- **Surface where this hits:** `profiles.role` is a text column, set to `'staff'` for elevated employees. There is no admin button to flip it back to `'customer'`, no Edge Function for it, no resource-manager screen path.
-- **Concrete blocker today:** persona "One Hub Staff" (phone `914444444444`, profile id `1cd6c6d9-481a-4cf1-817b-204e08299708`) has `role = 'staff'` with leftover designation "Hub Manager" from an earlier design iteration. Per the corrected hub-operator persona model (see BF-04's corrected "Hub operator persona" subsection), hub operators must be *customers* — so this profile needs to be demoted before being assigned as a hub operator (`profiles.assigned_hub_id`). Cannot be done in-app today.
-- **Decision needed:**
-  - **(a) Build the demote feature now** — small admin UI button + Edge Function (likely `demote-staff` matching the `elevate-employee` shape) + audit log entry. Properly closes the staff lifecycle.
-  - **(b) Defer and pick a different test customer** for the hub operator persona (e.g., phone 555… or a fresh number). Don't block the hub-operator test on this.
-  - **(c) Make a one-off backend correction** for the 444 profile outside the admin UI (manual SQL update) and queue the proper feature for later.
-- **Claude's recommendation (for Shrikanth's call):** option **(b)** for the immediate test — unblocks the hub operator verification without dragging in feature work. Then queue **(a)** as proper feature work post-test, since other staff lifecycle events (resignation, termination, role change) will need the same flow eventually. Option (c) makes the live DB diverge from the admin UI's reach, which is exactly the kind of drift this project has been actively cleaning up — better to avoid.
-- **Status:** Awaiting Shrikanth's call.
+### MF-01: Admin staff demotion / termination — RESOLVED 2026-05-04
+- **Decision (Shrikanth, 2026-05-04):** Option **(b)**. Defer the demote-feature build; for any future hub-operator persona test or similar need, pick a different test customer rather than demote a staff member. The demote feature itself remains queued **post-launch** (per D-07 scope freeze, no new features ship before launch — building `demote-staff` Edge Function + admin UI + audit log entry counts as new functionality, so it can't slip in pre-launch anyway).
+- **Resolution of the 2026-05-03 immediate blocker:** the specific 444 ("One Hub Staff") profile was already demoted via one-off SQL on 2026-05-03 (per the 2026-05-03 evening checkpoint live-data state — phone 444 demoted staff → customer, kept as hub operator via `profiles.assigned_hub_id = 19`). So the hub-operator persona test isn't blocked today.
+- **Going forward:** if a staff member needs demotion (resignation, role change, termination), the workaround is one-off SQL by an admin with DB access, until the proper feature ships post-launch. Documenting this here so the SQL pattern is discoverable: `UPDATE profiles SET role = 'customer', designation = NULL, employee_id = NULL WHERE id = '<uuid>';` (or similar — exact field reset list to be confirmed when the feature is properly built).
+- **Why option (b) over (a) — D-07 alignment:** building demote-staff now would be a new feature, blocked by the scope freeze. Option (b) is the only path consistent with D-07 until launch.
+- **Why option (b) over (c) — preference:** option (c) is what we did 2026-05-03 to unblock testing, but it's not the *general policy*. Going forward, picking a different test customer (option b) is preferred over more one-off SQL drift. Reserved test phones like 11111/22222/33333/999999 (per 2026-05-02 evening checkpoint) are available for any new persona setup.
+- **Re-opening criteria:** post-launch sprint work — when the team is ready to add new admin features, build `demote-staff` Edge Function (mirror of `elevate-employee`) + admin UI button on `EmployeeDetailScreen` + audit log entry in some `staff_role_changes` table. Estimated half-day of work when the time comes.
+- **Status:** Resolved. Decision logged. Feature queued post-launch.
 
 ### MF-02: Branch picker on OnboardEmployeeScreen — required before multi-branch launch
 - **Why captured:** the BF-06 fix lands a `bf.branchId ?? 1` fallback for staff elevation. That's correct only as long as either (a) every admin's JWT has the same `branch_id = 1` (single-branch reality today), or (b) we remain single-branch. When branch 2 ships, super-admins onboarding staff into a specific branch must pick it explicitly — the JWT no longer disambiguates.
@@ -293,7 +291,18 @@
 
 > Per-flow perfection-review findings (per D-07 mode 3). Each item: which flow, what's not perfect, proposed fix shape, status. Items are surfaced during deliberate per-flow reviews and land via the standard proposal → approval → code → verify → commit gate.
 
-*(empty — population begins after V-06 passes)*
+> Systematic per-flow population begins after V-06 passes. One-off operational captures may land before then.
+
+### FT-01: eas.json `serviceAccountKeyPath` cleanup + Play Console service account (2026-05-04)
+- **Surfaced during** 2026-05-04 internal-testing build prep (1.0.0 → 1.1.0). The `eas submit` step was skipped because the configured key path is broken; manual Play Console upload used instead.
+- **Gap:** `eas.json` `submit.production.android.serviceAccountKeyPath` points at `./google-services.json`. That filename collides with the FCM/Firebase config (mobile push) and is not the Play Console service account JSON that `eas submit` actually needs. The file at `./google-services.json` doesn't exist in the repo either way.
+- **Fix shape (when public production launch is on the horizon):**
+  1. Provision a Play Console service account JSON (Google Play Console → Setup → API access → grant Release Manager role → download JSON).
+  2. Store outside the repo (e.g., `~/.config/eas/1stone-play-store-key.json`); never commit credentials.
+  3. Update `eas.json` `serviceAccountKeyPath` to the new absolute or env-resolved path.
+  4. Test `eas submit --platform android --latest` once the path is valid.
+- **Trigger:** before the first public production submission (the D-08 launch gate). Internal-testing uploads stay manual until then.
+- **Status:** Queued.
 
 ---
 
@@ -346,14 +355,102 @@ For each Phase 1-flagged bug we plan to fix:
 
 This costs minutes per bug; saves hours of fixing things that aren't broken or breaking things that work.
 
-### V-04: New subscription generates orders at all (independent of items)
-- **Test:** As a test customer, buy a subscription late in the day (after the cycle's cutoff has already passed). The next morning, check whether a delivery is generated.
-- **Expected:** Yes — the 23:00 IST nightly batch should sweep up the late purchase.
-- **Possible failure modes:** No order is created; order is created but customer is not notified; order is created but not visible to staff.
+### V-04: Late-day subscription purchase generates next-morning delivery (premise updated 2026-05-04)
+- **Premise update (CL-02 resolved 2026-05-04):** the 23:00 IST nightly safety-net cron was removed. Late-day purchases are now expected to be picked up by the *next* cycle's `kitchen-cutoff-push-tick` — for an overnight purchase, that's the 06:00 IST breakfast cutoff the following morning.
+- **Test:** As a test customer, buy a subscription late in the day (after the dinner cutoff at 18:00 IST has already passed). The next morning around 06:30 IST, check whether the breakfast delivery has been generated for the new subscription.
+- **Expected:** Yes — `kitchen-cutoff-push-tick` fires at 06:00 IST breakfast cutoff, calls `generate_daily_manifest()`, which sees the active subscription and creates the breakfast order for that day.
+- **Possible failure modes:** No order is created (cron didn't fire, or function errored out, or subscription not in active state); order is created but customer is not notified; order is created but not visible to staff (RLS / branch filter / hub assignment issue).
+- **Why this matters more without the nightly backup:** previously the 23:00 IST batch caught any subscriptions that the per-cycle tick somehow missed. Now the per-cycle tick is the only path, so verifying it works for every late-purchase scenario is non-optional.
 
 ---
 
-### Day-end checkpoint — 2026-05-03 evening
+### Day-end checkpoint — 2026-05-04 evening
+
+**Where we are at end of day:**
+
+Sixteen-commit day. Three architectural arcs closed cleanly. Three new pre-launch decisions logged (D-06, D-07, D-08). Two new follow-up gates (MF-06 staging, MF-07 test coverage, MF-08 source-of-truth — all queued post-V-06). Working tree clean except for `docs/DECISIONS.md` itself (this very file — including this entry).
+
+**What shipped today (commits in chronological order):**
+
+1. `953e9c9` — fix(MF-05) customer cancel cross-screen invalidation + latent OrderDetailScreen alert access-path fix
+2. `77fe7ec` — chore: doc/SQL handle_new_user trigger reference cleanup (later corrected by CL-11)
+3. `5df6c2c` — fix(BF-13) wallet-paid regular order confirmation alert (missing else branch)
+4. `0fda489` — fix(BF-17) Stock Manager simplification — 2-tab unified Current Order / History, per-category Print + Print All, staff-style add UX, atomic merge RPC, AFTER INSERT mirror trigger from staff_order_requests
+5. `716e0e0` — fix(BF-18) Login + OTP unified into one screen with progressive disclosure
+6. `bb2c2f4` — chore: dead code cleanup (−105 lines, unused state/imports/exports/styles + .gitignore additions + orphan file deletions)
+7. `c53dc81` — chore: supabase reorg + final cleanup (closes the half-done `supabase/` → `supabase/sql/` migration; SYSTEM_FLOWS.md + dead SQL files removed)
+8. `6753235` — chore(CL-11): correct handle_new_user comments — trigger DOES exist on auth.users (CL-10 had been based on incomplete public-schema-only audit)
+9. `38f2daa` — chore: gitignore .claude/ + scripts/
+10. `826103a` — docs: 2026-05-04 audit trail (D-06/D-07/D-08 rules + ship-status entries through MF-05/BF-13/BF-14/BF-15/BF-16/BF-17/BF-18/CL-09/CL-10)
+11. `fc7fb5c` — fix(BF-19, D-05) zero financial fields on subscription dispatch orders + history backfill migration. Also rewrote `generate_daily_manifest.sql` to match live BF-01/BF-02 state (closed long-standing file-vs-prod gap).
+12. `642203a` — fix(BF-21, D-03a) proration includes tax + delivery slice + closed pre-existing `useAdminSubscriptions` query gap (price field missing from select; old proration always returned 0).
+13. `56318a8` — fix(BF-20, D-03b) atomic admin_cancel_subscription RPC. Replaces two-step cancel-then-refund with single Postgres transaction. Centralizes via existing `increment_wallet_balance` RPC.
+14. `f0065f9` — feat(MF-02, D-08) branch picker on OnboardEmployeeScreen. Conditional on `branch_management_active` feature flag.
+15. `c1ce0ab` — fix(MF-03 audit + Class B, D-08) multi-branch readiness audit doc + write-defaults fix. New `branchIdForWrite` helper in `useBranchFilter.ts` consolidates 11 sites across 9 hooks. BF-06 anti-pattern eliminated.
+16. `549e98d` — docs(MF-03) Note #7: capture useAdminNotes Class B nuance + stranded-NULL backfill caveat.
+
+**Plus a release commit (CC tonight):** `chore(release): bump to 1.5.0` — version bump for tonight's Play Store push.
+
+**Live data state on Supabase (deployed during today's session):**
+
+- `cron.unschedule('generate-daily-manifest')` — 23:00 IST nightly subscription manifest backup removed (CL-02). Per-cycle `kitchen-cutoff-push-tick` is the canonical path going forward.
+- `add_supply_catalog_staff_read_policy.sql` deployed (BF-14)
+- `add_staff_order_requests_policies.sql` deployed (BF-15)
+- `staff_order_requests_mirror_trigger.sql` deployed including the `add_or_merge_supply_order_item` shared merge RPC (BF-17)
+- `generate_daily_manifest()` rewritten + historical UPDATE migration to zero existing dispatch financial fields (BF-19)
+- `admin_cancel_subscription_atomic_rpc.sql` deployed (BF-20)
+- One-off SQL backfill (manual): staff `913333333333` `branch_id = 1` — still pending if not run yet.
+
+**Three new working rules logged today** (durable across sessions):
+
+- **D-06** (replaces "smallest safe change wins"): **Best fix for long-term stability wins.** Foundation-correct, right-sized — sometimes one-line, sometimes a small helper extraction. Guardrails: no speculative refactors, no while-we're-here cleanups, no rewriting working code to match a preferred pattern. Approval gate before code stays.
+- **D-07**: **Scope freeze through launch + perfection-review program.** No new features. Three permitted modes: BF (reactive bug fix), MF (foundation work), FT (proactive per-flow perfection). FT backlog populates after V-06.
+- **D-08**: **Multi-branch readiness is a launch gate.** Reclassified MF-02 + MF-03 from "blocks branch 2 launch" to "blocks initial launch." MF-06 / MF-07 / MF-08 stay post-V-06 (foundation, not blockers).
+
+**Persona / test phone roster (unchanged from 2026-05-03 evening):**
+
+| Phone | Role | Notes |
+|---|---|---|
+| `777` | admin | Admin user |
+| `666` | staff | Kitchen / packing staff |
+| `555` | customer | Plain customer |
+| `444` | hub operator | role=`customer` + `assigned_hub_id = 19`. Demoted via one-off SQL 2026-05-03 (MF-01 option C resolution). |
+| `333` | staff + driver | role=`staff` + driver of Zone 1 AND Hub 1. |
+| `999`, `11111`, `22222`, `33333`, `999999` | unused | Reserved test phones (OTP `123456`); pick when needed. |
+
+**Tomorrow's prioritized plan (2026-05-05):**
+
+**Morning (small + safe, fresh-energy):**
+
+1. **Final docs commit** — capture today's audit-trail updates in `docs/DECISIONS.md` (D-03a/b, D-05, MF-01, CL-02, MF-03 status entries plus the V-04 premise update for the post-CL-02 world). Working tree clean.
+2. **MF-05 + BF-18 cross-device verification** on real Android device (after tonight's Play Store push lands). Customer cancel cross-screen flip, login-OTP unified screen flow, admin/staff/driver views auto-flip without manual refresh.
+3. **V-04** — late-day subscription generates next-morning delivery via 06:00 IST breakfast cycle tick (overnight cron firing, no longer the 23:00 backup since CL-02). Verify subscription created late-day yesterday produces today's breakfast order.
+4. **V-01** — admin proration spot-check on a partially-consumed test subscription (5/30 days consumed → expect ~83% refund). Closes one of the morning queue items.
+5. **Optional — MF-03 Class C decision and start.** `complete_onboarding_atomic` + `handle_new_user` trigger: Shrikanth's call on (a) trigger writes NULL, onboarding fills branch_id from address; (b) trigger defaults to 1, onboarding overwrites. (a) recommended.
+
+**Afternoon (the launch go/no-go):**
+
+6. **V-06** — End-to-end persona regression. Backfill orders covering every routing × persona combination (zone-direct food, hub-routed food, zone-direct essentials, hub-routed essentials, subscription-generated, customer-cancelled, admin-cancelled). Walk each path with each persona (Customer, Staff, Driver, Hub Operator, Admin). Confirm visibility, gating, action affordances at every step.
+
+**V-06 is the launch go/no-go.** If clean → order subsystem is launch-ready and the perfection-review program (FT backlog) can begin populating. If breakage surfaces → another sprint before launch.
+
+**Still pending — pre-launch blockers (D-08), post-V-06 work (D-07 mode 2):**
+
+- **MF-03 Class A** — RLS branch_id scoping (~15-20 policies, single dedicated PR). Largest piece of MF-03 still open. Pre-launch blocker.
+- **MF-03 Class C** — customer onboarding branch_id (architectural call needed first per above; then fix `complete_onboarding_atomic` to derive branch from address's zone/hub). Pre-launch blocker.
+- **MF-03 punch list items 12-14** — staff_attendance INSERT, two report hooks unfiltered, one-time NULL→1 backfill prerequisite for the flag flip. Pre-launch.
+- **MF-03 punch list items 15-25** — verification queue, mostly NEEDS VERIFY items.
+- **MF-06** — Staging Supabase project. Post-V-06.
+- **MF-07** — Automated test coverage + pre-push gate. Post-V-06.
+- **MF-08** — Source-of-truth audit (capture `handle_new_user`, `on_auth_user_created`, `handle_first_order_referral_bonus`, `trg_first_order_referral_bonus`, plus the never-tracked tables `supply_catalog`, `staff_order_requests`, `supply_order_items`, `supply_batches` into tracked SQL). Post-V-06.
+
+**To resume in the morning, paste this to a fresh Cowork or Claude Code session:**
+
+> I'm resuming work on the 1stOne F1 app. Yesterday (2026-05-04) was an unprecedented sixteen-commit day across three architectural arcs (subscription cancellation accuracy, Stock Manager simplification, login+OTP unification + multi-branch readiness foundations). Plus three new working rules logged (D-06 best fix for long-term stability, D-07 scope freeze + perfection-review program, D-08 multi-branch readiness as launch gate). Tonight's Play Store push went out as version 1.5.0. Read `docs/DECISIONS.md` end-to-end, paying particular attention to the **"Day-end checkpoint — 2026-05-04 evening"** entry near the top of the Bug fix backlog section — it lists every commit, the live SQL state on Supabase, the persona roster, and tomorrow morning's prioritized plan. Read `docs/MF-03_multi_branch_audit.md` separately — it's the punch list for the multi-branch readiness work that closes the D-08 launch gate; Class B already shipped, Class A (RLS) and Class C (onboarding) remain. Same working rules as before: D-06 (best fix for long-term stability wins), D-07 (scope freeze, three modes BF/MF/FT, no new features), D-08 (multi-branch readiness blocks initial launch). Plain English (Shrikanth is a business owner). One task at a time, complete cleanly before next. Push back when something's misguided. Start with the final docs commit (working-tree-clean), then MF-05 + BF-18 cross-device verification on real device, then V-04 / V-01 live tests, then optionally MF-03 Class C decision + start. Afternoon is V-06 — the end-to-end persona regression that's the launch go/no-go.
+
+---
+
+
 
 **Where we are at end of day:**
 
