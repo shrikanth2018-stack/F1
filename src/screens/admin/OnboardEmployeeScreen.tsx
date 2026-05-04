@@ -36,6 +36,8 @@ import {
   BENEFIT_OPTIONS,
 } from '../../hooks/useResourceManager';
 import { useDeliveryHubs } from '../../hooks/useDeliveryHubs';
+import { useBranches } from '../../hooks/useBranches';
+import { useBranchFilter } from '../../hooks/useBranchFilter';
 import { openWhatsApp } from '../../utils/links';
 import type { AdminNavProp } from '../../navigation/types';
 
@@ -316,6 +318,23 @@ export function OnboardEmployeeScreen({ navigation }: { navigation: AdminNavProp
   const { data: hubs = [] } = useDeliveryHubs();
   const onboard = useOnboardEmployee();
 
+  // MF-02: branch picker — only matters when feature_flags.branch_management_active is true.
+  // - Branch admin (bf.branchId set): pre-select their branch; picker still visible but
+  //   they can't pick another branch (out-of-scope for branch admins).
+  // - Super-admin (bf.branchId null): picker required, must select before onboarding.
+  // - Single-branch mode (bf.isActive false): picker hidden entirely; useOnboardEmployee
+  //   falls back to bf.branchId ?? 1 per BF-06.
+  const branchFilter = useBranchFilter();
+  const { data: branches = [] } = useBranches();
+  const [branchId, setBranchId] = useState<number | null>(branchFilter.branchId);
+
+  // Keep branchId in sync if the JWT branch_id resolves later (race on first mount).
+  useEffect(() => {
+    if (branchFilter.branchId != null && branchId == null) {
+      setBranchId(branchFilter.branchId);
+    }
+  }, [branchFilter.branchId, branchId]);
+
   // Auto-lookup profile when 10 digits are entered
   useEffect(() => {
     if (phone.length !== 10) {
@@ -348,6 +367,9 @@ export function OnboardEmployeeScreen({ navigation }: { navigation: AdminNavProp
     if (!designation)                 return 'Please select a designation';
     if (!shift)                       return 'Please select a shift';
     if (!joiningDate.match(/^\d{4}-\d{2}-\d{2}$/)) return 'Joining date must be YYYY-MM-DD';
+    // MF-02: when multi-branch is on, super-admin must pick a branch.
+    // Branch admin's branch is pre-selected from JWT so this won't trigger.
+    if (branchFilter.isActive && branchId == null) return 'Please select a branch';
     return null;
   };
 
@@ -369,6 +391,10 @@ export function OnboardEmployeeScreen({ navigation }: { navigation: AdminNavProp
         monthly_salary:  salary,
         benefits:        benefits.join(','),
         joining_bonus:   bonus,
+        // MF-02: pass form-picked branch_id when multi-branch is active.
+        // In single-branch mode it's null; the hook falls back to
+        // bf.branchId ?? 1 per BF-06.
+        branch_id:       branchFilter.isActive ? branchId : null,
       },
       {
         onSuccess: (result) => {
@@ -475,6 +501,29 @@ export function OnboardEmployeeScreen({ navigation }: { navigation: AdminNavProp
           onChange={setJoining}
           placeholder={new Date().toISOString().split('T')[0]}
         />
+
+        {/* MF-02: branch picker — only renders when multi-branch is active.
+            In single-branch mode the section is hidden and useOnboardEmployee
+            falls back to bf.branchId ?? 1 per BF-06. */}
+        {branchFilter.isActive && branches.length > 0 && (
+          <>
+            <Divider />
+            <ThemedText variant="small" color="mint" style={styles.sectionLabel}>BRANCH</ThemedText>
+            <ChipPicker
+              label="Branch"
+              options={branches.map((b) => b.branch_name) as any}
+              value={
+                (branchId == null
+                  ? ''
+                  : branches.find((b) => b.id === branchId)?.branch_name ?? '') as any
+              }
+              onSelect={(v: string) => {
+                const found = branches.find((b) => b.branch_name === v);
+                setBranchId(found?.id ?? null);
+              }}
+            />
+          </>
+        )}
 
         <Divider />
         <ThemedText variant="small" color="mint" style={styles.sectionLabel}>ROLE & SHIFT</ThemedText>

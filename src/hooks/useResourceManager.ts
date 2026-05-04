@@ -111,6 +111,11 @@ export interface OnboardPayload {
   monthly_salary: number;
   benefits: string;       // comma-separated
   joining_bonus: number;  // credited as first-month bonus; 0 if none
+  // MF-02: explicit branch_id when admin is a super-admin elevating into
+  // a specific branch via the OnboardEmployeeScreen picker. Optional —
+  // when omitted, the hook falls back to the caller's JWT branch_id (or 1
+  // in single-branch mode), per BF-06.
+  branch_id?: number | null;
 }
 
 /**
@@ -126,9 +131,15 @@ export function useOnboardEmployee() {
   return useMutation({
     mutationFn: async (payload: OnboardPayload): Promise<{ employee_id: string; user_id: string }> => {
       const { data: { session } } = await supabase.auth.getSession();
+      // MF-02: form-supplied branch_id (super-admin's pick from the
+      // OnboardEmployeeScreen branch picker) takes precedence over the
+      // caller's JWT branch_id. Falls back to bf.branchId ?? 1 in
+      // single-branch mode (BF-06 default).
+      const resolvedBranchId =
+        payload.branch_id ?? bf.branchId ?? 1;
       const { data, error } = await supabase.functions.invoke('elevate-employee', {
         headers: { Authorization: `Bearer ${session?.access_token}` },
-        body: { ...payload, branch_id: bf.branchId ?? 1 },
+        body: { ...payload, branch_id: resolvedBranchId },
       });
 
       if (error || data?.error) {
