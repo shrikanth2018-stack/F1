@@ -69,3 +69,8 @@ PHASE1_*.md
 # Dcos/ holds duplicate / scratchpad copies of canonical docs that already
 # live in /docs/ and /MASTER_DOCUMENT.md. Avoiding the drift surface.
 Dcos/
+
+# Claude Code local config
+.claude/
+# Local scratch scripts
+scripts/
