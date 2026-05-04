@@ -69,10 +69,11 @@ CREATE POLICY profiles_self_read ON public.profiles
     id = auth.uid() OR public.is_staff_or_admin()
   );
 
--- Allow users to insert their own profile row.
--- complete_onboarding_atomic RPC upserts (INSERT ... ON CONFLICT (id)
--- DO UPDATE); this policy permits the INSERT branch when the row
--- doesn't yet exist for this auth.uid().
+-- Allow users to insert their own profile row. In normal flow the
+-- on_auth_user_created trigger on auth.users (calling handle_new_user)
+-- creates the stub profile row immediately after OTP signup, so the
+-- ON CONFLICT path of complete_onboarding_atomic's UPSERT is the usual
+-- path; this policy permits the INSERT branch as a defensive fallback.
 DROP POLICY IF EXISTS profiles_self_insert ON public.profiles;
 CREATE POLICY profiles_self_insert ON public.profiles
   FOR INSERT WITH CHECK (id = auth.uid() OR public.is_admin());

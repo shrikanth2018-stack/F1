@@ -41,9 +41,14 @@ BEGIN
     RAISE EXCEPTION 'unauthorized: p_user_id does not match auth.uid()';
   END IF;
 
-  -- Upsert the profile. A row may already exist from a prior
-  -- partial onboarding attempt (UPDATE path); otherwise INSERT
-  -- creates it. Both paths are atomic with the address INSERT below.
+  -- Upsert the profile. The on_auth_user_created AFTER INSERT trigger
+  -- on auth.users (calling public.handle_new_user) creates a stub
+  -- profile row (id + phone_number, no full_name) the moment OTP signup
+  -- completes — so by the time this RPC runs, the row already exists
+  -- and the ON CONFLICT (id) DO UPDATE branch is the normal path. The
+  -- INSERT branch is a defensive fallback for edge cases (e.g., if the
+  -- auth trigger ever didn't fire). Both paths are atomic with the
+  -- address INSERT below.
   INSERT INTO profiles (id, phone_number, full_name)
   VALUES (p_user_id, p_phone_number, p_full_name)
   ON CONFLICT (id) DO UPDATE
