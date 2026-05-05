@@ -8,7 +8,7 @@
  *   Salary     — monthly salary cards + mark paid + add record
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   ScrollView,
@@ -90,21 +90,80 @@ function ProfileTab({ staff, navigation }: { staff: Profile; navigation: AdminNa
       ? branches.find((b) => b.id === staff.branch_id)?.branch_name ?? `Branch ${staff.branch_id}`
       : '—';
 
-  const benefitsList = staff.benefits
+  const staffBenefitsList = staff.benefits
     ? staff.benefits.split(',').map((b) => b.trim()).filter(Boolean)
     : [];
 
-  const save = (field: Parameters<typeof update.mutate>[0]['updates']) =>
+  // Parent-controlled drafts for editable fields. Re-sync whenever staff
+  // changes (after a successful save, or navigating to a different
+  // employee). Drafts hold the in-flight edit; they're committed atomically
+  // by the Done handler — avoids the onCommit/onBlur race against the
+  // re-render that previously dropped the typed value.
+  const [draftFullName, setDraftFullName] = useState(staff.full_name ?? '');
+  const [draftDesignation, setDraftDesignation] = useState(staff.designation ?? '');
+  const [draftShift, setDraftShift] = useState(staff.shift_timing ?? '');
+  const [draftSalary, setDraftSalary] = useState(
+    staff.monthly_salary != null ? String(staff.monthly_salary) : ''
+  );
+  const [draftBenefits, setDraftBenefits] = useState<string[]>(staffBenefitsList);
+
+  useEffect(() => {
+    setDraftFullName(staff.full_name ?? '');
+    setDraftDesignation(staff.designation ?? '');
+    setDraftShift(staff.shift_timing ?? '');
+    setDraftSalary(staff.monthly_salary != null ? String(staff.monthly_salary) : '');
+    setDraftBenefits(
+      staff.benefits ? staff.benefits.split(',').map((b) => b.trim()).filter(Boolean) : []
+    );
+    // staff identity changes after every save (refetch) and when the
+    // employee id changes via navigation. Re-sync drafts both times.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [staff.id, staff.full_name, staff.designation, staff.shift_timing, staff.monthly_salary, staff.benefits]);
+
+  const save = (
+    field: Parameters<typeof update.mutate>[0]['updates'],
+    opts?: { onSuccess?: () => void }
+  ) =>
     update.mutate(
       { staffId: staff.id, updates: field },
-      { onError: (e: any) => Alert.alert('Error', e?.message) }
+      {
+        onSuccess: () => opts?.onSuccess?.(),
+        onError: (e: any) => Alert.alert('Error', e?.message),
+      }
     );
 
-  const toggleBenefit = (v: string) => {
-    const next = benefitsList.includes(v)
-      ? benefitsList.filter((b) => b !== v)
-      : [...benefitsList, v];
-    save({ benefits: next.join(',') || null });
+  const toggleDraftBenefit = (v: string) => {
+    setDraftBenefits((prev) =>
+      prev.includes(v) ? prev.filter((b) => b !== v) : [...prev, v]
+    );
+  };
+
+  // Diff drafts vs staff and save the changed fields atomically.
+  // Stay in edit mode on failure so the user can retry; flip to view
+  // only on success or no-op.
+  const handleDone = () => {
+    const updates: Parameters<typeof update.mutate>[0]['updates'] = {};
+    if (draftFullName !== (staff.full_name ?? '')) updates.full_name = draftFullName;
+    if (draftDesignation !== (staff.designation ?? '')) updates.designation = draftDesignation;
+    if (draftShift !== (staff.shift_timing ?? '')) updates.shift_timing = draftShift;
+
+    const parsedSalary = draftSalary === '' ? null : parseFloat(draftSalary);
+    const salaryValid = parsedSalary === null || !isNaN(parsedSalary);
+    if (salaryValid && parsedSalary !== staff.monthly_salary) {
+      updates.monthly_salary = parsedSalary;
+    }
+
+    const oldBenefits = [...staffBenefitsList].sort().join(',');
+    const newBenefits = [...draftBenefits].sort().join(',');
+    if (oldBenefits !== newBenefits) {
+      updates.benefits = draftBenefits.join(',') || null;
+    }
+
+    if (Object.keys(updates).length > 0) {
+      save(updates, { onSuccess: () => setMode('view') });
+    } else {
+      setMode('view');
+    }
   };
 
   const confirmOffboard = () => {
@@ -138,10 +197,18 @@ function ProfileTab({ staff, navigation }: { staff: Profile; navigation: AdminNa
     >
       {/* Edit / Done toggle (top right) */}
       <View style={editBar.row}>
-        <TouchableOpacity onPress={() => setMode(isEditing ? 'view' : 'edit')} activeOpacity={0.7}>
-          <ThemedText variant="body" color="mint" style={editBar.text}>
-            {isEditing ? 'Done' : 'Edit'}
-          </ThemedText>
+        <TouchableOpacity
+          onPress={() => (isEditing ? handleDone() : setMode('edit'))}
+          disabled={update.isPending}
+          activeOpacity={0.7}
+        >
+          {update.isPending && isEditing ? (
+            <ActivityIndicator color={Theme.colors.text.mint} />
+          ) : (
+            <ThemedText variant="body" color="mint" style={editBar.text}>
+              {isEditing ? 'Done' : 'Edit'}
+            </ThemedText>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -161,62 +228,61 @@ function ProfileTab({ staff, navigation }: { staff: Profile; navigation: AdminNa
         </SectionRow>
       )}
 
-      {/* Editable attributes (gated by edit toggle) */}
+      {/* Editable attributes — drafts in edit mode, staff in view mode. */}
       <SectionRow label="Name">
         <CompactField
           placeholder="Full Name"
-          value={staff.full_name ?? ''}
+          value={isEditing ? draftFullName : (staff.full_name ?? '')}
           editable={isEditing}
-          onCommit={isEditing ? (v) => save({ full_name: v }) : undefined}
+          onChange={isEditing ? setDraftFullName : undefined}
         />
       </SectionRow>
       <SectionRow label="Role">
         <CompactFieldWithSuggestions
           placeholder="Designation"
-          value={staff.designation ?? ''}
-          onCommit={(v) => save({ designation: v })}
+          value={isEditing ? draftDesignation : (staff.designation ?? '')}
+          onChange={isEditing ? setDraftDesignation : undefined}
           suggestions={designations}
           editable={isEditing}
         />
       </SectionRow>
       <SectionRow label="Shift">
         <CompactTimeRangeField
-          value={staff.shift_timing ?? ''}
-          onChange={(v) => save({ shift_timing: v })}
+          value={isEditing ? draftShift : (staff.shift_timing ?? '')}
+          onChange={setDraftShift}
           editable={isEditing}
         />
       </SectionRow>
       <SectionRow label="Salary">
         <CompactField
           placeholder="Monthly Salary (₹)"
-          value={staff.monthly_salary != null ? String(staff.monthly_salary) : ''}
-          editable={isEditing}
-          onCommit={
+          value={
             isEditing
-              ? (v) => {
-                  const n = parseFloat(v);
-                  save({ monthly_salary: isNaN(n) ? null : n });
-                }
-              : undefined
+              ? draftSalary
+              : staff.monthly_salary != null
+                ? String(staff.monthly_salary)
+                : ''
           }
+          editable={isEditing}
+          onChange={isEditing ? setDraftSalary : undefined}
           keyboardType="numeric"
         />
       </SectionRow>
 
       {/* Benefits — view mode shows the comma-joined summary; edit mode shows
-          the multi-select chip group. */}
+          the multi-select chip group bound to the draft. */}
       <Divider />
       <ThemedText variant="small" color="mint" style={tab.sectionLabel}>BENEFITS</ThemedText>
       {isEditing ? (
         <MultiChipPicker
           options={benefitOptions}
-          selected={benefitsList}
-          onToggle={toggleBenefit}
+          selected={draftBenefits}
+          onToggle={toggleDraftBenefit}
         />
       ) : (
         <CompactField
           placeholder="—"
-          value={benefitsList.length ? benefitsList.join(', ') : ''}
+          value={staffBenefitsList.length ? staffBenefitsList.join(', ') : ''}
           editable={false}
         />
       )}
