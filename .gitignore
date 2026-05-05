@@ -44,6 +44,7 @@ Thumbs.db
 # EAS
 google-services.json
 GoogleService-Info.plist
+play-store-service-account.json
 
 # TypeScript
 *.tsbuildinfo
