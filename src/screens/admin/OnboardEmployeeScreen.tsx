@@ -341,11 +341,13 @@ export function OnboardEmployeeScreen({ navigation }: { navigation: AdminNavProp
           />
         )}
 
-        <CompactDateField
-          placeholder="Joining Date (YYYY-MM-DD)"
-          value={joiningDate}
-          onChange={setJoining}
-        />
+        <SectionRow label="Joining">
+          <CompactDateField
+            placeholder="Joining Date"
+            value={joiningDate}
+            onChange={setJoining}
+          />
+        </SectionRow>
 
         {/* MF-02: branch picker — only renders when multi-branch is active. */}
         {branchFilter.isActive && branches.length > 0 && (
