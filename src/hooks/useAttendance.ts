@@ -155,7 +155,6 @@ export function useClockIn() {
           clock_out_time: existing?.clock_out_time ?? null,
           clock_out_lat: existing?.clock_out_lat ?? null,
           clock_out_lng: existing?.clock_out_lng ?? null,
-          branch_id: existing?.branch_id ?? null,
           ...result,
         })
       );

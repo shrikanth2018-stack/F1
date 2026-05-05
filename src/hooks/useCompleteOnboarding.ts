@@ -39,7 +39,14 @@ export function useCompleteOnboarding() {
 
   return useMutation({
     mutationFn: async (payload: CompleteOnboardingPayload) => {
-      const { data, error } = await supabase.rpc('complete_onboarding_atomic', {
+      // Supabase types translate DEFAULT NULL params to optional (T | undefined),
+      // not T | null — but this call site explicitly passes nulls (per the
+      // nullable contract documented in complete_onboarding.sql; OnboardingScreen
+      // passes nulls when the user has no landmark / the address isn't in a
+      // serviceable zone). Cast through any to allow null, matching the
+      // precedent in useDeliveryHubs.ts:105-110.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase as any).rpc('complete_onboarding_atomic', {
         p_user_id:        payload.user_id,
         p_phone_number:   payload.phone_number,
         p_full_name:      payload.full_name,

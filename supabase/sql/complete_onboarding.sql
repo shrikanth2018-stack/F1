@@ -16,6 +16,16 @@
 -- Existing-customer additional-address flow continues to use
 -- the plain useAddAddress hook (no RPC).
 --
+-- Nullable contract: landmark / city / pincode / zone_id / hub_id are
+-- explicitly DEFAULT NULL — the call site in OnboardingScreen actively
+-- passes nulls for these (e.g. unserviceable address with no zone). The
+-- regenerated TS types now reflect that, replacing the prior latent
+-- mismatch where the un-defaulted args looked non-nullable in TS but
+-- accepted NULL at runtime. Postgres requires that any arg following
+-- a defaulted arg also be defaulted, so latitude / longitude get
+-- DEFAULT NULL and is_serviceable gets DEFAULT FALSE — both no-ops at
+-- runtime since the call site always passes them.
+--
 -- Run in Supabase SQL editor. Idempotent (CREATE OR REPLACE).
 -- ─────────────────────────────────────────────────────────────
 
@@ -25,14 +35,14 @@ CREATE OR REPLACE FUNCTION complete_onboarding_atomic(
   p_full_name      TEXT,
   p_label          TEXT,
   p_address_line   TEXT,
-  p_landmark       TEXT,
-  p_city           TEXT,
-  p_pincode        TEXT,
-  p_latitude       NUMERIC,
-  p_longitude      NUMERIC,
-  p_zone_id        INTEGER,
-  p_hub_id         INTEGER,
-  p_is_serviceable BOOLEAN
+  p_landmark       TEXT    DEFAULT NULL,
+  p_city           TEXT    DEFAULT NULL,
+  p_pincode        TEXT    DEFAULT NULL,
+  p_latitude       NUMERIC DEFAULT NULL,
+  p_longitude      NUMERIC DEFAULT NULL,
+  p_zone_id        INTEGER DEFAULT NULL,
+  p_hub_id         INTEGER DEFAULT NULL,
+  p_is_serviceable BOOLEAN DEFAULT FALSE
 )
 RETURNS BIGINT  -- returns the new address id
 LANGUAGE plpgsql

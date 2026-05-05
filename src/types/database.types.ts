@@ -124,18 +124,24 @@ export type Database = {
           id: number
           landing_hero_url: string | null
           login_bg_url: string
+          staff_benefits: Json | null
+          staff_designations: Json | null
           updated_at: string
         }
         Insert: {
           id?: number
           landing_hero_url?: string | null
           login_bg_url?: string
+          staff_benefits?: Json | null
+          staff_designations?: Json | null
           updated_at?: string
         }
         Update: {
           id?: number
           landing_hero_url?: string | null
           login_bg_url?: string
+          staff_benefits?: Json | null
+          staff_designations?: Json | null
           updated_at?: string
         }
         Relationships: []
@@ -263,6 +269,7 @@ export type Database = {
       }
       cancelled_subscription_days: {
         Row: {
+          branch_id: number | null
           cancelled_date: string
           created_at: string | null
           cycle_id: number | null
@@ -271,6 +278,7 @@ export type Database = {
           subscription_id: number | null
         }
         Insert: {
+          branch_id?: number | null
           cancelled_date: string
           created_at?: string | null
           cycle_id?: number | null
@@ -279,6 +287,7 @@ export type Database = {
           subscription_id?: number | null
         }
         Update: {
+          branch_id?: number | null
           cancelled_date?: string
           created_at?: string | null
           cycle_id?: number | null
@@ -287,6 +296,13 @@ export type Database = {
           subscription_id?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "cancelled_subscription_days_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "cancelled_subscription_days_cycle_id_fkey"
             columns: ["cycle_id"]
@@ -1131,6 +1147,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "orders_delivery_address_id_fkey"
+            columns: ["delivery_address_id"]
+            isOneToOne: false
+            referencedRelation: "customer_addresses"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "orders_hub_id_fkey"
             columns: ["hub_id"]
             isOneToOne: false
@@ -1196,6 +1219,7 @@ export type Database = {
           created_at: string | null
           designation: string | null
           employee_id: string | null
+          exit_date: string | null
           full_name: string | null
           id: string
           joining_date: string | null
@@ -1216,6 +1240,7 @@ export type Database = {
           created_at?: string | null
           designation?: string | null
           employee_id?: string | null
+          exit_date?: string | null
           full_name?: string | null
           id: string
           joining_date?: string | null
@@ -1236,6 +1261,7 @@ export type Database = {
           created_at?: string | null
           designation?: string | null
           employee_id?: string | null
+          exit_date?: string | null
           full_name?: string | null
           id?: string
           joining_date?: string | null
@@ -1495,6 +1521,7 @@ export type Database = {
       staff_leaves: {
         Row: {
           approved_by: string | null
+          branch_id: number | null
           created_at: string | null
           end_date: string
           id: number
@@ -1506,6 +1533,7 @@ export type Database = {
         }
         Insert: {
           approved_by?: string | null
+          branch_id?: number | null
           created_at?: string | null
           end_date: string
           id?: number
@@ -1517,6 +1545,7 @@ export type Database = {
         }
         Update: {
           approved_by?: string | null
+          branch_id?: number | null
           created_at?: string | null
           end_date?: string
           id?: number
@@ -1532,6 +1561,13 @@ export type Database = {
             columns: ["approved_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_leaves_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
             referencedColumns: ["id"]
           },
           {
@@ -1605,6 +1641,7 @@ export type Database = {
         Row: {
           base_salary: number
           bonus: number | null
+          branch_id: number | null
           created_at: string | null
           deductions: number | null
           id: number
@@ -1619,6 +1656,7 @@ export type Database = {
         Insert: {
           base_salary: number
           bonus?: number | null
+          branch_id?: number | null
           created_at?: string | null
           deductions?: number | null
           id?: number
@@ -1633,6 +1671,7 @@ export type Database = {
         Update: {
           base_salary?: number
           bonus?: number | null
+          branch_id?: number | null
           created_at?: string | null
           deductions?: number | null
           id?: number
@@ -1646,6 +1685,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "staff_salary_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "staff_salary_staff_id_fkey"
             columns: ["staff_id"]
             isOneToOne: false
@@ -1656,6 +1702,7 @@ export type Database = {
       }
       staff_shifts: {
         Row: {
+          branch_id: number | null
           created_at: string | null
           days_of_week: string[] | null
           end_time: string
@@ -1667,6 +1714,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          branch_id?: number | null
           created_at?: string | null
           days_of_week?: string[] | null
           end_time: string
@@ -1678,6 +1726,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          branch_id?: number | null
           created_at?: string | null
           days_of_week?: string[] | null
           end_time?: string
@@ -1689,6 +1738,13 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "staff_shifts_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "staff_shifts_staff_id_fkey"
             columns: ["staff_id"]
@@ -2098,6 +2154,21 @@ export type Database = {
     }
     Functions: {
       _kitchen_get_secret: { Args: { p_name: string }; Returns: string }
+      add_or_merge_supply_order_item: {
+        Args: {
+          p_added_by: string
+          p_branch_id: number
+          p_category: string
+          p_name: string
+          p_qty: number
+          p_request_id: number
+        }
+        Returns: number
+      }
+      admin_cancel_subscription_atomic: {
+        Args: { p_refund_amount: number; p_subscription_id: number }
+        Returns: Json
+      }
       assign_hub_operator: {
         Args: {
           p_hub_id: number
@@ -2109,6 +2180,25 @@ export type Database = {
       assign_hub_to_address_ids: {
         Args: { p_address_ids: number[]; p_hub_id: number }
         Returns: undefined
+      }
+      auth_user_id_by_phone: { Args: { p_phone: string }; Returns: string }
+      complete_onboarding_atomic: {
+        Args: {
+          p_address_line: string
+          p_city: string
+          p_full_name: string
+          p_hub_id: number
+          p_is_serviceable: boolean
+          p_label: string
+          p_landmark: string
+          p_latitude: number
+          p_longitude: number
+          p_phone_number: string
+          p_pincode: string
+          p_user_id: string
+          p_zone_id: number
+        }
+        Returns: number
       }
       complete_wallet_topup: {
         Args: { p_razorpay_order_id: string; p_razorpay_payment_id: string }
@@ -2122,6 +2212,7 @@ export type Database = {
         Args: { p_amount: number; p_description?: string; p_user_id: string }
         Returns: boolean
       }
+      demote_employee: { Args: { target_id: string }; Returns: undefined }
       elevate_to_staff: {
         Args: {
           p_assigned_hub_id: number
@@ -2171,6 +2262,7 @@ export type Database = {
       }
       is_admin: { Args: never; Returns: boolean }
       is_staff_or_admin: { Args: never; Returns: boolean }
+      is_super_admin: { Args: never; Returns: boolean }
       jwt_branch_id: { Args: never; Returns: number }
       jwt_user_role: { Args: never; Returns: string }
       mark_order_failed: {
