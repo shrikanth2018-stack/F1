@@ -48,14 +48,16 @@ Deno.serve(async (req: Request) => {
     if (!user) return json({ error: 'Unauthorized' }, 401);
 
     // Admin gate — role lives in profiles.role (custom_access_token_hook
-    // injects it into the JWT user_role claim on token mint).
+    // injects it into the JWT user_role claim on token mint). Super-admin
+    // is admin + branch_id IS NULL; required when designation = 'ADMIN HEAD'.
     const adminClient = createClient(SUPABASE_URL, SERVICE_ROLE);
     const { data: callerProfile, error: profileErr } = await adminClient
-      .from('profiles').select('role').eq('id', user.id).maybeSingle();
+      .from('profiles').select('role, branch_id').eq('id', user.id).maybeSingle();
     if (profileErr) return json({ error: `Profile lookup failed: ${profileErr.message}` }, 500);
     if (callerProfile?.role !== 'admin') {
       return json({ error: 'Admin role required' }, 403);
     }
+    const isSuperAdmin = callerProfile.branch_id === null;
 
     // 2. Validate payload
     const body = await req.json();
@@ -70,6 +72,12 @@ Deno.serve(async (req: Request) => {
     if (!shift_timing)       return json({ error: 'shift_timing required' }, 400);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(joining_date ?? ''))
       return json({ error: 'joining_date must be YYYY-MM-DD' }, 400);
+
+    // FT-03: ADMIN HEAD onboarding requires super-admin.
+    const isAdminHead = designation === 'ADMIN HEAD';
+    if (isAdminHead && !isSuperAdmin) {
+      return json({ error: 'Only super-admin can promote to ADMIN HEAD' }, 403);
+    }
 
     const digits = String(phone_number ?? '').replace(/\D/g, '');
     const ten = digits.length > 10 ? digits.slice(-10) : digits;
@@ -121,6 +129,17 @@ Deno.serve(async (req: Request) => {
       p_branch_id:       branch_id,
     });
     if (rpcErr) return json({ error: `Elevate RPC failed: ${rpcErr.message}` }, 500);
+
+    // FT-03: when designation = 'ADMIN HEAD', flip role from 'staff' (set by
+    // elevate_to_staff) to 'admin'. Super-admin gate already applied above;
+    // service-role client bypasses RLS for this single targeted UPDATE.
+    if (isAdminHead) {
+      const { error: roleErr } = await adminClient
+        .from('profiles')
+        .update({ role: 'admin', updated_at: new Date().toISOString() })
+        .eq('id', authUserId);
+      if (roleErr) return json({ error: `Admin role flip failed: ${roleErr.message}` }, 500);
+    }
 
     return json({ success: true, employee_id: employeeId, user_id: authUserId });
   } catch (err: unknown) {

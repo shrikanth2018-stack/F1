@@ -178,11 +178,29 @@ export function useUpdateEmployee() {
       staffId: string;
       updates: Partial<Pick<Profile, 'full_name' | 'designation' | 'joining_date' | 'shift_timing' | 'assigned_hub_id' | 'monthly_salary' | 'benefits'>>;
     }) => {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ ...updates, updated_at: new Date().toISOString() })
-        .eq('id', staffId);
-      if (error) throw new Error(error.message);
+      // FT-03: designation changes route through the SECURITY DEFINER
+      // set_employee_designation RPC, which atomically updates designation
+      // + role (= 'admin' when designation='ADMIN HEAD' else 'staff') and
+      // gates ADMIN HEAD transitions to super-admin only. Other field
+      // updates keep the direct profiles UPDATE path.
+      const { designation, ...rest } = updates;
+
+      if (designation !== undefined) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { error: rpcErr } = await (supabase as any).rpc('set_employee_designation', {
+          target_id: staffId,
+          new_designation: designation,
+        });
+        if (rpcErr) throw new Error(rpcErr.message);
+      }
+
+      if (Object.keys(rest).length > 0) {
+        const { error } = await supabase
+          .from('profiles')
+          .update({ ...rest, updated_at: new Date().toISOString() })
+          .eq('id', staffId);
+        if (error) throw new Error(error.message);
+      }
     },
     onSuccess: (_d, vars) => {
       queryClient.invalidateQueries({ queryKey: ['resource_roster'] });

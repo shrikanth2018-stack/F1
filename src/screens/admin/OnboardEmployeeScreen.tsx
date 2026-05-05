@@ -187,11 +187,15 @@ export function OnboardEmployeeScreen({ navigation }: { navigation: AdminNavProp
 
   const onboard = useOnboardEmployee();
   const { data: lookups } = useStaffLookups();
-  const designations = lookups?.designations ?? [];
   const benefitOptions = lookups?.benefits ?? [];
 
   // MF-02: branch picker — only matters when feature_flags.branch_management_active is true.
   const branchFilter = useBranchFilter();
+  // FT-03: ADMIN HEAD designation is super-admin-only (server enforces; this
+  // is cosmetic — hide the chip from non-super-admins so they don't see it).
+  const designations = (lookups?.designations ?? []).filter(
+    (d) => branchFilter.isSuperAdmin || d !== 'ADMIN HEAD'
+  );
   const { data: branches = [] } = useBranches();
   const [branchId, setBranchId] = useState<number | null>(branchFilter.branchId);
 
