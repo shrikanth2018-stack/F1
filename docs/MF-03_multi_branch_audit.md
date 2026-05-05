@@ -1,267 +1,211 @@
-# MF-03 Multi-Branch Readiness Audit (2026-05-04)
+# MF-03 Multi-Branch Readiness Audit (2026-05-05, fresh)
 
-## Summary
+> Read-only audit performed against current `main` (HEAD `741fe59`). Old audit (2026-05-04) replaced by this version — several findings in the old doc had already shipped same-day in `c1ce0ab`.
 
-The codebase will not safely host a second branch as it stands today. There are **two categories of definite gaps and one architectural-class concern** that need to close before the Play Store bundle ships per D-08.
+## Snapshot
 
-- **Class A — RLS gives no branch boundary.** No policy in `rls_policies.sql` scopes by `auth.jwt() ->> 'branch_id'`. The helper `jwt_branch_id()` is defined but unused. Today's only branch boundary is whatever the React layer applies via `useBranchFilter()`. At branch 2, every staff/admin role bypasses application-level filtering at the SQL level — a staff member at branch 1 can read and update orders, hubs, zones, menus, etc. across all branches via direct SQL or any non-filtered hook.
-- **Class B — BF-06 anti-pattern repeats in nine admin write hooks.** Every one of them writes `branch_id: bf.isActive ? bf.branchId : null` (or equivalent), so in single-branch mode every new row gets `branch_id = NULL`. Identical to the BF-06 root cause; identical fix shape (`bf.branchId ?? 1`).
-- **Class C — Customer-side onboarding writes NULL.** Both the `handle_new_user` trigger (per CL-11) and `complete_onboarding_atomic` RPC create profile rows without `branch_id`. `customer_addresses` first-row INSERT inside the same RPC also omits `branch_id`. Already called out in D-08.
+The app today runs single-branch with `feature_flags.branch_management_active = false`. The **plumbing** for multi-branch (JWT `branch_id` claim, `useBranchFilter`, `branchIdForWrite` write helper, super-admin branch picker on AdminHome, branch-aware reads on most hooks) is in place and working. The **data isolation layer** is not — RLS has zero branch boundaries and several tables that should carry `branch_id` don't have the column at all. That second gap is what blocks safely adding a second branch.
 
-Plus a handful of probable gaps and one feature-flag-drift cleanup. Counts: **~14 definite items, ~6 probable, ~5 needs-verify**.
+## Already in place — no action needed
 
----
+- All admin write hooks use `bf.branchIdForWrite` (never NULL): `useBanner:70`, `useDeliveryZones:52`, `useDeliveryHubs:76`, `useSubscriptionPlans:89`, `useAdminNotes:70`, `useStockManager:116/176`, `useExpenseManager:127`, `useEssentialsCatalog:67`, `useMenuManagement:62/181`. The "Class B / 9-hooks-still-write-NULL" finding from the prior audit is stale — fixed in `c1ce0ab`.
+- `useBranchFilter` exposes `isSuperAdmin` and `branchIdForWrite` (`useBranchFilter.ts:45-72`).
+- Super-admin branch picker is wired in `AdminHome.tsx:52-82` (renders only when `bf.isSuperAdmin`, persists to `branchStore`).
+- OnboardEmployee branch picker conditional in place (`OnboardEmployeeScreen.tsx:188+`); validation rejects null branch when super-admin and flag active.
+- JWT `custom_access_token_hook` injects `branch_id` from `profiles.branch_id` (`custom_access_token_hook.sql:32-43`).
+- `place-order` Edge Function reads `branch_id` from the customer's address and threads it into `orders` + `user_subscriptions` (`place-order/index.ts:141, 171, 384, 443`). The mechanism is right; the input data is the gap (see below).
+- Catalog reads are branch-aware on every consumer hook (`useMenuItems`, `useDeliveryCycles`, `useSubscriptionPlans`, `useDeliveryHubs`, `useDeliveryZones`, `useBanner`, etc.) — query keys include `bf.branchId`, queries apply `.eq('branch_id', bf.branchId)` when active.
 
-## Scope and method
+## Open — schema-level gaps (the big new finding)
 
-**Read directly:** `useBranchFilter.ts`, `useBranches.ts`, `useFeatureFlag.ts`, `useReports.ts` (all 8 functions), `complete_onboarding.sql`, `rls_policies.sql` (full), `generate_daily_manifest.sql` (around the orders INSERT), `kitchen_cutoff_push.sql` (around the kitchen-summary path), `place-order/index.ts` (branch_id flow), `useResourceManager.ts:120-150`, `useAttendance.ts:90-160`, `useEssentialsCatalog.ts`, hot lines of `useStockManager.ts`, `OnboardEmployeeScreen.tsx:315-345`, `schema.sql:60-80`. Plus DECISIONS.md entries D-08, MF-02, MF-03, BF-04, BF-06, CL-11.
+The previous audit assumed every branch-aware table had the column. Several don't.
 
-**Sampled via grep, not exhaustively read:** the admin-side write paths in `useSubscriptionPlans.ts`, `useDeliveryHubs.ts`, `useDeliveryZones.ts`, `useBanner.ts`, `useMenuManagement.ts`, `useExpenseManager.ts`, `useAdminNotes.ts` — pattern was identified through grep of `bf.isActive ? bf.branchId : null` then spot-confirmed on one file (`useEssentialsCatalog.ts`).
+- **`customer_addresses` has no `branch_id` column.** `place-order:141` selects it but the field is always undefined → `orders.branch_id` always lands NULL. This is the head of the chain that makes order isolation impossible. Fix: add the column + backfill from `delivery_zones.branch_id` / `delivery_hubs.branch_id`.
+- **`user_subscriptions` has no `branch_id` column.** `place-order:443` writes `plan.branch_id ?? null` but reads can't filter by branch — explains why `useSubscriptionReport` and `useSubscriptionPlanReport` don't try.
+- **`cancelled_subscription_days`** — no column. Less critical (joinable to `user_subscriptions` once that's fixed).
+- **`staff_leaves` / `staff_salary` / `staff_shifts`** — no column. Inconsistent with `staff_attendance` / `expense_claims` which DO have it. Add the column.
+- **`push_notification_tokens`** — no column. Branch can be derived via JOIN to `profiles.branch_id`; column not strictly required.
 
-**Not investigated:** `useStaffLeave.ts`, `useResourceManager.ts:303` (staff_salary), `useAttendance.ts:253` (staff_leaves admin-side), `ImportItemsScreen.tsx:242` (bulk plan import), Edge Functions other than `place-order` and `elevate-employee`, all individual admin report screens (only the hooks were read; whether each screen passes the right inputs into `useBranchFilter`-aware hooks is a NEEDS VERIFY).
+## Open — RLS has zero branch boundaries
 
-**Time:** ~50 minutes. Confidence on Class A and Class C is high (read directly). Confidence on Class B is high for the five hooks I confirmed; medium for the four sampled-only hooks (NEEDS VERIFY they also need the fix, but pattern is identical).
+- `rls_policies.sql:28-31` defines `jwt_branch_id()` but **no policy uses it**. Every admin and staff path is `is_admin()` or `is_staff_or_admin()` only.
+- File header at lines 4-6 is stale (`STATUS: DISABLED during development` — RLS is actually enabled in dev + prod).
+- ~18 policies need a branch clause: `profiles`, `orders`, `order_items`, `user_subscriptions`, `cancelled_subscription_days`, `customer_addresses`, `wallet_transactions`, `expense_claims`, `staff_attendance`, `staff_leaves`, `staff_salary`, `business_expenses`, `admin_notes`, plus the catalog DO-loop tables (`menu_items`, `essentials_catalog`, `delivery_cycles`, `delivery_hubs`, `delivery_zones`, `subscription_plans`, `subscription_plan_items`, `banners`).
+- Fix shape per policy (uniform): `USING (public.is_super_admin() OR (public.is_admin() AND branch_id = jwt_branch_id()) OR (other-self-clause))`. Plus a new helper `is_super_admin()` defined as `role = 'admin' AND jwt_branch_id() IS NULL`.
+- Single dedicated PR is the right shape — broad surface, uniform pattern, narrow review focus.
 
----
+## Open — customer onboarding leaves branch unset
 
-## 1. Tagging audit (writes)
+- `complete_onboarding.sql:52-66` — INSERTs `profiles` + `customer_addresses` without `branch_id`.
+- `handle_new_user` trigger (production-only per CL-11, MF-08) — creates stub profile with no `branch_id`.
+- Effect: every new customer's profile and address are created with NULL branch, so their orders / subscriptions / addresses chain to NULL.
+- Fix: the address has `zone_id` and `hub_id` at insert time; both reference tables that carry `branch_id`. The RPC can derive branch server-side (`SELECT branch_id FROM delivery_zones WHERE id = p_zone_id`, fallback to `delivery_hubs`, default 1). Single source of truth, no client trust expansion.
 
-For each branch-aware table, every place a row gets created.
+## Open — staff INSERTs miss branch_id
 
-### profiles
-- **Trigger `on_auth_user_created` → `handle_new_user`** (auth.users AFTER INSERT, lives only in prod per CL-11, not in tracked SQL). Per CL-11 comments: creates stub `(id, phone_number)` only. **❌ no `branch_id`** — every customer profile starts with NULL.
-- **`complete_onboarding_atomic`** (`supabase/sql/complete_onboarding.sql:52-55`) — INSERT/UPSERT into `profiles`. **❌ no `branch_id`** in column list. Sets only `(id, phone_number, full_name)`.
-- **`elevate_employee` RPC** (`supabase/sql/elevate_employee.sql:53-69`) — INSERT/UPDATE writes `branch_id = p_branch_id`. **✅** receives explicit branch from caller.
-- **`useOnboardEmployee` hook** (`useResourceManager.ts:128-143`) — body sends `branch_id: payload.branch_id ?? bf.branchId ?? 1`. **✅** post-BF-06 + MF-02-aware (form value wins).
+- `useAttendance.ts:116-122` — `staff_attendance` upsert payload has no `branch_id`. Table has the column. Fix: add `branch_id: bf.branchIdForWrite`.
+- `useAttendance.ts:253-258` — `staff_leaves` insert has no `branch_id`. Table needs the column added.
+- `useResourceManager.ts:303-308` — `staff_salary` insert has no `branch_id`. Table needs the column added.
 
-### customer_addresses
-- **`complete_onboarding_atomic`** (`supabase/sql/complete_onboarding.sql:59-65`) — INSERT into customer_addresses. **❌ no `branch_id`** in column list. Customer's first address is written with NULL.
-- **`useAddAddress` (existing-customer add-address flow)** — NEEDS VERIFY (not opened during this audit; grep noted but file not read).
+## Open — two reports leak across branches
 
-### orders
-- **`place-order` Edge Function** (`supabase/functions/place-order/index.ts:171, 384`) — derives `branchId = addressData.branch_id ?? null` then passes to atomic-create RPC as `p_branch_id`. **✅** branch comes from the customer's selected delivery address — the same address that has all the routing info. *Caveat:* `customer_addresses.branch_id` is NULL today (per Class C), so production orders may today be writing NULL through this path even though the code shape is correct. Fixed automatically once Class C is fixed.
-- **`generate_daily_manifest`** (`supabase/sql/generate_daily_manifest.sql:151`) — INSERTs dispatch order with `branch_id = v_plan.branch_id`. Plan-driven. **⚠️** correct only if the plan has a branch (today plans created via `useSubscriptionPlans:89` write NULL when flag off — Class B). Net effect: today's dispatch orders have NULL branch.
-- **No other order INSERTs found.** `kitchen_cutoff_push.sql` reads orders, doesn't insert.
+- `useReports.ts:140-182` (`useSubscriptionReport`) — no `useBranchFilter`, no `.eq('branch_id', ...)`. Counts subs across all branches.
+- `useReports.ts:329-354` (`useSubscriptionPlanReport`) — same. Plan-wise breakdown leaks.
+- Both blocked by `user_subscriptions.branch_id` not existing — fix the column first, then add the filter.
 
-### user_subscriptions
-- **`place-order` Edge Function** (`supabase/functions/place-order/index.ts:443`) — INSERT with `branch_id: plan.branch_id ?? null`. **⚠️** plan-derived; same indirection as orders. NULL today via same chain as above.
-- **No other subscription INSERTs found.** `admin_cancel_subscription_atomic_rpc.sql` (today's BF-20) only updates `is_active = false` and inserts wallet_transactions — doesn't touch branch_id.
+## Open — JWT staleness after onboarding (small but real)
 
-### staff_attendance
-- **`useClockIn` hook** (`useAttendance.ts:116-130`) — payload is `(staff_id, date, clock_in_time, clock_in_lat, clock_in_lng)`. **❌ no `branch_id`** in payload. Upsert into `staff_attendance` writes NULL branch.
-- **`useClockOut` hook** — NEEDS VERIFY (not opened during this audit; same shape suspected).
+- `custom_access_token_hook` injects `branch_id` from `profiles.branch_id` at token issuance. A customer who signs in via OTP, *then* onboards (writing `profile.branch_id`), holds a stale JWT with NULL branch until the next refresh (~hourly).
+- During that window, branch-filtered customer reads (menu, plans, banners) see all branches.
+- Fix: call `supabase.auth.refreshSession()` from the client immediately after `complete_onboarding_atomic` returns (in `useCompleteOnboarding`). ~3 lines.
 
-### staff_leaves / staff_salary / staff_shifts / expense_claims
-- **`useStaffLeave.ts:42`, `useAttendance.ts:253`** (staff_leaves INSERT — admin or staff side) — NEEDS VERIFY whether either sets branch_id.
-- **`useResourceManager.ts:303`** (staff_salary INSERT) — NEEDS VERIFY.
-- **`useExpenseManager.ts:127`** (expense_claims INSERT) — `branch_id: bf.isActive ? bf.branchId : null`. **❌ Class B**.
+## Stale duplicate column
 
-### subscription_plans / menu_items / essentials_catalog / delivery_hubs / delivery_zones / banners / supply_order_items / supply_batches / staff_order_requests / admin_notes
-All Class B — same `bf.isActive ? bf.branchId : null` write pattern. List of confirmed sites (line numbers from grep):
+- `store_config.branch_management_active` (`schema.sql:69`) — never read by client code (only `feature_flags.branch_management_active` is read). Drop the column or remove from selects.
 
-| Hook | Line | Table |
-|---|---|---|
-| `useEssentialsCatalog.ts` | 67 | `essentials_catalog` |
-| `useMenuManagement.ts` | 62, 181 | `menu_items` (two INSERTs — food + essentials variant?) |
-| `useSubscriptionPlans.ts` | 89 | `subscription_plans` |
-| `useDeliveryHubs.ts` | 76 | `delivery_hubs` (also accepts `payload.branch_id` first) |
-| `useDeliveryZones.ts` | 52 | `delivery_zones` (same shape) |
-| `useBanner.ts` | 70 | `banners` |
-| `useStockManager.ts` | 116 | `supply_order_items` (via RPC param `p_branch_id`) |
-| `useStockManager.ts` | 176 | `supply_batches` |
-| `useExpenseManager.ts` | 127 | `expense_claims` |
-| `useAdminNotes.ts` | 70 | `admin_notes` (intentional NULL — see notes) |
+## Super-admin login — what exists, what's missing
 
-Plus the staff-side `staff_order_requests` mirror trigger (`staff_order_requests_mirror_trigger.sql:117`) — propagates `NEW.branch_id`. Whatever the original INSERT sets is what the trigger pushes downstream. NEEDS VERIFY: which client path INSERTs into `staff_order_requests` and whether it sets branch_id.
+**Today.** Super-admin = profile row with `role = 'admin'` AND `branch_id IS NULL`. The JWT's `branch_id` claim becomes NULL, `useBranchFilter.isSuperAdmin = true`, the AdminHome branch picker appears (`AdminHome.tsx:52-82`), and the user can switch branches via the store. This works.
 
----
+**Missing.** No test persona is set up as super-admin. Phone `777` has `branch_id = 1` in production, making them a branch-1 admin. To exercise super-admin behavior end-to-end, add a new test phone (e.g. `888`) with `role='admin'` and `branch_id=NULL`. One-line SQL.
 
-## 2. Filtering audit (reads)
+## Decisions needed
 
-Hooks that *do* filter by branch (`bf.isActive && bf.branchId != null` then `.eq('branch_id', bf.branchId)`):
+1. **Onboarding `branch_id` derivation.** Three options:
+   - (a) RPC derives `branch_id` server-side from `delivery_zones.branch_id` (fall back to `delivery_hubs.branch_id`, then 1). **Recommend.**
+   - (b) Client passes `branch_id` parameter; RPC trusts it.
+   - (c) Trigger writes NULL; RPC overwrites once address resolves.
 
-| Hook | Line | Status |
-|---|---|---|
-| `useStaffOrders.ts` | 73 | ✅ |
-| `useAdminOrders.ts` | 46 | ✅ |
-| `useDeliveryCycles.ts` | 27 | ✅ |
-| `useEssentialsCatalog.ts` | 47 | ✅ |
-| `useMenuManagement.ts` | 34, 128 | ✅ |
-| `useExpenseManager.ts` | 32, 103 | ✅ |
-| `useAdminNotes.ts` | 38, 102 | ✅ |
-| `useStockManager.ts` | 78, 213 | ✅ |
-| `useReports.ts` × 6 functions | 30, 90, 197, 255, 301, 369 | ✅ |
-| `useBanner.ts` | 41, 62 | ✅ |
-| `useDeliveryZones.ts` | 27 | ✅ |
-| `useDeliveryHubs.ts` | 30 | ✅ |
-| `useSubscriptionPlans.ts` | 57 | ✅ |
-| `useCustomerFeedback.ts` | 47 | ✅ — special: post-fetch filter via order's branch_id since `app_feedback` has no column |
+2. **`staff_leaves` / `staff_salary` / `staff_shifts`: add column or JOIN-filter?** **Recommend column** (matches `staff_attendance` / `expense_claims`; consistent shape; cheap migration).
 
-Hooks that **don't** filter and probably should:
+3. **Drop `store_config.branch_management_active` column?** **Recommend yes** — dead duplicate.
 
-| Hook | Concern |
-|---|---|
-| `useReports.ts → useSubscriptionReport` (line 140-182) | **❌** No `useBranchFilter` call. Counts active/paused/cancelled subs across all branches. Admin Reports → Subscriptions tile leaks. |
-| `useReports.ts → useSubscriptionPlanReport` (line 329-354) | **❌** Same — joins `subscription_plans` no branch filter. Plan-wise breakdown leaks. |
+4. **Super-admin test persona.** Add `888` with `role='admin'`, `branch_id=NULL`?
 
-NEEDS VERIFY:
+5. **Catalog model — per-branch or shared?** Schema today treats menu / plans / cycles / essentials / banners as per-branch (every row carries `branch_id`). Confirms autonomy per branch. If you wanted a shared catalog (one menu serves all branches), schema would need to allow nullable branch_id meaning "global" — a different design. **Confirm "per-branch" is the intent before fixes land.**
 
-- **`useResourceRoster` / `useStaffRoster`** — admin staff-list views; was not opened during this audit.
-- **`useCustomerList` or analogue** — admin customer list — was not opened.
-- **Subscription detail / list hooks** in `useSubscriptions.ts` — only `useAdminSubscriptions` was glanced; verify it filters by branch.
+## Recommended fix order
 
----
+1. Architectural calls (the five decisions above).
+2. **Schema migration** — add `branch_id` column to `customer_addresses`, `user_subscriptions`, `cancelled_subscription_days`, `staff_leaves`, `staff_salary`, `staff_shifts`. Single migration file.
+3. **`complete_onboarding_atomic` RPC update** — server-derive `branch_id` from zone/hub.
+4. **Capture `handle_new_user` into tracked SQL** (closes part of MF-08) — leave it writing NULL, derivation happens in `complete_onboarding_atomic`.
+5. **`useCompleteOnboarding`** — add `supabase.auth.refreshSession()` after RPC returns, so the JWT picks up the freshly-written branch.
+6. **`place-order` Edge Function** — already correct once `customer_addresses.branch_id` is populated. No code change.
+7. **`useAttendance` (clock-in + leave) and `useResourceManager` (salary)** — add `branch_id: bf.branchIdForWrite` to the three INSERT payloads.
+8. **`useReports`** — add `useBranchFilter` to `useSubscriptionReport` + `useSubscriptionPlanReport`.
+9. **Backfill SQL** (one-off, run before flag flip): `UPDATE ... SET branch_id = 1 WHERE branch_id IS NULL` across every branch-aware table (~14 tables).
+10. **RLS PR** (largest single piece): ~18 policies grow a `(is_super_admin() OR (admin AND branch_id = jwt_branch_id()) OR self-clause)` pattern. Define `is_super_admin()` helper. Update file header.
+11. **Add `888` super-admin test phone**; **drop `store_config.branch_management_active`**.
+12. **Flip `feature_flags.branch_management_active = true`** after #9 + #10 land.
 
-## 3. Feature flag drift
+## Verified findings (caveats resolved 2026-05-05)
 
-**Canonical source: `feature_flags.branch_management_active`** (BOOLEAN row in the `feature_flags` table, default FALSE per `seed_feature_flags.sql:15`). Read by `useFeatureFlag('branch_management_active')` which reads only `feature_flags`. Plumbed into `useBranchFilter` and `useBranches`.
+- **Edge functions verified clean.** `send-push` already accepts a `branch_id` parameter (line 12, 89, 138) and filters profiles by it when set — branch-aware notification targeting is in place. The payment/operational functions (`verify-payment`, `confirm-order`, `confirm-topup`, `wallet-topup`, `cancel-order`, `apply-referral`, `elevate-employee`) operate on row-by-row identifiers; `branch_id` flows through the row's existing column. Scheduled push functions (`subscription-expiry-push`, `low-wallet-check`, `dormant-user-check`) iterate users to send each one their own notification — branch-agnostic by design and correct (each customer's push reaches them regardless of branch). SQL-side `kitchen_cutoff_push.sql` reads `cycle.branch_id` (line 81, 90, 136) and `generate_daily_manifest.sql` reads `plan.branch_id` (line 70, 140, 151). **No edge function changes needed.**
+- **Catalog model is per-branch (confirmed).** Every catalog table — `menu_items`, `essentials_catalog`, `delivery_cycles`, `delivery_hubs`, `delivery_zones`, `subscription_plans`, `banners` — carries `branch_id` and is filtered by it in customer/admin reads via `useBranchFilter`. Each branch owns its own catalog rows (admin must duplicate for parity if desired). Matches the "branches are autonomous" architecture per Master Doc.
+- **JWT-staleness fix is one line, pattern already exists.** `useAuth.ts:96-108` already calls `supabase.auth.refreshSession()` on app foreground for exactly this kind of claim refresh. Same call needs to fire from `useCompleteOnboarding` after the RPC succeeds. Single addition to that hook's `onSuccess`.
 
-**Drift source: `store_config.branch_management_active`** (BOOLEAN column in the `store_config` singleton row, schema.sql:69). **No code reads it** — the `store_config` SELECT in `useStoreConfig` returns the row but no consumer references this column today. Stale duplicate.
+## New finding — no admin UI to add a branch
 
-**Verdict:** drift is real but harmless. The `store_config` column is a dead duplicate. Cleanup recommended (drop the column or stop including it in `useStoreConfig` selects to prevent future "wait, which one's canonical?" cycles), but no functional bug.
+`useBranches.ts:14-31` is read-only (SELECT only). No hook or screen exists for INSERT/UPDATE on the `branches` table. Master Doc references a "Branches" Manage screen, but it doesn't exist in code. Adding branch 2 today = direct SQL via Supabase dashboard. Fine for first launch (one-time op done by Shrikanth), but a "Branches" Manage screen is post-launch follow-up for self-service.
 
-**What flips when `feature_flags.branch_management_active` goes true:**
-1. `bf.isActive = true` everywhere `useBranchFilter` is called.
-2. Branch-filtered query hooks (16+) start applying `.eq('branch_id', bf.branchId)`.
-3. `useBranches` activates (`enabled: isActive`).
-4. **Class B hooks switch from writing NULL to writing `bf.branchId`.** This is the cliff — every existing row written with NULL stays NULL. The Class B fixes (`?? 1` fallback) prevent *new* NULLs but do not retroactively heal old NULL rows.
+## Phone uniqueness note
 
-**Implication:** flipping the flag without first running the Class B fixes AND a backfill is risky. Existing NULL-tagged rows stay invisible to filtered queries forever — orders don't show up, attendance doesn't aggregate, plans don't appear in their branch's catalog. Need a backfill SQL pass before flipping.
+Supabase Auth makes `auth.users.phone` globally unique. A customer/staff phone exists in exactly one branch via `profiles.branch_id`. Moving someone between branches = update profile.branch_id, not new account. Fine for the data model; worth noting in operational guide.
+
+## Counts
+
+- 4 architectural decisions / one-off setup items.
+- 6 schema columns to add.
+- 5 hook payloads to amend (3 staff INSERTs + 2 report filters).
+- 1 RPC to update + 1 trigger to track.
+- 1 client `refreshSession` call.
+- 1 backfill migration (~18 tables).
+- ~18 RLS policies to grow a branch clause + 1 new helper function.
+- 1 column to drop, 1 super-admin test phone to add.
 
 ---
 
-## 4. RLS branch scoping
+# Final execution plan (2026-05-05)
 
-**Headline: zero branch-aware policies.** `rls_policies.sql` defines `jwt_branch_id()` (line 28-31) but no policy in the file uses it. Every staff/admin path uses `is_admin()` or `is_staff_or_admin()` only. At branch 2:
+## Decisions Shrikanth needs to make before commit 1
 
-| Table | Policy | Branch boundary today |
-|---|---|---|
-| `profiles` | `profiles_admin_all` (admin-all) | ❌ admin sees every branch's profiles |
-| `orders` | `orders_self`, `orders_staff_update` | ❌ any staff/admin reads + updates any branch |
-| `order_items` | `order_items_self` (staff-or-admin OR own-order) | ❌ staff sees any branch |
-| `user_subscriptions` | `user_subs_self` (own OR staff-or-admin) | ❌ |
-| `cancelled_subscription_days` | same | ❌ |
-| `customer_addresses` | `addresses_self` (own OR staff-or-admin) | ❌ |
-| `wallet_transactions` | `wallet_tx_self` (own OR staff-or-admin) | ❌ |
-| `menu_items`, `essentials_catalog`, `delivery_cycles`, `delivery_hubs`, `delivery_zones`, `subscription_plans`, `subscription_plan_items`, `banners`, `branches` | DO-loop generates `_read_all` (true) + `_admin_write` (`is_admin()`) | ❌ admin writes any branch's catalog |
-| `expense_claims`, `staff_attendance`, `staff_leaves`, `staff_salary` | self-or-admin | ❌ admin reads/writes all branches |
-| `business_expenses` | `business_expenses_admin` (admin) | ❌ |
+1. **Onboarding `branch_id` derivation:** RPC server-derives from `delivery_zones.branch_id` (fall back to `delivery_hubs.branch_id`, then 1). **Recommended.**
+2. **`staff_leaves` / `staff_salary` / `staff_shifts`:** add `branch_id` column (matches `staff_attendance` / `expense_claims`). **Recommended.**
+3. **Drop `store_config.branch_management_active`** dead duplicate column. **Recommended.**
+4. **Add `888` super-admin test persona** (`role='admin'`, `branch_id=NULL`). **Recommended.**
 
-**File-level staleness:** `rls_policies.sql:4-6` says `STATUS: **DISABLED** during development`. Per BF-04 / today's reality, RLS is enabled in dev and prod. Header comment is stale. (This is the deferred Item-A from this morning's chore queue.)
+## Execution — 5 commit groups + 1 approval gate + flag flip
 
-**Fix shape needed:** every staff-and-admin policy on a branch-aware table needs a branch-equality clause with admin override. Pattern:
+### Commit 1 — Schema + onboarding foundation (DB-only)
+- Add `branch_id` to: `customer_addresses`, `user_subscriptions`, `cancelled_subscription_days`, `staff_leaves`, `staff_salary`, `staff_shifts`. Single migration file.
+- Rewrite `complete_onboarding_atomic.sql` — derive `branch_id` server-side from `delivery_zones` / `delivery_hubs`; write to both `profiles` and `customer_addresses`.
+- Capture `handle_new_user` trigger into tracked SQL (writes NULL; RPC fills it). Closes part of MF-08.
+- Add `is_super_admin()` SQL helper: `role = 'admin' AND jwt_branch_id() IS NULL`.
+
+### Commit 2 — Client write payloads (close staff INSERTs + JWT refresh)
+- `src/hooks/useCompleteOnboarding.ts` — call `supabase.auth.refreshSession()` in `onSuccess` so JWT picks up freshly-written `branch_id`.
+- `src/hooks/useAttendance.ts:116-122` — add `branch_id: bf.branchIdForWrite` to clock-in payload.
+- `src/hooks/useAttendance.ts:253-258` — same for `staff_leaves` insert.
+- `src/hooks/useResourceManager.ts:303-308` — same for `staff_salary` insert.
+
+### Commit 3 — Reports filter fix
+- `src/hooks/useReports.ts:140-182` (`useSubscriptionReport`) — add `useBranchFilter`, apply `.eq('branch_id', bf.branchId)` when active.
+- `src/hooks/useReports.ts:329-354` (`useSubscriptionPlanReport`) — same.
+
+### Commit 4 — RLS branch boundaries (single dedicated PR)
+- ~18 policies grow `(public.is_super_admin() OR (admin AND branch_id = jwt_branch_id()) OR self-clause)` pattern.
+- Replace stale `STATUS: DISABLED during development` header (file lines 4-6).
+- Tables to update: `profiles`, `orders`, `order_items`, `user_subscriptions`, `cancelled_subscription_days`, `customer_addresses`, `wallet_transactions`, `expense_claims`, `staff_attendance`, `staff_leaves`, `staff_salary`, `business_expenses`, `admin_notes`, plus the catalog DO-loop tables (`menu_items`, `essentials_catalog`, `delivery_cycles`, `delivery_hubs`, `delivery_zones`, `subscription_plans`, `subscription_plan_items`, `banners`).
+
+### APPROVAL GATE — one-time backfill SQL (Shrikanth approves before run)
+
+Run **once** before flipping the flag. Every new row after Commit 2 lands gets `branchIdForWrite` (never NULL) — no further backfill needed ever.
+
 ```sql
-USING (
-  public.is_admin() OR  -- super-admin sees all
-  (public.is_staff_or_admin() AND branch_id = public.jwt_branch_id())
-)
+UPDATE profiles                      SET branch_id = 1 WHERE branch_id IS NULL;
+UPDATE customer_addresses            SET branch_id = 1 WHERE branch_id IS NULL;
+UPDATE user_subscriptions            SET branch_id = 1 WHERE branch_id IS NULL;
+UPDATE orders                        SET branch_id = 1 WHERE branch_id IS NULL;
+UPDATE staff_attendance              SET branch_id = 1 WHERE branch_id IS NULL;
+UPDATE staff_leaves                  SET branch_id = 1 WHERE branch_id IS NULL;
+UPDATE staff_salary                  SET branch_id = 1 WHERE branch_id IS NULL;
+UPDATE staff_shifts                  SET branch_id = 1 WHERE branch_id IS NULL;
+UPDATE cancelled_subscription_days   SET branch_id = 1 WHERE branch_id IS NULL;
+UPDATE expense_claims                SET branch_id = 1 WHERE branch_id IS NULL;
+UPDATE menu_items                    SET branch_id = 1 WHERE branch_id IS NULL;
+UPDATE essentials_catalog            SET branch_id = 1 WHERE branch_id IS NULL;
+UPDATE delivery_cycles               SET branch_id = 1 WHERE branch_id IS NULL;
+UPDATE delivery_hubs                 SET branch_id = 1 WHERE branch_id IS NULL;
+UPDATE delivery_zones                SET branch_id = 1 WHERE branch_id IS NULL;
+UPDATE subscription_plans            SET branch_id = 1 WHERE branch_id IS NULL;
+UPDATE banners                       SET branch_id = 1 WHERE branch_id IS NULL;
+UPDATE admin_notes                   SET branch_id = 1 WHERE branch_id IS NULL;
 ```
-Roughly 15-20 policies need this treatment. This is the largest single piece of MF-03 fix work.
 
----
+### Commit 5 — Cleanup + super-admin persona
+- Drop `store_config.branch_management_active` column (dead duplicate).
+- Add `888` super-admin test phone (auth.users + profiles row with `role='admin'`, `branch_id=NULL`).
 
-## 5. Admin reports
+### Flag flip
+```sql
+UPDATE feature_flags SET flag_value = TRUE WHERE flag_key = 'branch_management_active';
+```
 
-**`useReports.ts` — 8 functions:**
+After flip: super-admin can switch branches via picker; branch admins/staff scoped to their branch; customers see only their branch's catalog.
 
-| Function | Branch-filter status |
-|---|---|
-| `useRevenueReport` | ✅ (line 30) |
-| `useOrderReport` | ✅ (line 90) |
-| `useSubscriptionReport` | ❌ no filter |
-| `useStaffAttendanceReport` | ✅ (line 197) |
-| `useOrdersDetailReport` | ✅ (line 255) |
-| `useRevenueDetailReport` | ✅ (line 301) |
-| `useSubscriptionPlanReport` | ❌ no filter |
-| `useExpenseReport` | ✅ (line 369) |
+## Post-launch follow-ups (not blockers for branch 2)
 
-**Admin home / branch picker (super-admin):**
+- **"Branches" Manage admin screen** — currently no UI to add a new branch row; do it via SQL once for branch 2. Future FT-XX for self-service branch CRUD.
+- **Spot-check scheduled push functions in multi-branch context** — confirm sub-expiry / low-wallet / dormant pushes fire correctly per-customer (~30 min check).
 
-`AdminHome.tsx` (per grep, line 57: `// Only super-admins (no branch_id in JWT) need this`) consumes the branch picker UI. The selector writes to `branchStore.selectedBranchId`, which `useBranchFilter` reads when JWT has no branch. **NEEDS VERIFY:** the picker UI is wired and triggers store updates correctly — only the comment was sampled, not the JSX.
+## Fresh session bring-up
 
-**Reports screens:** screens under `src/screens/admin/` that consume the report hooks were not opened during this audit. NEEDS VERIFY they pass `useBranchFilter`-aware hooks correctly. Probable that they're fine since the hooks self-derive the branch — but worth a one-screen sanity check.
+A fresh Cowork session resuming this work should read, in order:
+1. `docs/SESSION_START.md`
+2. `docs/RULES.md`
+3. `docs/STATUS.md`
+4. **This audit document** (`docs/MF-03_multi_branch_audit.md`) — full plan above.
+5. `docs/DECISIONS.md` for any newer items not in this audit.
 
----
-
-## Punch list (prioritized)
-
-### DEFINITE — must fix before launch (per D-08)
-
-1. **[CLASS A] RLS — zero branch-scoped policies.** Add `branch_id = jwt_branch_id()` clauses with `is_admin()` override to every staff-and-admin policy on a branch-aware table (roughly 15-20 policies in `rls_policies.sql`). Also fix the file's stale "DISABLED during development" header.
-
-2. **[CLASS C] `complete_onboarding_atomic` — does not set `branch_id`.** Add `branch_id` parameter (derived client-side from the picked address's `zone_id`/`hub_id` lookup) and write it into both the `profiles` UPSERT and the `customer_addresses` INSERT. D-08 explicitly calls this out.
-
-3. **[CLASS C] `handle_new_user` trigger — does not set `branch_id`.** Function lives only on prod; capture in tracked SQL (this is also part of MF-08), then add branch_id derivation. NEEDS VERIFY whether the trigger has any branch context to derive from at signup time — likely no, may need to leave NULL and rely on `complete_onboarding_atomic` to update it.
-
-4. **[CLASS B] BF-06-pattern fix — `useEssentialsCatalog.ts:67`.** `bf.isActive ? bf.branchId : null` → `bf.branchId ?? 1`.
-
-5. **[CLASS B] BF-06-pattern fix — `useMenuManagement.ts:62, 181`.** Same shape.
-
-6. **[CLASS B] BF-06-pattern fix — `useSubscriptionPlans.ts:89`.** Same shape. (Cascades to fix the `user_subscriptions.branch_id` and `orders.branch_id` NULL chain through `place-order` and `generate_daily_manifest`.)
-
-7. **[CLASS B] BF-06-pattern fix — `useDeliveryHubs.ts:76`.** Same shape.
-
-8. **[CLASS B] BF-06-pattern fix — `useDeliveryZones.ts:52`.** Same shape.
-
-9. **[CLASS B] BF-06-pattern fix — `useBanner.ts:70`.** Same shape.
-
-10. **[CLASS B] BF-06-pattern fix — `useStockManager.ts:116, 176`.** Same shape (one is RPC param, one is direct INSERT).
-
-11. **[CLASS B] BF-06-pattern fix — `useExpenseManager.ts:127`.** Same shape.
-
-12. **[ATTENDANCE] `useClockIn` mutation — staff_attendance INSERT missing `branch_id` entirely.** Add to payload: `branch_id: bf.branchId ?? 1` (or read from staff's profile.branch_id at clock-in time). Same for `useClockOut`.
-
-13. **[REPORTS] `useSubscriptionReport` + `useSubscriptionPlanReport` — add `useBranchFilter` and `.eq('branch_id', ...)`.** Otherwise admin Reports → Subscriptions and plan-wise breakdown leak across branches.
-
-14. **[BACKFILL] One-off SQL pass before flipping `branch_management_active`.** Every existing row in branch-aware tables that has `branch_id IS NULL` needs to be set to `1` (the only branch today). Otherwise those rows become invisible the moment filters activate. Migration shape:
-    ```sql
-    UPDATE profiles SET branch_id = 1 WHERE branch_id IS NULL;
-    UPDATE customer_addresses SET branch_id = 1 WHERE branch_id IS NULL;
-    UPDATE orders SET branch_id = 1 WHERE branch_id IS NULL;
-    -- ... and 12+ more tables
-    ```
-    Should be batched as a single migration file.
-
-### PROBABLE — likely needs fix, NEEDS VERIFY first
-
-15. **`useStaffLeave.ts:42`** — staff_leaves INSERT — confirm if it tags branch_id; if not, add `?? 1` pattern.
-
-16. **`useResourceManager.ts:303`** — staff_salary INSERT — confirm branch_id; same pattern fix.
-
-17. **`useAttendance.ts:253`** — staff_leaves admin INSERT — confirm.
-
-18. **`ImportItemsScreen.tsx:242`** — bulk subscription_plans CSV import — confirm whether the `records` array carries branch_id. If user-supplied CSV doesn't have branch_id, code must inject it.
-
-19. **`useClockOut`** — same gap as `useClockIn` likely.
-
-20. **`store_config.branch_management_active` column** — stale duplicate, never read. Cleanup: drop the column, OR remove from any `select('*')` paths to prevent future confusion.
-
-### NEEDS VERIFY
-
-21. **Admin reports screens** — confirm each screen under `src/screens/admin/` that displays aggregated metrics consumes `useBranchFilter`-aware hooks and passes the right values.
-
-22. **`useAddAddress` (existing-customer add-address flow)** — confirm whether it sets `branch_id` on the new address row, or if it's reused from a derived value.
-
-23. **`AdminHome` branch picker UI wiring** — comment exists at line 57 indicating "super-admins need this," but the JSX wasn't read. Verify the picker is rendered and writes to `branchStore.selectedBranchId`.
-
-24. **`OnboardEmployeeScreen` branch picker UI** — state hooks are present (line 327-336), but the JSX rendering wasn't read. Verify the picker is actually rendered for super-admins and is hidden in single-branch mode (per the comment at 321-326). This is MF-02's concern — likely already in flight per Shrikanth's note.
-
-25. **`staff_order_requests` write path** — the trigger forwards `NEW.branch_id`, but which client hook INSERTs the original row? Confirm it sets branch_id correctly.
-
----
-
-## Notes / architectural observations needing a human call
-
-1. **The RLS gap is the biggest single piece of work.** Roughly 15-20 policies need to grow a branch clause. Pattern is uniform but the testing surface is broad — every role × every table × every operation needs spot-verification post-fix. Suggest landing this as a single dedicated PR with a focused review.
-
-2. **The Class C onboarding gap interacts with the Class B catalog gaps.** Customer's first address is written with NULL branch (Class C). When that customer places an order, `place-order` reads the address's branch_id (correctly, line 171), so the order's branch_id derives from a NULL address. Even if every Class B hook is fixed, customer orders today will still be NULL until Class C is fixed. **Order of fixes:** Class C first, then Class B, then Class A (RLS), then backfill, then flip the flag.
-
-3. **`handle_new_user` trigger:** lives only on production, captured by D-08 + MF-08 as a known source-of-truth gap. The trigger fires on `auth.users` INSERT — at that moment, the system has no idea what branch the new user belongs to (they haven't picked an address yet). Probable answer: leave the trigger writing NULL for branch, fix it in `complete_onboarding_atomic` once the user has a serviceable address. But this needs Shrikanth's call — alternative is to default to `1` on the trigger and let `complete_onboarding_atomic` overwrite if needed.
-
-4. **Backfill fragility:** the backfill (item 14) sets every existing NULL to `1`. Safe today because there's only one branch. But if the team accidentally activates the flag before running backfill, the resulting data divergence is silent and ongoing — every new row goes to `bf.branchId ?? 1` correctly, but every old null row still doesn't appear in any filtered query. Worth gating the flag flip behind a manual checklist step that explicitly references the backfill having run.
-
-5. **`subscription_plan_items` table:** has RLS enabled (`rls_policies.sql:181`) but no branch column was queried in this audit. Live system suggests admin writes plans via `subscription_plans.plan_items` JSON column (per BF-02), so this table may be unused / dead in the current architecture. Worth confirming as part of MF-08 source-of-truth audit.
-
-6. **Test coverage of branch flow is essentially nil.** Single Jest test references `branch_id: null` (timeEngine.test.ts:23). When the fixes above are made, recommend adding integration tests under `src/__tests__/` that exercise: (a) onboarding writes correct branch_id, (b) order placement inherits address's branch_id, (c) flag flip with mixed NULL data does not silently drop rows. Tracked under MF-07 post-V-06.
-
-7. **`useAdminNotes.ts` after the Class B fix — subtle, worth flagging.** The hook upserts against a `UNIQUE (target_tab, branch_id) NULLS NOT DISTINCT` constraint. The Class B fix shifted the single-branch upsert key from `(target_tab, NULL)` to `(target_tab, 1)`. Functionally equivalent **today** (still one note per `target_tab` in the only branch), and **semantically correct for multi-branch** — once the flag flips, notes become branch-specific (each branch admin sees their own notes per target_tab, not a globally-shared NULL-keyed note). The one caveat: existing `branch_id = NULL` rows in production will become stranded once new upserts use `branch_id = 1` — the new (target_tab, 1) upserts won't conflict with the old NULL row, so the NULL row sits ignored, and a new branch_id=1 row gets created on next admin save. Not a problem today (flag is still false; reads still see NULL rows because no branch filter is applied), but it IS part of why item #14 (pre-flag-flip backfill) is non-optional. The backfill `UPDATE admin_notes SET branch_id = 1 WHERE branch_id IS NULL;` migrates those orphan rows into the new keying scheme so the upsert path works correctly post-flip. Same story applies to every Class B table — admin_notes is just the most visible because of the NULLS NOT DISTINCT constraint coupling.
+The work resumes at: Shrikanth confirms decisions 1-4 → execute Commit 1.
