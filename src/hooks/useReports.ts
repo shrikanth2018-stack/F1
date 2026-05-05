@@ -138,22 +138,30 @@ export function useOrderReport(startDate: string, endDate: string) {
 
 /** Subscription stats */
 export function useSubscriptionReport() {
+  const bf = useBranchFilter();
+
   return useQuery({
-    queryKey: ['report_subscriptions'],
+    queryKey: ['report_subscriptions', bf.isActive ? bf.branchId ?? 'all' : 'off'],
     queryFn: async () => {
-      const [activeRes, allRes, cancelledDaysRes] = await Promise.all([
-        supabase
-          .from('user_subscriptions')
-          .select('id', { count: 'exact', head: true })
-          .eq('is_active', true)
-          .eq('is_paused', false),
-        supabase
-          .from('user_subscriptions')
-          .select('id, is_active, is_paused, plan_id, payment_method, created_at'),
-        supabase
-          .from('cancelled_subscription_days')
-          .select('id', { count: 'exact', head: true }),
-      ]);
+      let activeQ = supabase
+        .from('user_subscriptions')
+        .select('id', { count: 'exact', head: true })
+        .eq('is_active', true)
+        .eq('is_paused', false);
+      let allQ = supabase
+        .from('user_subscriptions')
+        .select('id, is_active, is_paused, plan_id, payment_method, created_at');
+      let cancelledDaysQ = supabase
+        .from('cancelled_subscription_days')
+        .select('id', { count: 'exact', head: true });
+
+      if (bf.isActive && bf.branchId != null) {
+        activeQ = activeQ.eq('branch_id', bf.branchId);
+        allQ = allQ.eq('branch_id', bf.branchId);
+        cancelledDaysQ = cancelledDaysQ.eq('branch_id', bf.branchId);
+      }
+
+      const [activeRes, allRes, cancelledDaysRes] = await Promise.all([activeQ, allQ, cancelledDaysQ]);
 
       const all = allRes.data ?? [];
       const active = activeRes.count ?? 0;
@@ -327,12 +335,16 @@ export function useRevenueDetailReport(startDate: string, endDate: string) {
 
 /** Subscription plan-wise breakdown */
 export function useSubscriptionPlanReport() {
+  const bf = useBranchFilter();
+
   return useQuery({
-    queryKey: ['report_subscription_plans'],
+    queryKey: ['report_subscription_plans', bf.isActive ? bf.branchId ?? 'all' : 'off'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('user_subscriptions')
         .select('id, is_active, is_paused, plan_id, subscription_plans(plan_name)');
+      if (bf.isActive && bf.branchId != null) query = query.eq('branch_id', bf.branchId);
+      const { data, error } = await query;
 
       if (error) throw error;
       const all = (data ?? []) as any[];
