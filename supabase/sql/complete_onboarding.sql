@@ -5,6 +5,13 @@
 -- delivery address in a single PostgreSQL transaction. If
 -- either insert fails, both roll back together.
 --
+-- MF-03 Commit 1: derives branch_id server-side from the address
+-- inputs (delivery_zones.branch_id, falling back to delivery_hubs.
+-- branch_id, then 1) and writes it onto BOTH the profile and the
+-- customer_addresses row. Single source of truth — no client trust.
+-- The handle_new_user trigger continues to write the stub profile
+-- with NULL branch_id; this RPC fills it during onboarding.
+--
 -- Used only by the new-user onboarding flow (after OTP verify).
 -- Existing-customer additional-address flow continues to use
 -- the plain useAddAddress hook (no RPC).
@@ -33,6 +40,7 @@ SECURITY DEFINER
 AS $$
 DECLARE
   v_address_id BIGINT;
+  v_branch_id  INTEGER;
 BEGIN
   -- Defense in depth: only allow the authenticated user to onboard themselves.
   -- The function is SECURITY DEFINER, so without this guard any authenticated
@@ -41,27 +49,36 @@ BEGIN
     RAISE EXCEPTION 'unauthorized: p_user_id does not match auth.uid()';
   END IF;
 
+  -- Derive branch from address inputs (single source of truth, no client trust).
+  SELECT branch_id INTO v_branch_id FROM delivery_zones WHERE id = p_zone_id;
+  IF v_branch_id IS NULL THEN
+    SELECT branch_id INTO v_branch_id FROM delivery_hubs WHERE id = p_hub_id;
+  END IF;
+  v_branch_id := COALESCE(v_branch_id, 1);
+
   -- Upsert the profile. The on_auth_user_created AFTER INSERT trigger
   -- on auth.users (calling public.handle_new_user) creates a stub
-  -- profile row (id + phone_number, no full_name) the moment OTP signup
-  -- completes — so by the time this RPC runs, the row already exists
-  -- and the ON CONFLICT (id) DO UPDATE branch is the normal path. The
-  -- INSERT branch is a defensive fallback for edge cases (e.g., if the
-  -- auth trigger ever didn't fire). Both paths are atomic with the
-  -- address INSERT below.
-  INSERT INTO profiles (id, phone_number, full_name)
-  VALUES (p_user_id, p_phone_number, p_full_name)
+  -- profile row (id + phone_number, no full_name, no branch_id) the
+  -- moment OTP signup completes — so by the time this RPC runs, the
+  -- row already exists and the ON CONFLICT (id) DO UPDATE branch is
+  -- the normal path. The INSERT branch is a defensive fallback for
+  -- edge cases (e.g., if the auth trigger ever didn't fire). Both
+  -- paths are atomic with the address INSERT below, and both stamp
+  -- the derived branch_id.
+  INSERT INTO profiles (id, phone_number, full_name, branch_id)
+  VALUES (p_user_id, p_phone_number, p_full_name, v_branch_id)
   ON CONFLICT (id) DO UPDATE
-    SET full_name = EXCLUDED.full_name;
+    SET full_name = EXCLUDED.full_name,
+        branch_id = EXCLUDED.branch_id;
 
   -- Insert the first delivery address. is_default = TRUE
   -- since this is the user's only address.
   INSERT INTO customer_addresses (
     user_id, label, full_name, address_line, landmark, city, pincode,
-    latitude, longitude, zone_id, hub_id, is_serviceable, is_default
+    latitude, longitude, zone_id, hub_id, is_serviceable, is_default, branch_id
   ) VALUES (
     p_user_id, p_label, p_full_name, p_address_line, p_landmark, p_city, p_pincode,
-    p_latitude, p_longitude, p_zone_id, p_hub_id, p_is_serviceable, TRUE
+    p_latitude, p_longitude, p_zone_id, p_hub_id, p_is_serviceable, TRUE, v_branch_id
   )
   RETURNING id INTO v_address_id;
 

@@ -40,6 +40,14 @@ LANGUAGE sql STABLE AS $$
   SELECT public.jwt_user_role() IN ('"admin"', 'admin', '"staff"', 'staff');
 $$;
 
+-- MF-03 Commit 1: distinguishes super-admin (no branch claim → sees all
+-- branches) from branch-scoped admin. Used by Commit 4 policies; no policy
+-- references this helper yet.
+CREATE OR REPLACE FUNCTION public.is_super_admin() RETURNS BOOLEAN
+LANGUAGE sql STABLE AS $$
+  SELECT public.is_admin() AND public.jwt_branch_id() IS NULL;
+$$;
+
 
 -- ════════════════════════════════════════════════════════════════
 -- PROFILES
