@@ -180,11 +180,16 @@ export function useUpdateEmployee() {
       staffId: string;
       updates: Partial<Pick<Profile, 'full_name' | 'designation' | 'joining_date' | 'shift_timing' | 'assigned_hub_id' | 'monthly_salary' | 'benefits'>>;
     }) => {
-      // FT-03: designation changes route through the SECURITY DEFINER
-      // set_employee_designation RPC, which atomically updates designation
-      // + role (= 'admin' when designation='ADMIN HEAD' else 'staff') and
-      // gates ADMIN HEAD transitions to super-admin only. Other field
-      // updates keep the direct profiles UPDATE path.
+      // Designation routes through set_employee_designation RPC (FT-03):
+      // atomically updates designation + role (= 'admin' when
+      // designation='ADMIN HEAD' else 'staff') and gates ADMIN HEAD
+      // transitions to super-admin only.
+      //
+      // Other fields route through update_employee_profile RPC: the
+      // authenticated role's column GRANT on profiles only allows
+      // UPDATE on (full_name, phone_number); the SECURITY DEFINER RPC
+      // bypasses that for admin while staying admin-gated and branch-
+      // scoped. JSON null clears the column; missing keys leave unchanged.
       const { designation, ...rest } = updates;
 
       if (designation !== undefined) {
@@ -197,11 +202,12 @@ export function useUpdateEmployee() {
       }
 
       if (Object.keys(rest).length > 0) {
-        const { error } = await supabase
-          .from('profiles')
-          .update({ ...rest, updated_at: new Date().toISOString() })
-          .eq('id', staffId);
-        if (error) throw new Error(error.message);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { error: rpcErr } = await (supabase as any).rpc('update_employee_profile', {
+          target_id: staffId,
+          updates: rest,
+        });
+        if (rpcErr) throw new Error(rpcErr.message);
       }
     },
     onSuccess: (_d, vars) => {
