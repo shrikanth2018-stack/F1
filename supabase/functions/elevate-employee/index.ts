@@ -130,16 +130,9 @@ Deno.serve(async (req: Request) => {
     });
     if (rpcErr) return json({ error: `Elevate RPC failed: ${rpcErr.message}` }, 500);
 
-    // FT-03: when designation = 'ADMIN HEAD', flip role from 'staff' (set by
-    // elevate_to_staff) to 'admin'. Super-admin gate already applied above;
-    // service-role client bypasses RLS for this single targeted UPDATE.
-    if (isAdminHead) {
-      const { error: roleErr } = await adminClient
-        .from('profiles')
-        .update({ role: 'admin', updated_at: new Date().toISOString() })
-        .eq('id', authUserId);
-      if (roleErr) return json({ error: `Admin role flip failed: ${roleErr.message}` }, 500);
-    }
+    // FT-03: role assignment is now atomic inside elevate_to_staff —
+    // the RPC reads designation and writes role='admin' when designation
+    // is 'ADMIN HEAD', else 'staff'. No follow-up UPDATE needed here.
 
     return json({ success: true, employee_id: employeeId, user_id: authUserId });
   } catch (err: unknown) {

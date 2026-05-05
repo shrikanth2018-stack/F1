@@ -37,10 +37,18 @@ DECLARE
   v_seq         BIGINT;
   v_employee_id TEXT;
   v_existing    TEXT;
+  v_target_role TEXT;
 BEGIN
+  -- FT-03: designation IS the role discriminator. ADMIN HEAD → admin,
+  -- anything else → staff. The guard below only refuses the genuine
+  -- demote case (existing admin being overwritten to staff via the
+  -- wrong path); admin → admin (e.g. completing onboarding fields on
+  -- an already-promoted admin profile) is permitted.
+  v_target_role := CASE WHEN p_designation = 'ADMIN HEAD' THEN 'admin' ELSE 'staff' END;
+
   SELECT role INTO v_existing FROM profiles WHERE id = p_user_id;
-  IF v_existing = 'admin' THEN
-    RAISE EXCEPTION 'Cannot elevate an admin account to staff';
+  IF v_existing = 'admin' AND v_target_role = 'staff' THEN
+    RAISE EXCEPTION 'Cannot demote an admin to staff via this path. Change designation away from ADMIN HEAD first.';
   END IF;
 
   v_seq := nextval('employee_id_seq');
@@ -52,12 +60,12 @@ BEGIN
     joining_date, shift_timing, assigned_hub_id, monthly_salary,
     benefits, branch_id, wallet_balance, loyalty_points
   ) VALUES (
-    p_user_id, 'staff', p_phone_number, p_full_name, v_employee_id, p_designation,
+    p_user_id, v_target_role, p_phone_number, p_full_name, v_employee_id, p_designation,
     p_joining_date, p_shift_timing, p_assigned_hub_id, p_monthly_salary,
     NULLIF(p_benefits, ''), p_branch_id, 0, 0
   )
   ON CONFLICT (id) DO UPDATE SET
-    role            = 'staff',
+    role            = v_target_role,
     full_name       = EXCLUDED.full_name,
     employee_id     = COALESCE(profiles.employee_id, EXCLUDED.employee_id),
     designation     = EXCLUDED.designation,
