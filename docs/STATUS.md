@@ -48,9 +48,10 @@ All OTPs are `123456`.
 
 | Phone | Role | Notes |
 |---|---|---|
-| `777` | admin | Admin user |
-| `666` | staff | Kitchen / packing staff |
-| `555` | customer | Plain customer |
+| `777` | super-admin | role=`admin` + `branch_id IS NULL` (sees all branches; can flip global feature flags). |
+| `888` | branch-1 admin | role=`admin` + `branch_id = 1`. Promoted via MF-03 Commit 5 SQL after first OTP sign-in. Use to test branch isolation against `777`. |
+| `666` | staff | Kitchen / packing staff. |
+| `555` | customer | Plain customer. |
 | `444` | hub operator | role=`customer` + `assigned_hub_id = 19`. Demoted via one-off SQL 2026-05-03 (MF-01). |
 | `333` | staff + driver | role=`staff` + driver of Zone 1 AND Hub 1. |
 | `999`, `11111`, `22222`, `33333`, `999999` | unused | Reserved test phones. |
