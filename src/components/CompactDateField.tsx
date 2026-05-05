@@ -80,7 +80,7 @@ export function CompactDateField({ placeholder, value, onChange }: Props) {
                 value={fromIso(value)}
                 mode="date"
                 display="spinner"
-                themeVariant="dark"
+                textColor={Theme.colors.text.primary}
                 onChange={handleChangeIos}
               />
             </Pressable>

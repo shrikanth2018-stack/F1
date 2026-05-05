@@ -106,7 +106,7 @@ export function CompactTimeRangeField({ value, onChange }: Props) {
                   mode="time"
                   display="spinner"
                   is24Hour
-                  themeVariant="dark"
+                  textColor={Theme.colors.text.primary}
                   onChange={handleIos(openSlot)}
                 />
               )}
