@@ -5,9 +5,19 @@
  * (e.g. "Mobile Number (10 Digit)"). Non-editable mode renders a Text
  * fallback — muted by default, accent when extracted=true (auto-derived
  * from another field).
+ *
+ * Commit modes:
+ * - onChange: fires on every keystroke (use when parent state mirrors
+ *   the field exactly, e.g. OnboardEmployeeScreen).
+ * - onCommit: fires on blur / submit only (use for save-on-blur edits,
+ *   e.g. EmployeeDetail edit toggle). Internal draft state keeps the
+ *   field responsive between commits without spamming the parent.
+ *
+ * Both can be passed; chip-style consumers (FieldWithSuggestions) call
+ * onCommit on chip-tap and the inner field calls it on blur.
  */
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, TextInput, KeyboardTypeOptions, StyleSheet } from 'react-native';
 import { Theme } from '../theme';
 import { ThemedText } from './ThemedText';
@@ -16,6 +26,7 @@ interface CompactFieldProps {
   placeholder: string;
   value: string;
   onChange?: (v: string) => void;
+  onCommit?: (v: string) => void;
   editable?: boolean;
   extracted?: boolean;
   keyboardType?: KeyboardTypeOptions;
@@ -27,19 +38,29 @@ export function CompactField({
   placeholder,
   value,
   onChange,
+  onCommit,
   editable = true,
   extracted = false,
   keyboardType,
   maxLength,
   rightSlot,
 }: CompactFieldProps) {
+  // Draft state used only when onCommit is provided (commit-on-blur mode).
+  // Sync local draft when the upstream value changes (e.g. external save).
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+
+  const useDraft = !!onCommit;
+
   return (
     <View style={styles.row}>
       {editable ? (
         <TextInput
           style={styles.input}
-          value={value}
-          onChangeText={onChange}
+          value={useDraft ? draft : value}
+          onChangeText={useDraft ? setDraft : onChange}
+          onBlur={useDraft ? () => onCommit!(draft) : undefined}
+          onSubmitEditing={useDraft ? () => onCommit!(draft) : undefined}
           placeholder={placeholder}
           placeholderTextColor={Theme.colors.text.muted}
           keyboardType={keyboardType}

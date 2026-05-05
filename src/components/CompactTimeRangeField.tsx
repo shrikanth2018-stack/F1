@@ -20,6 +20,7 @@ import { ThemedText } from './ThemedText';
 interface Props {
   value: string;             // "HH:MM-HH:MM" or empty
   onChange: (v: string) => void;
+  editable?: boolean;
 }
 
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -44,9 +45,25 @@ const toDate = (hhmm: string): Date => {
 
 const isIos = Platform.OS === 'ios';
 
-export function CompactTimeRangeField({ value, onChange }: Props) {
+export function CompactTimeRangeField({ value, onChange, editable = true }: Props) {
   const { start, end } = parseRange(value);
   const [openSlot, setOpenSlot] = useState<'start' | 'end' | null>(null);
+
+  // Display-only mode: render the value (or em-dash) as plain muted text;
+  // skip the Pressables and Modal entirely.
+  if (!editable) {
+    return (
+      <View style={styles.row}>
+        <ThemedText
+          variant="body"
+          color={value ? 'muted' : 'muted'}
+          style={styles.cellText}
+        >
+          {value || '—'}
+        </ThemedText>
+      </View>
+    );
+  }
 
   const apply = (slot: 'start' | 'end', next: string) => {
     const merged = slot === 'start' ? `${next}-${end || next}` : `${start || next}-${next}`;

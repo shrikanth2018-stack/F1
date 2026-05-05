@@ -38,6 +38,7 @@ import { CompactFieldWithSuggestions } from '../../components/CompactFieldWithSu
 import { CompactDateField } from '../../components/CompactDateField';
 import { CompactTimeRangeField } from '../../components/CompactTimeRangeField';
 import { SectionRow } from '../../components/SectionRow';
+import { MultiChipPicker } from '../../components/MultiChipPicker';
 import { useOnboardEmployee, useStaffLookups } from '../../hooks/useResourceManager';
 import { useBranches } from '../../hooks/useBranches';
 import { useBranchFilter } from '../../hooks/useBranchFilter';
@@ -93,69 +94,6 @@ const cp = StyleSheet.create({
   label:    { fontSize: S, letterSpacing: 0.5, marginBottom: 8, paddingHorizontal: Theme.spacing.md },
   row:      { flexDirection: 'row', gap: 8, paddingHorizontal: Theme.spacing.md, paddingRight: Theme.spacing.md + 8 },
   chip:     {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 16,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Theme.colors.layout.divider,
-  },
-  chipActive: {
-    borderColor: Theme.colors.text.mint,
-    backgroundColor: Theme.colors.text.mint + '15',
-  },
-  txt:      { fontSize: S },
-  txtActive: { color: Theme.colors.text.mint, fontWeight: '600' },
-});
-
-// ── Multi-select chips (benefits) ────────────────────────────
-function MultiChipPicker({
-  label,
-  options,
-  selected,
-  onToggle,
-}: {
-  label: string;
-  options: string[];
-  selected: string[];
-  onToggle: (v: string) => void;
-}) {
-  return (
-    <View style={mc.container}>
-      <ThemedText variant="small" color="muted" style={mc.label}>{label}</ThemedText>
-      <View style={mc.wrap}>
-        {options.map((opt) => {
-          const active = selected.includes(opt);
-          return (
-            <TouchableOpacity
-              key={opt}
-              style={[mc.chip, active && mc.chipActive]}
-              onPress={() => onToggle(opt)}
-              activeOpacity={0.7}
-            >
-              <ThemedText
-                variant="small"
-                color={active ? 'primary' : 'muted'}
-                style={[mc.txt, active && mc.txtActive]}
-              >
-                {active ? '✓  ' : ''}{opt}
-              </ThemedText>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-    </View>
-  );
-}
-
-const mc = StyleSheet.create({
-  container: {
-    paddingVertical: Theme.spacing.sm + 2,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.layout.divider,
-  },
-  label: { fontSize: S, letterSpacing: 0.5, marginBottom: 8, paddingHorizontal: Theme.spacing.md },
-  wrap:  { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: Theme.spacing.md },
-  chip:  {
     paddingHorizontal: 14,
     paddingVertical: 6,
     borderRadius: 16,
@@ -405,7 +343,6 @@ export function OnboardEmployeeScreen({ navigation }: { navigation: AdminNavProp
           BENEFITS  (select all that apply)
         </ThemedText>
         <MultiChipPicker
-          label=""
           options={benefitOptions}
           selected={benefits}
           onToggle={(v) =>

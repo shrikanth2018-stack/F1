@@ -8,7 +8,7 @@
  *   Salary     — monthly salary cards + mark paid + add record
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   ScrollView,
@@ -23,6 +23,11 @@ import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { Divider } from '../../components/Divider';
 import { EmptyState } from '../../components/EmptyState';
+import { CompactField } from '../../components/CompactField';
+import { CompactFieldWithSuggestions } from '../../components/CompactFieldWithSuggestions';
+import { CompactTimeRangeField } from '../../components/CompactTimeRangeField';
+import { SectionRow } from '../../components/SectionRow';
+import { MultiChipPicker } from '../../components/MultiChipPicker';
 import {
   useUpdateEmployee,
   useEmployeeMonthAttendance,
@@ -31,7 +36,8 @@ import {
   useStaffLookups,
   useDemoteEmployee,
 } from '../../hooks/useResourceManager';
-import { useDeliveryHubs } from '../../hooks/useDeliveryHubs';
+import { useBranchFilter } from '../../hooks/useBranchFilter';
+import { useBranches } from '../../hooks/useBranches';
 import { useAllStaff } from '../../hooks/useStaffManagement';
 import type { Profile, StaffAttendance, StaffLeave } from '../../types';
 import type { AdminScreenProps, AdminNavProp } from '../../navigation/types';
@@ -63,115 +69,43 @@ function formatDate(str: string | null): string {
   });
 }
 
-// ── Editable field ───────────────────────────────────────────
-function EditField({
-  label,
-  value,
-  onCommit,
-  placeholder,
-}: {
-  label: string;
-  value: string;
-  onCommit: (v: string) => void;
-  placeholder?: string;
-}) {
-  const [draft, setDraft] = useState(value);
-  useEffect(() => setDraft(value), [value]);
-  return (
-    <View style={ef.row}>
-      <ThemedText variant="small" color="muted" style={ef.label}>{label}</ThemedText>
-      <TextInput
-        style={ef.input}
-        value={draft}
-        onChangeText={setDraft}
-        onBlur={() => onCommit(draft)}
-        onSubmitEditing={() => onCommit(draft)}
-        placeholder={placeholder ?? label}
-        placeholderTextColor={Theme.colors.text.muted}
-        returnKeyType="done"
-      />
-    </View>
-  );
-}
-
-const ef = StyleSheet.create({
-  row: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.layout.divider,
-    paddingVertical: Theme.spacing.sm + 2,
-  },
-  label: { fontSize: S, letterSpacing: 0.5, marginBottom: 4 },
-  input: {
-    fontFamily: Theme.typography.fontFamily,
-    fontSize: B,
-    color: Theme.colors.text.primary,
-  },
-});
-
-// ── Picker row ───────────────────────────────────────────────
-function PickerRow<T extends string>({
-  label,
-  value,
-  options,
-  onSelect,
-}: {
-  label: string;
-  value: T;
-  options: T[];
-  onSelect: (v: T) => void;
-}) {
-  return (
-    <View style={pr.container}>
-      <ThemedText variant="small" color="muted" style={pr.label}>{label}</ThemedText>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={pr.row}>
-        {options.map((opt) => (
-          <TouchableOpacity
-            key={opt}
-            style={[pr.chip, value === opt && pr.chipActive]}
-            onPress={() => onSelect(opt)}
-            activeOpacity={0.7}
-          >
-            <ThemedText
-              variant="small"
-              color={value === opt ? 'primary' : 'muted'}
-              style={[pr.chipTxt, value === opt && pr.chipTxtActive]}
-            >
-              {opt}
-            </ThemedText>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-    </View>
-  );
-}
-
-const pr = StyleSheet.create({
-  container: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.layout.divider,
-    paddingVertical: Theme.spacing.sm + 2,
-  },
-  label:       { fontSize: S, letterSpacing: 0.5, marginBottom: 6 },
-  row:         { flexDirection: 'row', gap: 8, paddingRight: Theme.spacing.md },
-  chip:        {
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 14,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Theme.colors.layout.divider,
-  },
-  chipActive:  { borderColor: Theme.colors.text.mint, backgroundColor: Theme.colors.text.mint + '15' },
-  chipTxt:     { fontSize: S },
-  chipTxtActive: { color: Theme.colors.text.mint, fontWeight: '600' },
-});
-
 // ── Tab: Profile ─────────────────────────────────────────────
 function ProfileTab({ staff, navigation }: { staff: Profile; navigation: AdminNavProp }) {
   const update = useUpdateEmployee();
-  const { data: hubs = [] } = useDeliveryHubs();
   const { data: lookups } = useStaffLookups();
-  const benefitOptions = lookups?.benefits ?? [];
+  const branchFilter = useBranchFilter();
+  const { data: branches = [] } = useBranches();
   const demote = useDemoteEmployee();
+  const [mode, setMode] = useState<'view' | 'edit'>('view');
+
+  // FT-03: ADMIN HEAD chip is super-admin only (server enforces; cosmetic here).
+  const designations = (lookups?.designations ?? []).filter(
+    (d) => branchFilter.isSuperAdmin || d !== 'ADMIN HEAD'
+  );
+  const benefitOptions = lookups?.benefits ?? [];
+  const isEditing = mode === 'edit';
+
+  const branchName =
+    staff.branch_id != null
+      ? branches.find((b) => b.id === staff.branch_id)?.branch_name ?? `Branch ${staff.branch_id}`
+      : '—';
+
+  const benefitsList = staff.benefits
+    ? staff.benefits.split(',').map((b) => b.trim()).filter(Boolean)
+    : [];
+
+  const save = (field: Parameters<typeof update.mutate>[0]['updates']) =>
+    update.mutate(
+      { staffId: staff.id, updates: field },
+      { onError: (e: any) => Alert.alert('Error', e?.message) }
+    );
+
+  const toggleBenefit = (v: string) => {
+    const next = benefitsList.includes(v)
+      ? benefitsList.filter((b) => b !== v)
+      : [...benefitsList, v];
+    save({ benefits: next.join(',') || null });
+  };
 
   const confirmOffboard = () => {
     Alert.alert(
@@ -196,122 +130,96 @@ function ProfileTab({ staff, navigation }: { staff: Profile; navigation: AdminNa
     );
   };
 
-  const save = (field: Parameters<typeof update.mutate>[0]['updates']) =>
-    update.mutate(
-      { staffId: staff.id, updates: field },
-      { onError: (e: any) => Alert.alert('Error', e?.message) }
-    );
-
   return (
     <ScrollView
       contentContainerStyle={tab.scroll}
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
     >
-      <ThemedText variant="small" color="muted" style={tab.sectionLabel}>IDENTITY</ThemedText>
-
-      {/* Read-only fields */}
-      <View style={ef.row}>
-        <ThemedText variant="small" color="muted" style={ef.label}>Employee ID</ThemedText>
-        <ThemedText variant="body" color="muted" style={{ fontSize: B }}>
-          {staff.employee_id ?? '—'}
-        </ThemedText>
-      </View>
-      <View style={ef.row}>
-        <ThemedText variant="small" color="muted" style={ef.label}>Phone (login)</ThemedText>
-        <ThemedText variant="body" color="muted" style={{ fontSize: B }}>
-          {staff.phone_number}
-        </ThemedText>
+      {/* Edit / Done toggle (top right) */}
+      <View style={editBar.row}>
+        <TouchableOpacity onPress={() => setMode(isEditing ? 'view' : 'edit')} activeOpacity={0.7}>
+          <ThemedText variant="body" color="mint" style={editBar.text}>
+            {isEditing ? 'Done' : 'Edit'}
+          </ThemedText>
+        </TouchableOpacity>
       </View>
 
-      <EditField
-        label="Full Name"
-        value={staff.full_name ?? ''}
-        onCommit={(v) => save({ full_name: v })}
-      />
-      <EditField
-        label="Joining Date  (YYYY-MM-DD)"
-        value={staff.joining_date ?? ''}
-        placeholder="2024-01-15"
-        onCommit={(v) => save({ joining_date: v })}
-      />
-
-      <Divider />
-      <ThemedText variant="small" color="muted" style={tab.sectionLabel}>ROLE</ThemedText>
-
-      <EditField
-        label="Designation"
-        value={staff.designation ?? ''}
-        placeholder="e.g. Kitchen Staff, Delivery, Manager…"
-        onCommit={(v) => save({ designation: v })}
-      />
-
-      <EditField
-        label="Shift Timing"
-        value={staff.shift_timing ?? ''}
-        placeholder="e.g. 6 AM – 2 PM, All Day…"
-        onCommit={(v) => save({ shift_timing: v })}
-      />
-
-      {hubs.length > 0 && (
-        <PickerRow
-          label="Hub Assignment"
-          value={String(staff.assigned_hub_id ?? '') as any}
-          options={[
-            'None',
-            ...hubs.map((h) => String(h.id)),
-          ] as any}
-          onSelect={(v) =>
-            save({ assigned_hub_id: v === 'None' ? null : Number(v) })
-          }
-        />
+      {/* Display-only attributes (always read-only) */}
+      <SectionRow label="Employee ID">
+        <CompactField placeholder="—" value={staff.employee_id ?? ''} editable={false} extracted />
+      </SectionRow>
+      <SectionRow label="Phone">
+        <CompactField placeholder="" value={staff.phone_number} editable={false} />
+      </SectionRow>
+      <SectionRow label="Joining">
+        <CompactField placeholder="—" value={formatDate(staff.joining_date)} editable={false} />
+      </SectionRow>
+      {branchFilter.isActive && (
+        <SectionRow label="Branch">
+          <CompactField placeholder="—" value={branchName} editable={false} />
+        </SectionRow>
       )}
 
+      {/* Editable attributes (gated by edit toggle) */}
+      <SectionRow label="Name">
+        <CompactField
+          placeholder="Full Name"
+          value={staff.full_name ?? ''}
+          editable={isEditing}
+          onCommit={isEditing ? (v) => save({ full_name: v }) : undefined}
+        />
+      </SectionRow>
+      <SectionRow label="Role">
+        <CompactFieldWithSuggestions
+          placeholder="Designation"
+          value={staff.designation ?? ''}
+          onCommit={(v) => save({ designation: v })}
+          suggestions={designations}
+          editable={isEditing}
+        />
+      </SectionRow>
+      <SectionRow label="Shift">
+        <CompactTimeRangeField
+          value={staff.shift_timing ?? ''}
+          onChange={(v) => save({ shift_timing: v })}
+          editable={isEditing}
+        />
+      </SectionRow>
+      <SectionRow label="Salary">
+        <CompactField
+          placeholder="Monthly Salary (₹)"
+          value={staff.monthly_salary != null ? String(staff.monthly_salary) : ''}
+          editable={isEditing}
+          onCommit={
+            isEditing
+              ? (v) => {
+                  const n = parseFloat(v);
+                  save({ monthly_salary: isNaN(n) ? null : n });
+                }
+              : undefined
+          }
+          keyboardType="numeric"
+        />
+      </SectionRow>
+
+      {/* Benefits — view mode shows the comma-joined summary; edit mode shows
+          the multi-select chip group. */}
       <Divider />
-      <ThemedText variant="small" color="muted" style={tab.sectionLabel}>COMPENSATION</ThemedText>
-
-      <EditField
-        label="Base Monthly Salary  ₹"
-        value={String(staff.monthly_salary ?? '')}
-        placeholder="e.g. 18000"
-        onCommit={(v) => {
-          const n = parseFloat(v);
-          save({ monthly_salary: isNaN(n) ? null : n });
-        }}
-      />
-
-      {/* Benefits multi-toggle */}
-      <View style={bv.container}>
-        <ThemedText variant="small" color="muted" style={bv.label}>Benefits</ThemedText>
-        <View style={bv.wrap}>
-          {benefitOptions.map((opt) => {
-            const current = staff.benefits ? staff.benefits.split(',').map((b) => b.trim()) : [];
-            const active  = current.includes(opt);
-            const toggle  = () => {
-              const next = active
-                ? current.filter((b) => b !== opt)
-                : [...current, opt];
-              save({ benefits: next.join(',') || null });
-            };
-            return (
-              <TouchableOpacity
-                key={opt}
-                style={[bv.chip, active && bv.chipActive]}
-                onPress={toggle}
-                activeOpacity={0.7}
-              >
-                <ThemedText
-                  variant="small"
-                  color={active ? 'primary' : 'muted'}
-                  style={[bv.txt, active && bv.txtActive]}
-                >
-                  {active ? '✓  ' : ''}{opt}
-                </ThemedText>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      </View>
+      <ThemedText variant="small" color="mint" style={tab.sectionLabel}>BENEFITS</ThemedText>
+      {isEditing ? (
+        <MultiChipPicker
+          options={benefitOptions}
+          selected={benefitsList}
+          onToggle={toggleBenefit}
+        />
+      ) : (
+        <CompactField
+          placeholder="—"
+          value={benefitsList.length ? benefitsList.join(', ') : ''}
+          editable={false}
+        />
+      )}
 
       {/* Offboard — destructive action at the bottom of the Profile tab. */}
       <View style={ob.wrap}>
@@ -332,6 +240,36 @@ function ProfileTab({ staff, navigation }: { staff: Profile; navigation: AdminNa
   );
 }
 
+const editBar = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    paddingHorizontal: Theme.spacing.md,
+    paddingTop: Theme.spacing.sm,
+    paddingBottom: Theme.spacing.xs,
+  },
+  text: {
+    fontSize: B,
+    fontWeight: '600',
+  },
+});
+
+// Used by the SalaryTab "Add salary record" form below — was previously
+// shared with the ProfileTab's EditField helper (now compact-refactored).
+const ef = StyleSheet.create({
+  row: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Theme.colors.layout.divider,
+    paddingVertical: Theme.spacing.sm + 2,
+  },
+  label: { fontSize: S, letterSpacing: 0.5, marginBottom: 4 },
+  input: {
+    fontFamily: Theme.typography.fontFamily,
+    fontSize: B,
+    color: Theme.colors.text.primary,
+  },
+});
+
 const ob = StyleSheet.create({
   wrap: {
     paddingHorizontal: Theme.spacing.md,
@@ -349,29 +287,6 @@ const ob = StyleSheet.create({
     color: Theme.colors.status.error,
     fontSize: B,
   },
-});
-
-const bv = StyleSheet.create({
-  container: {
-    paddingVertical: Theme.spacing.sm + 2,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.layout.divider,
-  },
-  label:    { fontSize: S, letterSpacing: 0.5, marginBottom: 8, paddingHorizontal: Theme.spacing.md },
-  wrap:     { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: Theme.spacing.md },
-  chip:     {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 16,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Theme.colors.layout.divider,
-  },
-  chipActive: {
-    borderColor: Theme.colors.text.mint,
-    backgroundColor: Theme.colors.text.mint + '15',
-  },
-  txt:      { fontSize: S },
-  txtActive: { color: Theme.colors.text.mint, fontWeight: '600' },
 });
 
 // ── Tab: Attendance ──────────────────────────────────────────

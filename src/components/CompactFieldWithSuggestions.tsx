@@ -2,7 +2,13 @@
  * 1stOne F1 — CompactFieldWithSuggestions
  *
  * CompactField + horizontal scroll chip row beneath. Tapping a chip
- * fills the field's value.
+ * fills the field's value. Chips and the chip row hide when
+ * editable=false (display-only mode).
+ *
+ * onChange fires on every keystroke (chip taps too — atomic).
+ * onCommit, when provided, fires on inner-field blur and on chip taps
+ * — use this when you want save-on-blur semantics (e.g. EmployeeDetail
+ * edit toggle).
  */
 
 import React from 'react';
@@ -14,43 +20,60 @@ import { CompactField } from './CompactField';
 interface Props {
   placeholder: string;
   value: string;
-  onChange: (v: string) => void;
+  onChange?: (v: string) => void;
+  onCommit?: (v: string) => void;
   suggestions: string[];
+  editable?: boolean;
 }
 
 export function CompactFieldWithSuggestions({
   placeholder,
   value,
   onChange,
+  onCommit,
   suggestions,
+  editable = true,
 }: Props) {
+  const handleChip = (s: string) => {
+    onChange?.(s);
+    onCommit?.(s);
+  };
+
   return (
     <View>
-      <CompactField placeholder={placeholder} value={value} onChange={onChange} />
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.row}
-      >
-        {suggestions.map((s) => {
-          const active = value === s;
-          return (
-            <TouchableOpacity
-              key={s}
-              onPress={() => onChange(s)}
-              style={[styles.chip, active && styles.chipActive]}
-              activeOpacity={0.7}
-            >
-              <ThemedText
-                variant="small"
-                color={active ? 'mint' : 'muted'}
+      <CompactField
+        placeholder={placeholder}
+        value={value}
+        onChange={onChange}
+        onCommit={onCommit}
+        editable={editable}
+      />
+      {editable && suggestions.length > 0 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.row}
+        >
+          {suggestions.map((s) => {
+            const active = value === s;
+            return (
+              <TouchableOpacity
+                key={s}
+                onPress={() => handleChip(s)}
+                style={[styles.chip, active && styles.chipActive]}
+                activeOpacity={0.7}
               >
-                {s}
-              </ThemedText>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
+                <ThemedText
+                  variant="small"
+                  color={active ? 'mint' : 'muted'}
+                >
+                  {s}
+                </ThemedText>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      )}
     </View>
   );
 }
