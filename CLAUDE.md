@@ -68,3 +68,63 @@ All styling references `Theme` from `src/theme/index.ts`. No hardcoded hex codes
 - **Razorpay** — payment processing for orders/wallet top-ups
 - **Expo Location + Notifications** — used for attendance (geofencing) and push alerts
 - **Feature flags** — checked via `useFeatureFlag()` against `store_config` table; e.g. `essentials_module_active`
+
+---
+
+## Operational architecture notes
+
+> Durable architectural truths captured during planning. Treat as binding context. Working rules — D-06 / D-07 / D-08, change-request format, etc. — live in `docs/RULES.md`. For current state see `docs/STATUS.md`. For history see `docs/HISTORY.md`.
+
+### Three carts, not one bundled cart (AC-01)
+Customers have three separate carts in the UI — food, essentials, and subscriptions — each with its own checkout. All three accept the same two payment methods (wallet, Razorpay). Implementation: separate `cartStore` and `essentialsCartStore`; subscription plan-buy flow goes through `place-order` independently with a one-plan-in-cart invariant.
+
+### Subscription activation gap — resolved (AC-02)
+A previous production bug had Razorpay-paid subscriptions where payment succeeded, order showed Confirmed, but `user_subscriptions.is_active` stayed `false` — customer's "My Subscriptions" page showed "payment awaited." The current `confirm-order` function explicitly activates `user_subscriptions` rows tied to the same `razorpay_order_id` immediately after marking the order Confirmed. Useful regression context for any future change to the payment-confirmation flow.
+
+### Three-surface architecture
+Mobile app (primary, Expo), `1stone.in` static landing page (Cloudflare Pages), `app.1stone.in` web app via React Native Web. Web build deliberately blocks Razorpay flows ("Mobile App Required" message) — by design.
+
+### Server-side authority for money
+Prices, delivery method, delivery fee derived server-side; client cannot tamper. Wallet atomicity via single SQL call ("if balance ≥ X, deduct X" atomically). Idempotency keys required on all payment endpoints; same table doubles as a 5/60s rate limiter.
+
+### Branch filtering
+Via JWT `branch_id` claim + RLS policies. Today the app runs single-branch (`feature_flags.branch_management_active = false`); multi-branch readiness is the D-08 launch gate. See `docs/MF-03_multi_branch_audit.md`.
+
+### Subscription billing model (D-01)
+Customer pays the full plan price upfront from wallet (or Razorpay), no daily debits afterward. Plan price is all-inclusive (food + tax + delivery). Pause/skip on subscriptions extends duration — paid meals eventually all get delivered.
+
+### Cancellation refund policies
+
+**One-off order cancellation:**
+- Customer-initiated within configured time window via app (`cancel-order` Edge Function), or admin override.
+- Wallet portion refunded automatically (`increment_wallet_balance` RPC).
+- Razorpay portion: customer informed via response payload; manual admin action through Razorpay dashboard.
+
+**Subscription cancellation (admin-initiated):**
+- Refund always goes to wallet, regardless of original payment method.
+- Prorated refund: `(remaining_days / total_days) × plan_price`, including tax + delivery slice (per BF-21).
+- Admin can edit the amount before confirm (goodwill, dispute, etc.).
+- Atomic via `admin_cancel_subscription_atomic` RPC (per BF-20).
+
+### Notifications
+Templates are admin-editable per `event_key` with `{{variable}}` substitution. Missing template falls back to hardcoded default.
+
+### Storm mode
+Dual-control kill switch (`store_config` column + `feature_flags` row, either true → orders rejected).
+
+### Known production-only objects (MF-08)
+The following live only on production, not in tracked `supabase/sql/`:
+
+- Tables: `supply_catalog`, `staff_order_requests`, `supply_order_items`, `supply_batches`.
+- Trigger functions: `handle_new_user`, `on_auth_user_created`, `handle_first_order_referral_bonus`, `trg_first_order_referral_bonus`.
+
+A fresh DB rebuild from `supabase/sql/` would NOT produce these. Captured as MF-08 in `docs/DECISIONS.md`. When designing a fix that touches these objects, read the production `pg_get_functiondef` output before writing migrations.
+
+### Doc-vs-reality items to track
+
+| Doc claim | Reality | Action |
+|---|---|---|
+| Master Doc §4 lists "11 edge functions" (text) — table lists 12 | 12 deployed (post-CL-03/CL-04) | Doc text update in next master doc revision. |
+| Master Doc §5 "RLS policies enforcing scope on every writeable table" | RLS enabled but branch-scoping clauses absent | Pre-launch — close in MF-03 Class A. |
+| Master Doc §9.4 service-role key references | Key was rotated; old revoked key removed (CL-08) | Resolved. |
+| `feature_flags.branch_management_active` vs `store_config.branch_management_active` | Code only reads `feature_flags`; `store_config` column is dead duplicate | Cleanup post-V-06: drop `store_config` column or remove from selects. |
