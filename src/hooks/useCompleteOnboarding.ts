@@ -57,9 +57,11 @@ export function useCompleteOnboarding() {
       if (error) throw new Error(error.message);
       return data as number;  // new address id
     },
-    onSuccess: () => {
-      // The new profile and address rows are now live; invalidate
-      // both caches so the customer home reads fresh data.
+    onSuccess: async () => {
+      // Picks up the freshly-written profiles.branch_id so subsequent
+      // branch-aware reads (catalog, plans, banners) see the right branch
+      // without waiting for the next foreground refresh (~1h).
+      await supabase.auth.refreshSession();
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.ADDRESSES });
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.PROFILE });
     },

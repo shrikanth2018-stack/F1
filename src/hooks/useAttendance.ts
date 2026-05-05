@@ -17,12 +17,13 @@ import * as Location from 'expo-location';
 import { supabase } from '../api/supabaseClient';
 import { useAuth } from './useAuth';
 import { useStaffQueueStore } from '../store/staffQueueStore';
+import { useBranchFilter } from './useBranchFilter';
 import { QUERY_KEYS, QUERY_STALE_TIME } from '../utils/constants';
 import type { StaffAttendance, StaffLeave } from '../types';
 
 // Shape returned by useClockIn mutationFn so onSuccess can optimistically update the cache
 type ClockInPayload = Pick<StaffAttendance,
-  'staff_id' | 'date' | 'clock_in_time' | 'clock_in_lat' | 'clock_in_lng'
+  'staff_id' | 'date' | 'clock_in_time' | 'clock_in_lat' | 'clock_in_lng' | 'branch_id'
 >;
 
 /** Today's attendance record for current staff */
@@ -104,6 +105,7 @@ export function useClockIn() {
   const { session } = useAuth();
   const queryClient = useQueryClient();
   const enqueue = useStaffQueueStore((s) => s.enqueue);
+  const bf = useBranchFilter();
 
   return useMutation<ClockInPayload, Error, void>({
     mutationFn: async () => {
@@ -119,6 +121,7 @@ export function useClockIn() {
         clock_in_time: now,
         clock_in_lat: coords?.lat ?? null,
         clock_in_lng: coords?.lng ?? null,
+        branch_id: bf.branchIdForWrite,
       };
 
       const netState = await NetInfo.fetch();
@@ -237,6 +240,7 @@ export function useStaffLeaves() {
 export function useRequestLeave() {
   const { session } = useAuth();
   const queryClient = useQueryClient();
+  const bf = useBranchFilter();
 
   return useMutation({
     mutationFn: async ({
@@ -256,6 +260,7 @@ export function useRequestLeave() {
         end_date: endDate,
         reason: reason ?? null,
         status: 'Pending',
+        branch_id: bf.branchIdForWrite,
       });
 
       if (error) throw error;

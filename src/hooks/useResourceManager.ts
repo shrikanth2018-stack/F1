@@ -269,6 +269,7 @@ export function useEmployeeLeaves(staffId: string) {
 
 export function useEmployeeSalary(staffId: string) {
   const queryClient = useQueryClient();
+  const bf = useBranchFilter();
 
   const query = useQuery({
     queryKey: ['emp_salary', staffId],
@@ -311,6 +312,7 @@ export function useEmployeeSalary(staffId: string) {
         ...record,
         net_salary: net,
         is_paid: false,
+        branch_id: bf.branchIdForWrite,
       });
       if (error) throw new Error(error.message);
     },
