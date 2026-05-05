@@ -14,30 +14,36 @@ import { useAuth } from './useAuth';
 import { useBranchFilter } from './useBranchFilter';
 import type { Profile, StaffAttendance, StaffLeave, StaffSalary } from '../types';
 
-export const DESIGNATIONS = [
-  'Kitchen Staff',
-  'Packing Staff',
-  'Delivery Staff',
-  'Hub Staff',
-  'Manager',
-  'Admin',
-];
+// FT-02b: designation + benefit lookup arrays now live in
+// app_settings.staff_designations / .staff_benefits — read via
+// useStaffLookups(). Shift options removed entirely; the new
+// CompactTimeRangeField captures start + end time directly.
 
-export const SHIFTS = [
-  'Morning  (6 AM – 2 PM)',
-  'Afternoon  (2 PM – 10 PM)',
-  'All Day  (8 AM – 6 PM)',
-  'Custom',
-];
-
-export const BENEFIT_OPTIONS = [
-  'PF',
-  'ESI',
-  'Medical',
-  'Travel Allowance',
-  'Food Allowance',
-  'House Allowance',
-];
+/** Designation + benefit option lists, sourced from app_settings (FT-02b). */
+export function useStaffLookups() {
+  return useQuery({
+    queryKey: ['staff_lookups'],
+    queryFn: async () => {
+      // Columns added by FT-02b migration; not yet reflected in generated
+      // Supabase types (MF-08 pattern). Cast through `any` for the row read.
+      const { data, error } = await supabase
+        .from('app_settings')
+        .select('staff_designations, staff_benefits' as any)
+        .eq('id', 1)
+        .maybeSingle();
+      if (error) throw error;
+      const row = (data ?? {}) as { staff_designations?: unknown; staff_benefits?: unknown };
+      const designations: string[] = Array.isArray(row.staff_designations)
+        ? (row.staff_designations as string[])
+        : [];
+      const benefits: string[] = Array.isArray(row.staff_benefits)
+        ? (row.staff_benefits as string[])
+        : [];
+      return { designations, benefits };
+    },
+    staleTime: QUERY_STALE_TIME,
+  });
+}
 
 // ── Roster ───────────────────────────────────────────────────
 
@@ -360,3 +366,29 @@ export function usePendingLeaves() {
 }
 
 // useDeliveryHubs moved to src/hooks/useDeliveryHubs.ts (full CRUD version)
+
+// ── Offboarding (FT-02b) ─────────────────────────────────────
+
+/**
+ * Demote a staff profile back to 'customer' and stamp exit_date.
+ * Calls the demote_employee RPC, which:
+ *   - gates on caller being admin (profiles.role = 'admin');
+ *   - refuses the demote if the user is still tagged as a driver on
+ *     any zone or hub (admin must clear those tags via Zone/Hub edit
+ *     first — surfaces zone/hub names in the error message);
+ *   - flips role='customer' and stamps exit_date = CURRENT_DATE.
+ */
+export function useDemoteEmployee() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (staffId: string) => {
+      const { error } = await supabase.rpc('demote_employee', { target_id: staffId });
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: (_d, staffId) => {
+      queryClient.invalidateQueries({ queryKey: ['resource_roster'] });
+      queryClient.invalidateQueries({ queryKey: ['employee_detail', staffId] });
+      queryClient.invalidateQueries({ queryKey: ['all_staff'] });
+    },
+  });
+}

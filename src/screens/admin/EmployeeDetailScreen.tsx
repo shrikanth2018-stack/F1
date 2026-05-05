@@ -28,12 +28,13 @@ import {
   useEmployeeMonthAttendance,
   useEmployeeLeaves,
   useEmployeeSalary,
-  BENEFIT_OPTIONS,
+  useStaffLookups,
+  useDemoteEmployee,
 } from '../../hooks/useResourceManager';
 import { useDeliveryHubs } from '../../hooks/useDeliveryHubs';
 import { useAllStaff } from '../../hooks/useStaffManagement';
 import type { Profile, StaffAttendance, StaffLeave } from '../../types';
-import type { AdminScreenProps } from '../../navigation/types';
+import type { AdminScreenProps, AdminNavProp } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
@@ -165,9 +166,35 @@ const pr = StyleSheet.create({
 });
 
 // ── Tab: Profile ─────────────────────────────────────────────
-function ProfileTab({ staff }: { staff: Profile }) {
+function ProfileTab({ staff, navigation }: { staff: Profile; navigation: AdminNavProp }) {
   const update = useUpdateEmployee();
   const { data: hubs = [] } = useDeliveryHubs();
+  const { data: lookups } = useStaffLookups();
+  const benefitOptions = lookups?.benefits ?? [];
+  const demote = useDemoteEmployee();
+
+  const confirmOffboard = () => {
+    Alert.alert(
+      'Offboard Employee?',
+      `This will revoke ${staff.full_name || 'this employee'}'s staff access and stamp today as their exit date. Continue?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Offboard',
+          style: 'destructive',
+          onPress: () =>
+            demote.mutate(staff.id, {
+              onSuccess: () => {
+                Alert.alert('Offboarded', `${staff.full_name || 'Employee'} has been offboarded.`);
+                navigation.goBack();
+              },
+              onError: (e: any) =>
+                Alert.alert('Cannot Offboard', e?.message ?? 'Failed to offboard employee'),
+            }),
+        },
+      ]
+    );
+  };
 
   const save = (field: Parameters<typeof update.mutate>[0]['updates']) =>
     update.mutate(
@@ -257,7 +284,7 @@ function ProfileTab({ staff }: { staff: Profile }) {
       <View style={bv.container}>
         <ThemedText variant="small" color="muted" style={bv.label}>Benefits</ThemedText>
         <View style={bv.wrap}>
-          {BENEFIT_OPTIONS.map((opt) => {
+          {benefitOptions.map((opt) => {
             const current = staff.benefits ? staff.benefits.split(',').map((b) => b.trim()) : [];
             const active  = current.includes(opt);
             const toggle  = () => {
@@ -285,9 +312,44 @@ function ProfileTab({ staff }: { staff: Profile }) {
           })}
         </View>
       </View>
+
+      {/* Offboard — destructive action at the bottom of the Profile tab. */}
+      <View style={ob.wrap}>
+        <TouchableOpacity
+          style={ob.btn}
+          onPress={confirmOffboard}
+          disabled={demote.isPending}
+          activeOpacity={0.7}
+        >
+          {demote.isPending ? (
+            <ActivityIndicator color={Theme.colors.status.error} />
+          ) : (
+            <ThemedText variant="body" style={ob.btnText}>Offboard Employee</ThemedText>
+          )}
+        </TouchableOpacity>
+      </View>
     </ScrollView>
   );
 }
+
+const ob = StyleSheet.create({
+  wrap: {
+    paddingHorizontal: Theme.spacing.md,
+    paddingTop: Theme.spacing.xl,
+    paddingBottom: Theme.spacing.lg,
+  },
+  btn: {
+    paddingVertical: Theme.spacing.sm + 2,
+    borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Theme.colors.status.error,
+    alignItems: 'center',
+  },
+  btnText: {
+    color: Theme.colors.status.error,
+    fontSize: B,
+  },
+});
 
 const bv = StyleSheet.create({
   container: {
@@ -958,7 +1020,7 @@ export function EmployeeDetailScreen({ navigation, route }: AdminScreenProps<'Em
       <Divider />
 
       {/* Tab content */}
-      {activeTab === 'Profile'    && <ProfileTab staff={staff} />}
+      {activeTab === 'Profile'    && <ProfileTab staff={staff} navigation={navigation} />}
       {activeTab === 'Attendance' && <AttendanceTab staffId={staffId} leaves={leaves} />}
       {activeTab === 'Leave'      && <LeaveTab staffId={staffId} />}
       {activeTab === 'Salary'     && <SalaryTab staffId={staffId} />}

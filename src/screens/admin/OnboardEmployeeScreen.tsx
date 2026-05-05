@@ -4,9 +4,19 @@
  * Creates a new staff profile row. The staff member logs in via
  * phone OTP and is matched by phone_number.
  *
- * Layout (FT-02a): compact one-row-per-field. Section labels sit inline
- * with the section's first input via SectionRow. Auto-derived fields
- * (Full Name from lookup, system Employee ID) render in accent.
+ * Layout (FT-02b):
+ *   Mobile         — phone, with auto-lookup of existing profile
+ *   (Name)         — pops in below mobile once DB returns the name
+ *   Joining Date   — date picker
+ *   Branch         — chip picker (multi-branch only)
+ *   Role           — typed or chosen from DB lookup (designations)
+ *   Shift          — Start Time + End Time (stored "HH:MM-HH:MM")
+ *   Salary         — numeric
+ *   Benefits       — multi-select chips from DB lookup
+ *
+ * Employee ID is allocated server-side and surfaced in the WhatsApp
+ * welcome message — no row in the form. Hub assignment and Joining
+ * Bonus rows have been removed entirely.
  */
 
 import React, { useState, useEffect } from 'react';
@@ -26,14 +36,9 @@ import { Divider } from '../../components/Divider';
 import { CompactField } from '../../components/CompactField';
 import { CompactFieldWithSuggestions } from '../../components/CompactFieldWithSuggestions';
 import { CompactDateField } from '../../components/CompactDateField';
+import { CompactTimeRangeField } from '../../components/CompactTimeRangeField';
 import { SectionRow } from '../../components/SectionRow';
-import {
-  useOnboardEmployee,
-  DESIGNATIONS,
-  SHIFTS,
-  BENEFIT_OPTIONS,
-} from '../../hooks/useResourceManager';
-import { useDeliveryHubs } from '../../hooks/useDeliveryHubs';
+import { useOnboardEmployee, useStaffLookups } from '../../hooks/useResourceManager';
 import { useBranches } from '../../hooks/useBranches';
 import { useBranchFilter } from '../../hooks/useBranchFilter';
 import { openWhatsApp } from '../../utils/links';
@@ -177,20 +182,15 @@ export function OnboardEmployeeScreen({ navigation }: { navigation: AdminNavProp
     new Date().toISOString().split('T')[0]
   );
   const [shift, setShift]             = useState('');
-  const [hubId, setHubId]             = useState<number | null>(null);
   const [baseSalary, setBaseSalary]   = useState('');
-  const [joiningBonus, setJoinBonus]  = useState('');
   const [benefits, setBenefits]       = useState<string[]>([]);
 
-  const { data: hubs = [] } = useDeliveryHubs();
   const onboard = useOnboardEmployee();
+  const { data: lookups } = useStaffLookups();
+  const designations = lookups?.designations ?? [];
+  const benefitOptions = lookups?.benefits ?? [];
 
   // MF-02: branch picker — only matters when feature_flags.branch_management_active is true.
-  // - Branch admin (bf.branchId set): pre-select their branch; picker still visible but
-  //   they can't pick another branch (out-of-scope for branch admins).
-  // - Super-admin (bf.branchId null): picker required, must select before onboarding.
-  // - Single-branch mode (bf.isActive false): picker hidden entirely; useOnboardEmployee
-  //   falls back to bf.branchId ?? 1 per BF-06.
   const branchFilter = useBranchFilter();
   const { data: branches = [] } = useBranches();
   const [branchId, setBranchId] = useState<number | null>(branchFilter.branchId);
@@ -232,10 +232,8 @@ export function OnboardEmployeeScreen({ navigation }: { navigation: AdminNavProp
     if (lookupStatus === 'not_found') return 'No account found. Employee must register via OTP first.';
     if (!name.trim())                 return 'Could not fetch employee name';
     if (!designation)                 return 'Please select a designation';
-    if (!shift)                       return 'Please select a shift';
+    if (!shift.match(/^\d{2}:\d{2}-\d{2}:\d{2}$/)) return 'Pick a start and end time for the shift';
     if (!joiningDate.match(/^\d{4}-\d{2}-\d{2}$/)) return 'Joining date must be YYYY-MM-DD';
-    // MF-02: when multi-branch is on, super-admin must pick a branch.
-    // Branch admin's branch is pre-selected from JWT so this won't trigger.
     if (branchFilter.isActive && branchId == null) return 'Please select a branch';
     return null;
   };
@@ -245,7 +243,6 @@ export function OnboardEmployeeScreen({ navigation }: { navigation: AdminNavProp
     if (err) { Alert.alert('', err); return; }
 
     const salary = parseFloat(baseSalary) || 0;
-    const bonus  = parseFloat(joiningBonus) || 0;
 
     onboard.mutate(
       {
@@ -254,31 +251,26 @@ export function OnboardEmployeeScreen({ navigation }: { navigation: AdminNavProp
         designation,
         joining_date:    joiningDate,
         shift_timing:    shift,
-        assigned_hub_id: hubId,
+        assigned_hub_id: null,        // FT-02b: hub assignment removed from onboarding
         monthly_salary:  salary,
         benefits:        benefits.join(','),
-        joining_bonus:   bonus,
-        // MF-02: pass form-picked branch_id when multi-branch is active.
-        // In single-branch mode it's null; the hook falls back to
-        // bf.branchId ?? 1 per BF-06.
+        joining_bonus:   0,           // FT-02b: bonus row removed from form
         branch_id:       branchFilter.isActive ? branchId : null,
       },
       {
         onSuccess: (result) => {
           const salaryLine = salary > 0
-            ? `\nSalary: ₹${salary.toLocaleString('en-IN')}/mo${bonus > 0 ? ` + ₹${bonus.toLocaleString('en-IN')} joining bonus` : ''}`
+            ? `\nSalary: ₹${salary.toLocaleString('en-IN')}/mo`
             : '';
 
           // Welcome WhatsApp — pre-filled on admin's device, admin taps send.
-          const hubName = hubs.find((h) => h.id === hubId)?.hub_name ?? '';
           const whatsappMsg =
             `Welcome to 1stOne, ${name.trim()}!\n\n` +
             `Your employment is now active:\n` +
             `• Employee ID: ${result.employee_id}\n` +
             `• Role: ${designation}\n` +
-            (hubName ? `• Assigned Hub: ${hubName}\n` : '') +
             (shift  ? `• Shift: ${shift}\n` : '') +
-            (salary > 0 ? `• Monthly Salary: ₹${salary.toLocaleString('en-IN')}${bonus > 0 ? ` (+ ₹${bonus.toLocaleString('en-IN')} joining bonus)` : ''}\n` : '') +
+            (salary > 0 ? `• Monthly Salary: ₹${salary.toLocaleString('en-IN')}\n` : '') +
             `\nPlease log back into the 1stOne app via OTP — you'll see your Staff Dashboard on next login.\n\n` +
             `Kindly forward your employment documents (ID proof, bank details, prior experience) securely to your manager at the earliest.`;
 
@@ -320,8 +312,8 @@ export function OnboardEmployeeScreen({ navigation }: { navigation: AdminNavProp
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/* IDENTITY — phone (with lookup), full name (auto), employee id (auto), joining date */}
-        <SectionRow label="Identity">
+        {/* MOBILE — phone with auto-lookup; name row pops in below once DB returns */}
+        <SectionRow label="Mobile">
           <CompactField
             placeholder="Mobile Number (10 Digit)"
             value={phone}
@@ -340,20 +332,14 @@ export function OnboardEmployeeScreen({ navigation }: { navigation: AdminNavProp
             No account found — employee must register via OTP first.
           </ThemedText>
         )}
-
-        <CompactField
-          placeholder="Full Name (auto-filled)"
-          value={lookupStatus === 'found' ? name : ''}
-          editable={false}
-          extracted
-        />
-
-        <CompactField
-          placeholder="Employee ID (Auto)"
-          value=""
-          editable={false}
-          extracted
-        />
+        {lookupStatus === 'found' && (
+          <CompactField
+            placeholder=""
+            value={name}
+            editable={false}
+            extracted
+          />
+        )}
 
         <CompactDateField
           placeholder="Joining Date (YYYY-MM-DD)"
@@ -361,9 +347,7 @@ export function OnboardEmployeeScreen({ navigation }: { navigation: AdminNavProp
           onChange={setJoining}
         />
 
-        {/* MF-02: branch picker — only renders when multi-branch is active.
-            In single-branch mode the section is hidden and useOnboardEmployee
-            falls back to bf.branchId ?? 1 per BF-06. */}
+        {/* MF-02: branch picker — only renders when multi-branch is active. */}
         {branchFilter.isActive && branches.length > 0 && (
           <>
             <Divider />
@@ -384,74 +368,39 @@ export function OnboardEmployeeScreen({ navigation }: { navigation: AdminNavProp
           </>
         )}
 
-        {/* ROLE & SHIFT */}
-        <SectionRow label="Role & Shift">
+        {/* ROLE — typed value, suggestions sourced from app_settings.staff_designations */}
+        <SectionRow label="Role">
           <CompactFieldWithSuggestions
-            placeholder="Designation (type or pick)"
+            placeholder="Role (type or pick)"
             value={designation}
             onChange={setDesig}
-            suggestions={DESIGNATIONS}
+            suggestions={designations}
           />
         </SectionRow>
 
-        <CompactFieldWithSuggestions
-          placeholder="Shift Timing (e.g. 6 AM – 2 PM)"
-          value={shift}
-          onChange={setShift}
-          suggestions={SHIFTS}
-        />
+        {/* SHIFT — two time pickers on one row, stored "HH:MM-HH:MM" */}
+        <SectionRow label="Shift">
+          <CompactTimeRangeField value={shift} onChange={setShift} />
+        </SectionRow>
 
-        {hubs.length > 0 && (
-          <>
-            <Divider />
-            <ThemedText variant="small" color="mint" style={styles.sectionLabel}>
-              HUB ASSIGNMENT  (optional)
-            </ThemedText>
-            <ChipPicker
-              label="Hub"
-              options={['None', ...hubs.map((h) => h.hub_name)] as any}
-              value={
-                (hubId === null
-                  ? 'None'
-                  : hubs.find((h) => h.id === hubId)?.hub_name ?? 'None') as any
-              }
-              onSelect={(v: string) => {
-                if (v === 'None') {
-                  setHubId(null);
-                } else {
-                  const found = hubs.find((h) => h.hub_name === v);
-                  setHubId(found?.id ?? null);
-                }
-              }}
-            />
-          </>
-        )}
-
-        {/* COMPENSATION */}
-        <SectionRow label="Compensation">
+        {/* SALARY — single line numeric */}
+        <SectionRow label="Salary">
           <CompactField
-            placeholder="Base Monthly Salary (₹)"
+            placeholder="Monthly Salary (₹)"
             value={baseSalary}
             onChange={setBaseSalary}
             keyboardType="numeric"
           />
         </SectionRow>
 
-        <CompactField
-          placeholder="Joining Bonus (₹, optional)"
-          value={joiningBonus}
-          onChange={setJoinBonus}
-          keyboardType="numeric"
-        />
-
+        {/* BENEFITS — multi-select chips, options from app_settings.staff_benefits */}
         <Divider />
         <ThemedText variant="small" color="mint" style={styles.sectionLabel}>
           BENEFITS  (select all that apply)
         </ThemedText>
-
         <MultiChipPicker
           label=""
-          options={BENEFIT_OPTIONS}
+          options={benefitOptions}
           selected={benefits}
           onToggle={(v) =>
             setBenefits((prev) =>
