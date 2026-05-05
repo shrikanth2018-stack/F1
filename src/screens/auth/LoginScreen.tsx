@@ -34,6 +34,7 @@ import {
   ActivityIndicator,
   TouchableOpacity,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { NumberKeypad } from '../../components/NumberKeypad';
@@ -124,6 +125,7 @@ export function LoginScreen({ onExistingUser, onNewUser, referralCode }: LoginSc
   const isSendingRef = useRef(false);
   const isVerifyingRef = useRef(false);
   const { signInWithPhone, verifyOTP } = useAuth();
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     supabase
@@ -248,7 +250,11 @@ export function LoginScreen({ onExistingUser, onNewUser, referralCode }: LoginSc
   const handleChangePhone = () => {
     setPhase('phone');
     setOtp('');
-    // Keep phone digits so user can fix one rather than re-typing all 10
+    // Drop the last digit so the user lands in edit mode and the 10-digit
+    // auto-send guard naturally breaks. Preserving all 10 digits re-fires
+    // signInWithPhone for the same number, which Supabase's same-number
+    // cooldown rejects as "Could not send OTP" (BF-22).
+    setPhone((p) => p.slice(0, -1));
   };
 
   // ── Render ───────────────────────────────────────────────
@@ -258,7 +264,10 @@ export function LoginScreen({ onExistingUser, onNewUser, referralCode }: LoginSc
 
   const inner = (
     <ScrollView
-      contentContainerStyle={styles.scroll}
+      contentContainerStyle={[
+        styles.scroll,
+        { paddingBottom: insets.bottom + Theme.spacing.lg },
+      ]}
       keyboardShouldPersistTaps="handled"
       bounces={false}
     >
