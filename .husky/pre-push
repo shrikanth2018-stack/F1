@@ -1,0 +1,10 @@
+# 1stOne F1 — pre-push gate (MF-07a)
+# Blocks the push if either type-check or jest fails.
+
+echo "→ tsc --noEmit"
+npx tsc --noEmit || { echo "✗ TypeScript check failed — push aborted"; exit 1; }
+
+echo "→ jest"
+npx jest --silent || { echo "✗ jest failed — push aborted"; exit 1; }
+
+echo "✓ pre-push gate passed"

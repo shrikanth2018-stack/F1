@@ -12,6 +12,8 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "postinstall": "patch-package",
+    "prepare": "husky",
+    "check": "tsc --noEmit && jest",
     "supabase:gen-types": "supabase gen types typescript --project-id wcvqxzqqwcxlcgrjyunf --schema public 2>/dev/null > src/types/database.types.ts"
   },
   "jest": {
@@ -84,6 +86,7 @@
     "@types/jest": "^30.0.0",
     "@types/react": "~19.1.10",
     "babel-preset-expo": "~54.0.10",
+    "husky": "^9.1.7",
     "jest": "^30.3.0",
     "jest-expo": "~54.0.0",
     "knip": "^6.6.3",
