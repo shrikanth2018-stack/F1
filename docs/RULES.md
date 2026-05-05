@@ -12,24 +12,24 @@
 | `docs/DECISIONS.md` | *What's open?* Pending task ledger. |
 | `docs/HISTORY.md` | *How did we get here?* Timeline of shipped milestones. |
 | `CLAUDE.md` | *Codebase shape* — architecture, env vars, pinned facts. |
-| `1stOne_F1_Master_Document.docx` | *What is the app, by design?* Canonical product/business reference. |
+| `1stOne_F1_Master_Document.docx` | *What is the app, by design?* Product/business reference. **Load on demand only — don't read by default.** |
 
 ## Roles
 
 - **Shrikanth** — product owner. All directional calls and approvals; smoke-tests between stages.
-- **Cowork Claude** — investigation + proposal seat. File/line precision.
-- **Claude Code (CC)** — execution seat. Approved specs → single-round-trip commit → push.
+- **Claude (CC)** — runs the full cycle: investigate → propose → execute → report. Default working pattern is single-seat (CC does proposal AND execution). The Cowork-as-separate-instance split is optional, for heavyweight multi-day audits only.
 
-**Flow:** Shrikanth raises need → Cowork proposes → Shrikanth approves → CC executes → Shrikanth smoke-tests.
+**Flow:** Shrikanth raises need → CC investigates + proposes → Shrikanth approves → CC executes → Shrikanth smoke-tests.
 
 ## Communication style
 
 - Short, focused, bullets. Plain English. First-time technical terms get a one-line meaning.
 - **Ask before guessing.** When a question needs evidence (SQL, log, file content), ask for it and wait for the paste. No speculation about causes or solutions before evidence is in hand.
 - **One option at a time.** Lead with the single best fix + how to judge if it worked. Second option only if the first fails. No buffets.
-- **Don't suggest skipping steps** to save time.
+- **Don't pad caution.** When the user requests a build / submit / push / deploy and there's no concrete blocker, just do it. State a real concern once if any (failing tests, known broken state, unauthorized destructive action), don't string up multi-step "concerns" as ceremony. "Path A vs Path B" framings on ship requests are usually delay tactics.
+- **Don't run diagnostic theater on reports.** When the user has clearly described the symptom, trust it; verify only when evidence is genuinely missing.
 - One task at a time, complete cleanly before the next.
-- If a request is unsafe or misguided, say so before proceeding.
+- If a request is unsafe or misguided, say so before proceeding — but pushback must cite specific evidence (file/line/decision/incident), not pattern-matched generic caution.
 
 ## Working rules (active)
 
@@ -54,9 +54,15 @@ Production bundle does not ship to Play Store with known multi-branch gaps. Inte
 - Re-read the actual file (not a summary).
 - Find empirical evidence the bug fires today — DB query, log, live test.
 - Only then design the fix.
+- **Don't run diagnostic theater on reports.** When the user has clearly described the symptom, trust it; verify only when evidence is genuinely missing.
 
-### Approval gate
-No code is written until Shrikanth approves. Cowork proposes; Shrikanth approves; CC executes.
+### Approval gate (plan-level, not per-commit)
+- An approved plan (audit doc, multi-step proposal, change-request) is the gate. Within an approved plan: **execute next step → push → report**. No re-ask per individual commit.
+- Re-ask only when:
+  - Scope drifts — new feature surface not covered by the plan.
+  - DB / payments / auth / RLS get touched in ways the plan didn't anticipate.
+  - Destructive action emerges (DROP, force push, branch delete, etc.).
+- Trivial inline cleanups within the same plan: do them, mention in commit message.
 
 ### Preserve existing behavior
 Don't change behavior, rename, or refactor unless explicitly approved.
@@ -66,9 +72,9 @@ Don't change behavior, rename, or refactor unless explicitly approved.
 When sources conflict:
 
 1. **Live system** — Supabase query, function logs, real-device test. Empirical evidence wins.
-2. **`docs/RULES.md`** — joint working rules + architectural decisions. Supersedes code reads and master doc on contested points.
-3. **Master Document** — canonical product/business reference.
-4. **Live code in the repo** — authoritative on current behavior.
+2. **`docs/RULES.md`** — joint working rules + architectural decisions. Supersedes code reads on contested points.
+3. **Live code in the repo** — authoritative on current behavior.
+4. **Master Document** — product/business reference (load on demand; not part of default bring-up).
 5. **Older audits, `SYSTEM_FLOWS.md`** — historical context only.
 
 ## Change-request format
