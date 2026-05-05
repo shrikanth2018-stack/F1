@@ -108,6 +108,7 @@ export function CompactTimeRangeField({ value, onChange }: Props) {
                   is24Hour
                   textColor={Theme.colors.text.primary}
                   onChange={handleIos(openSlot)}
+                  style={sheet.picker}
                 />
               )}
             </Pressable>
@@ -161,6 +162,10 @@ const sheet = StyleSheet.create({
   body: {
     backgroundColor: Theme.colors.background.secondary,
     paddingBottom: Theme.spacing.lg,
+  },
+  picker: {
+    width: '100%',
+    height: 216,
   },
   header: {
     flexDirection: 'row',
