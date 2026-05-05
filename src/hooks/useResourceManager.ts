@@ -55,10 +55,12 @@ export function useStaffRoster() {
   return useQuery({
     queryKey: ['resource_roster', today, bf.isActive ? bf.branchId ?? 'all' : 'off'],
     queryFn: async () => {
+      // FT-03: include admins (ADMIN HEAD designation = role 'admin') alongside
+      // staff so branch admins / ADMIN HEAD show in the roster too.
       let profilesQuery = supabase
         .from('profiles')
         .select('*')
-        .eq('role', 'staff')
+        .in('role', ['staff', 'admin'])
         .order('created_at', { ascending: true });
 
       if (bf.isActive && bf.branchId != null) {

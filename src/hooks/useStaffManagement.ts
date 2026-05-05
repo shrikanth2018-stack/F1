@@ -15,7 +15,7 @@ import { useBranchFilter } from './useBranchFilter';
 import { QUERY_KEYS, QUERY_STALE_TIME } from '../utils/constants';
 import type { Profile, ExpenseClaim, StaffLeave, StaffAttendance } from '../types';
 
-/** Fetch all staff profiles */
+/** Fetch all staff profiles (includes admins per FT-03 — ADMIN HEAD = role 'admin'). */
 export function useAllStaff() {
   return useQuery({
     queryKey: ['admin_staff'],
@@ -23,7 +23,7 @@ export function useAllStaff() {
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
-        .eq('role', 'staff')
+        .in('role', ['staff', 'admin'])
         .order('created_at', { ascending: false });
       if (error) throw error;
       return (data ?? []) as Profile[];
