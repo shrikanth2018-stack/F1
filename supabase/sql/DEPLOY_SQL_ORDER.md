@@ -25,15 +25,23 @@ SELECT vault.create_secret('<service-role-key>',         'service_role_key');
 
 ## 1. Schema & core RPCs — run in SQL editor in this order
 
-| # | File                             | What it installs                                                   |
-|---|----------------------------------|--------------------------------------------------------------------|
-| 1 | `schema_migrations.sql`          | Column adds (`razorpay_payment_id`, `paid_at`), CHECK constraints, indexes |
-| 2 | `rpc_atomic_increments.sql`      | `increment_wallet_balance`, `decrement_wallet_balance_if_sufficient`, `increment_loyalty_points`, `place_order_atomic`, `mark_order_paid`, `mark_order_failed`, `complete_wallet_topup`, `pending_wallet_topups` table |
-| 3 | `idempotency_keys.sql`           | `idempotency_keys` table used by all write-side Edge Functions      |
-| 4 | `custom_access_token_hook.sql`   | Injects `user_role`, `assigned_hub_id`, `branch_id` into JWTs      |
-| 5 | `seed_feature_flags.sql`         | Seven canonical feature flags (ON CONFLICT DO NOTHING)             |
-| 6 | `generate_daily_manifest.sql`    | Nightly 23:00 IST subscription-order generator + audit log         |
-| 7 | `kitchen_cutoff_push.sql`        | Kitchen summary push per cycle cutoff (pg_cron every minute)       |
+| #  | File                                              | What it installs                                                                                           |
+|----|---------------------------------------------------|------------------------------------------------------------------------------------------------------------|
+| 1  | `schema_migrations.sql`                           | Column adds (`razorpay_payment_id`, `paid_at`), CHECK constraints, indexes                                 |
+| 2  | `rpc_atomic_increments.sql`                       | `increment_wallet_balance`, `decrement_wallet_balance_if_sufficient`, `increment_loyalty_points`, `place_order_atomic`, `mark_order_paid`, `mark_order_failed`, `complete_wallet_topup`, `pending_wallet_topups` table |
+| 3  | `idempotency_keys.sql`                            | `idempotency_keys` table used by all write-side Edge Functions                                              |
+| 4  | `custom_access_token_hook.sql`                    | Injects `user_role`, `assigned_hub_id`, `branch_id` into JWTs                                              |
+| 5  | `seed_feature_flags.sql`                          | Seven canonical feature flags (ON CONFLICT DO NOTHING)                                                      |
+| 6  | `generate_daily_manifest.sql`                     | Nightly 23:00 IST subscription-order generator + audit log                                                  |
+| 7  | `kitchen_cutoff_push.sql`                         | Kitchen summary push per cycle cutoff (pg_cron every minute)                                                |
+| 8  | `app_settings.sql`                                | Single-row `app_settings` config table (`login_bg_url`, etc.)                                              |
+| 9  | `add_branch_id_columns_mf03.sql`                  | MF-03: adds `branch_id` (FK + index) to 6 tables (`customer_addresses`, `user_subscriptions`, `cancelled_subscription_days`, `staff_leaves`, `staff_salary`, `staff_shifts`) |
+| 10 | `complete_onboarding.sql`                         | First-customer onboarding RPC. MF-03: derives `branch_id` from zone/hub. FT-03: nullable defaults on optional address fields |
+| 11 | `handle_new_user.sql`                             | MF-08 capture: production trigger that creates the stub profile after OTP signup (writes NULL `branch_id`, RPC fills it) |
+| 12 | `elevate_employee.sql`                            | `employee_id` sequence + `elevate_to_staff` RPC. FT-03: designation IS the role discriminator (`ADMIN HEAD` → `role='admin'`) |
+| 13 | `staff_lookups_and_offboarding.sql`               | FT-02b: appends `staff_designations` + `staff_benefits` JSONB columns to `app_settings`; `demote_employee` RPC for offboarding (driver-tag pre-check) |
+| 14 | `seed_admin_head_designation.sql`                 | FT-03: appends `ADMIN HEAD` to `app_settings.staff_designations`; `set_employee_designation` RPC (atomic designation + role flip; super-admin gate) |
+| 15 | `mf03_cleanup_store_config_and_personas.sql`      | MF-03: drops dead `store_config.branch_management_active` column; promotes `888` to branch-1 admin (no-op until 888 OTP sign-in)                |
 
 After step 4, toggle the hook in the dashboard:
 **Auth → Hooks → Custom Access Token → Enable → `public.custom_access_token_hook`**
@@ -86,7 +94,8 @@ Architecture in active use:
 1. Every Edge Function uses the service-role key, which bypasses RLS by design.
 2. Every client read uses the authenticated anon key — RLS policies gate access by `auth.uid()` and JWT claims (`user_role`, `assigned_hub_id`, `branch_id`).
 3. `rls_policies.sql` is idempotent (`DROP POLICY IF EXISTS ... CREATE POLICY ...`) — safe to re-run when policies need to be updated or audited.
-4. Smoke-test (any time): `customer` can see their own orders, `staff` sees the kitchen queue, `admin` sees everything, `hub_operator` (a customer with `assigned_hub_id`) can read and update orders for their assigned hub.
+4. Branch scoping (MF-03 Commit 4, 2026-05-05): every admin/staff path goes through `public.has_branch_access(row_branch_id)`, which returns true for super-admin (JWT `branch_id IS NULL`) OR when the row's `branch_id` matches the caller's JWT. `public.is_super_admin()` returns admin role + null branch claim. Tables without their own `branch_id` column join through a parent table that does (`orders`, `subscription_plans`, `profiles`).
+5. Smoke-test (any time): `customer` can see their own orders only; `staff` sees their branch's operational data; `admin` (branch-scoped) sees their branch only; `super-admin` (branch_id=NULL) sees all branches; `hub_operator` (a customer with `assigned_hub_id`) can read and update orders for their assigned hub.
 
 Rollback (only if a policy is actively breaking something): `ALTER TABLE <x> DISABLE ROW LEVEL SECURITY;` per table, or drop offending policies individually. No data loss either way.
 
