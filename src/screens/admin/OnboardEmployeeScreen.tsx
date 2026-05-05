@@ -4,14 +4,9 @@
  * Creates a new staff profile row. The staff member logs in via
  * phone OTP and is matched by phone_number.
  *
- * Fields:
- *   Auto Employee ID  (system-generated, shown read-only)
- *   Full Name
- *   Phone Number      (becomes login credential)
- *   Designation       (chip picker)
- *   Joining Date
- *   Shift             (chip picker)
- *   Hub assignment    (optional, chip picker)
+ * Layout (FT-02a): compact one-row-per-field. Section labels sit inline
+ * with the section's first input via SectionRow. Auto-derived fields
+ * (Full Name from lookup, system Employee ID) render in accent.
  */
 
 import React, { useState, useEffect } from 'react';
@@ -19,7 +14,6 @@ import {
   View,
   ScrollView,
   TouchableOpacity,
-  TextInput,
   Alert,
   StyleSheet,
   ActivityIndicator,
@@ -29,6 +23,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { Divider } from '../../components/Divider';
+import { CompactField } from '../../components/CompactField';
+import { CompactFieldWithSuggestions } from '../../components/CompactFieldWithSuggestions';
+import { CompactDateField } from '../../components/CompactDateField';
+import { SectionRow } from '../../components/SectionRow';
 import {
   useOnboardEmployee,
   DESIGNATIONS,
@@ -104,122 +102,6 @@ const cp = StyleSheet.create({
   txtActive: { color: Theme.colors.text.mint, fontWeight: '600' },
 });
 
-// ── Text field ───────────────────────────────────────────────
-function Field({
-  label,
-  value,
-  onChange,
-  placeholder,
-  keyboardType = 'default',
-  editable = true,
-}: {
-  label: string;
-  value: string;
-  onChange?: (v: string) => void;
-  placeholder?: string;
-  keyboardType?: 'default' | 'phone-pad' | 'numeric';
-  editable?: boolean;
-}) {
-  return (
-    <View style={fi.container}>
-      <ThemedText variant="small" color="muted" style={fi.label}>{label}</ThemedText>
-      {editable ? (
-        <TextInput
-          style={fi.input}
-          value={value}
-          onChangeText={onChange}
-          placeholder={placeholder ?? label}
-          placeholderTextColor={Theme.colors.text.muted}
-          keyboardType={keyboardType}
-          returnKeyType="next"
-          editable={editable}
-        />
-      ) : (
-        <ThemedText variant="body" color="muted" style={[fi.input, { opacity: 0.6 }]}>
-          {value}
-        </ThemedText>
-      )}
-    </View>
-  );
-}
-
-// ── Free-text field with suggestion chips ────────────────────
-function FieldWithSuggestions({
-  label,
-  value,
-  onChange,
-  placeholder,
-  suggestions,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  suggestions: string[];
-}) {
-  return (
-    <View style={fs.container}>
-      <ThemedText variant="small" color="muted" style={fs.label}>{label}</ThemedText>
-      <TextInput
-        style={fs.input}
-        value={value}
-        onChangeText={onChange}
-        placeholder={placeholder}
-        placeholderTextColor={Theme.colors.text.muted}
-        returnKeyType="next"
-      />
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={fs.chipRow}>
-        {suggestions.map((s) => (
-          <TouchableOpacity
-            key={s}
-            onPress={() => onChange(s)}
-            style={[fs.chip, value === s && fs.chipActive]}
-            activeOpacity={0.7}
-          >
-            <ThemedText
-              variant="small"
-              color={value === s ? 'primary' : 'muted'}
-              style={[{ fontSize: S }, value === s && { color: Theme.colors.text.mint }]}
-            >
-              {s}
-            </ThemedText>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-    </View>
-  );
-}
-
-const fs = StyleSheet.create({
-  container: {
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm + 2,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.layout.divider,
-  },
-  label:   { fontSize: S, letterSpacing: 0.5, marginBottom: 4 },
-  input: {
-    fontFamily: Theme.typography.fontFamily,
-    fontSize: B,
-    color: Theme.colors.text.primary,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.layout.divider,
-    paddingVertical: Theme.spacing.xs,
-    marginBottom: 8,
-  },
-  chipRow: { flexDirection: 'row', gap: 8, paddingRight: Theme.spacing.md },
-  chip:    {
-    paddingHorizontal: 10, paddingVertical: 4,
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Theme.colors.layout.divider,
-  },
-  chipActive: {
-    borderColor: Theme.colors.text.mint,
-    backgroundColor: Theme.colors.text.mint + '15',
-  },
-});
-
 // ── Multi-select chips (benefits) ────────────────────────────
 function MultiChipPicker({
   label,
@@ -281,21 +163,6 @@ const mc = StyleSheet.create({
   },
   txt:      { fontSize: S },
   txtActive: { color: Theme.colors.text.mint, fontWeight: '600' },
-});
-
-const fi = StyleSheet.create({
-  container: {
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm + 2,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.layout.divider,
-  },
-  label: { fontSize: S, letterSpacing: 0.5, marginBottom: 4 },
-  input: {
-    fontFamily: Theme.typography.fontFamily,
-    fontSize: B,
-    color: Theme.colors.text.primary,
-  },
 });
 
 // ── Main screen ───────────────────────────────────────────────
@@ -453,53 +320,45 @@ export function OnboardEmployeeScreen({ navigation }: { navigation: AdminNavProp
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <ThemedText variant="small" color="mint" style={styles.sectionLabel}>IDENTITY</ThemedText>
+        {/* IDENTITY — phone (with lookup), full name (auto), employee id (auto), joining date */}
+        <SectionRow label="Identity">
+          <CompactField
+            placeholder="Mobile Number (10 Digit)"
+            value={phone}
+            onChange={(v) => setPhone(v.replace(/\D/g, '').slice(-10))}
+            keyboardType="phone-pad"
+            maxLength={10}
+            rightSlot={
+              lookupStatus === 'loading' ? (
+                <ActivityIndicator size="small" color={Theme.colors.text.mint} />
+              ) : null
+            }
+          />
+        </SectionRow>
+        {lookupStatus === 'not_found' && (
+          <ThemedText variant="small" style={styles.warnText}>
+            No account found — employee must register via OTP first.
+          </ThemedText>
+        )}
 
-        {/* Phone — lookup trigger */}
-        <View style={fi.container}>
-          <ThemedText variant="small" color="muted" style={fi.label}>Phone Number  (staff login)</ThemedText>
-          <View style={styles.phoneRow}>
-            <TextInput
-              style={[fi.input, { flex: 1 }]}
-              value={phone}
-              onChangeText={(v) => setPhone(v.replace(/\D/g, '').slice(-10))}
-              placeholder="10-digit mobile"
-              placeholderTextColor={Theme.colors.text.muted}
-              keyboardType="phone-pad"
-              maxLength={10}
-              returnKeyType="next"
-            />
-            {lookupStatus === 'loading' && (
-              <ActivityIndicator size="small" color={Theme.colors.text.mint} style={{ marginLeft: 8 }} />
-            )}
-          </View>
-          {lookupStatus === 'not_found' && (
-            <ThemedText variant="small" style={styles.warnText}>
-              No account found — employee must register via OTP first.
-            </ThemedText>
-          )}
-        </View>
-
-        {/* Name — auto-filled, read-only */}
-        <Field
-          label="Full Name  (auto-filled)"
+        <CompactField
+          placeholder="Full Name (auto-filled)"
           value={lookupStatus === 'found' ? name : ''}
-          placeholder="Populated after phone lookup"
           editable={false}
+          extracted
         />
 
-        {/* Employee ID — system-assigned */}
-        <Field
-          label="Employee ID"
-          value="Auto-assigned on save"
+        <CompactField
+          placeholder="Employee ID (Auto)"
+          value=""
           editable={false}
+          extracted
         />
 
-        <Field
-          label="Joining Date  (YYYY-MM-DD)"
+        <CompactDateField
+          placeholder="Joining Date (YYYY-MM-DD)"
           value={joiningDate}
           onChange={setJoining}
-          placeholder={new Date().toISOString().split('T')[0]}
         />
 
         {/* MF-02: branch picker — only renders when multi-branch is active.
@@ -525,22 +384,20 @@ export function OnboardEmployeeScreen({ navigation }: { navigation: AdminNavProp
           </>
         )}
 
-        <Divider />
-        <ThemedText variant="small" color="mint" style={styles.sectionLabel}>ROLE & SHIFT</ThemedText>
+        {/* ROLE & SHIFT */}
+        <SectionRow label="Role & Shift">
+          <CompactFieldWithSuggestions
+            placeholder="Designation (type or pick)"
+            value={designation}
+            onChange={setDesig}
+            suggestions={DESIGNATIONS}
+          />
+        </SectionRow>
 
-        <FieldWithSuggestions
-          label="Designation"
-          value={designation}
-          onChange={setDesig}
-          placeholder="Type or pick a suggestion below"
-          suggestions={DESIGNATIONS}
-        />
-
-        <FieldWithSuggestions
-          label="Shift Timing"
+        <CompactFieldWithSuggestions
+          placeholder="Shift Timing (e.g. 6 AM – 2 PM)"
           value={shift}
           onChange={setShift}
-          placeholder="e.g. 6 AM – 2 PM, All Day…"
           suggestions={SHIFTS}
         />
 
@@ -570,23 +427,20 @@ export function OnboardEmployeeScreen({ navigation }: { navigation: AdminNavProp
           </>
         )}
 
-        <Divider />
-        <ThemedText variant="small" color="mint" style={styles.sectionLabel}>
-          COMPENSATION
-        </ThemedText>
+        {/* COMPENSATION */}
+        <SectionRow label="Compensation">
+          <CompactField
+            placeholder="Base Monthly Salary (₹)"
+            value={baseSalary}
+            onChange={setBaseSalary}
+            keyboardType="numeric"
+          />
+        </SectionRow>
 
-        <Field
-          label="Base Monthly Salary  ₹"
-          value={baseSalary}
-          onChange={setBaseSalary}
-          placeholder="e.g. 18000"
-          keyboardType="numeric"
-        />
-        <Field
-          label="Joining Bonus  ₹  (optional)"
+        <CompactField
+          placeholder="Joining Bonus (₹, optional)"
           value={joiningBonus}
           onChange={setJoinBonus}
-          placeholder="0"
           keyboardType="numeric"
         />
 
@@ -651,15 +505,12 @@ const styles = StyleSheet.create({
     paddingBottom: Theme.spacing.xs,
   },
 
-  phoneRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-
   warnText: {
     color: Theme.colors.status.warning,
     fontSize: S,
-    marginTop: 4,
+    paddingHorizontal: Theme.spacing.md,
+    paddingTop: 4,
+    paddingBottom: Theme.spacing.xs,
   },
 
   footer: {
