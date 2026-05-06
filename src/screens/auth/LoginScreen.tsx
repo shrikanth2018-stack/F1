@@ -263,108 +263,112 @@ export function LoginScreen({ onExistingUser, onNewUser, referralCode }: LoginSc
   const otpReady = isValidOTP(otp);
 
   const inner = (
-    <ScrollView
-      contentContainerStyle={[
-        styles.scroll,
-        { paddingBottom: insets.bottom + Theme.spacing.lg },
-      ]}
-      keyboardShouldPersistTaps="handled"
-      bounces={false}
-    >
-      <View style={styles.body}>
-        {/* Logo */}
-        <Image
-          source={{ uri: `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/public/assets/logo.png` }}
-          style={styles.logo}
-          resizeMode="contain"
-        />
+    <View style={styles.innerWrap}>
+      {/* Upper region — scrolls if it overflows; keypad below stays pinned. */}
+      <ScrollView
+        style={styles.upperScroll}
+        contentContainerStyle={styles.scroll}
+        keyboardShouldPersistTaps="handled"
+        bounces={false}
+      >
+        <View style={styles.body}>
+          {/* Logo */}
+          <Image
+            source={{ uri: `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/public/assets/logo.png` }}
+            style={styles.logo}
+            resizeMode="contain"
+          />
 
-        {/* Referral hint — only on phone phase */}
-        {isPhonePhase && referralCode && (
-          <ThemedText variant="small" color="mint" style={{ textAlign: 'center', marginBottom: 12 }}>
-            {`Referral code "${referralCode}" will be applied after signup`}
-          </ThemedText>
-        )}
+          {/* Referral hint — only on phone phase */}
+          {isPhonePhase && referralCode && (
+            <ThemedText variant="small" color="mint" style={{ textAlign: 'center', marginBottom: 12 }}>
+              {`Referral code "${referralCode}" will be applied after signup`}
+            </ThemedText>
+          )}
 
-        {/* Title */}
-        <Text style={styles.title}>
-          {isPhonePhase ? 'Enter mobile' : 'Enter OTP'}
-        </Text>
+          {/* Title */}
+          <Text style={styles.title}>
+            {isPhonePhase ? 'Enter mobile' : 'Enter OTP'}
+          </Text>
 
-        {/* OTP-phase subtitle: shows phone + Change phone link inline */}
-        {!isPhonePhase && (
-          <View style={styles.subtitleRow}>
-            <Text style={styles.subtitle}>Sent to {formatPhone(phone)}</Text>
+          {/* OTP-phase subtitle: shows phone + Change phone link inline */}
+          {!isPhonePhase && (
+            <View style={styles.subtitleRow}>
+              <Text style={styles.subtitle}>Sent to {formatPhone(phone)}</Text>
+              <TouchableOpacity
+                onPress={handleChangePhone}
+                accessibilityRole="button"
+                accessibilityLabel="Change phone number"
+              >
+                <Text style={styles.changePhone}>Change phone ›</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {/* Passcode dots — 10 for phone, 6 for OTP, same visual style */}
+          <View style={styles.dotWrap}>
+            <PasscodeDots value={isPhonePhase ? phone : otp} length={isPhonePhase ? 10 : 6} />
+          </View>
+
+          {/* OTP-phase: LOGIN | REGISTER text-only action */}
+          {!isPhonePhase && (
             <TouchableOpacity
-              onPress={handleChangePhone}
+              onPress={handleVerify}
+              disabled={loading || !otpReady}
+              activeOpacity={0.7}
               accessibilityRole="button"
-              accessibilityLabel="Change phone number"
+              accessibilityLabel="Login or Register"
+              accessibilityState={{ disabled: loading || !otpReady, busy: loading }}
+              style={styles.actionWrap}
             >
-              <Text style={styles.changePhone}>Change phone ›</Text>
+              {loading ? (
+                <ActivityIndicator color={Theme.colors.text.mint} />
+              ) : (
+                <Text style={[styles.actionText, !otpReady && styles.actionTextDisabled]}>
+                  LOGIN  |  REGISTER
+                </Text>
+              )}
             </TouchableOpacity>
-          </View>
-        )}
+          )}
 
-        {/* Passcode dots — 10 for phone, 6 for OTP, same visual style */}
-        <View style={styles.dotWrap}>
-          <PasscodeDots value={isPhonePhase ? phone : otp} length={isPhonePhase ? 10 : 6} />
-        </View>
-
-        {/* OTP-phase: LOGIN | REGISTER text-only action */}
-        {!isPhonePhase && (
-          <TouchableOpacity
-            onPress={handleVerify}
-            disabled={loading || !otpReady}
-            activeOpacity={0.7}
-            accessibilityRole="button"
-            accessibilityLabel="Login or Register"
-            accessibilityState={{ disabled: loading || !otpReady, busy: loading }}
-            style={styles.actionWrap}
-          >
-            {loading ? (
+          {/* Phone-phase: brief sending indicator while OTP is being sent */}
+          {isPhonePhase && loading && (
+            <View style={styles.actionWrap}>
               <ActivityIndicator color={Theme.colors.text.mint} />
-            ) : (
-              <Text style={[styles.actionText, !otpReady && styles.actionTextDisabled]}>
-                LOGIN  |  REGISTER
-              </Text>
-            )}
-          </TouchableOpacity>
-        )}
+            </View>
+          )}
 
-        {/* Phone-phase: brief sending indicator while OTP is being sent */}
-        {isPhonePhase && loading && (
-          <View style={styles.actionWrap}>
-            <ActivityIndicator color={Theme.colors.text.mint} />
-          </View>
-        )}
-
-        {/* OTP-phase: resend with countdown */}
-        {!isPhonePhase && (
-          <TouchableOpacity
-            style={styles.resendBtn}
-            onPress={handleResend}
-            disabled={resendCountdown > 0 || resending}
-            activeOpacity={0.6}
-            accessibilityRole="button"
-            accessibilityLabel="Resend OTP"
-            accessibilityState={{ disabled: resendCountdown > 0 || resending, busy: resending }}
-          >
-            <Text
-              style={[
-                styles.resendText,
-                (resendCountdown > 0 || resending) && styles.resendDisabled,
-              ]}
+          {/* OTP-phase: resend with countdown */}
+          {!isPhonePhase && (
+            <TouchableOpacity
+              style={styles.resendBtn}
+              onPress={handleResend}
+              disabled={resendCountdown > 0 || resending}
+              activeOpacity={0.6}
+              accessibilityRole="button"
+              accessibilityLabel="Resend OTP"
+              accessibilityState={{ disabled: resendCountdown > 0 || resending, busy: resending }}
             >
-              {resending
-                ? 'Sending…'
-                : resendCountdown > 0
-                  ? `Resend OTP in ${resendCountdown}s`
-                  : 'Resend OTP'}
-            </Text>
-          </TouchableOpacity>
-        )}
+              <Text
+                style={[
+                  styles.resendText,
+                  (resendCountdown > 0 || resending) && styles.resendDisabled,
+                ]}
+              >
+                {resending
+                  ? 'Sending…'
+                  : resendCountdown > 0
+                    ? `Resend OTP in ${resendCountdown}s`
+                    : 'Resend OTP'}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </ScrollView>
 
-        {/* In-app number keypad — bound to phone or otp depending on phase */}
+      {/* Bottom-pinned region — keypad always visible; phone-phase shows
+          terms/privacy below it. Respects safe-area inset. */}
+      <View style={[styles.bottomPinned, { paddingBottom: insets.bottom + Theme.spacing.sm }]}>
         <View style={styles.keypadWrap}>
           {isPhonePhase ? (
             <NumberKeypad value={phone} onChange={setPhone} maxLength={10} />
@@ -372,30 +376,29 @@ export function LoginScreen({ onExistingUser, onNewUser, referralCode }: LoginSc
             <NumberKeypad value={otp} onChange={setOtp} maxLength={6} />
           )}
         </View>
-      </View>
 
-      {/* Footer (terms + privacy) — only on phone phase */}
-      {isPhonePhase && (
-        <View style={styles.footer}>
-          <Text style={styles.footLine}>By continuing, you agree to our</Text>
-          <Text style={styles.footLine}>
-            <Text
-              style={styles.footLink}
-              onPress={() => Linking.openURL('https://wcvqxzqqwcxlcgrjyunf.supabase.co/storage/v1/object/public/assets/Terms.pdf')}
-            >
-              Terms of Service
+        {isPhonePhase && (
+          <View style={styles.footer}>
+            <Text style={styles.footLine}>By continuing, you agree to our</Text>
+            <Text style={styles.footLine}>
+              <Text
+                style={styles.footLink}
+                onPress={() => Linking.openURL('https://wcvqxzqqwcxlcgrjyunf.supabase.co/storage/v1/object/public/assets/Terms.pdf')}
+              >
+                Terms of Service
+              </Text>
+              {'  and  '}
+              <Text
+                style={styles.footLink}
+                onPress={() => Linking.openURL('https://wcvqxzqqwcxlcgrjyunf.supabase.co/storage/v1/object/public/assets/Privacy-Policy.pdf')}
+              >
+                Privacy Policy
+              </Text>
             </Text>
-            {'  and  '}
-            <Text
-              style={styles.footLink}
-              onPress={() => Linking.openURL('https://wcvqxzqqwcxlcgrjyunf.supabase.co/storage/v1/object/public/assets/Privacy-Policy.pdf')}
-            >
-              Privacy Policy
-            </Text>
-          </Text>
-        </View>
-      )}
-    </ScrollView>
+          </View>
+        )}
+      </View>
+    </View>
   );
 
   if (!bgUrl) {
@@ -416,7 +419,12 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: Theme.colors.layout.overlayHeavy,
   },
+  innerWrap: { flex: 1 },
+  upperScroll: { flex: 1 },
   scroll: { flexGrow: 1 },
+  bottomPinned: {
+    width: '100%',
+  },
   body: {
     alignItems: 'center',
     paddingHorizontal: Theme.spacing.xl,
@@ -498,8 +506,7 @@ const styles = StyleSheet.create({
   },
   footer: {
     alignItems: 'center',
-    marginTop: Theme.spacing.xl,
-    marginBottom: Theme.spacing.xl,
+    marginTop: Theme.spacing.md,
     paddingHorizontal: Theme.spacing.lg,
     gap: 4,
   },

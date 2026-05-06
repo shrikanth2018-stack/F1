@@ -27,6 +27,7 @@ import { ThemedText } from '../../components/ThemedText';
 import { ThemedInput } from '../../components/ThemedInput';
 import { PinMap } from '../../components/PinMap';
 import { useAddAddress } from '../../hooks/useAddresses';
+import { useAuth } from '../../hooks/useAuth';
 import { useFeatureFlag } from '../../hooks/useFeatureFlag';
 import { isNonEmpty } from '../../utils/validators';
 import { checkZone, pointInPolygon, ZoneCheckResult } from '../../utils/serviceability';
@@ -52,6 +53,7 @@ export function AddAddressScreen({ navigation, onComplete }: Props) {
   const [zoneResult, setZoneResult] = useState<ZoneCheckResult | null>(null);
 
   const { mutateAsync: addAddress, isPending } = useAddAddress();
+  const { session } = useAuth();
   const hubDeliveryActive = useFeatureFlag('hub_delivery_active');
 
   const runChecks = async (lat: number, lng: number) => {
@@ -158,6 +160,21 @@ export function AddAddressScreen({ navigation, onComplete }: Props) {
         hubId = matchingHub?.id ?? null;
       }
 
+      // Only auto-mark as default if this is the user's first active
+      // address. Otherwise leave default unchanged so they can pick via
+      // the "Set default" toggle on AddressesScreen — the partial unique
+      // index would reject a second default anyway.
+      let isFirstAddress = true;
+      const userId = session?.user.id;
+      if (userId) {
+        const { count } = await supabase
+          .from('customer_addresses')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', userId)
+          .eq('is_active', true);
+        isFirstAddress = (count ?? 0) === 0;
+      }
+
       await addAddress({
         label,
         full_name: fullName.trim(),
@@ -169,7 +186,7 @@ export function AddAddressScreen({ navigation, onComplete }: Props) {
         zone_id: zoneResult?.zoneId ?? null,
         hub_id: hubId,
         is_serviceable: zoneResult?.result === 'serviceable',
-        is_default: true,
+        is_default: isFirstAddress,
       });
 
       if (onComplete) {

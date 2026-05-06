@@ -49,13 +49,31 @@ LANGUAGE sql STABLE AS $$
   SELECT public.is_admin() AND public.jwt_branch_id() IS NULL;
 $$;
 
--- MF-03 Commit 4: per-row branch gate. Returns true for super-admin
--- (no branch_id claim → sees all branches) OR when the row's branch_id
--- matches the caller's JWT branch_id claim. Used by every branch-scoped
--- admin/staff policy below.
+-- MF-03 Commit 4 + BF-29 (2026-05-06): per-row branch gate.
+--
+-- Returns TRUE when:
+--   1. Caller is super-admin (no branch claim → sees all branches), OR
+--   2. The launch-gate flag `feature_flags.branch_management_active` is
+--      OFF — pre-launch single-branch mode. The calling policy's own
+--      role gate (is_admin / is_staff_or_admin) stays in force; branch
+--      is treated as unscoped. This avoids stranded-NULL branch_id rows
+--      / stale JWTs blocking every staff write while the data backfill
+--      and JWT refresh are still rolling out, OR
+--   3. The row's branch_id matches the caller's JWT branch_id claim
+--      (the strict multi-branch enforcement, active once the flag is
+--      flipped post-V-06).
+--
+-- COALESCE(..., FALSE) defends against the row being absent in a fresh
+-- DB (treat as off → permissive pre-launch behavior).
 CREATE OR REPLACE FUNCTION public.has_branch_access(row_branch_id INTEGER) RETURNS BOOLEAN
 LANGUAGE sql STABLE AS $$
-  SELECT public.is_super_admin() OR row_branch_id = public.jwt_branch_id();
+  SELECT
+    public.is_super_admin()
+    OR NOT COALESCE(
+         (SELECT flag_value FROM public.feature_flags
+            WHERE flag_key = 'branch_management_active'),
+         FALSE)
+    OR row_branch_id = public.jwt_branch_id();
 $$;
 
 
@@ -138,18 +156,17 @@ CREATE POLICY orders_self_insert ON public.orders
     OR (public.is_staff_or_admin() AND public.has_branch_access(branch_id))
   );
 
+-- BF-29 (2026-05-06): dropped the duplicate status enum from WITH CHECK.
+-- Value validation is the table-level CHECK constraint's job (schema.sql:270-274
+-- already covers every valid status incl. 'Received at Hub'). The previous RLS
+-- enum had drifted (missing 'Received at Hub') and silently rejected the
+-- driver's Dispatched → Received at Hub handoff. RLS keeps role + branch gating;
+-- transition gating stays at the application layer (deliveryStatus.ts).
 DROP POLICY IF EXISTS orders_staff_update ON public.orders;
 CREATE POLICY orders_staff_update ON public.orders
   FOR UPDATE
-  USING (public.is_staff_or_admin() AND public.has_branch_access(branch_id))
-  WITH CHECK (
-    status IN (
-      'Pending', 'Confirmed', 'Preparing', 'Ready',
-      'Packed', 'Dispatched', 'On the Way', 'Delivered',
-      'Cancelled', 'Failed'
-    )
-    AND public.has_branch_access(branch_id)
-  );
+  USING      (public.is_staff_or_admin() AND public.has_branch_access(branch_id))
+  WITH CHECK (public.is_staff_or_admin() AND public.has_branch_access(branch_id));
 
 DROP POLICY IF EXISTS order_items_self ON public.order_items;
 CREATE POLICY order_items_self ON public.order_items
