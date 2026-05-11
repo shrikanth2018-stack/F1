@@ -70,7 +70,23 @@ export function useWalletTransactions() {
   });
 }
 
-/** Initiate wallet top-up (creates Razorpay order via Edge Function) */
+/** Safe UUID — matches the fallback pattern used in CheckoutScreen so this
+ *  hook works in Expo Go / older Android where `crypto.randomUUID` is absent. */
+function generateIdempotencyKey(): string {
+  if (typeof crypto !== 'undefined' && typeof (crypto as any).randomUUID === 'function') {
+    return (crypto as any).randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+  });
+}
+
+/** Initiate wallet top-up (creates Razorpay order via Edge Function).
+ *
+ *  BF-38a (F1.3): each invoke sends an Idempotency-Key header so a
+ *  double-tap or network retry doesn't create a second Razorpay order.
+ *  Server caches the first response and replays it on duplicate keys. */
 export function useWalletTopup() {
   const { session } = useAuth();
   const queryClient = useQueryClient();
@@ -80,6 +96,7 @@ export function useWalletTopup() {
       if (!session) throw new Error('Not authenticated');
 
       const { data, error } = await supabase.functions.invoke('wallet-topup', {
+        headers: { 'Idempotency-Key': generateIdempotencyKey() },
         body: { amount },
       });
 
