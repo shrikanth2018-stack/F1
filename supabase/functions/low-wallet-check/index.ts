@@ -55,20 +55,20 @@ Deno.serve(async (req: Request) => {
     // Active, non-paused subs with their plan price + user wallet balance.
     const { data: subs, error: subsErr } = await supabase
       .from('user_subscriptions')
-      .select('id, user_id, start_date, subscription_plans!inner(plan_name, duration_days, price)')
+      .select('id, user_id, days_consumed, subscription_plans!inner(plan_name, duration_days, price)')
       .eq('is_active', true)
       .eq('is_paused', false);
     if (subsErr) throw subsErr;
 
-    const todayMs = new Date(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date()) + 'T00:00:00Z').getTime();
-
-    // Find subs ending in the next 2 days (candidates for renewal warning).
+    // BF-36a / F7.1: end-of-life is driven by days_consumed, not the
+    // calendar window from start_date (mirrors BF-33 in expiry-push).
+    // daysLeft counts unconsumed paid meals so the low-balance warning
+    // fires on delivery proximity, not date proximity.
     const candidates: Array<{ userId: string; planName: string; price: number; subId: number }> = [];
     for (const sub of subs ?? []) {
       const plan = (sub as any).subscription_plans;
-      if (!plan?.duration_days || !sub.start_date) continue;
-      const endMs = new Date(sub.start_date + 'T00:00:00Z').getTime() + plan.duration_days * 86_400_000;
-      const daysLeft = Math.round((endMs - todayMs) / 86_400_000);
+      if (!plan?.duration_days) continue;
+      const daysLeft = (plan.duration_days ?? 0) - ((sub as any).days_consumed ?? 0);
       if (daysLeft === 1 || daysLeft === 2) {
         candidates.push({ userId: sub.user_id, planName: plan.plan_name, price: plan.price ?? 0, subId: sub.id });
       }
