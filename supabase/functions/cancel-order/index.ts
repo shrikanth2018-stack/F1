@@ -91,7 +91,7 @@ Deno.serve(async (req: Request) => {
     // Load order — must belong to this user
     const { data: order, error: orderErr } = await supabase
       .from('orders')
-      .select('id, user_id, status, payment_method, total_amount, wallet_amount_used, created_at, cycle_id, dispatch_date')
+      .select('id, user_id, status, payment_method, total_amount, wallet_amount_used, created_at, cycle_id, dispatch_date, branch_id')
       .eq('id', order_id)
       .eq('user_id', user.id)
       .maybeSingle();
@@ -189,8 +189,42 @@ Deno.serve(async (req: Request) => {
         p_description: `Refund for cancelled order #${order_id}`,
       });
       if (refundErr) {
-        console.error('[cancel-order] Wallet refund failed:', refundErr.message);
-        // Order is already cancelled — log but don't fail. Admin can manually refund.
+        // BF-39 (F1.5): the order is already Cancelled (atomic from the
+        // customer's perspective) but the wallet refund didn't credit.
+        // Pre-fix this was a money-at-risk silent failure — only
+        // console.error. Now: loud structured log + role-targeted push to
+        // branch admins so reconciliation is human-visible. Order stays
+        // Cancelled; do not throw — the customer's cancel succeeded.
+        const ref = new Date().toISOString();
+        console.error('[cancel-order] [REFUND-FAILURE-ALERT] Wallet refund failed', {
+          order_id, user_id: user.id, amount: walletRefund,
+          reason: refundErr.message, reference: ref,
+        });
+
+        // Direct call to send-push: resolveAndSendPush only supports
+        // userIds; send-push natively accepts role+branch_id for
+        // role-based fan-out. send-push will also resolve the
+        // admin.wallet_refund_failed template if admin has customized it.
+        fetch(`${SUPABASE_URL}/functions/v1/send-push`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          },
+          body: JSON.stringify({
+            role: 'admin',
+            branch_id: order.branch_id ?? undefined,
+            event_key: 'admin.wallet_refund_failed',
+            vars: { order_id, amount: walletRefund, reference: ref },
+            title: 'Wallet refund failed',
+            body: `Order #${order_id} cancelled but wallet refund of ₹${walletRefund} did not credit. Manual reconciliation needed (ref ${ref}).`,
+            data: { screen: 'AdminOrderDetail', params: { orderId: order_id } },
+            trigger_source: 'admin_alert',
+            reference_id: String(order_id),
+          }),
+        }).catch((e: any) =>
+          console.error('[cancel-order] admin alert push failed:', e?.message),
+        );
       }
     }
 

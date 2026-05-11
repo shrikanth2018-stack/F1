@@ -37,8 +37,13 @@ Method: read-only per-flow audit → cross-check prod DB → match/gap matrix vs
   - **BF-38a (F1.3)** — useWalletTopup now sends Idempotency-Key header on each invoke.
   - **BF-38b (F4.3)** — useRealtimeOrders re-subscribes at IST midnight so overnight dashboards roll over to the new day.
 
-**Net deferred findings (10, all post-launch FT candidates):**
-F1.5 (cancel-refund admin signal), F3.X (cross-midnight cycle latent), F3.Y (kitchen_push_time +10min config), F4.4 (offline queue order-of-failure), F4.5 (offline replays skip push), F5.1 (driver assignment lacks atomic RPC), F5.2 (JWT refresh window for driver revocation), F6.1 (notification_templates not branch-scoped), F6.2 (referrals_self admin-only — intentional), F7.2 (dormant-user-check double-send).
+**Net deferred findings (8, all post-launch FT candidates):**
+F3.X (cross-midnight cycle latent), F4.4 (offline queue order-of-failure), F4.5 (offline replays skip push), F5.1 (driver assignment lacks atomic RPC), F5.2 (JWT refresh window for driver revocation), F6.1 (notification_templates not branch-scoped), F6.2 (referrals_self admin-only — intentional), F7.2 (dormant-user-check double-send).
+
+**Closed during the 2hr break (2026-05-11):**
+- **F3.Y** — `delivery_cycles.kitchen_push_time` updated to `cutoff_time + INTERVAL '10 minutes'` on all 4 active cycles (matches XL spec).
+- **F1.5 → BF-39** — `cancel-order` Edge fn now fires a role-targeted push to branch admins when `increment_wallet_balance` fails after the order is already Cancelled. Loud structured `[REFUND-FAILURE-ALERT]` log + `admin.wallet_refund_failed` event_key (admin can customize via `notification_templates`).
+- **MF-08 remaining** — production-only objects captured into tracked SQL: `supabase/sql/supply_chain_tables.sql` (4 supply tables: supply_catalog, staff_order_requests, supply_order_items, supply_batches) and `supabase/sql/referral_first_order_trigger.sql` (function + trigger). Round-trip deploy verified — all 4 tables + function + trigger still present after re-running tracked files.
 
 ## Verification queue
 
@@ -50,7 +55,7 @@ F1.5 (cancel-refund admin signal), F3.X (cross-midnight cycle latent), F3.Y (kit
 
 - **MF-06** — Staging Supabase project. Mirror schema + RLS + seeds; deploy SQL + Edge Functions to staging first, prod second.
 - **MF-07** — Tier 2 of testing plan: Jest backfill across Edge Functions, RPCs, hook business logic. **MF-07a (pre-push gate via husky) shipped 2026-05-05 commit `601a31b`.** MF-07 broader coverage opens after Tier 1 audit ladder closes.
-- **MF-08** — Source-of-truth audit. **Partially closed 2026-05-05** (`handle_new_user` captured commit `f609e0b`, Supabase types regenerated commit `1781b80`). Still open: production-only tables (`supply_catalog`, `staff_order_requests`, `supply_order_items`, `supply_batches`) and the two referral triggers (`handle_first_order_referral_bonus`, `trg_first_order_referral_bonus`).
+- **MF-08** — Source-of-truth audit. **Fully closed 2026-05-11.** First half on 2026-05-05 (`handle_new_user` captured `f609e0b`, Supabase types regenerated `1781b80`). Remaining half closed during today's break: production-only supply tables captured to `supply_chain_tables.sql`; referral trigger captured to `referral_first_order_trigger.sql`. Round-trip deploy verified.
 
 ## Fine-tune backlog (D-07 mode 3)
 
