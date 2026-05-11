@@ -77,13 +77,22 @@ export function useStaffOrders(cycleId?: number) {
       if (error) throw error;
       const orders = (data ?? []) as (Order & { order_items: any[]; customer_addresses: any })[];
 
+      // Subscription-purchase orders carry only item_type='subscription' rows
+      // (revenue record + activation). Daily dispatch rows have real food /
+      // essential items from plan_items and pass this filter.
+      const operational = orders.filter((o) =>
+        (o.order_items ?? []).some(
+          (oi: any) => oi.item_type === 'food' || oi.item_type === 'essential'
+        )
+      );
+
       if (hubDeliveryActive && assignedHubId != null) {
-        return orders.filter(
+        return operational.filter(
           (o) => (o.customer_addresses as any)?.hub_id === assignedHubId
         );
       }
 
-      return orders;
+      return operational;
     },
     staleTime: QUERY_STALE_TIME,
   });

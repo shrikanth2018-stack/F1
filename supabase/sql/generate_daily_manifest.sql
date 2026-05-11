@@ -144,7 +144,11 @@ BEGIN
       0,  -- BF-19: dispatch rows are not revenue events
       0,  -- BF-19: tax was paid at original purchase
       0,  -- BF-19: delivery fee was paid at original purchase
-      'Confirmed', v_plan.plan_type, p_target_date, v_plan.cycle_id,
+      'Confirmed',
+      -- Normalize plural plan_type ('essentials') to singular order_type
+      -- ('essential') so customer + staff order_type filters match.
+      CASE WHEN COALESCE(v_plan.plan_type, 'food') = 'food' THEN 'food' ELSE 'essential' END,
+      p_target_date, v_plan.cycle_id,
       CASE WHEN v_address.hub_id IS NOT NULL THEN 'hub' ELSE 'direct' END,
       v_address.hub_id, v_sub.payment_method,
       0,  -- BF-01: no wallet debit on dispatch
