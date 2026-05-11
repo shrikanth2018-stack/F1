@@ -25,6 +25,10 @@ import { ErrorRetry } from '../../components/ErrorRetry';
 import { useAdminSubscriptions, useAdminCancelSubscription } from '../../hooks/useSubscriptions';
 import { useStoreConfig } from '../../hooks/useStoreConfig';
 import { formatDateShort } from '../../utils/formatters';
+import {
+  subscriptionDaysRemaining,
+  proratedSubscriptionRefund,
+} from '../../utils/subscriptionMath';
 
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
@@ -56,25 +60,16 @@ export function AdminSubscriptionsScreen({ navigation }: any) {
 
   const openCancel = useCallback((sub: any) => {
     const plan = sub.subscription_plans ?? {};
-    const daysTotal = plan.duration_days ?? 0;
-    const daysConsumed = sub.days_consumed ?? 0;
-    const daysRemaining = Math.max(0, daysTotal - daysConsumed);
-    const planPrice = plan.price ?? 0;
+    const daysRemaining = subscriptionDaysRemaining(plan, sub);
 
     // BF-21 (D-03a): proration is on the all-inclusive figure customer paid
-    // (food + tax + delivery fee), not just plan.price. Customer paid
-    //   plan.price + (plan.price * tax_rate%) + delivery_fee
-    // at purchase; refund the unconsumed proportion of that total.
-    // Uses store_config defaults — drift between purchase-time and
-    // cancel-time config is rare in practice; if it ever matters,
-    // future enhancement could fetch the original purchase order's
-    // actual total_amount instead.
+    // (food + tax + delivery fee). Math lives in src/utils/subscriptionMath.
+    // store_config defaults — drift between purchase-time and cancel-time
+    // config is rare; if it matters, future enhancement could fetch the
+    // original purchase order's total_amount instead.
     const taxRate = storeConfig?.tax_rate_percentage ?? 5;
     const deliveryFee = storeConfig?.delivery_fee ?? 0;
-    const allInclusive = planPrice * (1 + taxRate / 100) + deliveryFee;
-    const prorated = daysTotal > 0
-      ? Math.round((allInclusive / daysTotal) * daysRemaining)
-      : 0;
+    const prorated = proratedSubscriptionRefund(plan, sub, taxRate, deliveryFee);
 
     setTarget({
       id: sub.id,
@@ -134,8 +129,7 @@ export function AdminSubscriptionsScreen({ navigation }: any) {
         ItemSeparatorComponent={() => <Divider />}
         renderItem={({ item }) => {
           const plan = item.subscription_plans ?? {};
-          const daysTotal = plan.duration_days ?? 0;
-          const daysRemaining = Math.max(0, daysTotal - (item.days_consumed ?? 0));
+          const daysRemaining = subscriptionDaysRemaining(plan, item);
           const customer = item.profiles?.full_name ?? item.profiles?.phone_number ?? `User #${item.user_id.slice(0, 8)}`;
           return (
             <View style={styles.row}>

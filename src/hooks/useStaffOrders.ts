@@ -17,6 +17,7 @@ import { QUERY_KEYS, QUERY_STALE_TIME } from '../utils/constants';
 import { useBranchFilter } from './useBranchFilter';
 import { useFeatureFlag } from './useFeatureFlag';
 import { useAuth } from './useAuth';
+import { isOperationalOrder } from '../utils/orderFilters';
 import type { Order, OrderStatus } from '../types';
 
 // Blueprint Sec 5.3 — anti-spam filter.
@@ -79,12 +80,8 @@ export function useStaffOrders(cycleId?: number) {
 
       // Subscription-purchase orders carry only item_type='subscription' rows
       // (revenue record + activation). Daily dispatch rows have real food /
-      // essential items from plan_items and pass this filter.
-      const operational = orders.filter((o) =>
-        (o.order_items ?? []).some(
-          (oi: any) => oi.item_type === 'food' || oi.item_type === 'essential'
-        )
-      );
+      // essential items from plan_items and pass isOperationalOrder.
+      const operational = orders.filter(isOperationalOrder);
 
       if (hubDeliveryActive && assignedHubId != null) {
         return operational.filter(

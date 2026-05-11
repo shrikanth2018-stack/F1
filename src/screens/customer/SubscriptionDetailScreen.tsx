@@ -30,6 +30,7 @@ import {
   usePauseSubscription,
 } from '../../hooks/useSubscriptions';
 import { formatDateLong } from '../../utils/formatters';
+import { subscriptionDaysRemaining } from '../../utils/subscriptionMath';
 
 export function SubscriptionDetailScreen({ route, navigation }: any) {
   const { subscriptionId } = route.params;
@@ -106,7 +107,7 @@ export function SubscriptionDetailScreen({ route, navigation }: any) {
   }
 
   const startDate = sub.start_date;
-  const daysRemaining = plan.duration_days - sub.days_consumed;
+  const daysRemaining = subscriptionDaysRemaining(plan, sub);
 
   return (
     <SafeAreaView style={styles.container}>
