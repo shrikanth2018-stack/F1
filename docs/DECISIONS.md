@@ -1,75 +1,45 @@
 # 1stOne F1 — Open task ledger
 
-> What's open. One line per item. Detailed write-ups live in `docs/HISTORY.md` (after ship) or per-feature audit docs (e.g., `docs/MF-03_multi_branch_audit.md`). For working rules see `docs/RULES.md`. For current state see `docs/STATUS.md`.
+> What's still open and what's worth attempting EOD today. Lifecycle: items open here; when shipped they graduate to `docs/HISTORY.md` with sha + file paths. For working rules see `docs/RULES.md`. For current state see `docs/STATUS.md`. For per-flow audit detail see `docs/AUDIT_*.md`.
 
-> **Lifecycle:** items open here. When shipped, the entry graduates to `docs/HISTORY.md` as a one-paragraph dated entry with file paths and commit sha.
+## Pre-launch must-do (D-08 gate)
 
-## Pre-launch blockers (D-08)
+- **V-06 persona regression** — operational test on real device. Customer → staff (kitchen + packing) → driver → hub-op → branch-admin walkthrough. Covers everything Jest mocks can't (push tokens, Razorpay sandbox, cron-fired sub dispatches landing in staff UI).
+- **Flag flip SQL** — once V-06 green, run `UPDATE feature_flags SET flag_value = TRUE WHERE flag_key = 'branch_management_active';`. I can run it on say-so.
+- **FT-08 UX punch list** — reorder menu items + small UX tweaks. Awaiting your list. Will land before next AAB.
 
-- **V-06 persona regression** — only code-level launch blocker remaining. Operational test.
-- **Flag flip** — last D-08 gate. `UPDATE feature_flags SET flag_value = TRUE WHERE flag_key = 'branch_management_active';` once V-06 passes.
+## Could close today — EOD candidates (one-liners, sorted by effort)
 
-**MF-03 (Classes A / B / C + punch list 12-14) closed 2026-05-11 via Tier 1 Flow 6 audit verification.** Code-level work shipped via 2026-05-05 Commits 1-5; today's audit confirmed live state matches. See `docs/AUDIT_admin_actions.md`. Two intentional gaps remain (F6.1 notification_templates not branch-scoped — defer to multi-branch launch; F6.2 referrals_self admin clause is is_admin() only — documented intentional).
+- **F7.2** *(20 min, code)* — `dormant-user-check` reads `push_logs` to honor its own "won't double-send" weekly cadence promise. Currently a 30+ day dormant user gets a push every Monday.
+- **F3.X** *(10 min, decision)* — cross-midnight cycle after-cutoff scenario semantics. Pick (a) block / (b) place for day N+2 / (c) place for tomorrow anyway. Today's 4 prod cycles are all same-day so this is latent; freezing the decision protects against future cycle reconfig.
+- **F4.5** *(15 min, decision)* — should offline-replayed status mutations also fire customer push when they drain? Pick yes / no / time-bounded. Today: no push fires for offline replays.
+- **F5.1** *(1 session, code)* — `assign_driver_to_zone` / `assign_driver_to_hub` atomic RPCs mirroring `assign_hub_operator`. Plus row-scoped RLS update policy keyed on `driver_user_id`. Defense in depth.
 
-## Tier 1 audit ladder — COMPLETE (8 / 8 flows closed 2026-05-11)
+## Post-launch / no-action
 
-Method: read-only per-flow audit → cross-check prod DB → match/gap matrix vs spec → immediate fixes for findings → per-flow audit doc in `docs/AUDIT_<flow>.md`.
+- **F4.4** — offline queue order-of-failure can cause status skips. Bounded by retry cap.
+- **F6.1** — `notification_templates` not branch-scoped. Multi-branch concern only.
+- **F6.2** — `referrals_self` admin clause is `is_admin()` only. **Documented intentional.**
+- **MF-06** — Staging Supabase project. Needs you to create the project in the dashboard.
+- **FT-04** — Branches Manage admin screen. Self-service post-launch.
+- **FT-05** — Super-admin marker migration (`profiles.is_super_admin BOOLEAN`).
+- **FT-06** — Super-admin TOTP 2FA. Parked.
+- **Master Document v1.1 refresh** — text-only against post-2026-05-02 reality.
+- **Scheduled push multi-branch spot-check** — once branch 2 exists, ~30 min.
 
-- ✅ **Flow 0 — Order generation + listing** — BF-31.
-- ✅ **Flow 1 — Payments + wallet** — BF-32. F1.3 / F1.5 deferred (F1.4 closed via BF-36b in Flow 7).
-- ✅ **Flow 2 — Subscription lifecycle** — BF-33. Spec D-01 (pause/skip extends duration) now matched in code.
-- ✅ **Flow 3 — One-off order lifecycle** — BF-34. F3.X / F3.Y deferred.
-- ✅ **Flow 4 — Staff operations** — BF-35. Push fan-out single-sourced via app code; admin templates honored. F4.3 / F4.4 / F4.5 deferred. F4.2 closed in Flow 8 as not-a-bug.
-- ✅ **Flow 5 — Driver + Hub delivery** — no code shipped. F5.1 / F5.2 deferred.
-- ✅ **Flow 6 — Admin actions + MF-03 closure** — MF-03 Classes A/B/C confirmed closed. F6.1 / F6.2 deferred.
-- ✅ **Flow 7 — Notifications + cron** — BF-36 (low-wallet days_consumed + schedule idempotency cleanup cron). F7.2 deferred.
-- ✅ **Flow 8 — Auth + branch routing** — BF-37 (custom_access_token_hook file sync). F4.2 revisited and closed.
+## Done — closed today (2026-05-11)
 
-**Bug fixes shipped in Tier 1: BF-31 → BF-37** (7 commits, all DB + edge function deploys verified live).
+- ✅ **Tier 1 audit ladder (8 / 8 flows)** — BF-31 → BF-37 shipped + verified live. Per-flow detail in `docs/AUDIT_*.md`.
+- ✅ **Tier 2 Jest backfill** — 191 → 300 tests across 18 suites. `@testing-library/react-native` added. Three small utility extractions (`orderFilters`, `packingFlow`, `subscriptionMath`) for testability.
+- ✅ **BF-38 (F1.3 + F4.3)** — wallet topup Idempotency-Key header + `useRealtimeOrders` IST-midnight rollover.
+- ✅ **F3.Y** — `delivery_cycles.kitchen_push_time` bumped to `cutoff_time + 10 min` on all 4 active cycles.
+- ✅ **BF-39 (F1.5)** — `cancel-order` Edge fn pushes `admin.wallet_refund_failed` to branch admins on wallet refund failure.
+- ✅ **MF-08 fully closed** — production-only supply tables + referral trigger captured to tracked SQL (`supply_chain_tables.sql`, `referral_first_order_trigger.sql`); round-trip deploy verified.
+- ✅ **MF-03 Classes A/B/C + punch list 12-14** — verified live via Flow 6 audit.
+- ✅ **MF-07a pre-push gate** — shipped 2026-05-05.
+- ✅ **F4.2** — push token registration confirmed not-a-bug (test-env artifact; wiring is correct).
 
-## Tier 2 Jest backfill — COMPLETE (final launch lock-in)
+## Verification queue (folds into V-06)
 
-**Result: 191 → 289 tests across 16 suites; tsc clean.**
-
-- **Batch 1** — pure-logic regression locks for the BF-31..37 fixes via 3 small extractions (orderFilters, packingFlow, subscriptionMath) + comprehensive coverage of the previously-untested deliveryStatus state machine. 84 tests.
-- **Batch 2** — hook tests via @testing-library/react-native: useWallet (BF-38a idempotency), useAdminOrders (BF-34a atomic cancel RPC), useSubscriptions (BF-20 + pause/skip RLS guards). 14 tests.
-- **BF-38** shipped alongside Tier 2 — two Tier 1 deferred findings closed inline:
-  - **BF-38a (F1.3)** — useWalletTopup now sends Idempotency-Key header on each invoke.
-  - **BF-38b (F4.3)** — useRealtimeOrders re-subscribes at IST midnight so overnight dashboards roll over to the new day.
-
-**Net deferred findings (8, all post-launch FT candidates):**
-F3.X (cross-midnight cycle latent), F4.4 (offline queue order-of-failure), F4.5 (offline replays skip push), F5.1 (driver assignment lacks atomic RPC), F5.2 (JWT refresh window for driver revocation), F6.1 (notification_templates not branch-scoped), F6.2 (referrals_self admin-only — intentional), F7.2 (dormant-user-check double-send).
-
-**Closed during the 2hr break (2026-05-11):**
-- **F3.Y** — `delivery_cycles.kitchen_push_time` updated to `cutoff_time + INTERVAL '10 minutes'` on all 4 active cycles (matches XL spec).
-- **F1.5 → BF-39** — `cancel-order` Edge fn now fires a role-targeted push to branch admins when `increment_wallet_balance` fails after the order is already Cancelled. Loud structured `[REFUND-FAILURE-ALERT]` log + `admin.wallet_refund_failed` event_key (admin can customize via `notification_templates`).
-- **MF-08 remaining** — production-only objects captured into tracked SQL: `supabase/sql/supply_chain_tables.sql` (4 supply tables: supply_catalog, staff_order_requests, supply_order_items, supply_batches) and `supabase/sql/referral_first_order_trigger.sql` (function + trigger). Round-trip deploy verified — all 4 tables + function + trigger still present after re-running tracked files.
-
-## Verification queue
-
-- **V-01** — admin cancellation prorated refund spot-check on partially-consumed test sub.
-- **V-06** — end-to-end persona regression. Will fold into Tier 1 audit findings flow-by-flow.
-- **MF-05 + BF-18 cross-device verification** — real Android device.
-
-## Post-Tier-1 foundation work (D-07 mode 2)
-
-- **MF-06** — Staging Supabase project. Mirror schema + RLS + seeds; deploy SQL + Edge Functions to staging first, prod second.
-- **MF-07** — Tier 2 of testing plan: Jest backfill across Edge Functions, RPCs, hook business logic. **MF-07a (pre-push gate via husky) shipped 2026-05-05 commit `601a31b`.** MF-07 broader coverage opens after Tier 1 audit ladder closes.
-- **MF-08** — Source-of-truth audit. **Fully closed 2026-05-11.** First half on 2026-05-05 (`handle_new_user` captured `f609e0b`, Supabase types regenerated `1781b80`). Remaining half closed during today's break: production-only supply tables captured to `supply_chain_tables.sql`; referral trigger captured to `referral_first_order_trigger.sql`. Round-trip deploy verified.
-
-## Fine-tune backlog (D-07 mode 3)
-
-> Systematic per-flow population begins after Tier 1 audit ladder closes. One-off captures may land before then.
-
-- **FT-04** — Branches Manage admin screen. Currently no UI to add a branch row (super-admin uses raw SQL). Post-launch self-service.
-- **FT-05** — Super-admin marker migration. Today the marker is `role='admin' AND branch_id IS NULL`; future migration: dedicated `profiles.is_super_admin BOOLEAN`.
-- **FT-06 (deferred)** — Super-admin TOTP 2FA via Supabase native MFA. Parked — first-class on Supabase but not urgent for launch.
-- **FT-08** — Pre-launch UX punch list. Placeholder — Shrikanth to send list (reorder menu items + a couple of UX tweaks). Logged here so we don't lose them; opens for execution after Tier 1 + Tier 2 close.
-
-## Post-launch verification
-
-- **Scheduled push functions multi-branch spot-check** — confirm `subscription-expiry-push`, `low-wallet-check`, `dormant-user-check` fire correctly per-customer once branch 2 exists. ~30 min check.
-
-## Documentation
-
-- **Master Document v1.1 update** — refresh against post-2026-05-02 reality (RLS branch scoping, D-01 subscription billing, generate_daily_manifest BF-19/BF-31 history, BF-29/BF-30 RLS closures, CL-* cleanups, current Edge Function list of 12, MF-03 multi-branch foundation).
+- **V-01** — admin cancellation prorated refund spot-check. Cancel sub 39 mid-walk to verify.
+- **MF-05 + BF-18** — real Android customer cancel cross-screen invalidation + login OTP unified screen flow.
