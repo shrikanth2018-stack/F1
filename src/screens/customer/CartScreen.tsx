@@ -61,6 +61,23 @@ export function CartScreen({ navigation, route }: any) {
     [cycles]
   );
 
+  // BF-42: detect cycles with a missed-cutoff item so the cart can render a
+  // contextual yellow banner above the tabs. Without this, scenario 'B'/'C'
+  // items silently shift to the Tomorrow tab and customers re-entering the
+  // cart can't tell why items "moved". Map of cycle_name → scenario; 'C'
+  // wins over 'B' if both exist for the same cycle (highest severity).
+  const cutoffMissedCycles = useMemo(() => {
+    const m = new Map<string, 'B' | 'C'>();
+    const ingest = (ev: { scenario: 'A' | 'B' | 'C'; cycle_name: string }) => {
+      if (ev.scenario !== 'B' && ev.scenario !== 'C') return;
+      const prev = m.get(ev.cycle_name);
+      if (prev !== 'C') m.set(ev.cycle_name, ev.scenario);
+    };
+    for (const ev of evaluations) ingest(ev);
+    for (const ev of essEvaluations) ingest(ev);
+    return m;
+  }, [evaluations, essEvaluations]);
+
   // Group food items by scenario. Scenario 'C' (cross-midnight after-cutoff
   // → day after tomorrow) groups with 'B' in the "next-day" tab; per-item
   // dispatch badge surfaces the exact day.
@@ -247,6 +264,25 @@ export function CartScreen({ navigation, route }: any) {
           <ThemedText variant="small" color="muted">Clear All</ThemedText>
         </TouchableOpacity>
       </View>
+
+      {/* BF-42: missed-cutoff banner. Yellow, non-dismissible while
+          condition holds. Single line per affected cycle; severity stronger
+          for cross-midnight 'C' (day after tomorrow). */}
+      {cutoffMissedCycles.size > 0 && (
+        <View style={styles.cutoffBanner}>
+          {Array.from(cutoffMissedCycles.entries()).map(([cycleName, sc]) => (
+            <ThemedText
+              key={cycleName}
+              variant="small"
+              style={styles.cutoffBannerText}
+            >
+              {sc === 'C'
+                ? `Cutoff for tomorrow's ${cycleName} has passed. These items will be delivered the day after tomorrow.`
+                : `You've missed today's cutoff for ${cycleName}. These items will be delivered tomorrow.`}
+            </ThemedText>
+          ))}
+        </View>
+      )}
 
       <ScrollView contentContainerStyle={styles.content}>
 
@@ -584,6 +620,22 @@ const styles = StyleSheet.create({
     paddingVertical: Theme.spacing.sm,
   },
   content: { paddingBottom: Theme.spacing.xl },
+  // BF-42: missed-cutoff banner — yellow background, warning text, persistent
+  // above the cart sections while any 'B' or 'C' item is in the cart.
+  cutoffBanner: {
+    backgroundColor: Theme.colors.status.warning + '22',
+    borderLeftWidth: 3,
+    borderLeftColor: Theme.colors.status.warning,
+    marginHorizontal: Theme.spacing.md,
+    marginTop: Theme.spacing.xs,
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.sm,
+    borderRadius: 6,
+  },
+  cutoffBannerText: {
+    color: Theme.colors.status.warning,
+    fontWeight: '600',
+  },
   cartSection: { paddingHorizontal: Theme.spacing.md },
   sectionHeader: {
     flexDirection: 'row',

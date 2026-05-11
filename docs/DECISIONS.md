@@ -32,6 +32,7 @@ All four closed this session (see Done log below).
 - ✅ **BF-41 (F3.X)** — cross-midnight cycle scenarios fixed. Today's delivery is locked at yesterday's cutoff, so `getDispatchScenario` returns `'B'` (tomorrow) before today's cutoff or new `'C'` (day after tomorrow) after. CheckoutScreen fires a confirmDialog for `'C'` so customer explicitly accepts the 2-day shift. Smart-cart badge labels "Day after tomorrow" with warning variant. Tests updated.
 - ✅ **F4.5** — closed as option (b) "no push on offline replay" (rationale above).
 - ✅ **F5.1** — re-analyzed and closed as not-a-real-atomicity-bug; RLS row-scoping for drivers re-classified to post-launch FT.
+- ✅ **BF-42** — missed-cutoff banner on CartScreen. Yellow contextual banner above the tab switcher fires when any cart item is in scenario `'B'` or `'C'` (i.e., a cycle whose cutoff has passed). Single line per affected cycle; copy varies by severity: `'B'` says "missed today's cutoff for [cycle]; items will deliver tomorrow"; `'C'` says "cutoff for tomorrow's [cycle] has passed; items will deliver day after tomorrow." Fixes the passive-tab-shift UX where customers re-entering cart couldn't tell why items "moved" to the Tomorrow tab.
 
 
 - ✅ **Tier 1 audit ladder (8 / 8 flows)** — BF-31 → BF-37 shipped + verified live. Per-flow detail in `docs/AUDIT_*.md`.
