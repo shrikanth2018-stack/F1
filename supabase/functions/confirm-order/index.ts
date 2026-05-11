@@ -16,6 +16,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 import { getUserFromJwt } from '../_shared/auth.ts';
+import { resolveAndSendPush } from '../_shared/notifications.ts';
 
 const SUPABASE_PROJECT_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const ALLOWED_ORIGINS = new Set([
@@ -150,6 +151,52 @@ Deno.serve(async (req: Request) => {
       console.error('[confirm-order] sub activation failed:', subErr.message);
     } else if (activatedSubs && activatedSubs.length > 0) {
       console.log(`[confirm-order] Activated ${activatedSubs.length} subscription(s) for order ${order_id}`);
+    }
+
+    // BF-35b: explicit push fan-out. Previously relied on the DB trigger
+    // (now removed) that bypassed admin's notification_templates. Now
+    // routes through resolveAndSendPush so admin can edit copy.
+    resolveAndSendPush({
+      supabase,
+      supabaseUrl: SUPABASE_URL,
+      serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY,
+      eventKey: 'order.razorpay_confirmed',
+      userIds: [order.user_id],
+      vars: { order_id },
+      fallback: {
+        title: 'Order Confirmed!',
+        body: `Your order #${order_id} payment is confirmed. We're getting it ready!`,
+      },
+      data: { screen: 'OrderDetail', params: { orderId: order_id } },
+      referenceId: String(order_id),
+    }).catch((e: any) => console.error('[confirm-order] order push failed:', e));
+
+    // If we activated any subscriptions, fire the dedicated activation push
+    // so the customer gets the "Subscription Activated!" alert. Previously
+    // this only fired from verify-payment's webhook path — when confirm-order
+    // beat the webhook (common), the customer missed it.
+    if (activatedSubs && activatedSubs.length > 0) {
+      const subId = activatedSubs[0].id;
+      const { data: subRow } = await supabase
+        .from('user_subscriptions')
+        .select('subscription_plans ( plan_name )')
+        .eq('id', subId)
+        .maybeSingle();
+      const planName = (subRow as any)?.subscription_plans?.plan_name ?? 'your plan';
+      resolveAndSendPush({
+        supabase,
+        supabaseUrl: SUPABASE_URL,
+        serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY,
+        eventKey: 'subscription.activated',
+        userIds: [order.user_id],
+        vars: { plan_name: planName },
+        fallback: {
+          title: 'Subscription Activated!',
+          body: `Your ${planName} subscription is now active. Enjoy your meals!`,
+        },
+        data: { screen: 'Subscriptions' },
+        referenceId: String(subId),
+      }).catch((e: any) => console.error('[confirm-order] sub push failed:', e));
     }
 
     console.log(`[confirm-order] Order ${order_id} marked Confirmed`);

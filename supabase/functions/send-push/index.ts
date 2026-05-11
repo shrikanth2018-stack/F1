@@ -88,7 +88,7 @@ Deno.serve(async (req) => {
       role,
       branch_id,
       title: titleIn,
-      body: resolvedBody,
+      body: msgBody,
       event_key,
       vars: varsIn,
       data,

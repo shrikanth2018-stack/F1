@@ -54,9 +54,20 @@ DECLARE
   v_address         RECORD;
   v_new_order_id    BIGINT;
   v_day_number      INTEGER;
+  -- BF-35b: push fan-out for each generated dispatch row. Replaces the
+  -- removed _notify_order_status_push trigger so daily sub deliveries
+  -- still get a customer "Order Confirmed" push (honoring admin's
+  -- notification_templates via send-push's event_key resolution).
+  v_supa_url        TEXT;
+  v_svc_key         TEXT;
 BEGIN
   -- BF-19: store_config tax_rate + delivery_fee lookup removed —
   -- dispatch rows have all financial fields zeroed; no calculation needed.
+
+  -- BF-35b: read pg_net target config once. Null values just mean
+  -- pushes are skipped this run; generation still proceeds.
+  SELECT value INTO v_supa_url FROM app_config WHERE key = 'supabase_url';
+  SELECT value INTO v_svc_key  FROM app_config WHERE key = 'service_role_key';
 
   FOR v_sub IN
     SELECT us.id AS sub_id, us.user_id, us.plan_id, us.start_date,
@@ -197,6 +208,33 @@ BEGIN
           ELSE TRUE
         END
     WHERE id = v_sub.sub_id;
+
+    -- BF-35b: fire customer "Order Confirmed" push via pg_net. Async,
+    -- non-blocking — generation proceeds even if send-push is down.
+    -- Uses event_key so admin's notification_templates override applies;
+    -- fallback title/body provided in case the template row is missing.
+    IF v_supa_url IS NOT NULL AND v_svc_key IS NOT NULL THEN
+      PERFORM net.http_post(
+        url     := v_supa_url || '/functions/v1/send-push',
+        headers := jsonb_build_object(
+          'Content-Type',  'application/json',
+          'Authorization', 'Bearer ' || v_svc_key
+        ),
+        body    := jsonb_build_object(
+          'user_ids',       jsonb_build_array(v_sub.user_id::text),
+          'event_key',      'order.confirmed',
+          'vars',           jsonb_build_object('order_id', v_new_order_id),
+          'title',          'Order Confirmed!',
+          'body',           'Your order #' || v_new_order_id || ' is confirmed. We''re getting it ready!',
+          'data',           jsonb_build_object(
+                              'screen', 'OrderDetail',
+                              'params', jsonb_build_object('orderId', v_new_order_id)
+                            ),
+          'trigger_source', 'subscription_dispatch',
+          'reference_id',   v_new_order_id::text
+        )::text
+      );
+    END IF;
 
     v_orders_created := v_orders_created + 1;
   END LOOP;

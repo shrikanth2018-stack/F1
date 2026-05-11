@@ -73,97 +73,28 @@ create policy "Admins can view push logs"
 
 
 -- =============================================================================
--- 2. ORDER STATUS TRIGGER
---    Uses net.http_post (pg_net — enabled by default on Supabase).
---    Reads supabase_url and service_role_key from app_config at runtime.
+-- 2. ORDER STATUS TRIGGER — REMOVED via BF-35b (2026-05-11)
+--
+-- Was: AFTER INSERT OR UPDATE OF status on orders → fires push via pg_net.
+-- Dropped because every app-code path that mutates orders.status ALSO calls
+-- send-push directly via resolveAndSendPush (which honors admin's
+-- notification_templates overrides). The trigger was firing duplicate
+-- pushes with hardcoded copy that bypassed admin's template edits.
+--
+-- Paths that previously relied on the trigger and now fire their own push:
+--   - confirm-order Edge fn: explicit resolveAndSendPush for order.confirmed
+--     and subscription.activated (when subs are activated in the same call).
+--   - generate_daily_manifest SQL: explicit pg_net call for each cron-
+--     generated daily dispatch row.
+--
+-- Paths that intentionally do NOT push:
+--   - cancel-order Edge fn (customer-initiated): customer is on-screen and
+--     gets an Alert.alert; no notification needed.
+--
+-- One-off DROP run via supabase db query to remove from prod:
+--   DROP TRIGGER IF EXISTS trg_order_status_push ON orders;
+--   DROP FUNCTION IF EXISTS _notify_order_status_push();
 -- =============================================================================
-
-create or replace function _notify_order_status_push()
-returns trigger
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  v_title       text;
-  v_body        text;
-  v_supa_url    text;
-  v_svc_key     text;
-begin
-  -- Skip when status hasn't changed
-  if tg_op = 'UPDATE' and new.status = old.status then
-    return new;
-  end if;
-
-  -- Map status → notification copy
-  case new.status
-    when 'Confirmed' then
-      v_title := 'Order Confirmed!';
-      v_body  := format('Your order #%s is confirmed. We''re getting it ready!', new.id);
-    when 'Preparing' then
-      v_title := 'In the Kitchen';
-      v_body  := format('Order #%s is being prepared now.', new.id);
-    when 'Ready' then
-      v_title := 'Order Ready!';
-      v_body  := format('Order #%s is packed and ready for dispatch.', new.id);
-    when 'Dispatched', 'On the Way' then
-      v_title := 'On the Way!';
-      v_body  := format('Your order #%s is on the way. Should arrive soon!', new.id);
-    when 'Received at Hub' then
-      v_title := 'At Your Hub';
-      v_body  := format('Order #%s has arrived at your pickup hub.', new.id);
-    when 'Delivered' then
-      v_title := 'Delivered!';
-      v_body  := format('Order #%s delivered. Enjoy your meal!', new.id);
-    when 'Cancelled' then
-      v_title := 'Order Cancelled';
-      v_body  := format('Order #%s has been cancelled.', new.id);
-    else
-      return new;   -- Pending / Failed / etc — no push
-  end case;
-
-  -- Read config inside the function (security definer bypasses RLS)
-  select value into v_supa_url from app_config where key = 'supabase_url';
-  select value into v_svc_key  from app_config where key = 'service_role_key';
-
-  if v_supa_url is null or v_svc_key is null then
-    raise warning '[_notify_order_status_push] app_config missing supabase_url or service_role_key';
-    return new;
-  end if;
-
-  -- Fire async HTTP POST via pg_net (non-blocking)
-  perform net.http_post(
-    url     := v_supa_url || '/functions/v1/send-push',
-    headers := jsonb_build_object(
-      'Content-Type',  'application/json',
-      'Authorization', 'Bearer ' || v_svc_key
-    ),
-    body    := jsonb_build_object(
-      'user_ids',       jsonb_build_array(new.user_id::text),
-      'title',          v_title,
-      'body',           v_body,
-      'data',           jsonb_build_object(
-                          'screen',         'OrderDetail',
-                          'params',         jsonb_build_object('orderId', new.id),
-                          'trigger_source', 'order_status',
-                          'order_id',       new.id
-                        ),
-      'trigger_source', 'order_status',
-      'reference_id',   new.id::text
-    )::text
-  );
-
-  return new;
-end;
-$$;
-
-drop trigger if exists trg_order_status_push on orders;
-
-create trigger trg_order_status_push
-  after insert or update of status
-  on orders
-  for each row
-  execute function _notify_order_status_push();
 
 
 -- =============================================================================
