@@ -48,6 +48,20 @@ function AdminRow(props: React.ComponentProps<typeof SettingsRow>) {
   return <SettingsRow {...props} labelSize={MR} />;
 }
 
+// ── Manage Branches Row — super-admin CRUD entry (FT-04) ─
+function ManageBranchesRow() {
+  const navigation = useNavigation<any>();
+  const bf = useBranchFilter();
+  if (!bf.isSuperAdmin) return null;
+  return (
+    <AdminRow
+      label="Manage Branches"
+      showChevron
+      onPress={() => navigation.navigate('BranchesManage')}
+    />
+  );
+}
+
 // ── Branch Row — settings-style row inside Manage tab ───
 function BranchRow() {
   const { data: branches } = useBranches();
@@ -164,6 +178,10 @@ function ReportsTab() {
 
 type ManageRowDef = { label: string; screen: string };
 
+const SUPER_ADMIN_MANAGE_ROWS: ManageRowDef[] = [
+  { label: 'Manage Branches', screen: 'BranchesManage' },
+];
+
 const ALL_MANAGE_ROWS: ManageRowDef[] = [
   { label: 'Manage Running Orders', screen: 'AdminOrders' },
   { label: 'Manage Running Subscriptions', screen: 'AdminSubscriptions' },
@@ -184,11 +202,15 @@ const ALL_MANAGE_ROWS: ManageRowDef[] = [
 
 function ManageTab() {
   const navigation = useNavigation<any>();
+  const bf = useBranchFilter();
   const [query, setQuery] = useState('');
   const trimmed = query.trim().toLowerCase();
   const isSearching = trimmed.length > 0;
+  const searchSource = bf.isSuperAdmin
+    ? [...SUPER_ADMIN_MANAGE_ROWS, ...ALL_MANAGE_ROWS]
+    : ALL_MANAGE_ROWS;
   const matches = isSearching
-    ? ALL_MANAGE_ROWS.filter((r) => r.label.toLowerCase().includes(trimmed))
+    ? searchSource.filter((r) => r.label.toLowerCase().includes(trimmed))
     : [];
 
   return (
@@ -227,7 +249,8 @@ function ManageTab() {
         )
       ) : (
         <>
-          {/* BRANCH — visible to super-admins only */}
+          {/* BRANCH — both rows visible to super-admins only */}
+          <ManageBranchesRow />
           <BranchRow />
           <AdminRow label="Manage Running Orders" showChevron onPress={() => navigation.navigate('AdminOrders')} />
           <AdminRow label="Manage Running Subscriptions" showChevron onPress={() => navigation.navigate('AdminSubscriptions')} />

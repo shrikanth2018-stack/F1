@@ -7,6 +7,7 @@
 - **V-06 persona regression** — operational test on real device. Customer → staff (kitchen + packing) → driver → hub-op → branch-admin walkthrough. Covers everything Jest mocks can't (push tokens, Razorpay sandbox, cron-fired sub dispatches landing in staff UI).
 - **Flag flip SQL** — once V-06 green, run `UPDATE feature_flags SET flag_value = TRUE WHERE flag_key = 'branch_management_active';`. I can run it on say-so.
 - **FT-08 UX punch list** — reorder menu items + small UX tweaks. Awaiting your list. Will land before next AAB.
+- **FT-04 — Branches operation screen (super-admin).** Super-admin-only CRUD over `branches` table (name / address / phone / is_active). New `BranchesManageScreen.tsx` reachable from AdminHome (under the existing super-admin-only block). Uses existing `useBranches` for the list; new `useBranchMutations` hook for create/update/deactivate. RLS: add INSERT/UPDATE/DELETE policies on `branches` gated on `is_super_admin()`. Deactivate prompts a warning if the branch has active subscriptions or open orders. **Scope excludes** per-branch operational flags (storm mode, cycle activation) — those stay global in `store_config` for launch; per-branch op config is a post-launch FT.
 
 ## Could close today — EOD candidates
 
@@ -20,7 +21,6 @@ All four closed this session (see Done log below).
 - **F6.1** — `notification_templates` not branch-scoped. Multi-branch concern only.
 - **F6.2** — `referrals_self` admin clause is `is_admin()` only. **Documented intentional.**
 - **MF-06** — Staging Supabase project. Needs you to create the project in the dashboard.
-- **FT-04** — Branches Manage admin screen. Self-service post-launch.
 - **FT-05** — Super-admin marker migration (`profiles.is_super_admin BOOLEAN`).
 - **FT-06** — Super-admin TOTP 2FA. Parked.
 - **Master Document v1.1 refresh** — text-only against post-2026-05-02 reality.

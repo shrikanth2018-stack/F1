@@ -43,6 +43,7 @@ export type AdminStackParamList = {
   AdminSubscriptions: undefined;
   StoreConfig: undefined;
   FeatureFlags: undefined;
+  BranchesManage: undefined;
 };
 
 export type AdminScreenProps<T extends keyof AdminStackParamList> =

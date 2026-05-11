@@ -34,6 +34,7 @@ import { HubDetailScreen } from '../screens/admin/HubDetailScreen';
 import { AdminOrdersScreen } from '../screens/admin/AdminOrdersScreen';
 import { AdminOrderDetailScreen } from '../screens/admin/AdminOrderDetailScreen';
 import { AdminSubscriptionsScreen } from '../screens/admin/AdminSubscriptionsScreen';
+import { BranchesManageScreen } from '../screens/admin/BranchesManageScreen';
 import { OrderReportScreen } from '../screens/admin/reports/OrderReportScreen';
 import { RevenueReportScreen } from '../screens/admin/reports/RevenueReportScreen';
 import { SubscriptionReportScreen } from '../screens/admin/reports/SubscriptionReportScreen';
@@ -101,6 +102,9 @@ export function AdminNavigator() {
       <Stack.Screen name="AdminSubscriptions" component={AdminSubscriptionsScreen} />
       <Stack.Screen name="StoreConfig" component={StoreConfigScreen} />
       <Stack.Screen name="FeatureFlags" component={FeatureFlagsScreen} />
+
+      {/* Manage — Branches (super-admin only; gated inside the screen) */}
+      <Stack.Screen name="BranchesManage" component={BranchesManageScreen} />
     </Stack.Navigator>
   );
 }

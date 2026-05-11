@@ -38,6 +38,8 @@ export interface AuthSession {
 export interface Branch {
   id: number;
   branch_name: string;
+  address: string | null;
+  phone: string | null;
   is_active: boolean;
   created_at: string;
 }
