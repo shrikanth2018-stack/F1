@@ -78,18 +78,19 @@ const dots = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 10,
+    gap: 2,
   },
-  // Compact phone-row sizing — keeps 10 dots clustered, not edge-to-edge.
+  // Tight phone-row sizing — typed digits sit close, reading like a single
+  // continuous number rather than spaced placeholders.
   slot: {
-    width: 18,
+    width: 14,
     height: 44,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // Wider slots for the 6-dot OTP layout — same component, more breathing room
+  // Tight OTP slots — 6-dot row reads as a single 6-digit number.
   slotWide: {
-    width: 28,
+    width: 22,
     height: 52,
   },
   digit: {
@@ -330,11 +331,6 @@ export function LoginScreen({ onExistingUser, onNewUser, referralCode }: LoginSc
             <PasscodeDots value={isPhonePhase ? phone : otp} length={isPhonePhase ? 10 : 6} />
           </View>
 
-          {/* OTP-phase inline error — replaces the modal on mismatch. */}
-          {!isPhonePhase && otpError && (
-            <Text style={styles.otpError}>{otpError}</Text>
-          )}
-
           {/* Phone-phase: brief sending indicator while OTP is being sent */}
           {isPhonePhase && loading && (
             <View style={styles.actionWrap}>
@@ -349,6 +345,13 @@ export function LoginScreen({ onExistingUser, onNewUser, referralCode }: LoginSc
           never hidden on cramped devices. Phone-phase shows terms/privacy
           below the keypad. Respects safe-area inset. */}
       <View style={[styles.bottomPinned, { paddingBottom: insets.bottom + Theme.spacing.sm }]}>
+        {/* OTP-phase inline error — sits directly above resend so the
+            gap between "wrong code" hint and the resend action is one
+            line, never stretched by ScrollView flex. */}
+        {!isPhonePhase && otpError && (
+          <Text style={styles.otpError}>{otpError}</Text>
+        )}
+
         {!isPhonePhase && (
           <TouchableOpacity
             style={styles.resendBtn}
@@ -456,8 +459,7 @@ const styles = StyleSheet.create({
     marginBottom: Theme.spacing.sm,
   },
   subtitleRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: Theme.spacing.md,
@@ -477,8 +479,8 @@ const styles = StyleSheet.create({
   dotWrap: {
     width: '100%',
     alignItems: 'center',
-    marginBottom: Theme.spacing.lg,
-    paddingVertical: Theme.spacing.sm,
+    marginBottom: Theme.spacing.xs,
+    paddingVertical: 0,
   },
   // Phone-phase brief loader slot while OTP is being sent.
   actionWrap: {
@@ -488,18 +490,22 @@ const styles = StyleSheet.create({
     paddingVertical: Theme.spacing.md,
     minHeight: 52,
   },
-  // OTP-phase inline error below the dots (FT-08 BF-43-ish — replaces the
-  // mismatch modal interrupt with a quiet inline hint).
+  // OTP-phase inline error — sits directly above the resend line in the
+  // bottom-pinned region. Theme warning (amber) reads as "try again"
+  // rather than the harder status.error red.
   otpError: {
     fontFamily: Theme.typography.fontFamily,
     fontSize: Theme.typography.sizes.small + 2,
-    color: Theme.colors.status.error,
+    color: Theme.colors.status.warning,
     textAlign: 'center',
-    marginTop: -Theme.spacing.sm,
-    marginBottom: Theme.spacing.sm,
+    paddingBottom: 2, // ~one line of gap before resend
   },
+  // Lifts the resend / verifying row well clear of the keypad on cramped
+  // devices — paddingBottom puts ~2-3 lines of visual breathing room
+  // between the resend text and the top of the keypad.
   resendBtn: {
-    paddingVertical: Theme.spacing.sm,
+    paddingTop: Theme.spacing.sm,
+    paddingBottom: Theme.spacing.xl * 1.5,
     paddingHorizontal: Theme.spacing.md,
     alignItems: 'center',
   },
