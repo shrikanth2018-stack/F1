@@ -1,23 +1,24 @@
 /**
- * 1stOne F1 — Login Screen (BF-18 unified)
+ * 1stOne F1 — Login Screen
  *
- * One screen, two visual states with progressive disclosure:
+ * Single non-scrolling flex column. Auth logic unchanged from BF-18 unified
+ * screen: phone-phase auto-sends OTP on 10 valid digits; OTP-phase auto-
+ * verifies on 6 valid digits; profile.full_name decides existing-vs-new
+ * routing. BF-22 same-number cooldown handled by trimming a digit on
+ * "Change number" so the auto-send guard naturally breaks.
  *
- *   Phase 'phone' — passcode-dot phone entry (10 dots), custom NumberKeypad.
- *     Phone reaches 10 valid digits → automatically sends OTP via Supabase
- *     and transitions to phase 'otp'. No submit button on this phase.
+ * Layout (top → bottom):
+ *   Brand (compact logo)
+ *   Title + context line (phone: "to login or register"; OTP: "Sent to … /
+ *     Change number ›")
+ *   Passcode dots (always visible — never scrolled)
+ *   Helper row — fixed-height slot so layout never jumps between states:
+ *     phone-phase loading, OTP-phase Verifying, Wrong-code hint, Sending,
+ *     Resend countdown, or tappable Resend OTP
+ *   Flex spacer
+ *   NumberKeypad (anchored bottom)
+ *   Terms / Privacy footer (phone phase only)
  *
- *   Phase 'otp' — passcode-dot OTP entry (6 dots), custom NumberKeypad.
- *     "Sent to <phone> · Change phone ›" inline link returns to phone phase.
- *     Centered mint "LOGIN | REGISTER" text (no boxed button) — tap to verify
- *     once 6 digits are entered. Resend OTP after 30s countdown.
- *     On verify success, checks profile.full_name to decide:
- *       - existing user (full_name set) → onExistingUser() — session triggers
- *         re-render to role navigator
- *       - new user (no full_name) → onNewUser(phone) → OnboardingScreen
- *
- * Replaces the previous separate LoginScreen + OTPScreen pair. Auth logic
- * unchanged — same signInWithPhone, verifyOTP, profile-check routing.
  * OTP autofill not implemented: iOS autofill requires the system keyboard,
  * which conflicts with the custom NumberKeypad. Logged for future revisit.
  */
@@ -30,7 +31,6 @@ import {
   Text,
   StyleSheet,
   Linking,
-  ScrollView,
   ActivityIndicator,
   TouchableOpacity,
 } from 'react-native';
@@ -78,24 +78,21 @@ const dots = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 2,
+    gap: Theme.spacing.xs / 2,
   },
-  // Tight phone-row sizing — typed digits sit close, reading like a single
-  // continuous number rather than spaced placeholders.
   slot: {
-    width: 14,
+    width: 16,
     height: 44,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // Tight OTP slots — 6-dot row reads as a single 6-digit number.
   slotWide: {
-    width: 22,
+    width: 24,
     height: 52,
   },
   digit: {
     fontFamily: Theme.typography.fontFamily,
-    fontSize: Theme.typography.sizes.body + 5,
+    fontSize: Theme.typography.sizes.header,
     color: Theme.colors.text.primary,
     fontWeight: '400',
   },
@@ -154,10 +151,8 @@ export function LoginScreen({ onExistingUser, onNewUser, referralCode }: LoginSc
       const { error } = await signInWithPhone(normalized);
       if (error) {
         await infoDialog('Could not send OTP', error.message);
-        // Stay on phone phase; user can correct + retry
         return;
       }
-      // Successfully sent — transition to OTP phase
       setOtp('');
       setResendCountdown(30);
       setPhase('otp');
@@ -169,19 +164,14 @@ export function LoginScreen({ onExistingUser, onNewUser, referralCode }: LoginSc
     }
   };
 
-  // Auto-send the moment phone hits 10 valid digits while in 'phone' phase.
   useEffect(() => {
     if (phase === 'phone' && phone.length === 10 && isValidIndianPhone(phone)) {
       handleSendOTP();
     }
-    // We intentionally only fire when phase + phone change — handleSendOTP
-    // closure captures the same instance per render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, phone]);
 
-  // Auto-verify the moment OTP hits 6 valid digits — no submit button needed.
-  // On mismatch, handleVerify clears otp + sets otpError, returning the user
-  // to a fresh OTP entry with an inline hint.
+  // Auto-verify on 6 valid digits.
   useEffect(() => {
     if (phase === 'otp' && otp.length === 6 && isValidOTP(otp) && !isVerifyingRef.current) {
       handleVerify();
@@ -194,7 +184,7 @@ export function LoginScreen({ onExistingUser, onNewUser, referralCode }: LoginSc
     if (otpError && otp.length > 0) setOtpError(null);
   }, [otp, otpError]);
 
-  // ── OTP → verify (auto-fires when 6 digits are entered) ──
+  // ── OTP → verify ──
 
   const handleVerify = async () => {
     if (isVerifyingRef.current) return;
@@ -210,16 +200,11 @@ export function LoginScreen({ onExistingUser, onNewUser, referralCode }: LoginSc
     if (error) {
       setLoading(false);
       isVerifyingRef.current = false;
-      // Inline error keeps the user on the OTP keypad — much lighter than
-      // a modal interrupt for the common typo path.
       setOtpError('Wrong code — try again');
       setOtp('');
       return;
     }
 
-    // Profile-completeness check (BF-03 architecture):
-    //   full_name set → existing user → role navigator (via session)
-    //   missing/blank → new user → OnboardingScreen (via onNewUser callback)
     const { data: { user: authUser } } = await supabase.auth.getUser();
     const canonicalPhone = authUser?.phone ?? normalized;
 
@@ -233,8 +218,6 @@ export function LoginScreen({ onExistingUser, onNewUser, referralCode }: LoginSc
     isVerifyingRef.current = false;
 
     if (profileErr) {
-      // RLS or network — better to let them through than force unnecessary
-      // re-registration. Same fallback as the original OTPScreen logic.
       onExistingUser();
     } else if (profile?.full_name && profile.full_name.trim().length > 0) {
       onExistingUser();
@@ -243,7 +226,7 @@ export function LoginScreen({ onExistingUser, onNewUser, referralCode }: LoginSc
     }
   };
 
-  // ── Resend OTP (with 30s countdown) ──
+  // ── Resend OTP (30s countdown) ──
 
   useEffect(() => {
     if (resendCountdown <= 0) return;
@@ -265,16 +248,61 @@ export function LoginScreen({ onExistingUser, onNewUser, referralCode }: LoginSc
     await infoDialog('OTP Sent', 'A new code has been sent to your phone.');
   };
 
-  // ── Change phone (back from OTP → phone phase) ──
+  // ── Change phone (back from OTP → phone) ──
 
   const handleChangePhone = () => {
     setPhase('phone');
     setOtp('');
-    // Drop the last digit so the user lands in edit mode and the 10-digit
-    // auto-send guard naturally breaks. Preserving all 10 digits re-fires
-    // signInWithPhone for the same number, which Supabase's same-number
-    // cooldown rejects as "Could not send OTP" (BF-22).
+    // Trim a digit so the auto-send guard breaks; resending the same number
+    // immediately is rejected by Supabase's same-number cooldown (BF-22).
     setPhone((p) => p.slice(0, -1));
+  };
+
+  // ── Helper-row renderer ──────────────────────────────────
+  // Reserves fixed vertical space so the layout never jumps when the
+  // message flips between Verifying / Wrong code / Resend countdown / etc.
+
+  const renderHelper = () => {
+    if (phase === 'phone') {
+      // Brief send-spinner slot when 10 digits triggered handleSendOTP.
+      return loading ? <ActivityIndicator color={Theme.colors.text.mint} /> : null;
+    }
+
+    if (loading) {
+      return (
+        <View style={styles.helperInline}>
+          <ActivityIndicator color={Theme.colors.text.mint} size="small" />
+          <Text style={styles.helperText}>{'  Verifying…'}</Text>
+        </View>
+      );
+    }
+
+    if (otpError) {
+      return <Text style={styles.helperError}>{otpError}</Text>;
+    }
+
+    if (resending) {
+      return <Text style={styles.helperText}>Sending…</Text>;
+    }
+
+    if (resendCountdown > 0) {
+      return (
+        <Text style={[styles.helperText, styles.helperDisabled]}>
+          Resend OTP in {resendCountdown}s
+        </Text>
+      );
+    }
+
+    return (
+      <TouchableOpacity
+        onPress={handleResend}
+        accessibilityRole="button"
+        accessibilityLabel="Resend OTP"
+        hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
+      >
+        <Text style={styles.helperText}>Resend OTP</Text>
+      </TouchableOpacity>
+    );
   };
 
   // ── Render ───────────────────────────────────────────────
@@ -282,137 +310,94 @@ export function LoginScreen({ onExistingUser, onNewUser, referralCode }: LoginSc
   const isPhonePhase = phase === 'phone';
 
   const inner = (
-    <View style={styles.innerWrap}>
-      {/* Upper region — scrolls if it overflows; keypad below stays pinned. */}
-      <ScrollView
-        style={styles.upperScroll}
-        contentContainerStyle={styles.scroll}
-        keyboardShouldPersistTaps="handled"
-        bounces={false}
-      >
-        <View style={styles.body}>
-          {/* Logo */}
-          <Image
-            source={{ uri: `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/public/assets/logo.png` }}
-            style={styles.logo}
-            resizeMode="contain"
-          />
-
-          {/* Referral hint — only on phone phase */}
-          {isPhonePhase && referralCode && (
-            <ThemedText variant="small" color="mint" style={{ textAlign: 'center', marginBottom: 12 }}>
-              {`Referral code "${referralCode}" will be applied after signup`}
-            </ThemedText>
-          )}
-
-          {/* Title */}
-          <Text style={styles.title}>
-            {isPhonePhase ? 'Enter mobile number' : 'Enter OTP'}
-          </Text>
-
-          {/* Subtitle — phone phase: clarifies both intents; OTP phase: target phone + Change link */}
-          {isPhonePhase ? (
-            <Text style={styles.subtitle}>to login or register</Text>
-          ) : (
-            <View style={styles.subtitleRow}>
-              <Text style={styles.subtitle}>Sent to {formatPhone(phone)}</Text>
-              <TouchableOpacity
-                onPress={handleChangePhone}
-                accessibilityRole="button"
-                accessibilityLabel="Change phone number"
-              >
-                <Text style={styles.changePhone}>Change phone ›</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {/* Passcode dots — 10 for phone, 6 for OTP, same visual style */}
-          <View style={styles.dotWrap}>
-            <PasscodeDots value={isPhonePhase ? phone : otp} length={isPhonePhase ? 10 : 6} />
-          </View>
-
-          {/* Phone-phase: brief sending indicator while OTP is being sent */}
-          {isPhonePhase && loading && (
-            <View style={styles.actionWrap}>
-              <ActivityIndicator color={Theme.colors.text.mint} />
-            </View>
-          )}
-        </View>
-      </ScrollView>
-
-      {/* Bottom-pinned region — keypad always visible; the OTP-phase
-          Verifying/Resend line sits directly above the keypad so it's
-          never hidden on cramped devices. Phone-phase shows terms/privacy
-          below the keypad. Respects safe-area inset. */}
-      <View style={[styles.bottomPinned, { paddingBottom: insets.bottom + Theme.spacing.sm }]}>
-        {/* OTP-phase inline error — sits directly above resend so the
-            gap between "wrong code" hint and the resend action is one
-            line, never stretched by ScrollView flex. */}
-        {!isPhonePhase && otpError && (
-          <Text style={styles.otpError}>{otpError}</Text>
-        )}
-
-        {!isPhonePhase && (
-          <TouchableOpacity
-            style={styles.resendBtn}
-            onPress={handleResend}
-            disabled={loading || resending || resendCountdown > 0}
-            activeOpacity={0.6}
-            accessibilityRole="button"
-            accessibilityLabel="Resend OTP"
-            accessibilityState={{ disabled: loading || resending || resendCountdown > 0, busy: loading || resending }}
-          >
-            {loading ? (
-              <View style={styles.resendInline}>
-                <ActivityIndicator color={Theme.colors.text.mint} size="small" />
-                <Text style={styles.resendText}>  Verifying…</Text>
-              </View>
-            ) : (
-              <Text
-                style={[
-                  styles.resendText,
-                  (resendCountdown > 0 || resending) && styles.resendDisabled,
-                ]}
-              >
-                {resending
-                  ? 'Sending…'
-                  : resendCountdown > 0
-                    ? `Resend OTP in ${resendCountdown}s`
-                    : 'Resend OTP'}
-              </Text>
-            )}
-          </TouchableOpacity>
-        )}
-
-        <View style={styles.keypadWrap}>
-          {isPhonePhase ? (
-            <NumberKeypad value={phone} onChange={setPhone} maxLength={10} />
-          ) : (
-            <NumberKeypad value={otp} onChange={setOtp} maxLength={6} />
-          )}
-        </View>
-
-        {isPhonePhase && (
-          <View style={styles.footer}>
-            <Text style={styles.footLine}>By continuing, you agree to our</Text>
-            <Text style={styles.footLine}>
-              <Text
-                style={styles.footLink}
-                onPress={() => Linking.openURL('https://wcvqxzqqwcxlcgrjyunf.supabase.co/storage/v1/object/public/assets/Terms.pdf')}
-              >
-                Terms of Service
-              </Text>
-              {'  and  '}
-              <Text
-                style={styles.footLink}
-                onPress={() => Linking.openURL('https://wcvqxzqqwcxlcgrjyunf.supabase.co/storage/v1/object/public/assets/Privacy-Policy.pdf')}
-              >
-                Privacy Policy
-              </Text>
-            </Text>
-          </View>
-        )}
+    <View
+      style={[
+        styles.inner,
+        { paddingTop: insets.top + Theme.spacing.lg, paddingBottom: insets.bottom + Theme.spacing.sm },
+      ]}
+    >
+      {/* Brand */}
+      <View style={styles.brand}>
+        <Image
+          source={{ uri: `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/public/assets/logo.png` }}
+          style={styles.logo}
+          resizeMode="contain"
+        />
       </View>
+
+      {/* Referral hint — only on phone phase */}
+      {isPhonePhase && referralCode && (
+        <ThemedText
+          variant="small"
+          color="mint"
+          style={styles.referralHint}
+        >
+          {`Referral code "${referralCode}" will be applied after signup`}
+        </ThemedText>
+      )}
+
+      {/* Title + context line */}
+      <Text style={styles.title}>
+        {isPhonePhase ? 'Enter mobile number' : 'Enter OTP'}
+      </Text>
+
+      {isPhonePhase ? (
+        <Text style={styles.subtitle}>to login or register</Text>
+      ) : (
+        <View style={styles.subtitleColumn}>
+          <Text style={styles.subtitle}>Sent to {formatPhone(phone)}</Text>
+          <TouchableOpacity
+            onPress={handleChangePhone}
+            accessibilityRole="button"
+            accessibilityLabel="Change phone number"
+            hitSlop={{ top: 6, bottom: 6, left: 12, right: 12 }}
+          >
+            <Text style={styles.changePhone}>Change number ›</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Dots */}
+      <View style={styles.dotWrap}>
+        <PasscodeDots value={isPhonePhase ? phone : otp} length={isPhonePhase ? 10 : 6} />
+      </View>
+
+      {/* Helper row — fixed height, never jumps */}
+      <View style={styles.helperRow}>{renderHelper()}</View>
+
+      {/* Flex spacer pushes the keypad to the natural bottom of the screen */}
+      <View style={styles.spacer} />
+
+      {/* Keypad */}
+      <View style={styles.keypadWrap}>
+        <NumberKeypad
+          value={isPhonePhase ? phone : otp}
+          onChange={isPhonePhase ? setPhone : setOtp}
+          maxLength={isPhonePhase ? 10 : 6}
+        />
+      </View>
+
+      {/* T&C — phone phase only */}
+      {isPhonePhase && (
+        <View style={styles.footer}>
+          <Text style={styles.footLine}>By continuing, you agree to our</Text>
+          <Text style={styles.footLine}>
+            <Text
+              style={styles.footLink}
+              onPress={() => Linking.openURL('https://wcvqxzqqwcxlcgrjyunf.supabase.co/storage/v1/object/public/assets/Terms.pdf')}
+            >
+              Terms of Service
+            </Text>
+            {'  and  '}
+            <Text
+              style={styles.footLink}
+              onPress={() => Linking.openURL('https://wcvqxzqqwcxlcgrjyunf.supabase.co/storage/v1/object/public/assets/Privacy-Policy.pdf')}
+            >
+              Privacy Policy
+            </Text>
+          </Text>
+        </View>
+      )}
     </View>
   );
 
@@ -428,27 +413,31 @@ export function LoginScreen({ onExistingUser, onNewUser, referralCode }: LoginSc
   );
 }
 
+const HELPER_ROW_HEIGHT = 44;
+const LOGO_SIZE = 112;
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
   overlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: Theme.colors.layout.overlayHeavy,
   },
-  innerWrap: { flex: 1 },
-  upperScroll: { flex: 1 },
-  scroll: { flexGrow: 1 },
-  bottomPinned: {
-    width: '100%',
-  },
-  body: {
+  inner: {
+    flex: 1,
     alignItems: 'center',
     paddingHorizontal: Theme.spacing.xl,
-    paddingTop: Theme.spacing.xl * 2,
+  },
+  brand: {
+    alignItems: 'center',
+    marginBottom: Theme.spacing.md,
   },
   logo: {
-    width: 180,
-    height: 180,
-    marginBottom: Theme.spacing.lg,
+    width: LOGO_SIZE,
+    height: LOGO_SIZE,
+  },
+  referralHint: {
+    textAlign: 'center',
+    marginBottom: Theme.spacing.sm,
   },
   title: {
     fontFamily: Theme.typography.fontFamily,
@@ -456,86 +445,68 @@ const styles = StyleSheet.create({
     color: Theme.colors.text.primary,
     fontWeight: '400',
     textAlign: 'center',
-    marginBottom: Theme.spacing.sm,
-  },
-  subtitleRow: {
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: Theme.spacing.md,
-    gap: Theme.spacing.xs,
+    marginBottom: Theme.spacing.xs,
   },
   subtitle: {
     fontFamily: Theme.typography.fontFamily,
-    fontSize: Theme.typography.sizes.body + 2,
+    fontSize: Theme.typography.sizes.subtitle,
     color: Theme.colors.text.muted,
     textAlign: 'center',
   },
+  subtitleColumn: {
+    alignItems: 'center',
+    gap: Theme.spacing.xs,
+  },
   changePhone: {
     fontFamily: Theme.typography.fontFamily,
-    fontSize: Theme.typography.sizes.body + 2,
+    fontSize: Theme.typography.sizes.subtitle,
     color: Theme.colors.text.mint,
   },
   dotWrap: {
     width: '100%',
     alignItems: 'center',
-    marginBottom: Theme.spacing.xs,
-    paddingVertical: 0,
+    marginTop: Theme.spacing.lg,
+    marginBottom: Theme.spacing.sm,
   },
-  // Phone-phase brief loader slot while OTP is being sent.
-  actionWrap: {
+  helperRow: {
+    height: HELPER_ROW_HEIGHT,
     width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: Theme.spacing.md,
-    minHeight: 52,
   },
-  // OTP-phase inline error — sits directly above the resend line in the
-  // bottom-pinned region. Theme warning (amber) reads as "try again"
-  // rather than the harder status.error red.
-  otpError: {
-    fontFamily: Theme.typography.fontFamily,
-    fontSize: Theme.typography.sizes.small + 2,
-    color: Theme.colors.status.warning,
-    textAlign: 'center',
-    paddingBottom: 2, // ~one line of gap before resend
-  },
-  // Lifts the resend / verifying row well clear of the keypad on cramped
-  // devices — paddingBottom puts ~2-3 lines of visual breathing room
-  // between the resend text and the top of the keypad.
-  resendBtn: {
-    paddingTop: Theme.spacing.sm,
-    paddingBottom: Theme.spacing.xl * 1.5,
-    paddingHorizontal: Theme.spacing.md,
-    alignItems: 'center',
-  },
-  resendInline: {
+  helperInline: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  resendText: {
+  helperText: {
     fontFamily: Theme.typography.fontFamily,
-    fontSize: Theme.typography.sizes.small + 4,
+    fontSize: Theme.typography.sizes.body,
     color: Theme.colors.text.mint,
     textAlign: 'center',
   },
-  resendDisabled: {
+  helperDisabled: {
     color: Theme.colors.text.disabled,
   },
+  helperError: {
+    fontFamily: Theme.typography.fontFamily,
+    fontSize: Theme.typography.sizes.body,
+    color: Theme.colors.status.warning,
+    textAlign: 'center',
+  },
+  spacer: { flex: 1 },
   keypadWrap: {
     width: '100%',
-    marginTop: Theme.spacing.md,
   },
   footer: {
     alignItems: 'center',
     marginTop: Theme.spacing.md,
     paddingHorizontal: Theme.spacing.lg,
-    gap: 4,
+    gap: Theme.spacing.xs,
   },
   footLine: {
     fontFamily: Theme.typography.fontFamily,
-    fontSize: Theme.typography.sizes.small + 1,
+    fontSize: Theme.typography.sizes.small,
     color: Theme.colors.text.muted,
     textAlign: 'center',
   },
