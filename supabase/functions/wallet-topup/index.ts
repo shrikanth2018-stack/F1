@@ -85,14 +85,18 @@ serve(async (req) => {
       return json({ error: 'Amount must be a positive number' }, 400);
     }
 
-    // Enforce store-config min/max if configured
+    // Enforce store-config min/max. BF-32b: column name is `min_wallet_topup`
+    // (the earlier `wallet_min_topup` select silently failed and fell through
+    // to the hardcoded 100 fallback, bypassing admin's configured value).
+    // No `max_wallet_topup` column exists yet — keep a hardcoded ceiling
+    // until admin UI grows one.
     const { data: config } = await supabase
       .from('store_config')
-      .select('wallet_min_topup, wallet_max_topup')
+      .select('min_wallet_topup')
       .limit(1)
       .maybeSingle();
-    const minTopup = config?.wallet_min_topup ?? 100;
-    const maxTopup = config?.wallet_max_topup ?? 50000;
+    const minTopup = config?.min_wallet_topup ?? 100;
+    const maxTopup = 50000;
     if (amt < minTopup) return json({ error: `Minimum top-up is ₹${minTopup}` }, 400);
     if (amt > maxTopup) return json({ error: `Maximum top-up is ₹${maxTopup}` }, 400);
 

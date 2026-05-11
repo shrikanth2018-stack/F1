@@ -149,9 +149,12 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 BEGIN
+  -- BF-32a: Webhook + confirm-order paths now write the same status
+  -- literal so downstream surfaces (statusColor, statusVariant, Packing
+  -- advance) don't have to handle two values for the same state.
   RETURN QUERY
   UPDATE orders
-  SET status = 'Paid',
+  SET status = 'Confirmed',
       razorpay_payment_id = p_razorpay_payment_id,
       paid_at = NOW()
   WHERE razorpay_order_id = p_razorpay_order_id
