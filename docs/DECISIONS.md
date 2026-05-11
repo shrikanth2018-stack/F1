@@ -7,7 +7,6 @@
 - **V-06 persona regression** — operational test on real device. Customer → staff (kitchen + packing) → driver → hub-op → branch-admin walkthrough. Covers everything Jest mocks can't (push tokens, Razorpay sandbox, cron-fired sub dispatches landing in staff UI).
 - **Flag flip SQL** — once V-06 green, run `UPDATE feature_flags SET flag_value = TRUE WHERE flag_key = 'branch_management_active';`. I can run it on say-so.
 - **FT-08 UX punch list** — reorder menu items + small UX tweaks. Awaiting your list. Will land before next AAB.
-- **FT-04 — Branches operation screen (super-admin).** Super-admin-only CRUD over `branches` table (name / address / phone / is_active). New `BranchesManageScreen.tsx` reachable from AdminHome (under the existing super-admin-only block). Uses existing `useBranches` for the list; new `useBranchMutations` hook for create/update/deactivate. RLS: add INSERT/UPDATE/DELETE policies on `branches` gated on `is_super_admin()`. Deactivate prompts a warning if the branch has active subscriptions or open orders. **Scope excludes** per-branch operational flags (storm mode, cycle activation) — those stay global in `store_config` for launch; per-branch op config is a post-launch FT.
 
 ## Could close today — EOD candidates
 
@@ -21,8 +20,6 @@ All four closed this session (see Done log below).
 - **F6.1** — `notification_templates` not branch-scoped. Multi-branch concern only.
 - **F6.2** — `referrals_self` admin clause is `is_admin()` only. **Documented intentional.**
 - **MF-06** — Staging Supabase project. Needs you to create the project in the dashboard.
-- **FT-05** — Super-admin marker migration (`profiles.is_super_admin BOOLEAN`).
-- **FT-06** — Super-admin TOTP 2FA. Parked.
 - **Master Document v1.1 refresh** — text-only against post-2026-05-02 reality.
 - **Scheduled push multi-branch spot-check** — once branch 2 exists, ~30 min.
 
@@ -33,6 +30,10 @@ All four closed this session (see Done log below).
 - ✅ **F4.5** — closed as option (b) "no push on offline replay" (rationale above).
 - ✅ **F5.1** — re-analyzed and closed as not-a-real-atomicity-bug; RLS row-scoping for drivers re-classified to post-launch FT.
 - ✅ **BF-42** — missed-cutoff banner on CartScreen. Yellow contextual banner above the tab switcher fires when any cart item is in scenario `'B'` or `'C'` (i.e., a cycle whose cutoff has passed). Single line per affected cycle; copy varies by severity: `'B'` says "missed today's cutoff for [cycle]; items will deliver tomorrow"; `'C'` says "cutoff for tomorrow's [cycle] has passed; items will deliver day after tomorrow." Fixes the passive-tab-shift UX where customers re-entering cart couldn't tell why items "moved" to the Tomorrow tab.
+- ✅ **FT-04** — Branches operation screen for super-admin. CRUD over `branches` table (name / address / phone / is_active) via new `BranchesManageScreen.tsx` reachable from AdminHome Manage tab. `useBranches` decoupled from `branch_management_active` flag (also fixed branch-picker dropdowns in OnboardEmployee + EmployeeDetail). Per-branch operational flags (storm mode, cycle activation) stay global in `store_config` for launch.
+- ✅ **MF-09** — customer-side multi-branch wiring. New BEFORE INSERT/UPDATE trigger on `customer_addresses` auto-derives `branch_id` from hub/zone (`customer_addresses_branch_id_trigger.sql`). Backfill applied to existing rows + `orders.branch_id` from `delivery_address_id`. `useBranchFilter` now resolves to default-address branch for customer sessions; `useEssentialsCatalog` + `useSubscriptionPlans` customer-facing variants added branch filtering. CheckoutScreen warns + clears cart on cross-branch address switch.
+- ✅ **FT-05** — explicit super-admin marker. `profiles.is_super_admin BOOLEAN` column + backfill, JWT hook mints `is_super_admin` claim, RLS `is_super_admin()` reads JWT-claim fast path with column fallback. 5 inline `branch_id IS NULL` checks across hooks/edge fns/SECURITY DEFINER fns flipped to the explicit signal. Super-admin can now also hold a home `branch_id` without losing global powers (previously impossible).
+- ✅ **FT-06** — skipped. Supabase Dashboard 2FA on Shrikanth's own account covers the recovery-path attack surface; in-app TOTP would add lockout risk for the solo super-admin without proportional value. Revisit only if SIM-swap pattern shows up in production.
 
 
 - ✅ **Tier 1 audit ladder (8 / 8 flows)** — BF-31 → BF-37 shipped + verified live. Per-flow detail in `docs/AUDIT_*.md`.
