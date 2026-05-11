@@ -83,7 +83,15 @@ async function firePush(orderId: number, status: string, userId: string) {
   }).catch((e) => console.error('[push admin]', e));
 }
 
-/** Admin: cancel order + refund wallet_amount_used if any */
+/**
+ * BF-34a (F3.1, 2026-05-11): atomic admin order cancel + wallet refund.
+ *
+ * Calls admin_cancel_order_atomic RPC which deactivates the order
+ * (with APPENDED notes preserving prior delivery instructions) and
+ * credits the wallet in a single Postgres transaction. Replaces the
+ * previous two-step flow that risked "cancelled but unrefunded" on a
+ * mid-flow network failure. Mirrors BF-20's pattern for subscriptions.
+ */
 export function useAdminCancelOrder() {
   const queryClient = useQueryClient();
 
@@ -99,25 +107,15 @@ export function useAdminCancelOrder() {
       userId: string;
       reason?: string;
     }) => {
-      const { error } = await supabase
-        .from('orders')
-        .update({
-          status: 'Cancelled' as OrderStatus,
-          notes: reason ?? 'Cancelled by admin',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', orderId);
-
-      if (error) throw error;
-
-      if (walletAmountUsed > 0) {
-        const { error: refundErr } = await supabase.rpc('increment_wallet_balance', {
-          p_user_id: userId,
-          p_amount: walletAmountUsed,
-          p_description: `Admin refund for cancelled order #${orderId}`,
-        });
-        if (refundErr) console.error('[useAdminCancelOrder] wallet refund failed:', refundErr.message);
-      }
+      // RPC name cast: database.types.ts is auto-generated and won't
+      // know about this RPC until regenerated. Same pattern as
+      // admin_cancel_subscription_atomic in useSubscriptions.ts.
+      const { error } = await supabase.rpc('admin_cancel_order_atomic' as never, {
+        p_order_id:      orderId,
+        p_refund_amount: walletAmountUsed,
+        p_reason:        reason ?? 'Cancelled by admin',
+      } as never);
+      if (error) throw new Error(error.message);
 
       firePush(orderId, 'Cancelled', userId);
     },

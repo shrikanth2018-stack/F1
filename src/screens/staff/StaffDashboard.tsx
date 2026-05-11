@@ -601,7 +601,12 @@ export function StaffDashboard() {
   }, [orders, updateStatus]);
 
   const handleMarkAllPacked = useCallback(() => {
-    const toMark = packingOrders.filter((o) => o.status === 'Ready');
+    // BF-34b (F3.2): include 'Confirmed' essentials — they have no
+    // 'Ready' intermediate and Packing is their first-hop surface.
+    const toMark = packingOrders.filter((o) =>
+      o.status === 'Ready' ||
+      (o.status === 'Confirmed' && o.order_type === 'essential'),
+    );
     if (toMark.length === 0) return;
     Alert.alert('Mark All as Packed', `Mark ${toMark.length} order(s) as Packed?`, [
       { text: 'Cancel', style: 'cancel' },
@@ -809,11 +814,15 @@ export function StaffDashboard() {
       .map((oi: any) => `${oi.item_name} ×${oi.quantity}`)
       .join(', ');
 
+    // BF-34b (F3.2): essentials skip Kitchen entirely (no Preparing/Ready
+    // intermediate). They land in Packing at status='Confirmed' — the
+    // Packing UI is their first-hop advance surface.
     let nextStatus: OrderStatus | null = null;
-    if (item.status === 'Ready') nextStatus = 'Packed';
+    if (item.status === 'Confirmed' && item.order_type === 'essential') nextStatus = 'Packed';
+    else if (item.status === 'Ready') nextStatus = 'Packed';
     else if (item.status === 'Packed') nextStatus = 'Dispatched';
 
-    const canAdvance = item.status === 'Ready' || item.status === 'Packed';
+    const canAdvance = nextStatus !== null;
 
     return (
       <View style={styles.orderRow}>
