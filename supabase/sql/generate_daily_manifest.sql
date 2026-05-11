@@ -78,7 +78,14 @@ BEGIN
     END IF;
 
     v_day_number := (p_target_date - v_sub.start_date) + 1;
-    IF v_day_number < 1 OR v_day_number > v_plan.duration_days THEN
+    -- BF-33 / F2.1: end-of-life is driven by days_consumed, not the
+    -- calendar window from start_date. Pause / skip / cron-outage now
+    -- extend the effective end date so all paid meals get delivered
+    -- (spec D-01). Auto-deactivate at the bottom of this loop
+    -- (days_consumed + 1 >= duration_days → is_active=false) is the
+    -- only stopping condition needed; the outer WHERE is_active=TRUE
+    -- filter then takes the sub out next tick.
+    IF v_day_number < 1 THEN
       v_subs_skipped := v_subs_skipped + 1;
       CONTINUE;
     END IF;

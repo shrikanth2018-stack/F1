@@ -78,7 +78,7 @@ export function SubscriptionDetailScreen({ route, navigation }: any) {
       `${sub.is_paused ? 'Resume' : 'Pause'} Subscription?`,
       sub.is_paused
         ? 'Daily orders will resume from tomorrow.'
-        : 'No orders will be created while paused.',
+        : 'No orders will be created while paused. Your end date shifts forward — all paid meals will still be delivered.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -106,8 +106,6 @@ export function SubscriptionDetailScreen({ route, navigation }: any) {
   }
 
   const startDate = sub.start_date;
-  const endDate = new Date(startDate);
-  endDate.setDate(endDate.getDate() + plan.duration_days - 1);
   const daysRemaining = plan.duration_days - sub.days_consumed;
 
   return (
@@ -156,7 +154,7 @@ export function SubscriptionDetailScreen({ route, navigation }: any) {
           </View>
 
           <ThemedText variant="small" color="subtitle" style={styles.dateRange}>
-            {formatDateLong(startDate)} — {formatDateLong(endDate.toISOString())}
+            Started {formatDateLong(startDate)} · {daysRemaining} {daysRemaining === 1 ? 'meal' : 'meals'} left
           </ThemedText>
         </View>
 

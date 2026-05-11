@@ -53,12 +53,11 @@ Deno.serve(async (req: Request) => {
 
     // Anchor to today's IST date (DST-safe)
     const todayStr = todayIST();
-    const todayMs = new Date(todayStr + 'T00:00:00Z').getTime();
 
     // Load all active, non-paused subscriptions with their plan's duration
     const { data: subs, error: subsErr } = await supabase
       .from('user_subscriptions')
-      .select('id, user_id, start_date, subscription_plans!inner(plan_name, duration_days)')
+      .select('id, user_id, start_date, days_consumed, subscription_plans!inner(plan_name, duration_days)')
       .eq('is_active', true)
       .eq('is_paused', false);
 
@@ -81,8 +80,10 @@ Deno.serve(async (req: Request) => {
         startingTomorrow.push({ userId: sub.user_id, subId: sub.id, planName: plan.plan_name });
       }
 
-      const endMs = new Date(sub.start_date + 'T00:00:00Z').getTime() + plan.duration_days * 86_400_000;
-      const daysLeft = Math.round((endMs - todayMs) / 86_400_000);
+      // BF-33 / F2.1: end-of-life is driven by days_consumed, not the
+      // calendar. daysLeft counts unconsumed paid meals so heads-up
+      // notifications fire on delivery proximity, not date proximity.
+      const daysLeft = (plan.duration_days ?? 0) - ((sub as any).days_consumed ?? 0);
 
       if (daysLeft === 1) {
         oneDay.push({ userId: sub.user_id, subId: sub.id, planName: plan.plan_name });
