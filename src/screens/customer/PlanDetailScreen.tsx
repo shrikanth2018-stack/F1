@@ -84,11 +84,15 @@ export function PlanDetailScreen({ route, navigation }: any) {
     if (plan) trackPlanViewed(plan.id, plan.plan_name, plan.price);
   }, [plan?.id]);
 
-  // Earliest selectable start: today if within cutoff, else tomorrow.
-  // While cycle/serverTime load, fall back to tomorrow (safe).
+  // Earliest selectable start: today (A), tomorrow (B), or day-after-
+  // tomorrow (C — cross-midnight cycle after its cutoff). Defaults to
+  // tomorrow while cycle/serverTime are still loading.
   const earliestOffset = useMemo(() => {
     if (!cycle || !serverTime) return 1;
-    return getDispatchScenario(cycle, serverTime) === 'A' ? 0 : 1;
+    const scenario = getDispatchScenario(cycle, serverTime);
+    if (scenario === 'A') return 0;
+    if (scenario === 'B') return 1;
+    return 2; // 'C'
   }, [cycle, serverTime]);
 
   const selectableDates = useMemo(() => getSelectableDates(14, earliestOffset), [earliestOffset]);

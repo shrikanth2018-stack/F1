@@ -70,16 +70,33 @@ Deno.serve(async (req: Request) => {
       if ((o as any).user_id) activeRecently.add((o as any).user_id);
     }
 
-    // Pull customer profiles with a push token; exclude anyone in activeRecently.
+    // Pull customer profiles; exclude anyone with a recent order.
     const { data: allProfiles, error: profErr } = await supabase
       .from('profiles')
       .select('id, role')
       .eq('role', 'customer');
     if (profErr) throw profErr;
 
-    const candidates = (allProfiles ?? [])
+    let candidates = (allProfiles ?? [])
       .filter((p) => !activeRecently.has((p as any).id))
       .map((p) => (p as any).id as string);
+
+    // BF-40 (F7.2): honor the header comment's "won't double-send" promise.
+    // Previously the body never read push_logs, so a 30+-day dormant user
+    // got a winback push every Monday. Now: skip anyone who already received
+    // a winback in the last `inactiveDays` days.
+    if (candidates.length > 0) {
+      const { data: recentWinbacks } = await supabase
+        .from('push_logs')
+        .select('user_id')
+        .eq('trigger_source', 'winback')
+        .gte('sent_at', cutoffIso)
+        .in('user_id', candidates);
+      const alreadyPushed = new Set(
+        (recentWinbacks ?? []).map((r: any) => r.user_id).filter(Boolean),
+      );
+      candidates = candidates.filter((id) => !alreadyPushed.has(id));
+    }
 
     if (candidates.length === 0) {
       return json({ fired: 0, inactiveDays });

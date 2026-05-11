@@ -61,7 +61,9 @@ export function CartScreen({ navigation, route }: any) {
     [cycles]
   );
 
-  // Group food items by scenario
+  // Group food items by scenario. Scenario 'C' (cross-midnight after-cutoff
+  // → day after tomorrow) groups with 'B' in the "next-day" tab; per-item
+  // dispatch badge surfaces the exact day.
   const todayFood = useMemo(
     () => foodItems.filter((i) => {
       const ev = evaluations.find((e) => e.menu_item_id === i.menu_item_id);
@@ -72,7 +74,7 @@ export function CartScreen({ navigation, route }: any) {
   const tomorrowFood = useMemo(
     () => foodItems.filter((i) => {
       const ev = evaluations.find((e) => e.menu_item_id === i.menu_item_id);
-      return ev && ev.scenario === 'B';
+      return ev && (ev.scenario === 'B' || ev.scenario === 'C');
     }),
     [foodItems, evaluations]
   );
@@ -88,7 +90,7 @@ export function CartScreen({ navigation, route }: any) {
   const tomorrowEss = useMemo(
     () => essItems.filter((i) => {
       const ev = essEvaluations.find((e) => e.essential_item_id === i.essential_item_id);
-      return ev && ev.scenario === 'B';
+      return ev && (ev.scenario === 'B' || ev.scenario === 'C');
     }),
     [essItems, essEvaluations]
   );

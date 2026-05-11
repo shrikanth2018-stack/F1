@@ -39,7 +39,8 @@ import { formatPriceShort } from '../../utils/formatters';
 import { supabase } from '../../api/supabaseClient';
 import { RAZORPAY_KEY_ID } from '../../utils/env';
 import { trackOrderPlaced, trackOrderFailed } from '../../utils/analytics';
-import { infoDialog } from '../../utils/confirmDialog';
+import { infoDialog, confirmDialog } from '../../utils/confirmDialog';
+import { formatDateLong } from '../../utils/formatters';
 
 /** Safe UUID generator — falls back to Math.random when crypto.randomUUID is unavailable (Expo Go, older Android) */
 function generateId(): string {
@@ -214,9 +215,29 @@ export function CheckoutScreen({ navigation, route }: any) {
         if (scenarios.length > 1) {
           throw new Error('Your cart has items dispatching on different days. Please checkout one cycle at a time.');
         }
-        // Food uses smart cart scenario (A = today, B = tomorrow based on cutoff)
+        // Smart-cart scenario:
+        //   A = today; B = tomorrow; C = day after tomorrow (BF-41 / F3.X
+        //   cross-midnight after-cutoff). Scenario C fires a consent popup
+        //   so customer explicitly accepts the 2-day shift.
         const firstEval = evaluations[0];
-        if (firstEval?.scenario === 'B') {
+        if (firstEval?.scenario === 'C') {
+          const dayAfter = new Date(today);
+          dayAfter.setDate(dayAfter.getDate() + 2);
+          dispatchDate = dayAfter.toISOString().split('T')[0];
+
+          const proceed = await confirmDialog({
+            title: 'Delivery in 2 days',
+            message: `You've missed the cutoff for tomorrow's ${firstEval.cycle_name}. This order will be delivered on ${formatDateLong(dispatchDate)}. Continue?`,
+            confirmLabel: 'Place Order',
+            cancelLabel: 'Cancel',
+          });
+          if (!proceed) {
+            isPlacingRef.current = false;
+            setIsPlacing(false);
+            setGlobalLoading(false);
+            return;
+          }
+        } else if (firstEval?.scenario === 'B') {
           const tomorrow = new Date(today);
           tomorrow.setDate(tomorrow.getDate() + 1);
           dispatchDate = tomorrow.toISOString().split('T')[0];
@@ -459,7 +480,11 @@ export function CheckoutScreen({ navigation, route }: any) {
                   {dispatch && (
                     <DispatchBadge
                       label={dispatch.dispatch_label}
-                      variant={dispatch.scenario === 'A' ? 'today' : 'tomorrow'}
+                      variant={
+                        dispatch.scenario === 'A' ? 'today'
+                          : dispatch.scenario === 'B' ? 'tomorrow'
+                          : 'warning' /* 'C' — day after tomorrow, visually distinct */
+                      }
                     />
                   )}
                 </View>

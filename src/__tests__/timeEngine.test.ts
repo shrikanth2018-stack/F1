@@ -85,21 +85,26 @@ describe('getDispatchScenario — normal cycle (cutoff < delivery_start)', () =>
 });
 
 describe('getDispatchScenario — cross-midnight cycle (cutoff > delivery_start)', () => {
-  // cutoff=22:00 (1320), delivery_start=07:30 (450) → 1320 > 450 → cross-midnight
+  // cutoff=22:00 (1320), delivery_start=07:30 (450) → 1320 > 450 → cross-midnight.
+  // BF-41 / F3.X: today's delivery is locked at yesterday's cutoff, so
+  // cross-midnight cycles never produce scenario 'A'. Only 'B' (today's
+  // cutoff still ahead → tomorrow's morning delivery) or 'C' (today's
+  // cutoff already passed → day after tomorrow's delivery).
   const cycle = makeCycle('22:00:00', '07:30:00');
 
-  it('returns A before delivery_start (early morning, still last-night window)', () => {
-    expect(getDispatchScenario(cycle, tsAt(6, 0))).toBe('A');
+  it('returns B early morning (before today\'s cutoff)', () => {
+    // 06:00 < 22:00 cutoff → today's cutoff still ahead → tomorrow's delivery.
+    expect(getDispatchScenario(cycle, tsAt(6, 0))).toBe('B');
   });
 
-  it('returns B during the delivery window (after delivery_start, before cutoff)', () => {
+  it('returns B during the day (after delivery_start, before cutoff)', () => {
     expect(getDispatchScenario(cycle, tsAt(9, 0))).toBe('B');
     expect(getDispatchScenario(cycle, tsAt(21, 59))).toBe('B');
   });
 
-  it('returns A after cutoff (evening, ordering for tomorrow morning)', () => {
-    expect(getDispatchScenario(cycle, tsAt(22, 0))).toBe('A');
-    expect(getDispatchScenario(cycle, tsAt(23, 30))).toBe('A');
+  it('regression BF-41: returns C after cutoff (today\'s cutoff passed, next available is day after tomorrow)', () => {
+    expect(getDispatchScenario(cycle, tsAt(22, 0))).toBe('C');
+    expect(getDispatchScenario(cycle, tsAt(23, 30))).toBe('C');
   });
 });
 
@@ -110,6 +115,10 @@ describe('getDispatchLabel', () => {
 
   it('maps B to Tomorrow', () => {
     expect(getDispatchLabel('B')).toBe('Tomorrow');
+  });
+
+  it('maps C to Day after tomorrow (BF-41 — cross-midnight after-cutoff)', () => {
+    expect(getDispatchLabel('C')).toBe('Day after tomorrow');
   });
 });
 
@@ -143,9 +152,11 @@ describe('getDispatchScenario — edge cases', () => {
     expect(getDispatchScenario(cycle, tsAt(0, 0))).toBe('B');
   });
 
-  it('cross-midnight cycle: order at exact cutoff minute is Scenario A (next-day window)', () => {
+  it('cross-midnight cycle: order at exact cutoff minute is Scenario C (cutoff inclusive of "missed")', () => {
+    // 22:00 = cutoff. nowMinutes < cutoffMinutes is false, so we're past
+    // today's cutoff → next available is day after tomorrow.
     const cycle = makeCycle('22:00:00', '07:30:00');
-    expect(getDispatchScenario(cycle, tsAt(22, 0))).toBe('A');
+    expect(getDispatchScenario(cycle, tsAt(22, 0))).toBe('C');
   });
 
   it('order placed at midnight 00:00 in a normal cycle is Scenario A', () => {

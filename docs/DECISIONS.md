@@ -8,16 +8,15 @@
 - **Flag flip SQL** — once V-06 green, run `UPDATE feature_flags SET flag_value = TRUE WHERE flag_key = 'branch_management_active';`. I can run it on say-so.
 - **FT-08 UX punch list** — reorder menu items + small UX tweaks. Awaiting your list. Will land before next AAB.
 
-## Could close today — EOD candidates (one-liners, sorted by effort)
+## Could close today — EOD candidates
 
-- **F7.2** *(20 min, code)* — `dormant-user-check` reads `push_logs` to honor its own "won't double-send" weekly cadence promise. Currently a 30+ day dormant user gets a push every Monday.
-- **F3.X** *(10 min, decision)* — cross-midnight cycle after-cutoff scenario semantics. Pick (a) block / (b) place for day N+2 / (c) place for tomorrow anyway. Today's 4 prod cycles are all same-day so this is latent; freezing the decision protects against future cycle reconfig.
-- **F4.5** *(15 min, decision)* — should offline-replayed status mutations also fire customer push when they drain? Pick yes / no / time-bounded. Today: no push fires for offline replays.
-- **F5.1** *(1 session, code)* — `assign_driver_to_zone` / `assign_driver_to_hub` atomic RPCs mirroring `assign_hub_operator`. Plus row-scoped RLS update policy keyed on `driver_user_id`. Defense in depth.
+All four closed this session (see Done log below).
 
 ## Post-launch / no-action
 
 - **F4.4** — offline queue order-of-failure can cause status skips. Bounded by retry cap.
+- **F4.5** — offline-replayed status mutations don't fire customer push. **Closed as "no" (option b)** — operationally staff is offline briefly, replays happen within minutes; firing stale "Order Ready!" pushes hours later is worse UX. Customer sees current state on next app open. Documented in `docs/AUDIT_staff_operations.md`.
+- **F5.1** — atomic RPC for driver assignment. **Closed as not-a-bug** — the audit doc misframed the problem. Driver assignment writes a single column (`delivery_zones.driver_user_id` OR `delivery_hubs.driver_user_id`), so the UPDATE is already atomic. `assign_hub_operator` exists because hub-operator assignment touches two tables (profiles + delivery_hubs); driver doesn't have that coupling. The audit doc's secondary suggestion (row-scoped RLS on orders UPDATE keyed on driver_user_id) is a real tightening but rippled across `orders_staff_update` + new policy + careful split — not single-session safe. **Re-classified to post-launch FT.**
 - **F6.1** — `notification_templates` not branch-scoped. Multi-branch concern only.
 - **F6.2** — `referrals_self` admin clause is `is_admin()` only. **Documented intentional.**
 - **MF-06** — Staging Supabase project. Needs you to create the project in the dashboard.
@@ -28,6 +27,12 @@
 - **Scheduled push multi-branch spot-check** — once branch 2 exists, ~30 min.
 
 ## Done — closed today (2026-05-11)
+
+- ✅ **BF-40 (F7.2)** — `dormant-user-check` now reads `push_logs WHERE trigger_source='winback' AND sent_at > NOW() - inactiveDays` and excludes already-pushed users from the batch. Honors the header comment's "won't double-send" promise.
+- ✅ **BF-41 (F3.X)** — cross-midnight cycle scenarios fixed. Today's delivery is locked at yesterday's cutoff, so `getDispatchScenario` returns `'B'` (tomorrow) before today's cutoff or new `'C'` (day after tomorrow) after. CheckoutScreen fires a confirmDialog for `'C'` so customer explicitly accepts the 2-day shift. Smart-cart badge labels "Day after tomorrow" with warning variant. Tests updated.
+- ✅ **F4.5** — closed as option (b) "no push on offline replay" (rationale above).
+- ✅ **F5.1** — re-analyzed and closed as not-a-real-atomicity-bug; RLS row-scoping for drivers re-classified to post-launch FT.
+
 
 - ✅ **Tier 1 audit ladder (8 / 8 flows)** — BF-31 → BF-37 shipped + verified live. Per-flow detail in `docs/AUDIT_*.md`.
 - ✅ **Tier 2 Jest backfill** — 191 → 300 tests across 18 suites. `@testing-library/react-native` added. Three small utility extractions (`orderFilters`, `packingFlow`, `subscriptionMath`) for testability.

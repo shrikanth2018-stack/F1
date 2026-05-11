@@ -36,16 +36,25 @@ export function serverTimeToMinutes(serverTimestamp: string): number {
 /**
  * Determine dispatch scenario for a delivery cycle.
  *
- * Scenario A: Order placed BEFORE cutoff → dispatched TODAY
- * Scenario B: Order placed AFTER cutoff → dispatched TOMORROW
+ * Same-day cycle (cutoff before delivery on the same calendar day):
+ *   Scenario A — order placed BEFORE cutoff → dispatched TODAY.
+ *   Scenario B — order placed AFTER cutoff  → dispatched TOMORROW.
  *
- * Cross-midnight: If cutoff (e.g. 22:00) > delivery_start (e.g. 07:30),
- * orders after cutoff are Scenario A for NEXT morning.
+ * Cross-midnight cycle (cutoff > delivery_start, e.g. Breakfast with
+ * cutoff 22:30 tonight for delivery 07:30 tomorrow):
+ *   Today's delivery was locked at yesterday's cutoff — never available
+ *   for fresh ordering. Only valid scenarios:
+ *   Scenario B — order placed BEFORE today's cutoff → tomorrow morning.
+ *   Scenario C — order placed AFTER today's cutoff  → day after tomorrow
+ *                (BF-41 / F3.X: customer sees a consent popup at checkout
+ *                acknowledging the 2-day shift).
  */
+export type DispatchScenario = 'A' | 'B' | 'C';
+
 export function getDispatchScenario(
   cycle: DeliveryCycle,
   serverTimestamp: string
-): 'A' | 'B' {
+): DispatchScenario {
   const nowMinutes = serverTimeToMinutes(serverTimestamp);
   const cutoffMinutes = timeToMinutes(cycle.cutoff_time);
   const deliveryStartMinutes = timeToMinutes(cycle.delivery_start);
@@ -53,9 +62,8 @@ export function getDispatchScenario(
   const isCrossMidnight = cutoffMinutes > deliveryStartMinutes;
 
   if (isCrossMidnight) {
-    if (nowMinutes < deliveryStartMinutes) return 'A';
-    if (nowMinutes >= deliveryStartMinutes && nowMinutes < cutoffMinutes) return 'B';
-    return 'A';
+    // Today's delivery already locked; pick the next available cycle iteration.
+    return nowMinutes < cutoffMinutes ? 'B' : 'C';
   }
 
   return nowMinutes < cutoffMinutes ? 'A' : 'B';
@@ -71,8 +79,12 @@ export function isCycleOrderable(cycle: DeliveryCycle): boolean {
 /**
  * Get human-readable dispatch label
  */
-export function getDispatchLabel(scenario: 'A' | 'B'): string {
-  return scenario === 'A' ? 'Today' : 'Tomorrow';
+export function getDispatchLabel(scenario: DispatchScenario): string {
+  switch (scenario) {
+    case 'A': return 'Today';
+    case 'B': return 'Tomorrow';
+    case 'C': return 'Day after tomorrow';
+  }
 }
 
 /**

@@ -22,7 +22,7 @@ export interface CartPlan {
 export interface DispatchEvaluation {
   menu_item_id: number;
   cycle_id: number;
-  scenario: 'A' | 'B';
+  scenario: 'A' | 'B' | 'C';
   dispatch_label: string;
   cycle_name: string;
 }
