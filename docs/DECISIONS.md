@@ -6,25 +6,24 @@
 
 ## Pre-launch blockers (D-08)
 
-- **MF-03 Class A** — final RLS branch_id scoping pass on remaining staff + admin policies. Single dedicated PR.
-- **MF-03 Class C** — customer onboarding branch_id architectural call (trigger NULL vs onboarding-fill-from-address). Pending Shrikanth confirmation.
-- **MF-03 punch list items 12-14** — `staff_attendance` INSERT, two report hooks unfiltered, NULL→1 backfill prerequisite for flag flip.
-- **MF-03 punch list items 15-25** — verification queue (mostly NEEDS VERIFY).
+- **V-06 persona regression** — only code-level launch blocker remaining. Operational test.
 - **Flag flip** — last D-08 gate. `UPDATE feature_flags SET flag_value = TRUE WHERE flag_key = 'branch_management_active';` once V-06 passes.
+
+**MF-03 (Classes A / B / C + punch list 12-14) closed 2026-05-11 via Tier 1 Flow 6 audit verification.** Code-level work shipped via 2026-05-05 Commits 1-5; today's audit confirmed live state matches. See `docs/AUDIT_admin_actions.md`. Two intentional gaps remain (F6.1 notification_templates not branch-scoped — defer to multi-branch launch; F6.2 referrals_self admin clause is is_admin() only — documented intentional).
 
 ## Tier 1 audit ladder (in progress)
 
 Method: read-only per-flow audit → cross-check prod DB → match/gap matrix vs spec → immediate fixes for findings → per-flow audit doc in `docs/AUDIT_<flow>.md`. One flow per session, priority-ordered.
 
-- ✅ **Flow 0 — Order generation + listing** — closed 2026-05-11 via BF-31 (`HISTORY.md`).
-- 🔜 **Flow 1 — Payments + wallet** — Razorpay create/confirm/webhook, wallet atomicity, refunds, idempotency. Next up.
-- ⏳ **Flow 2 — Subscription lifecycle** — buy, activate, pause/skip, cancel, prorated refund, expiry.
-- ⏳ **Flow 3 — One-off order lifecycle** — place, confirm, cancel, status transitions, dispatch.
-- ⏳ **Flow 4 — Staff operations** — kitchen aggregate, packing, offline queue, push wiring.
-- ⏳ **Flow 5 — Driver + Hub delivery** — assignment, scoping, status advance.
-- ⏳ **Flow 6 — Admin / Super-admin actions** — order/sub cancel, refund, feature flags, branch isolation (overlaps MF-03 Class A — closes both in this session).
-- ⏳ **Flow 7 — Notifications + cron** — `kitchen_push`, dormant / wallet / expiry pushes, template fallbacks, send-push fan-out.
-- ⏳ **Flow 8 — Auth + branch routing** — OTP → JWT claims → role split → branch picker.
+- ✅ **Flow 0 — Order generation + listing** — closed 2026-05-11 via BF-31.
+- ✅ **Flow 1 — Payments + wallet** — closed 2026-05-11 via BF-32. 3 deferred (F1.3 client idempotency header, F1.4 cleanup cron schedule, F1.5 cancel-refund admin signal).
+- ✅ **Flow 2 — Subscription lifecycle** — closed 2026-05-11 via BF-33. Spec D-01 (pause/skip extends duration) now matched in code.
+- ✅ **Flow 3 — One-off order lifecycle** — closed 2026-05-11 via BF-34. 2 deferred (F3.X cross-midnight cycle semantics, F3.Y kitchen_push_time +10min config).
+- ✅ **Flow 4 — Staff operations** — closed 2026-05-11 via BF-35. Push fan-out single-sourced via app code; admin templates honored. 3 deferred (F4.3 useRealtimeOrders midnight, F4.4 offline-queue order-of-failure, F4.5 offline replays skip push).
+- ✅ **Flow 5 — Driver + Hub delivery** — no code shipped; all paths validated in earlier flows. 2 deferred (F5.1 driver assignment lacks atomic RPC, F5.2 JWT refresh window for driver revocation).
+- ✅ **Flow 6 — Admin / Super-admin actions + MF-03 closure** — no code shipped; MF-03 Classes A/B/C + punch list 12-14 confirmed already closed by 2026-05-05 commits. 2 deferred (F6.1 templates per-branch, F6.2 referrals branch-scope intentional).
+- 🔜 **Flow 7 — Notifications + cron** — `kitchen_push`, dormant / wallet / expiry pushes, template fallbacks, push fan-out (largely already touched in Flow 4).
+- ⏳ **Flow 8 — Auth + branch routing** — OTP → JWT claims → role split → branch picker → push token registration (F4.2 token registration belongs here).
 
 ## Verification queue
 

@@ -57,10 +57,9 @@ All OTPs are `123456`.
 
 ## Pre-launch blockers (D-08 launch gate)
 
-- **MF-03 Class A** — final RLS branch_id scoping pass (~15-20 policies, single dedicated PR).
-- **MF-03 Class C** — customer onboarding branch_id (architectural call pending Shrikanth's confirmation — trigger writes NULL, onboarding fills from address).
-- **MF-03 punch list items 12-14** — `staff_attendance` INSERT, two report hooks unfiltered, one-time NULL→1 backfill prerequisite for the flag flip.
-- **MF-03 punch list items 15-25** — verification queue (mostly NEEDS VERIFY).
-- **V-06 persona regression** — end-to-end go/no-go. Will fold into Tier 1 audit findings.
+- **V-06 persona regression** — end-to-end go/no-go. Only remaining blocker. Code-level MF-03 work fully closed (see Tier 1 Flow 6 audit doc).
+- **Flag flip SQL** — `UPDATE feature_flags SET flag_value = TRUE WHERE flag_key = 'branch_management_active';` once V-06 passes.
+
+**MF-03 Classes A / B / C closed** — all RLS branch-scoping landed via 2026-05-05 Commits 1-5 + subsequent BFs. Verified live by Tier 1 Flow 6 audit on 2026-05-11.
 
 Post-launch (not blockers): MF-06 staging Supabase project, MF-07 broader Jest test coverage (Tier 2), MF-08 source-of-truth audit remaining items, FT-04, FT-05.
