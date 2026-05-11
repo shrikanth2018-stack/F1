@@ -42,11 +42,19 @@ LANGUAGE sql STABLE AS $$
   SELECT public.jwt_user_role() IN ('"admin"', 'admin', '"staff"', 'staff');
 $$;
 
--- MF-03 Commit 1: distinguishes super-admin (no branch claim → sees all
--- branches) from branch-scoped admin.
+-- MF-03 Commit 1 + FT-05 (2026-05-11): super-admin marker reads from the
+-- explicit profiles.is_super_admin column (via the JWT claim minted by
+-- custom_access_token_hook). Falls back to a direct column read for
+-- stale JWTs without the claim or for in-DB SECURITY DEFINER callers
+-- whose auth.jwt() is empty. The legacy implicit convention
+-- (admin + null branch_id) is no longer the source of truth.
 CREATE OR REPLACE FUNCTION public.is_super_admin() RETURNS BOOLEAN
 LANGUAGE sql STABLE AS $$
-  SELECT public.is_admin() AND public.jwt_branch_id() IS NULL;
+  SELECT COALESCE(
+    NULLIF(auth.jwt() ->> 'is_super_admin', '')::BOOLEAN,
+    (SELECT is_super_admin FROM public.profiles WHERE id = auth.uid()),
+    FALSE
+  );
 $$;
 
 -- MF-03 Commit 4 + BF-29 (2026-05-06): per-row branch gate.

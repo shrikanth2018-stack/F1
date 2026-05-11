@@ -6,6 +6,10 @@
 --   - user_role          — from profiles.role (default 'customer')
 --   - branch_id          — from profiles.branch_id
 --   - assigned_hub_id    — from profiles.assigned_hub_id
+--   - is_super_admin     — from profiles.is_super_admin (FT-05).
+--                          Authoritative for super-admin powers — the
+--                          legacy "admin + null branch" convention is
+--                          no longer the source of truth.
 --   - is_driver          — derived: true if this user appears in
 --                          delivery_hubs.driver_user_id OR
 --                          delivery_zones.driver_user_id
@@ -14,6 +18,11 @@
 -- function. Earlier drift omitted is_driver + SECURITY DEFINER + the
 -- search_path setting. MF-08-class drift; a DB rebuild from this file
 -- would have lost is_driver and drivers would lose "My Deliveries".
+--
+-- FT-05 (2026-05-11): adds is_super_admin claim. Currently-logged-in
+-- super-admins need to sign out + back in once after deploy to pick
+-- up the new claim. Until then is_super_admin() RLS function reads
+-- the column directly as a fallback — no operational break.
 --
 -- Install (Supabase Dashboard → Authentication → Hooks → Add hook):
 --   Type:    Custom Access Token (postgres function)
@@ -35,11 +44,12 @@ DECLARE
   v_role            TEXT;
   v_branch_id       BIGINT;
   v_assigned_hub_id BIGINT;
+  v_is_super_admin  BOOLEAN;
   v_is_driver       BOOLEAN;
 BEGIN
   -- Read the profile row
-  SELECT role, branch_id, assigned_hub_id
-    INTO v_role, v_branch_id, v_assigned_hub_id
+  SELECT role, branch_id, assigned_hub_id, is_super_admin
+    INTO v_role, v_branch_id, v_assigned_hub_id, v_is_super_admin
   FROM public.profiles
   WHERE id = (event->>'user_id')::UUID;
 
@@ -60,6 +70,7 @@ BEGIN
     'user_role',       COALESCE(v_role, 'customer'),
     'branch_id',       v_branch_id,
     'assigned_hub_id', v_assigned_hub_id,
+    'is_super_admin',  COALESCE(v_is_super_admin, FALSE),
     'is_driver',       v_is_driver
   );
 

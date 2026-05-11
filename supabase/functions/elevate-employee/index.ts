@@ -48,16 +48,17 @@ Deno.serve(async (req: Request) => {
     if (!user) return json({ error: 'Unauthorized' }, 401);
 
     // Admin gate — role lives in profiles.role (custom_access_token_hook
-    // injects it into the JWT user_role claim on token mint). Super-admin
-    // is admin + branch_id IS NULL; required when designation = 'ADMIN HEAD'.
+    // injects it into the JWT user_role claim on token mint). FT-05:
+    // super-admin is now profiles.is_super_admin = TRUE (explicit), not
+    // the legacy "branch_id IS NULL" convention.
     const adminClient = createClient(SUPABASE_URL, SERVICE_ROLE);
     const { data: callerProfile, error: profileErr } = await adminClient
-      .from('profiles').select('role, branch_id').eq('id', user.id).maybeSingle();
+      .from('profiles').select('role, branch_id, is_super_admin').eq('id', user.id).maybeSingle();
     if (profileErr) return json({ error: `Profile lookup failed: ${profileErr.message}` }, 500);
     if (callerProfile?.role !== 'admin') {
       return json({ error: 'Admin role required' }, 403);
     }
-    const isSuperAdmin = callerProfile.branch_id === null;
+    const isSuperAdmin = callerProfile.is_super_admin === true;
 
     // 2. Validate payload
     const body = await req.json();

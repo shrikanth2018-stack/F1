@@ -39,13 +39,15 @@ DECLARE
   v_target_branch  INTEGER;
   v_is_super_admin BOOLEAN;
 BEGIN
-  -- Caller gate
-  SELECT role, branch_id INTO v_caller_role, v_caller_branch
+  -- Caller gate. FT-05: super-admin marker is the explicit
+  -- profiles.is_super_admin column; the legacy "v_caller_branch IS NULL"
+  -- convention is no longer authoritative.
+  SELECT role, branch_id, is_super_admin INTO v_caller_role, v_caller_branch, v_is_super_admin
     FROM public.profiles WHERE id = auth.uid();
   IF v_caller_role IS DISTINCT FROM 'admin' THEN
     RAISE EXCEPTION 'Admin role required';
   END IF;
-  v_is_super_admin := (v_caller_branch IS NULL);
+  v_is_super_admin := COALESCE(v_is_super_admin, FALSE);
 
   -- Branch scope: branch admin can only touch profiles in their branch.
   SELECT branch_id INTO v_target_branch

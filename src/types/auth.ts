@@ -30,6 +30,11 @@ export interface AuthSession {
   role: UserRole;
   assignedHubId: number | null;
   branchId: number | null;
+  /** Explicit super-admin marker (FT-05). Source of truth is
+   *  profiles.is_super_admin via the JWT is_super_admin claim. The
+   *  legacy "role=admin AND branchId IS NULL" convention is no longer
+   *  authoritative — a super-admin may now also carry a home branch. */
+  isSuperAdmin: boolean;
   /** Set to true if the user is assigned as driver on any delivery_hub or delivery_zone.
    *  Drivers retain role='staff' for RLS but are routed through CustomerNavigator. */
   isDriver: boolean;

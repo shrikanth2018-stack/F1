@@ -43,6 +43,12 @@ function extractRole(session: Session | null): AuthSession | null {
     const role: UserRole = payload.user_role || 'customer';
     const assignedHubId: number | null = payload.assigned_hub_id ?? null;
     const branchId: number | null = payload.branch_id ?? null;
+    // FT-05: read explicit super-admin claim. Stale JWTs (issued
+    // before the FT-05 hook update) won't have it — value falls to
+    // false; user signs out + back in once to pick it up. RLS SQL
+    // function falls back to the column directly so server-side
+    // gating doesn't break in that window.
+    const isSuperAdmin: boolean = payload.is_super_admin === true;
     const isDriver: boolean = payload.is_driver === true;
 
     return {
@@ -53,6 +59,7 @@ function extractRole(session: Session | null): AuthSession | null {
       role,
       assignedHubId,
       branchId,
+      isSuperAdmin,
       isDriver,
     };
   } catch {
@@ -64,6 +71,7 @@ function extractRole(session: Session | null): AuthSession | null {
       role: 'customer',
       assignedHubId: null,
       branchId: null,
+      isSuperAdmin: false,
       isDriver: false,
     };
   }

@@ -66,7 +66,10 @@ export function useBranchFilter(): BranchFilter {
   const selectedBranchId = useBranchStore((s) => s.selectedBranchId);
 
   const jwtBranchId: number | null = session?.branchId ?? null;
-  const isSuperAdmin = session?.role === 'admin' && jwtBranchId === null;
+  // FT-05: explicit super-admin marker from JWT claim. Replaces the
+  // legacy "admin + null branchId" convention so a super-admin may
+  // also carry a home branch_id without losing global powers.
+  const isSuperAdmin = session?.isSuperAdmin === true;
   // Customer = anyone whose role isn't admin/staff. Drivers + hub-ops still
   // route through the customer side (CustomerNavigator); they may not have
   // addresses but useAddresses returns [] cleanly in that case.
