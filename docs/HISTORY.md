@@ -2,6 +2,48 @@
 
 > Timeline of major milestones, shipped items, and architectural pivots. Append-only. Skim recent entries when researching "why does X work this way." Not exhaustive — read the relevant files for full detail. For open items see `docs/DECISIONS.md`. For working rules see `docs/RULES.md`.
 
+## 2026-05-11 — Tier 1 audit kickoff + BF-31
+
+Order generation + listing audit (first Tier 1 flow). Two coupled silent defects, both invisible on the home screen because no UI displays `order_type`.
+
+**Commit:**
+- `10aa5fd` — **BF-31** — (a) `useStaffOrders` filters out subscription-purchase orders (every `order_items` row carries `item_type='subscription'`) so they don't surface in Kitchen / Packing / Hub Dash. They still appear on customer My Orders per XL spec rule (3). (b) `generate_daily_manifest` normalizes plural `subscription_plans.plan_type` (`'essentials'`) to singular `orders.order_type` (`'essential'`) at insert, mirroring the singular convention `place-order` already uses. Daily dispatch rows now match every existing UI filter. Files: `src/hooks/useStaffOrders.ts`, `supabase/sql/generate_daily_manifest.sql`.
+
+**SQL deployed live:** `generate_daily_manifest()` CREATE OR REPLACE.
+
+**Notes:**
+- Cron `kitchen-cutoff-push-tick` resumed firing after a ~5-day Supabase free-tier pause when the DB woke up for this session. Auto-fired orders 9440/9441 for today; manual run created 9442/9443 for tomorrow as verification. Sub 37 (food, Idli Vada 30 Days) and sub 39 (essentials, Newspaper 30 Days) both advanced.
+- Tier 1 audit plan adopted — eight flows queued, per-flow doc to land in `docs/`. Payments + wallet up next.
+
+## 2026-05-06 — v1.2.1 hotfixes, production AAB submitted
+
+**Commit:**
+- `9ffae33` — **BF-29 + BF-30** — login keypad regression on iOS, three RLS write-gap holes (admin / staff / hub), address default invariant. v1.2.1 cut. EAS build `11454af5` (versionCode 11) finished and submitted to Play Console Internal Testing.
+
+## 2026-05-05 — Multi-branch foundation + admin staffing pass (24 commits)
+
+Two arcs closed simultaneously: **MF-03 multi-branch foundation** (Commits 1-5, Class B fully closed, Class C pending Shrikanth's architectural call) and **admin staffing/employee surface** (FT-02a/b, FT-03, FT-07, BF-22 through BF-28). RULES + SESSION_START tightened to single-seat default + plan-level approval gate. Pre-push gate shipped (MF-07a). Version 1.2.0 bumped.
+
+**Highlights (HEAD-ward; full list in `git log`):**
+
+- `1ab5283` — docs: SESSION_START + RULES tightened (single-seat default; plan-level approval).
+- `07297c1` — chore: version 1.1.0 → 1.2.0 for multi-branch foundation release.
+- `9c70a4c` — **BF-28** — EmployeeDetail Done button save fix.
+- `c62397c` — **BF-27** — admin profile/salary writes via SECURITY DEFINER RPC + RLS gap close.
+- `efe5bc4` — **FT-07** — EmployeeDetail Profile compact refresh + edit toggle.
+- `601a31b` — **MF-07a** — pre-push gate via husky.
+- `c5a047e` — **FT-01** — `serviceAccountKeyPath` cleanup + Play Console setup doc.
+- `f46bb1e` — **CL-09** — `DEPLOY_SQL_ORDER` refresh.
+- `2d2c530` — **FT-03, D-07** — ADMIN HEAD designation = branch admin role.
+- `949e9c9` + `b062525` + `ded3721` + `96718b5` + `f609e0b` — **MF-03 Commits 1-5, D-08** — branch_id schema + onboarding foundation, client write payloads + JWT refresh, branch-filtered reports, RLS branch boundaries + `has_branch_access` helper, cleanup + branch-1 admin persona (`888`).
+- `1781b80` — **MF-08 partial-close** — Supabase types regenerated + onboarding RPC nullable defaults.
+- `4e8b3da` + `d03674e` — **BF-26** — iOS picker text invisible (drop `themeVariant`, use `textColor` + explicit modal dimensions).
+- `4189c22` — **BF-24, BF-25** — iOS date/time pickers + Joining Date label.
+- `d05cc2d` — **FT-02b** — staff lookups in DB + employee offboarding.
+- `741fe59` — **FT-02a** — compact one-row `OnboardEmployeeScreen` layout.
+- `70cc9a6` — **BF-22, BF-23** — login change-phone rate-limit + Android safe-area.
+- `e4b1fe3` — docs: split monolithic doc into SESSION_START / RULES / STATUS / DECISIONS / HISTORY + CLAUDE.md appendix.
+
 ## 2026-05-04 — Sixteen-commit day
 
 Three architectural arcs closed: subscription cancellation accuracy, Stock Manager simplification, login + OTP unification + multi-branch readiness foundations. Three new working rules adopted (D-06 best fix wins; D-07 scope freeze + perfection-review; D-08 multi-branch as launch gate). Three new follow-up gates (MF-06 staging, MF-07 test coverage, MF-08 source-of-truth — all queued post-V-06).
