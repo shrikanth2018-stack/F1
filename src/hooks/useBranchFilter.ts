@@ -7,7 +7,10 @@
  *   1. JWT contains branch_id → always use that (branch-specific admin / staff)
  *   2. JWT has no branch_id AND role is admin → use store's selectedBranchId
  *      (super-admin; null = show all branches)
- *   3. branch_management_active flag is off → isActive = false, no filtering
+ *   3. Customer session → use default address's branch_id (MF-09). Falls
+ *      back to first address, then null when the customer has no addresses
+ *      or addresses haven't loaded yet.
+ *   4. branch_management_active flag is off → isActive = false, no filtering
  *
  * Usage:
  *
@@ -36,6 +39,7 @@
 import { useAuth } from './useAuth';
 import { useFeatureFlag } from './useFeatureFlag';
 import { useBranchStore } from '../store/branchStore';
+import { useAddresses } from './useAddresses';
 
 export interface BranchFilter {
   /** Resolved branch ID to filter by. null when super-admin views all. */
@@ -63,9 +67,25 @@ export function useBranchFilter(): BranchFilter {
 
   const jwtBranchId: number | null = session?.branchId ?? null;
   const isSuperAdmin = session?.role === 'admin' && jwtBranchId === null;
+  // Customer = anyone whose role isn't admin/staff. Drivers + hub-ops still
+  // route through the customer side (CustomerNavigator); they may not have
+  // addresses but useAddresses returns [] cleanly in that case.
+  const isCustomer = session?.role !== 'admin' && session?.role !== 'staff';
 
-  // JWT branch overrides store selection; super-admin uses store (may be null)
-  const branchId = jwtBranchId ?? (isSuperAdmin ? selectedBranchId : null);
+  // Address-derived branch for customers. useAddresses' enabled flag
+  // already skips this when there's no authenticated session.
+  const { data: addresses } = useAddresses();
+  const customerBranchId = isCustomer
+    ? (addresses ?? []).find((a) => a.is_default)?.branch_id
+      ?? addresses?.[0]?.branch_id
+      ?? null
+    : null;
+
+  // JWT branch overrides everything; super-admin uses store selection;
+  // customer falls through to default-address branch.
+  const branchId = jwtBranchId
+    ?? (isSuperAdmin ? selectedBranchId : null)
+    ?? customerBranchId;
   // For writes: branchId or fall through to 1 (single-branch default).
   const branchIdForWrite = branchId ?? 1;
 

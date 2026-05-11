@@ -11,6 +11,7 @@ export interface CustomerAddress {
   longitude: number | null;
   zone_id: number | null;
   hub_id: number | null;
+  branch_id: number | null;
   hub_impact_notified_at: string | null;
   is_serviceable: boolean;
   is_default: boolean;

@@ -443,7 +443,33 @@ export function CheckoutScreen({ navigation, route }: any) {
               <TouchableOpacity
                 key={addr.id}
                 style={[styles.addressCard, addr.id === selectedAddressId && styles.addressSelected]}
-                onPress={() => setSelectedAddressId(addr.id)}
+                onPress={async () => {
+                  // MF-09: switching to an address in a different branch clears
+                  // the cart — its items belong to the previously-selected
+                  // branch's catalog and won't price-validate in place-order.
+                  const currentBranch = addresses?.find((a) => a.id === selectedAddressId)?.branch_id ?? null;
+                  const nextBranch = addr.branch_id ?? null;
+                  const cartHasItems = (foodItems.length + foodPlans.length + essItems.length + essPlans.length) > 0;
+                  if (
+                    selectedAddressId != null &&
+                    currentBranch != null &&
+                    nextBranch != null &&
+                    currentBranch !== nextBranch &&
+                    cartHasItems
+                  ) {
+                    const ok = await confirmDialog({
+                      title: 'Switch branch?',
+                      message: 'Switching to this address moves you to a different branch — your cart will clear. Continue?',
+                      confirmLabel: 'Switch & clear',
+                      cancelLabel: 'Cancel',
+                      destructive: true,
+                    });
+                    if (!ok) return;
+                    clearFood();
+                    clearEss();
+                  }
+                  setSelectedAddressId(addr.id);
+                }}
               >
                 <ThemedText variant="body" color="primary">{addr.label}</ThemedText>
                 <ThemedText variant="small" color="subtitle">{addr.address_line}</ThemedText>

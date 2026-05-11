@@ -10,6 +10,7 @@ import { supabase } from '../api/supabaseClient';
 import { useSupabaseQuery, useSupabaseMutation } from '../api/useSupabaseQuery';
 import { QUERY_KEYS } from '../utils/constants';
 import { useAuth } from './useAuth';
+import { useBranchFilter } from './useBranchFilter';
 import type {
   SubscriptionPlan,
   SubscriptionPlanItem,
@@ -18,17 +19,26 @@ import type {
 } from '../types';
 
 // ── Available Plans ──
+//
+// Branch-filtered for customers via useBranchFilter — see MF-09: the
+// customer's default address's branch_id drives which branch's plans
+// are visible.
 
 export function useSubscriptionPlans(cycleId?: number | null) {
+  const bf = useBranchFilter();
+  const branchKey = bf.isActive ? bf.branchId ?? 'all' : 'off';
   const queryKey = cycleId
-    ? [...QUERY_KEYS.SUBSCRIPTION_PLANS, cycleId]
-    : QUERY_KEYS.SUBSCRIPTION_PLANS;
+    ? [...QUERY_KEYS.SUBSCRIPTION_PLANS, cycleId, branchKey]
+    : [...QUERY_KEYS.SUBSCRIPTION_PLANS, branchKey];
 
   return useSupabaseQuery<SubscriptionPlan>(queryKey, 'subscription_plans', {
     select: '*',
     filter: (query) => {
       let q = query.eq('is_active', true).order('price');
       if (cycleId) q = q.eq('cycle_id', cycleId);
+      if (bf.isActive && bf.branchId != null) {
+        q = q.eq('branch_id', bf.branchId);
+      }
       return q;
     },
   });
