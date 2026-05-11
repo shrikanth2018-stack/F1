@@ -1,8 +1,19 @@
 -- ═══════════════════════════════════════════════════════════════
 -- 1stOne F1 — Custom Access Token Hook
 --
--- Injects `user_role`, `assigned_hub_id`, `branch_id` into every issued
--- JWT, so the client (useAuth.ts:31) and RLS policies can rely on them.
+-- Injects custom claims into every issued JWT, so the client
+-- (useAuth.ts:33) and RLS policies can rely on them:
+--   - user_role          — from profiles.role (default 'customer')
+--   - branch_id          — from profiles.branch_id
+--   - assigned_hub_id    — from profiles.assigned_hub_id
+--   - is_driver          — derived: true if this user appears in
+--                          delivery_hubs.driver_user_id OR
+--                          delivery_zones.driver_user_id
+--
+-- BF-37 (2026-05-11): tracked file rewritten to match the deployed
+-- function. Earlier drift omitted is_driver + SECURITY DEFINER + the
+-- search_path setting. MF-08-class drift; a DB rebuild from this file
+-- would have lost is_driver and drivers would lose "My Deliveries".
 --
 -- Install (Supabase Dashboard → Authentication → Hooks → Add hook):
 --   Type:    Custom Access Token (postgres function)
@@ -16,33 +27,43 @@
 CREATE OR REPLACE FUNCTION public.custom_access_token_hook(event JSONB)
 RETURNS JSONB
 LANGUAGE plpgsql
-STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
 AS $$
 DECLARE
-  v_claims           JSONB;
-  v_user_id          UUID;
-  v_role             TEXT;
-  v_assigned_hub_id  INTEGER;
-  v_branch_id        INTEGER;
+  claims            JSONB;
+  v_role            TEXT;
+  v_branch_id       BIGINT;
+  v_assigned_hub_id BIGINT;
+  v_is_driver       BOOLEAN;
 BEGIN
-  v_claims  := event->'claims';
-  v_user_id := (event->>'user_id')::UUID;
-
   -- Read the profile row
-  SELECT role, assigned_hub_id, branch_id
-  INTO v_role, v_assigned_hub_id, v_branch_id
+  SELECT role, branch_id, assigned_hub_id
+    INTO v_role, v_branch_id, v_assigned_hub_id
   FROM public.profiles
-  WHERE id = v_user_id;
+  WHERE id = (event->>'user_id')::UUID;
 
-  -- Default if no profile yet (e.g. first sign-up before trigger runs)
-  v_role := COALESCE(v_role, 'customer');
+  -- Derive is_driver from the delivery assignment tables. Membership
+  -- in either delivery_hubs.driver_user_id or delivery_zones.driver_user_id
+  -- gates the customer's "My Deliveries" entry (ProfilePopup) and the
+  -- driver advance flow in nextDeliveryStatus.
+  v_is_driver := EXISTS (
+    SELECT 1 FROM public.delivery_hubs
+    WHERE driver_user_id = (event->>'user_id')::UUID
+  ) OR EXISTS (
+    SELECT 1 FROM public.delivery_zones
+    WHERE driver_user_id = (event->>'user_id')::UUID
+  );
 
-  v_claims := v_claims
-    || jsonb_build_object('user_role',       v_role)
-    || jsonb_build_object('assigned_hub_id', v_assigned_hub_id)
-    || jsonb_build_object('branch_id',       v_branch_id);
+  claims := event->'claims';
+  claims := claims || jsonb_build_object(
+    'user_role',       COALESCE(v_role, 'customer'),
+    'branch_id',       v_branch_id,
+    'assigned_hub_id', v_assigned_hub_id,
+    'is_driver',       v_is_driver
+  );
 
-  RETURN jsonb_set(event, '{claims}', v_claims);
+  RETURN jsonb_set(event, '{claims}', claims);
 END;
 $$;
 
@@ -50,4 +71,6 @@ $$;
 GRANT EXECUTE ON FUNCTION public.custom_access_token_hook(JSONB)
   TO supabase_auth_admin;
 
-GRANT SELECT ON public.profiles TO supabase_auth_admin;
+GRANT SELECT ON public.profiles        TO supabase_auth_admin;
+GRANT SELECT ON public.delivery_hubs   TO supabase_auth_admin;
+GRANT SELECT ON public.delivery_zones  TO supabase_auth_admin;
