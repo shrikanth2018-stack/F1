@@ -52,11 +52,14 @@ All OTPs are `123456`.
 
 ## Today's queue (2026-05-11)
 
-1. **Tier 1 audit — COMPLETE (8 / 8 flows).** BF-31 through BF-37 shipped + verified live. See `docs/DECISIONS.md` ladder for per-flow links + 12 deferred-FT items.
-2. Next phases (awaiting user direction):
-   - Phase B — FT-08 UX punch list (Shrikanth's reorder menu items + small UX tweaks).
-   - Phase C — MF-07 Tier 2 Jest backfill.
-   - V-06 persona regression (only remaining D-08 blocker).
+1. **Tier 1 audit — COMPLETE (8 / 8 flows).** BF-31 through BF-37 shipped + verified live.
+2. **Tier 2 Jest backfill — COMPLETE (final launch lock-in).** 191 → 289 tests across 16 suites. Two deferred Tier 1 findings closed inline (BF-38a F1.3 wallet topup idempotency key; BF-38b F4.3 useRealtimeOrders midnight rollover). 10 deferred items remain as post-launch FT candidates — none block D-08. See `docs/DECISIONS.md` ladder.
+3. Pre-launch remaining (D-08):
+   - **V-06 persona regression** — operational test on real device. Customer / staff / driver / hub-op / branch-admin walk-through.
+   - **Flag flip SQL** — `UPDATE feature_flags SET flag_value = TRUE WHERE flag_key = 'branch_management_active';` once V-06 passes.
+4. Pre-Play-Store (user-driven):
+   - **FT-08 UX punch list** — Shrikanth's reorder menu items + small UX tweaks.
+   - Cut a fresh AAB once UX changes land + V-06 green.
 
 ## Pre-launch blockers (D-08 launch gate)
 

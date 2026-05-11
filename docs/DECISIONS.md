@@ -27,9 +27,18 @@ Method: read-only per-flow audit → cross-check prod DB → match/gap matrix vs
 
 **Bug fixes shipped in Tier 1: BF-31 → BF-37** (7 commits, all DB + edge function deploys verified live).
 
-**Net deferred findings (all post-launch FT candidates):** F1.3, F1.5, F3.X, F3.Y, F4.3, F4.4, F4.5, F5.1, F5.2, F6.1, F6.2, F7.2 — 12 items. Each is logged in its respective AUDIT_*.md with file:line + rationale.
+## Tier 2 Jest backfill — COMPLETE (final launch lock-in)
 
-**Tier 2 (Jest backfill / MF-07) ready to begin** once user gives the go.
+**Result: 191 → 289 tests across 16 suites; tsc clean.**
+
+- **Batch 1** — pure-logic regression locks for the BF-31..37 fixes via 3 small extractions (orderFilters, packingFlow, subscriptionMath) + comprehensive coverage of the previously-untested deliveryStatus state machine. 84 tests.
+- **Batch 2** — hook tests via @testing-library/react-native: useWallet (BF-38a idempotency), useAdminOrders (BF-34a atomic cancel RPC), useSubscriptions (BF-20 + pause/skip RLS guards). 14 tests.
+- **BF-38** shipped alongside Tier 2 — two Tier 1 deferred findings closed inline:
+  - **BF-38a (F1.3)** — useWalletTopup now sends Idempotency-Key header on each invoke.
+  - **BF-38b (F4.3)** — useRealtimeOrders re-subscribes at IST midnight so overnight dashboards roll over to the new day.
+
+**Net deferred findings (10, all post-launch FT candidates):**
+F1.5 (cancel-refund admin signal), F3.X (cross-midnight cycle latent), F3.Y (kitchen_push_time +10min config), F4.4 (offline queue order-of-failure), F4.5 (offline replays skip push), F5.1 (driver assignment lacks atomic RPC), F5.2 (JWT refresh window for driver revocation), F6.1 (notification_templates not branch-scoped), F6.2 (referrals_self admin-only — intentional), F7.2 (dormant-user-check double-send).
 
 ## Verification queue
 
