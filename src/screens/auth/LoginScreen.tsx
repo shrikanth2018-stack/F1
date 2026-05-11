@@ -78,18 +78,18 @@ const dots = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 6,
+    gap: 10,
   },
-  // Default sizing matches the original 10-dot phone layout
+  // Compact phone-row sizing — keeps 10 dots clustered, not edge-to-edge.
   slot: {
-    width: 26,
+    width: 18,
     height: 44,
     alignItems: 'center',
     justifyContent: 'center',
   },
   // Wider slots for the 6-dot OTP layout — same component, more breathing room
   slotWide: {
-    width: 40,
+    width: 28,
     height: 52,
   },
   digit: {
@@ -121,6 +121,7 @@ export function LoginScreen({ onExistingUser, onNewUser, referralCode }: LoginSc
   const [loading, setLoading] = useState(false);
   const [resendCountdown, setResendCountdown] = useState(0);
   const [resending, setResending] = useState(false);
+  const [otpError, setOtpError] = useState<string | null>(null);
   const [bgUrl, setBgUrl] = useState<string | null>(null);
   const isSendingRef = useRef(false);
   const isVerifyingRef = useRef(false);
@@ -177,7 +178,22 @@ export function LoginScreen({ onExistingUser, onNewUser, referralCode }: LoginSc
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, phone]);
 
-  // ── OTP → verify (manual tap; user types 6 digits, then taps LOGIN|REGISTER) ──
+  // Auto-verify the moment OTP hits 6 valid digits — no submit button needed.
+  // On mismatch, handleVerify clears otp + sets otpError, returning the user
+  // to a fresh OTP entry with an inline hint.
+  useEffect(() => {
+    if (phase === 'otp' && otp.length === 6 && isValidOTP(otp) && !isVerifyingRef.current) {
+      handleVerify();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, otp]);
+
+  // Clear stale inline error as soon as the user starts typing a new code.
+  useEffect(() => {
+    if (otpError && otp.length > 0) setOtpError(null);
+  }, [otp, otpError]);
+
+  // ── OTP → verify (auto-fires when 6 digits are entered) ──
 
   const handleVerify = async () => {
     if (isVerifyingRef.current) return;
@@ -185,6 +201,7 @@ export function LoginScreen({ onExistingUser, onNewUser, referralCode }: LoginSc
 
     isVerifyingRef.current = true;
     setLoading(true);
+    setOtpError(null);
 
     const normalized = normalizePhone(phone);
     const { error } = await verifyOTP(normalized, otp);
@@ -192,7 +209,9 @@ export function LoginScreen({ onExistingUser, onNewUser, referralCode }: LoginSc
     if (error) {
       setLoading(false);
       isVerifyingRef.current = false;
-      await infoDialog('Verification Failed', error.message);
+      // Inline error keeps the user on the OTP keypad — much lighter than
+      // a modal interrupt for the common typo path.
+      setOtpError('Wrong code — try again');
       setOtp('');
       return;
     }
@@ -260,7 +279,6 @@ export function LoginScreen({ onExistingUser, onNewUser, referralCode }: LoginSc
   // ── Render ───────────────────────────────────────────────
 
   const isPhonePhase = phase === 'phone';
-  const otpReady = isValidOTP(otp);
 
   const inner = (
     <View style={styles.innerWrap}>
@@ -288,11 +306,13 @@ export function LoginScreen({ onExistingUser, onNewUser, referralCode }: LoginSc
 
           {/* Title */}
           <Text style={styles.title}>
-            {isPhonePhase ? 'Enter mobile' : 'Enter OTP'}
+            {isPhonePhase ? 'Enter mobile number' : 'Enter OTP'}
           </Text>
 
-          {/* OTP-phase subtitle: shows phone + Change phone link inline */}
-          {!isPhonePhase && (
+          {/* Subtitle — phone phase: clarifies both intents; OTP phase: target phone + Change link */}
+          {isPhonePhase ? (
+            <Text style={styles.subtitle}>to login or register</Text>
+          ) : (
             <View style={styles.subtitleRow}>
               <Text style={styles.subtitle}>Sent to {formatPhone(phone)}</Text>
               <TouchableOpacity
@@ -310,25 +330,9 @@ export function LoginScreen({ onExistingUser, onNewUser, referralCode }: LoginSc
             <PasscodeDots value={isPhonePhase ? phone : otp} length={isPhonePhase ? 10 : 6} />
           </View>
 
-          {/* OTP-phase: LOGIN | REGISTER text-only action */}
-          {!isPhonePhase && (
-            <TouchableOpacity
-              onPress={handleVerify}
-              disabled={loading || !otpReady}
-              activeOpacity={0.7}
-              accessibilityRole="button"
-              accessibilityLabel="Login or Register"
-              accessibilityState={{ disabled: loading || !otpReady, busy: loading }}
-              style={styles.actionWrap}
-            >
-              {loading ? (
-                <ActivityIndicator color={Theme.colors.text.mint} />
-              ) : (
-                <Text style={[styles.actionText, !otpReady && styles.actionTextDisabled]}>
-                  LOGIN  |  REGISTER
-                </Text>
-              )}
-            </TouchableOpacity>
+          {/* OTP-phase inline error — replaces the modal on mismatch. */}
+          {!isPhonePhase && otpError && (
+            <Text style={styles.otpError}>{otpError}</Text>
           )}
 
           {/* Phone-phase: brief sending indicator while OTP is being sent */}
@@ -337,18 +341,30 @@ export function LoginScreen({ onExistingUser, onNewUser, referralCode }: LoginSc
               <ActivityIndicator color={Theme.colors.text.mint} />
             </View>
           )}
+        </View>
+      </ScrollView>
 
-          {/* OTP-phase: resend with countdown */}
-          {!isPhonePhase && (
-            <TouchableOpacity
-              style={styles.resendBtn}
-              onPress={handleResend}
-              disabled={resendCountdown > 0 || resending}
-              activeOpacity={0.6}
-              accessibilityRole="button"
-              accessibilityLabel="Resend OTP"
-              accessibilityState={{ disabled: resendCountdown > 0 || resending, busy: resending }}
-            >
+      {/* Bottom-pinned region — keypad always visible; the OTP-phase
+          Verifying/Resend line sits directly above the keypad so it's
+          never hidden on cramped devices. Phone-phase shows terms/privacy
+          below the keypad. Respects safe-area inset. */}
+      <View style={[styles.bottomPinned, { paddingBottom: insets.bottom + Theme.spacing.sm }]}>
+        {!isPhonePhase && (
+          <TouchableOpacity
+            style={styles.resendBtn}
+            onPress={handleResend}
+            disabled={loading || resending || resendCountdown > 0}
+            activeOpacity={0.6}
+            accessibilityRole="button"
+            accessibilityLabel="Resend OTP"
+            accessibilityState={{ disabled: loading || resending || resendCountdown > 0, busy: loading || resending }}
+          >
+            {loading ? (
+              <View style={styles.resendInline}>
+                <ActivityIndicator color={Theme.colors.text.mint} size="small" />
+                <Text style={styles.resendText}>  Verifying…</Text>
+              </View>
+            ) : (
               <Text
                 style={[
                   styles.resendText,
@@ -361,14 +377,10 @@ export function LoginScreen({ onExistingUser, onNewUser, referralCode }: LoginSc
                     ? `Resend OTP in ${resendCountdown}s`
                     : 'Resend OTP'}
               </Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      </ScrollView>
+            )}
+          </TouchableOpacity>
+        )}
 
-      {/* Bottom-pinned region — keypad always visible; phone-phase shows
-          terms/privacy below it. Respects safe-area inset. */}
-      <View style={[styles.bottomPinned, { paddingBottom: insets.bottom + Theme.spacing.sm }]}>
         <View style={styles.keypadWrap}>
           {isPhonePhase ? (
             <NumberKeypad value={phone} onChange={setPhone} maxLength={10} />
@@ -468,8 +480,7 @@ const styles = StyleSheet.create({
     marginBottom: Theme.spacing.lg,
     paddingVertical: Theme.spacing.sm,
   },
-  // Centered mint text — replaces the previous boxed LOGIN | REGISTER button.
-  // Same color/weight/text but no border, no background, no shadow.
+  // Phone-phase brief loader slot while OTP is being sent.
   actionWrap: {
     width: '100%',
     alignItems: 'center',
@@ -477,19 +488,25 @@ const styles = StyleSheet.create({
     paddingVertical: Theme.spacing.md,
     minHeight: 52,
   },
-  actionText: {
-    color: Theme.colors.text.mint,
+  // OTP-phase inline error below the dots (FT-08 BF-43-ish — replaces the
+  // mismatch modal interrupt with a quiet inline hint).
+  otpError: {
     fontFamily: Theme.typography.fontFamily,
-    fontSize: Theme.typography.sizes.body + 3,
-    fontWeight: '600',
+    fontSize: Theme.typography.sizes.small + 2,
+    color: Theme.colors.status.error,
     textAlign: 'center',
-  },
-  actionTextDisabled: {
-    opacity: 0.4,
+    marginTop: -Theme.spacing.sm,
+    marginBottom: Theme.spacing.sm,
   },
   resendBtn: {
     paddingVertical: Theme.spacing.sm,
     paddingHorizontal: Theme.spacing.md,
+    alignItems: 'center',
+  },
+  resendInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   resendText: {
     fontFamily: Theme.typography.fontFamily,
