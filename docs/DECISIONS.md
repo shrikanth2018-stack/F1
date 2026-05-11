@@ -11,19 +11,25 @@
 
 **MF-03 (Classes A / B / C + punch list 12-14) closed 2026-05-11 via Tier 1 Flow 6 audit verification.** Code-level work shipped via 2026-05-05 Commits 1-5; today's audit confirmed live state matches. See `docs/AUDIT_admin_actions.md`. Two intentional gaps remain (F6.1 notification_templates not branch-scoped — defer to multi-branch launch; F6.2 referrals_self admin clause is is_admin() only — documented intentional).
 
-## Tier 1 audit ladder (in progress)
+## Tier 1 audit ladder — COMPLETE (8 / 8 flows closed 2026-05-11)
 
-Method: read-only per-flow audit → cross-check prod DB → match/gap matrix vs spec → immediate fixes for findings → per-flow audit doc in `docs/AUDIT_<flow>.md`. One flow per session, priority-ordered.
+Method: read-only per-flow audit → cross-check prod DB → match/gap matrix vs spec → immediate fixes for findings → per-flow audit doc in `docs/AUDIT_<flow>.md`.
 
-- ✅ **Flow 0 — Order generation + listing** — closed 2026-05-11 via BF-31.
-- ✅ **Flow 1 — Payments + wallet** — closed 2026-05-11 via BF-32. 3 deferred (F1.3 client idempotency header, F1.4 cleanup cron schedule, F1.5 cancel-refund admin signal).
-- ✅ **Flow 2 — Subscription lifecycle** — closed 2026-05-11 via BF-33. Spec D-01 (pause/skip extends duration) now matched in code.
-- ✅ **Flow 3 — One-off order lifecycle** — closed 2026-05-11 via BF-34. 2 deferred (F3.X cross-midnight cycle semantics, F3.Y kitchen_push_time +10min config).
-- ✅ **Flow 4 — Staff operations** — closed 2026-05-11 via BF-35. Push fan-out single-sourced via app code; admin templates honored. 3 deferred (F4.3 useRealtimeOrders midnight, F4.4 offline-queue order-of-failure, F4.5 offline replays skip push).
-- ✅ **Flow 5 — Driver + Hub delivery** — no code shipped; all paths validated in earlier flows. 2 deferred (F5.1 driver assignment lacks atomic RPC, F5.2 JWT refresh window for driver revocation).
-- ✅ **Flow 6 — Admin / Super-admin actions + MF-03 closure** — no code shipped; MF-03 Classes A/B/C + punch list 12-14 confirmed already closed by 2026-05-05 commits. 2 deferred (F6.1 templates per-branch, F6.2 referrals branch-scope intentional).
-- 🔜 **Flow 7 — Notifications + cron** — `kitchen_push`, dormant / wallet / expiry pushes, template fallbacks, push fan-out (largely already touched in Flow 4).
-- ⏳ **Flow 8 — Auth + branch routing** — OTP → JWT claims → role split → branch picker → push token registration (F4.2 token registration belongs here).
+- ✅ **Flow 0 — Order generation + listing** — BF-31.
+- ✅ **Flow 1 — Payments + wallet** — BF-32. F1.3 / F1.5 deferred (F1.4 closed via BF-36b in Flow 7).
+- ✅ **Flow 2 — Subscription lifecycle** — BF-33. Spec D-01 (pause/skip extends duration) now matched in code.
+- ✅ **Flow 3 — One-off order lifecycle** — BF-34. F3.X / F3.Y deferred.
+- ✅ **Flow 4 — Staff operations** — BF-35. Push fan-out single-sourced via app code; admin templates honored. F4.3 / F4.4 / F4.5 deferred. F4.2 closed in Flow 8 as not-a-bug.
+- ✅ **Flow 5 — Driver + Hub delivery** — no code shipped. F5.1 / F5.2 deferred.
+- ✅ **Flow 6 — Admin actions + MF-03 closure** — MF-03 Classes A/B/C confirmed closed. F6.1 / F6.2 deferred.
+- ✅ **Flow 7 — Notifications + cron** — BF-36 (low-wallet days_consumed + schedule idempotency cleanup cron). F7.2 deferred.
+- ✅ **Flow 8 — Auth + branch routing** — BF-37 (custom_access_token_hook file sync). F4.2 revisited and closed.
+
+**Bug fixes shipped in Tier 1: BF-31 → BF-37** (7 commits, all DB + edge function deploys verified live).
+
+**Net deferred findings (all post-launch FT candidates):** F1.3, F1.5, F3.X, F3.Y, F4.3, F4.4, F4.5, F5.1, F5.2, F6.1, F6.2, F7.2 — 12 items. Each is logged in its respective AUDIT_*.md with file:line + rationale.
+
+**Tier 2 (Jest backfill / MF-07) ready to begin** once user gives the go.
 
 ## Verification queue
 

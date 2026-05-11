@@ -52,8 +52,11 @@ All OTPs are `123456`.
 
 ## Today's queue (2026-05-11)
 
-1. **Tier 1 audit — Flow 1 (Payments + Wallet)** — kicks off after this commit.
-2. Future Tier 1 flows queued in `docs/DECISIONS.md` audit ladder.
+1. **Tier 1 audit — COMPLETE (8 / 8 flows).** BF-31 through BF-37 shipped + verified live. See `docs/DECISIONS.md` ladder for per-flow links + 12 deferred-FT items.
+2. Next phases (awaiting user direction):
+   - Phase B — FT-08 UX punch list (Shrikanth's reorder menu items + small UX tweaks).
+   - Phase C — MF-07 Tier 2 Jest backfill.
+   - V-06 persona regression (only remaining D-08 blocker).
 
 ## Pre-launch blockers (D-08 launch gate)
 
