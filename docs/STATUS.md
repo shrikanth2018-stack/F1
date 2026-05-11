@@ -9,6 +9,9 @@
 **Working tree:** clean.
 
 **Latest commits (HEAD-ward):**
+- `f58a4ab` fix(BF-40 + BF-41) + docs: close F7.2, F3.X, F4.5, F5.1 — 8 deferred → 4
+- `5de0de5` fix(BF-39) + chore(MF-08): close F1.5 + capture production-only objects into tracked SQL
+- `2e4c1d7` docs: refresh bring-up surface so a fresh CC session lands cold-ready
 - `d5c0b90` test(MF-07 Tier 2 batch 3): useStaffOrders + useOrders hook coverage (289 → 300 tests)
 - `35e3300` docs: Tier 2 closure — STATUS + DECISIONS updated for launch-ready state
 - `49b7edd` fix(BF-38) + test(MF-07 Tier 2 batch 2): hook tests + idempotency-key wallet topup + midnight realtime rollover
