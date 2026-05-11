@@ -2,18 +2,51 @@
 
 > Timeline of major milestones, shipped items, and architectural pivots. Append-only. Skim recent entries when researching "why does X work this way." Not exhaustive — read the relevant files for full detail. For open items see `docs/DECISIONS.md`. For working rules see `docs/RULES.md`.
 
-## 2026-05-11 — Tier 1 audit kickoff + BF-31
+## 2026-05-11 — Tier 1 + Tier 2 audit day (17 commits, 191 → 300 tests, 8 BFs)
 
-Order generation + listing audit (first Tier 1 flow). Two coupled silent defects, both invisible on the home screen because no UI displays `order_type`.
+Single working day that closed the launch-blocking audit work. Tier 1 (Flow-by-flow read-only audit + immediate fixes for findings, per-flow doc in `docs/AUDIT_*.md`) ran the full ladder. Tier 2 (Jest backfill, regression locks + hook coverage) ran end-to-end after Tier 1. Long-term-stability bias adopted and saved to `~/.claude/projects/-Users-shrikanthhegde/memory/` so future sessions don't re-litigate.
 
-**Commit:**
-- `10aa5fd` — **BF-31** — (a) `useStaffOrders` filters out subscription-purchase orders (every `order_items` row carries `item_type='subscription'`) so they don't surface in Kitchen / Packing / Hub Dash. They still appear on customer My Orders per XL spec rule (3). (b) `generate_daily_manifest` normalizes plural `subscription_plans.plan_type` (`'essentials'`) to singular `orders.order_type` (`'essential'`) at insert, mirroring the singular convention `place-order` already uses. Daily dispatch rows now match every existing UI filter. Files: `src/hooks/useStaffOrders.ts`, `supabase/sql/generate_daily_manifest.sql`.
+**Shipped fixes (8 BFs, all DB + edge function deploys verified live via `pg_get_functiondef` / `cron.job` queries / typecheck):**
 
-**SQL deployed live:** `generate_daily_manifest()` CREATE OR REPLACE.
+- `10aa5fd` — **BF-31** — Flow 0 order generation + listing. (a) `useStaffOrders` filters out subscription-purchase orders (every `order_items` row carrying `item_type='subscription'`) so they don't surface in Kitchen / Packing / Hub Dash. They still appear on customer My Orders per XL spec rule (3). (b) `generate_daily_manifest` normalizes plural `subscription_plans.plan_type` ('essentials') to singular `orders.order_type` ('essential') at insert, mirroring the singular convention `place-order` already uses. Verified live via 4 fresh dispatch rows. Files: `src/hooks/useStaffOrders.ts`, `supabase/sql/generate_daily_manifest.sql`.
+- `2fca7d5` — **BF-32** — Flow 1 payments + wallet. (a) `mark_order_paid` (Razorpay webhook path) now writes status='Confirmed' to match `confirm-order` — eliminates the dual-status race. (b) `wallet-topup` Edge fn reads correct column `min_wallet_topup` (was `wallet_min_topup`, never existed); admin's configured min is now enforced server-side again. Files: `supabase/sql/rpc_atomic_increments.sql`, `supabase/functions/wallet-topup/index.ts`.
+- `3711398` — **BF-33 / F2.1** — Flow 2 subscription lifecycle. Per Shrikanth's option (a) call: `generate_daily_manifest` calendar-window guard removed; end-of-life now driven only by `days_consumed >= duration_days`. Pause / skip / cron-outage extend the effective end date so all paid meals get delivered (D-01). `subscription-expiry-push` switched to delivery-count `daysLeft`. SubscriptionDetailScreen relabeled "N meals left" + pause copy explains the shift. Files: `supabase/sql/generate_daily_manifest.sql`, `supabase/functions/subscription-expiry-push/index.ts`, `src/screens/customer/SubscriptionDetailScreen.tsx`. Decision saved to long-term memory.
+- `032e816` — **BF-34** — Flow 3 one-off order lifecycle. (a) `admin_cancel_order_atomic` RPC mirroring BF-20's pattern — atomic deactivate + wallet refund + APPENDS reason to notes (was REPLACING, clobbering delivery instructions). Status guard rejects post-dispatch cancels. (b) Packing UI advances essentials Confirmed → Packed (essentials skip Kitchen entirely; pre-fix order 350 sat stuck at Confirmed for 5 days). Files: `supabase/sql/admin_cancel_order_atomic_rpc.sql` (new), `src/hooks/useAdminOrders.ts`, `src/screens/staff/StaffDashboard.tsx`. Backfill: order 350 → Cancelled (test data, no physical delivery).
+- `f752c2c` — **BF-35** — Flow 4 staff ops. (a) `send-push` Edge fn typo fix (`body: resolvedBody` → `body: msgBody`) — was a latent time-bomb on disk that would have broken all pushes on next deploy. (b) DB trigger `trg_order_status_push` + `_notify_order_status_push` dropped; was firing duplicate hardcoded pushes alongside app-code `resolveAndSendPush` calls AND bypassing admin's `notification_templates` overrides. Replacement push fan-outs: `confirm-order` adds `order.razorpay_confirmed` + `subscription.activated` pushes; `generate_daily_manifest` fires `order.confirmed` push per cron-generated dispatch via `pg_net` so daily sub reassurance push survives. Files: `supabase/functions/send-push/index.ts`, `supabase/sql/push_notifications.sql`, `supabase/functions/confirm-order/index.ts`, `supabase/sql/generate_daily_manifest.sql`.
+- `dcec18c` — **BF-36** — Flow 7 notifications + cron. (a) `low-wallet-check` switched to delivery-count `daysLeft` (was calendar; same fix shape as BF-33b for expiry push). (b) Scheduled the `expire-idempotency-keys` cron that `idempotency_keys.sql` declared but nobody had run. Files: `supabase/functions/low-wallet-check/index.ts` + one-off `cron.schedule()` SQL.
+- `6cc5c6b` — **BF-37** — Flow 8 auth + branch routing. `custom_access_token_hook.sql` tracked file was stale vs prod (missing `is_driver` claim, missing SECURITY DEFINER attribute, missing search_path). MF-08-class drift — would have lost drivers' "My Deliveries" entry on any DB rebuild from `supabase/sql/`. File rewritten to match deployed body. Files: `supabase/sql/custom_access_token_hook.sql`.
+- `49b7edd` — **BF-38** — Tier 2 deferred-finding closures. (a) `useWalletTopup` now sends Idempotency-Key header on each Edge fn invoke; double-tap or network-retry no longer creates a second pending Razorpay order. (b) `useRealtimeOrders` re-subscribes at IST midnight with a 5s safety margin; overnight dashboards roll over to the new day's filter. Files: `src/hooks/useWallet.ts`, `src/hooks/useRealtimeOrders.ts`.
 
-**Notes:**
-- Cron `kitchen-cutoff-push-tick` resumed firing after a ~5-day Supabase free-tier pause when the DB woke up for this session. Auto-fired orders 9440/9441 for today; manual run created 9442/9443 for tomorrow as verification. Sub 37 (food, Idli Vada 30 Days) and sub 39 (essentials, Newspaper 30 Days) both advanced.
-- Tier 1 audit plan adopted — eight flows queued, per-flow doc to land in `docs/`. Payments + wallet up next.
+**Tier 1 audit ladder (8 / 8 flows closed):** per-flow audit docs at `docs/AUDIT_payments_wallet.md`, `docs/AUDIT_subscription_lifecycle.md`, `docs/AUDIT_one_off_order_lifecycle.md`, `docs/AUDIT_staff_operations.md`, `docs/AUDIT_driver_hub_delivery.md`, `docs/AUDIT_admin_actions.md`, `docs/AUDIT_notifications_cron.md`, `docs/AUDIT_auth_branch_routing.md`. Each ends with a "Tier 2 targets" + "Deferred" section. 10 findings remain deferred — all post-launch FT, none block D-08. MF-03 Classes A / B / C verified closed live during Flow 6 (no code change needed; Commit 4 from 2026-05-05 + Class C from Commit 1 + punch list items 12-14 all already shipped).
+
+**Tier 2 Jest backfill (191 → 300 tests across 18 suites):**
+
+Decision: launch-final lock-in per Shrikanth (Option D from the four-option presentation — add `@testing-library/react-native` for hook tests, skip pgTAP / Deno test, rely on V-06 for SQL + Edge fn integration).
+
+- `84280cf` — **batch 1, 84 tests** — pure-logic regression locks. Three small testability extractions (each justified by test coverage, D-06 right-sized): `src/utils/orderFilters.ts` (`isOperationalOrder` for BF-31), `src/utils/packingFlow.ts` (`nextPackingStatus` for BF-34b), `src/utils/subscriptionMath.ts` (`subscriptionDaysRemaining` + `proratedSubscriptionRefund` for BF-33 + BF-21). Plus full coverage of the previously-untested `nextDeliveryStatus` state machine (52 tests).
+- `49b7edd` — **batch 2, 14 tests** — hook tests via `@testing-library/react-native` (added with `--legacy-peer-deps` to bypass a strict react-test-renderer peer pin). Shared `_helpers/queryClient.tsx` test wrapper. Coverage: useWallet (BF-38a Idempotency-Key header), useAdminOrders (BF-34a atomic cancel RPC + push fan-out), useSubscriptions (BF-20 + pause/skip RLS guards).
+- `d5c0b90` — **batch 3, 11 tests** — useStaffOrders hook-level integration (BF-31 sub-purchase exclusion + branch filter + hub filter), useOrders (useCancelOrder server-error surfacing + useConfirmOrder Razorpay payload contract).
+
+**Long-term memory saved** (loads automatically in future sessions) at `~/.claude/projects/-Users-shrikanthhegde/memory/`:
+- `feedback_long_term_stability_bias.md` — for 1stOne F1, lean foundational over minimum-diff; Shrikanth's attention shifts post-launch and silent integrity bugs compound when nobody's watching.
+- `project_f21_subscription_semantics.md` — F2.1 → option (a). Generation gated on days_consumed; pause/skip/cron-outage extend the effective end date.
+
+**Doc commits + non-fix entries (chronological):**
+
+- `519281a` — docs: day-end checkpoint 2026-05-11 + Tier 1 audit kickoff (closed 2026-05-05 + 2026-05-06 docs gap).
+- `d94b6d3` — docs(audit): Tier 1 Flow 2 — Subscription lifecycle (F2.1 design call surfaced).
+- `d10ede8` — docs(audit): Tier 1 Flow 5 — Driver + Hub delivery (no code; deferred F5.1 driver assignment atomic RPC + F5.2 JWT refresh window).
+- `1bce506` — docs(audit): Tier 1 Flow 6 — Admin actions + MF-03 closure confirmation.
+- `326a017` — docs: Tier 1 audit ladder closed — 8/8 flows shipped (BF-31 → BF-37).
+- `35e3300` — docs: Tier 2 closure — STATUS + DECISIONS updated for launch-ready state.
+
+**Side observations:**
+- Cron `kitchen-cutoff-push-tick` resumed firing after a ~5-day Supabase free-tier pause when the DB woke up for this session. Auto-fired orders 9440/9441 for today; manual run created 9442/9443 for tomorrow as Flow 0 verification.
+- Sub 39 (essentials, Newspaper 30 Days, start 2026-05-07) currently sits at days_consumed=2 with 4 deliveries lost during the cron pause. Per BF-33's days_consumed semantics, the customer's tail simply shifts forward — they still get 30 total deliveries.
+- send-push was deployed BEFORE the typo-introducing commit (`4e00d70`, 2026-04-25) on 2026-04-24; the typo was latent until BF-35a fixed it on disk + redeployed.
+- 0 rows in `push_notification_tokens` — token registration is wired but not exercised in this test environment (simulators + denied permissions). Real device install during V-06 will populate.
+
+**Net pre-launch state:** code-level work complete. V-06 persona regression + flag flip SQL are the only remaining D-08 items. After that, FT-08 UX punch list → Play Store → App Store.
 
 ## 2026-05-06 — v1.2.1 hotfixes, production AAB submitted
 
