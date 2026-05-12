@@ -148,32 +148,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = useCallback(async () => {
     // Best-effort: delete this device's push token row so the previous user
-    // doesn't keep receiving pushes after logout (shared-device case).
+    // doesn't keep receiving pushes after logout (shared-device case). Fired
+    // before supabase.auth.signOut() so the DELETE request goes out with the
+    // live JWT, but intentionally NOT awaited — the 3s Promise.race + the
+    // .catch keep the background work bounded and observable without blocking
+    // the sign-out path. On simulator / emulator without FCM or APNs,
+    // getExpoPushTokenAsync() never resolves; the previous awaited form
+    // stalled every sign-out for the full 3s window.
     if (session?.user.id && Device.isDevice) {
-      // Race the cleanup against a 3s timeout — a slow/dead network must not
-      // block the user from signing out.
-      try {
-        await Promise.race([
-          (async () => {
-            const projectId = Constants.expoConfig?.extra?.eas?.projectId;
-            const tokenData = await Notifications.getExpoPushTokenAsync(
-              projectId ? { projectId } : undefined,
-            );
-            if (tokenData.data) {
-              await supabase
-                .from('push_notification_tokens')
-                .delete()
-                .eq('user_id', session.user.id)
-                .eq('token', tokenData.data);
-            }
-          })(),
-          new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('push-token cleanup timed out')), 3000),
-          ),
-        ]);
-      } catch (e) {
-        console.warn('[useAuth] push token cleanup failed or timed out:', e);
-      }
+      const userId = session.user.id;
+      void Promise.race([
+        (async () => {
+          const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+          const tokenData = await Notifications.getExpoPushTokenAsync(
+            projectId ? { projectId } : undefined,
+          );
+          if (tokenData.data) {
+            await supabase
+              .from('push_notification_tokens')
+              .delete()
+              .eq('user_id', userId)
+              .eq('token', tokenData.data);
+          }
+        })(),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('push-token cleanup timed out')), 3000),
+        ),
+      ]).catch((e) => console.warn('[useAuth] push token cleanup failed or timed out:', e));
     }
 
     await supabase.auth.signOut();
