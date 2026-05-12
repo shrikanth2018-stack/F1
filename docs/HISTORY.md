@@ -2,6 +2,50 @@
 
 > Timeline of major milestones, shipped items, and architectural pivots. Append-only. Skim recent entries when researching "why does X work this way." Not exhaustive — read the relevant files for full detail. For open items see `docs/DECISIONS.md`. For working rules see `docs/RULES.md`.
 
+## 2026-05-12 — Address-owns-phone, hub history, customer export, Manage restructure (300 → 309 tests)
+
+Morning closed BF-43..49 (realtime auth attach + Hermes Date trap fixes) as discrete commits `7589da3` → `5d5376a`. The EOD push was consolidated into a single session-end commit `6b4da96`. See git log for the per-fix breakdown.
+
+**Shipped (in `6b4da96`):**
+
+- **BF — order-row Call icon "no phone" resolved.** `useStaffOrders` + `DriverDashboardScreen` queries now join `profiles(phone_number)`. `customer_addresses` had no phone column AND queries never fetched the profile relation; the per-row `address?.phone_number || order.profiles?.phone_number` fallback chain was always undefined. Files: `src/hooks/useStaffOrders.ts`, `src/screens/customer/DriverDashboardScreen.tsx`.
+
+- **FT — address-owns-phone foundation.** New `customer_addresses.phone_number TEXT` column + backfill from owner profile (all 6 existing rows populated). `complete_onboarding_atomic` RPC mirrors `p_phone_number` into the first address. `AddAddressScreen` prefills from `session.user.phone`, validates via `isValidIndianPhone`, normalizes via `normalizePhone`. Driver/staff/hub Call icon now resolves to the *receiver's* per-address phone first (login-phone fallback for legacy NULL). Pattern: standard meal-delivery model — Mom's place, office, gift drop, etc. Files: `supabase/sql/add_customer_addresses_phone_number.sql` (new tracked migration), `supabase/sql/complete_onboarding.sql`, `src/types/customer.ts`, `src/hooks/useAddresses.ts`, `src/screens/customer/AddAddressScreen.tsx`.
+
+- **FT — edit-address via dual-mode AddAddressScreen.** Added `route.params.addressId?` for edit mode. When set: prefills all fields from cached address row, skips GPS auto-fetch (preserves saved pin), title becomes "Edit Address", CTA "Save Changes ›". `is_default` untouched on edit. New `useUpdateAddress` hook. "Edit" link added to AddressesScreen row alongside Set default / Delete. Files: `src/hooks/useAddresses.ts` (`useUpdateAddress`), `src/navigation/types.ts`, `src/screens/customer/AddAddressScreen.tsx`, `src/screens/customer/AddressesScreen.tsx`.
+
+- **BF + FT — import flow correctness pass.** Three coordinated changes after live audit: (a) parser accepts singular/plural for plan_type (`food`/`foods`/`essential`/`essentials`) and preserves raw value otherwise; previously any non-essentials silently coerced to 'food', creating a wrongly-typed plan trap. (b) silent row drops surfaced — per-row tracking of skip reasons (cycle miss, type unrecognized, unresolved core item, empty core items), confirm modal lists first 5 + "and N more" before insert. Plans whole-row-rejected if any core item misses catalog (partial plan would shortchange subscribers). (c) `branch_id` written via `branchIdForWrite` — was NULL; would have silently broken for branch admins on D-08 flag flip. Discovered live that `branch_management_active = TRUE` on prod already, making this launch-gate-critical not future-proofing. Files: `src/utils/csvParsers.ts`, `src/screens/admin/ImportItemsScreen.tsx`.
+
+- **BF — order-row icons swapped to flat PNG circles.** Shrikanth provided a sprite (`~/Desktop/SC-Claude/Icons/PNG.png`, 4×6 grid). Cropped 4 cells (phone / compass / home / printer), flood-filled the opaque white+grey checkerboard to true transparency (manhattan threshold 220 — white/grey diff is ~165 — earlier 80 missed the bridge), tightly trimmed. Replaced Unicode-glyph icons (☎ ⊙ ⊞ ⊟) on staff Packing + `DeliveryOrderRow` (driver / hub / admin-live). Stripped the wrapper circle styling since the icons are self-contained colored circles. Size 40×40. Files: `assets/icons/{call,navigate,home,print}.png`, `src/components/DeliveryOrderRow.tsx`, `src/screens/staff/StaffDashboard.tsx`.
+
+- **FT — admin Customer Export screen (super-admin only).** Branch / hub / zone / status filter chips + toggleable column chips (6 ON by default: Full Name / Login Phone / Address Phone / Address / Hub / Zone; 9 OFF including aggregates). Aggregates (Total Orders / Active Subs / Last Order Date) opt-in; second query only fires when at least one is toggled. Status filter (active / dormant / all) computed via 30-day order recency + active sub. CSV via `expo-file-system + expo-sharing`. Filename: `customers_{branch}_{hub}_{zone}_{status}_{YYYYMMDD-HHMM}.csv`. Files: `src/utils/csvBuilder.ts` (new), `src/hooks/useCustomerExport.ts` (new), `src/screens/admin/CustomerExportScreen.tsx` (new), nav wiring. Scope-drift handled inline: profiles.branch_id has no FK to branches → fetch branches separately + client-side merge (flagged as future MF-08 cleanup).
+
+- **FT — hub-op order history tab on HubDashboardScreen.** Today | History tab toggle (pipe-separated, StaffDashboard pattern). History tab fetches last 100 orders for the hub op's `assignedHubId`, all statuses, ordered by `dispatch_date desc`. Pivot mid-build: initially used `DeliveryOrderRow` with a new `readOnly` prop; Shrikanth redirected to lighter rows (Order # + dispatch date + items summary + total) tappable into a new minimal `HubOrderHistoryDetailScreen` — no tracker, no Cancel, no Feedback, no Call/Map/Address buttons. Pure display. `readOnly` prop removed since unused (per "delete unused" rule). Files: `src/hooks/useHubOrderHistory.ts` (new), `src/screens/customer/HubOrderHistoryDetailScreen.tsx` (new), `src/screens/customer/HubDashboardScreen.tsx`, nav wiring.
+
+- **MF — admin Manage tab restructure.** Storm Mode moved from Operations Manager → Feature Flags screen (canonical source still `store_config.storm_mode_active`; UI relocated only, NOT per-branch as initially proposed — Shrikanth scaled back to keep operational simplicity). Manage Branches + Export Customers nested under Operations Manager → Super-Admin section (super-admin-gated, branch admins don't see). Standalone top-of-Manage `ManageBranchesRow` + `CustomerExportRow` removed. `BranchRow` (super-admin viewing-branch picker) untouched. Operations Manager itself stays visible to all admins. Files: `src/screens/admin/FeatureFlagsScreen.tsx`, `src/screens/admin/StoreConfigScreen.tsx` (removed `ToggleRow` + `Switch` import + `RED` const, added `DrillRow`), `src/screens/admin/AdminHome.tsx`.
+
+**One-off DB operations (live, not in commit):**
+- Cleared order/subscription/transaction/staff/log history (orders, order_items, user_subscriptions, cancelled_subscription_days, wallet_transactions, pending_wallet_topups, loyalty_redemptions, idempotency_keys, supply_order_items/batches/staff_order_requests, staff_attendance/leaves/salary, expense_claims, app_feedback, push_logs, kitchen_push_log, manifest_run_log). Wallets reset to ₹2000, loyalty 0 on all 9 profiles.
+- Sample-order backfill: 5 orders (IDs 10379–10383) for customer 555 / dispatch_date 2026-05-12. Status mix Preparing / Ready / Dispatched ×2 / On the Way. 4 hub-19 routed, 1 zone-direct.
+
+**Internal:**
+- `src/types/database.types.ts` regenerated (picked up new `phone_number` column).
+- Dropped dead `StoreConfig.branch_management_active` field — column was dropped from DB; only lives on `feature_flags` now. Discovered via tsc during EOD gate run.
+- `csvParsers.test.ts` updated — previously the test ENFORCED the silent-coerce-to-food bug ("defaults type to food for unknown / empty values"). New assertion: parser preserves raw lowercased value so the screen can flag the row.
+
+**Pivots noted (worth surfacing for future architectural calls):**
+- The address-owns-phone foundation sprang from a passing one-line side note ("standard meal-delivery pattern — receiver answers the door") in the BF call-icon fix. Shrikanth scope-expanded into the full feature. Saved as `feedback_flag_adjacent_patterns.md` long-term memory.
+- A flagged "peer screens have the same `branch_id` NULL bug" follow-on turned out to be false: hooks already correctly set `branchIdForWrite`; only the import screen bypassed hooks. Corrected the record same-session.
+- Initial Manage-restructure proposal made Operations Manager super-admin-only AND moved storm to per-branch; Shrikanth scaled both back to keep operational simplicity.
+
+**Build + release:**
+- HEAD = `6b4da96` on `main`, working tree clean.
+- Pipeline green at EOD: 309 / 309 tests across 19 suites; tsc clean.
+- EAS Android production build kicked off — build ID `7a948ef0-488d-49cc-bb2c-3f441718fe31`, v1.3.0, versionCode 13. Status "in queue" at session end. `eas submit --platform android --latest` pending green build.
+
+**Long-term memory saved:**
+- `feedback_flag_adjacent_patterns.md` — on bug fixes that touch a thin/awkward data model, flag the standard durable pattern in one line. Shrikanth scope-expands if right; if not, the bug fix stands alone.
+
 ## 2026-05-11 — Tier 1 + Tier 2 audit day (17 commits, 191 → 300 tests, 8 BFs)
 
 Single working day that closed the launch-blocking audit work. Tier 1 (Flow-by-flow read-only audit + immediate fixes for findings, per-flow doc in `docs/AUDIT_*.md`) ran the full ladder. Tier 2 (Jest backfill, regression locks + hook coverage) ran end-to-end after Tier 1. Long-term-stability bias adopted and saved to `~/.claude/projects/-Users-shrikanthhegde/memory/` so future sessions don't re-litigate.
