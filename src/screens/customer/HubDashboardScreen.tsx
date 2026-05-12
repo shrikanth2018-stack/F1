@@ -31,6 +31,7 @@ import { EmptyState } from '../../components/EmptyState';
 import { ErrorRetry } from '../../components/ErrorRetry';
 import { DeliveryOrderRow } from '../../components/DeliveryOrderRow';
 import { useStaffOrders, useUpdateOrderStatus } from '../../hooks/useStaffOrders';
+import { useRealtimeOrders } from '../../hooks/useRealtimeOrders';
 import { useStaffNoteForTab } from '../../hooks/useAdminNotes';
 import type { CustomerScreenProps } from '../../navigation/types';
 import type { OrderStatus } from '../../types';
@@ -40,6 +41,9 @@ export function HubDashboardScreen({ navigation }: CustomerScreenProps<'HubDashb
   const { mutateAsync: updateStatus, isPending: isUpdating } = useUpdateOrderStatus();
   // Hub-specific + broadcast notes from admin
   const { data: notes = [] } = useStaffNoteForTab('hub');
+  // Realtime: invalidate cache on any order change so freshly-dispatched
+  // orders appear without pull-to-refresh.
+  useRealtimeOrders(true);
 
   const handleAdvanceStatus = async (
     orderId: number,

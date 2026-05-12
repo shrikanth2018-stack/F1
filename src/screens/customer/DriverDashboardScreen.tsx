@@ -29,6 +29,7 @@ import { ErrorRetry } from '../../components/ErrorRetry';
 import { DeliveryOrderRow } from '../../components/DeliveryOrderRow';
 import { useAuth } from '../../hooks/useAuth';
 import { useUpdateOrderStatus } from '../../hooks/useStaffOrders';
+import { useRealtimeOrders } from '../../hooks/useRealtimeOrders';
 import { supabase } from '../../api/supabaseClient';
 import type { CustomerScreenProps } from '../../navigation/types';
 import type { OrderStatus } from '../../types';
@@ -41,6 +42,8 @@ export function DriverDashboardScreen({ navigation }: CustomerScreenProps<'Drive
   const today = new Date().toISOString().split('T')[0];
 
   const { mutateAsync: updateStatus, isPending: isUpdating } = useUpdateOrderStatus();
+  // Realtime: refresh when an order is dispatched / advances through hub handoff.
+  useRealtimeOrders(true);
 
   const { data: orders = [], isLoading, isRefetching, error, refetch } = useQuery({
     queryKey: ['driver_orders', userId, today],

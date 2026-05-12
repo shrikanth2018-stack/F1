@@ -10,10 +10,10 @@
  * Zero new queries — piggybacks on the existing useStaffOrders cache.
  */
 
-import { useEffect } from 'react';
+import { useEffect, useId } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../api/supabaseClient';
-import { QUERY_KEYS } from '../utils/constants';
+import { invalidateOrderQueries } from '../api/invalidateOrderQueries';
 
 /** Returns today's IST date as YYYY-MM-DD. DST-safe; never mid-day-rolls. */
 function todayIST(): string {
@@ -22,6 +22,9 @@ function todayIST(): string {
 
 export function useRealtimeOrders(enabled = true) {
   const queryClient = useQueryClient();
+  // Unique per mount — prevents channel-name collisions when this hook
+  // is mounted concurrently in dev (HMR) or by sibling screens.
+  const instanceId = useId();
 
   useEffect(() => {
     if (!enabled) return;
@@ -36,7 +39,7 @@ export function useRealtimeOrders(enabled = true) {
     const subscribe = () => {
       const today = todayIST();
       channel = supabase
-        .channel(`staff-orders-realtime-${today}`)
+        .channel(`orders-realtime-${today}-${instanceId}`)
         .on(
           'postgres_changes',
           {
@@ -46,7 +49,12 @@ export function useRealtimeOrders(enabled = true) {
             filter: `dispatch_date=eq.${today}`,
           },
           () => {
-            queryClient.invalidateQueries({ queryKey: QUERY_KEYS.STAFF_ORDERS });
+            // BF-44 (2026-05-12): invalidate every order-reading cache key,
+            // not just STAFF_ORDERS. Hub Dash uses STAFF_ORDERS (covered by
+            // prefix match) but Driver Dash uses ['driver_orders', ...] —
+            // previously bypassed. invalidateOrderQueries is the canonical
+            // "order-changed" cache buster shared with order mutations.
+            invalidateOrderQueries(queryClient);
           },
         )
         .subscribe();
@@ -60,7 +68,7 @@ export function useRealtimeOrders(enabled = true) {
       rolloverTimer = setTimeout(() => {
         if (channel) supabase.removeChannel(channel);
         // Also invalidate so the React Query cache resets to today's data.
-        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.STAFF_ORDERS });
+        invalidateOrderQueries(queryClient);
         subscribe();
       }, msUntilMidnight);
     };
@@ -71,5 +79,5 @@ export function useRealtimeOrders(enabled = true) {
       if (rolloverTimer) clearTimeout(rolloverTimer);
       if (channel) supabase.removeChannel(channel);
     };
-  }, [enabled, queryClient]);
+  }, [enabled, queryClient, instanceId]);
 }
