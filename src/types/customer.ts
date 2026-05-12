@@ -3,6 +3,7 @@ export interface CustomerAddress {
   user_id: string;
   label: string;
   full_name: string;
+  phone_number: string | null;
   address_line: string;
   landmark: string | null;
   city: string | null;

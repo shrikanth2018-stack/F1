@@ -26,10 +26,10 @@ import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { ThemedInput } from '../../components/ThemedInput';
 import { PinMap } from '../../components/PinMap';
-import { useAddAddress } from '../../hooks/useAddresses';
+import { useAddAddress, useUpdateAddress, useAddresses } from '../../hooks/useAddresses';
 import { useAuth } from '../../hooks/useAuth';
 import { useFeatureFlag } from '../../hooks/useFeatureFlag';
-import { isNonEmpty } from '../../utils/validators';
+import { isNonEmpty, isValidIndianPhone, normalizePhone } from '../../utils/validators';
 import { checkZone, pointInPolygon, ZoneCheckResult } from '../../utils/serviceability';
 import { supabase } from '../../api/supabaseClient';
 
@@ -38,12 +38,16 @@ type LabelType = typeof LABELS[number];
 
 interface Props {
   navigation?: any;
+  route?: { params?: { addressId?: number } };
   onComplete?: () => void;
 }
 
-export function AddAddressScreen({ navigation, onComplete }: Props) {
+export function AddAddressScreen({ navigation, route, onComplete }: Props) {
+  const editingId = route?.params?.addressId;
+  const isEditMode = editingId != null;
   const [label, setLabel] = useState<LabelType>('Home');
   const [fullName, setFullName] = useState('');
+  const [phone, setPhone] = useState('');
   const [addressLine, setAddressLine] = useState('');
   const [landmark, setLandmark] = useState('');
   const [city, setCity] = useState('');
@@ -52,7 +56,13 @@ export function AddAddressScreen({ navigation, onComplete }: Props) {
   const [locating, setLocating] = useState(false);
   const [zoneResult, setZoneResult] = useState<ZoneCheckResult | null>(null);
 
-  const { mutateAsync: addAddress, isPending } = useAddAddress();
+  const { mutateAsync: addAddress, isPending: isAdding } = useAddAddress();
+  const { mutateAsync: updateAddress, isPending: isUpdating } = useUpdateAddress();
+  const isPending = isAdding || isUpdating;
+  const { data: existingAddresses } = useAddresses();
+  const editingAddress = isEditMode
+    ? existingAddresses?.find((a) => a.id === editingId)
+    : undefined;
   const { session } = useAuth();
   const hubDeliveryActive = useFeatureFlag('hub_delivery_active');
 
@@ -87,9 +97,33 @@ export function AddAddressScreen({ navigation, onComplete }: Props) {
     await runChecks(lat, lng);
   };
 
+  // Edit mode: prefill all fields from the existing address row.
+  // Add mode: prefill phone only, from the login phone.
+  useEffect(() => {
+    if (isEditMode && editingAddress) {
+      if (LABELS.includes(editingAddress.label as LabelType)) {
+        setLabel(editingAddress.label as LabelType);
+      }
+      setFullName(editingAddress.full_name ?? '');
+      setPhone(editingAddress.phone_number ?? session?.user.phone ?? '');
+      setAddressLine(editingAddress.address_line ?? '');
+      setLandmark(editingAddress.landmark ?? '');
+      setCity(editingAddress.city ?? '');
+      if (editingAddress.latitude != null && editingAddress.longitude != null) {
+        setLatitude(editingAddress.latitude);
+        setLongitude(editingAddress.longitude);
+        runChecks(editingAddress.latitude, editingAddress.longitude);
+      }
+    } else if (!isEditMode && !phone && session?.user.phone) {
+      setPhone(session.user.phone);
+    }
+  }, [isEditMode, editingAddress?.id, session?.user.phone]);
+
   // Auto-fetch GPS on mount so the map opens centered on user's current spot.
   // Silent failure: if permission denied, user can still tap the map manually.
+  // Skip in edit mode — we're showing the address's saved pin, not a fresh GPS lock.
   useEffect(() => {
+    if (isEditMode) return;
     let cancelled = false;
     (async () => {
       try {
@@ -109,11 +143,15 @@ export function AddAddressScreen({ navigation, onComplete }: Props) {
       }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [isEditMode]);
 
   const handleAdd = async () => {
     if (!isNonEmpty(fullName)) {
       Alert.alert('Required', 'Please enter full name');
+      return;
+    }
+    if (!isValidIndianPhone(phone)) {
+      Alert.alert('Required', 'Please enter a valid 10-digit phone number for this address');
       return;
     }
     if (!isNonEmpty(addressLine)) {
@@ -160,24 +198,10 @@ export function AddAddressScreen({ navigation, onComplete }: Props) {
         hubId = matchingHub?.id ?? null;
       }
 
-      // Only auto-mark as default if this is the user's first active
-      // address. Otherwise leave default unchanged so they can pick via
-      // the "Set default" toggle on AddressesScreen — the partial unique
-      // index would reject a second default anyway.
-      let isFirstAddress = true;
-      const userId = session?.user.id;
-      if (userId) {
-        const { count } = await supabase
-          .from('customer_addresses')
-          .select('*', { count: 'exact', head: true })
-          .eq('user_id', userId)
-          .eq('is_active', true);
-        isFirstAddress = (count ?? 0) === 0;
-      }
-
-      await addAddress({
+      const basePayload = {
         label,
         full_name: fullName.trim(),
+        phone_number: normalizePhone(phone),
         address_line: addressLine.trim(),
         landmark: landmark.trim() || undefined,
         city: city.trim() || undefined,
@@ -186,8 +210,28 @@ export function AddAddressScreen({ navigation, onComplete }: Props) {
         zone_id: zoneResult?.zoneId ?? null,
         hub_id: hubId,
         is_serviceable: zoneResult?.result === 'serviceable',
-        is_default: isFirstAddress,
-      });
+      };
+
+      if (isEditMode && editingId != null) {
+        // Edit mode: update in place, leave is_default untouched.
+        await updateAddress({ id: editingId, ...basePayload });
+      } else {
+        // Add mode: only auto-mark as default if this is the user's first active
+        // address. Otherwise leave default unchanged so they can pick via
+        // the "Set default" toggle on AddressesScreen — the partial unique
+        // index would reject a second default anyway.
+        let isFirstAddress = true;
+        const userId = session?.user.id;
+        if (userId) {
+          const { count } = await supabase
+            .from('customer_addresses')
+            .select('*', { count: 'exact', head: true })
+            .eq('user_id', userId)
+            .eq('is_active', true);
+          isFirstAddress = (count ?? 0) === 0;
+        }
+        await addAddress({ ...basePayload, is_default: isFirstAddress });
+      }
 
       if (onComplete) {
         onComplete();
@@ -217,7 +261,7 @@ export function AddAddressScreen({ navigation, onComplete }: Props) {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
-          <ThemedText variant="header" color="primary">Add Address</ThemedText>
+          <ThemedText variant="header" color="primary">{isEditMode ? 'Edit Address' : 'Add Address'}</ThemedText>
           <TouchableOpacity onPress={() => onComplete ? onComplete() : navigation?.goBack()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
             <ThemedText variant="body" color="muted">Close</ThemedText>
           </TouchableOpacity>
@@ -277,6 +321,13 @@ export function AddAddressScreen({ navigation, onComplete }: Props) {
         <View style={styles.hairline} />
 
         <ThemedInput mode="underline" placeholder="Full name" value={fullName} onChangeText={setFullName} />
+        <ThemedInput
+          mode="underline"
+          placeholder="Phone for delivery (10 digits)"
+          value={phone}
+          onChangeText={setPhone}
+          keyboardType="phone-pad"
+        />
         <ThemedInput mode="underline" placeholder="Building, street, area" value={addressLine} onChangeText={setAddressLine} multiline />
         <ThemedInput mode="underline" placeholder="Landmark (optional)" value={landmark} onChangeText={setLandmark} />
         <ThemedInput mode="underline" placeholder="City (optional)" value={city} onChangeText={setCity} />
@@ -291,7 +342,7 @@ export function AddAddressScreen({ navigation, onComplete }: Props) {
         >
           {isPending
             ? <ActivityIndicator color={Theme.colors.text.mint} size="small" />
-            : <ThemedText variant="subtitle" color="mint">Add Address  ›</ThemedText>
+            : <ThemedText variant="subtitle" color="mint">{isEditMode ? 'Save Changes  ›' : 'Add Address  ›'}</ThemedText>
           }
         </TouchableOpacity>
       </ScrollView>

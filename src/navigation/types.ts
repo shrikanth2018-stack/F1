@@ -44,6 +44,7 @@ export type AdminStackParamList = {
   StoreConfig: undefined;
   FeatureFlags: undefined;
   BranchesManage: undefined;
+  CustomerExport: undefined;
 };
 
 export type AdminScreenProps<T extends keyof AdminStackParamList> =
@@ -61,7 +62,7 @@ export type CustomerStackParamList = {
   Checkout: { cartType: 'food' | 'essentials'; subscriptionPlanId?: number };
   OrderDetail: { orderId: number };
   Addresses: undefined;
-  AddAddress: undefined;
+  AddAddress: { addressId?: number } | undefined;
   PlanDetail: { planId: number };
   SubscriptionDetail: { subscriptionId: number };
   Wallet: undefined;
@@ -71,6 +72,7 @@ export type CustomerStackParamList = {
   Plans: { initialTab?: 'food' | 'essentials' } | undefined;
   LoyaltyPoints: undefined;
   HubDashboard: undefined;
+  HubOrderHistoryDetail: { orderId: number };
   DriverDashboard: undefined;
 };
 

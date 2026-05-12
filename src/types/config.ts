@@ -5,7 +5,6 @@ export interface StoreConfig {
   cancellation_window_hours: number;
   storm_mode_active: boolean;
   essentials_module_active: boolean;
-  branch_management_active: boolean;
   hub_delivery_active: boolean;
   loyalty_points_per_rupee: number;
   min_wallet_topup: number;

@@ -48,20 +48,6 @@ function AdminRow(props: React.ComponentProps<typeof SettingsRow>) {
   return <SettingsRow {...props} labelSize={MR} />;
 }
 
-// ── Manage Branches Row — super-admin CRUD entry (FT-04) ─
-function ManageBranchesRow() {
-  const navigation = useNavigation<any>();
-  const bf = useBranchFilter();
-  if (!bf.isSuperAdmin) return null;
-  return (
-    <AdminRow
-      label="Manage Branches"
-      showChevron
-      onPress={() => navigation.navigate('BranchesManage')}
-    />
-  );
-}
-
 // ── Branch Row — settings-style row inside Manage tab ───
 function BranchRow() {
   const { data: branches } = useBranches();
@@ -180,6 +166,7 @@ type ManageRowDef = { label: string; screen: string };
 
 const SUPER_ADMIN_MANAGE_ROWS: ManageRowDef[] = [
   { label: 'Manage Branches', screen: 'BranchesManage' },
+  { label: 'Export Customers', screen: 'CustomerExport' },
 ];
 
 const ALL_MANAGE_ROWS: ManageRowDef[] = [
@@ -249,8 +236,8 @@ function ManageTab() {
         )
       ) : (
         <>
-          {/* BRANCH — both rows visible to super-admins only */}
-          <ManageBranchesRow />
+          {/* BRANCH — super-admin's branch picker (Manage Branches + Export
+              Customers live inside Operations Manager → super-admin section) */}
           <BranchRow />
           <AdminRow label="Manage Running Orders" showChevron onPress={() => navigation.navigate('AdminOrders')} />
           <AdminRow label="Manage Running Subscriptions" showChevron onPress={() => navigation.navigate('AdminSubscriptions')} />

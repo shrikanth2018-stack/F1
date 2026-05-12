@@ -211,21 +211,32 @@ describe('parsePlansCsv', () => {
     ]);
   });
 
-  it('defaults type to "food" for unknown / empty values', () => {
+  it('passes unknown / empty type through as raw lowercased value (screen flags as error)', () => {
+    // Previously: any non-essentials value silently coerced to 'food', which
+    // turned an "essential" (singular) typo into a wrongly-classified food
+    // plan. Parser now preserves the raw value so the import screen surfaces
+    // it as a per-row error.
     const csv =
       'Plan Name,Cycle,Type,Days,Price,Core,Savings\n' +
       'P1,Breakfast,,30,1000,X:1,0\n' +
       'P2,Breakfast,gibberish,30,1000,X:1,0';
     const rows = parsePlansCsv(csv);
-    expect(rows[0]?.type).toBe('food');
-    expect(rows[1]?.type).toBe('food');
+    expect(rows[0]?.type).toBe('');
+    expect(rows[1]?.type).toBe('gibberish');
   });
 
-  it('detects "essentials" type case-insensitively', () => {
+  it('accepts singular essential, plural essentials, and food/foods — case-insensitive', () => {
     const csv =
       'Plan Name,Cycle,Type,Days,Price,Core,Savings\n' +
-      'P1,Morning,ESSENTIALS,30,1000,Milk:1,0';
-    expect(parsePlansCsv(csv)[0]?.type).toBe('essentials');
+      'P1,Morning,ESSENTIALS,30,1000,Milk:1,0\n' +
+      'P2,Morning,essential,30,1000,Milk:1,0\n' +
+      'P3,Breakfast,foods,30,1000,X:1,0\n' +
+      'P4,Breakfast,Food,30,1000,X:1,0';
+    const rows = parsePlansCsv(csv);
+    expect(rows[0]?.type).toBe('essentials');
+    expect(rows[1]?.type).toBe('essentials');
+    expect(rows[2]?.type).toBe('food');
+    expect(rows[3]?.type).toBe('food');
   });
 
   it('defaults duration_days to 30 when invalid', () => {

@@ -18,16 +18,17 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { useFeatureFlags } from '../../hooks/useFeatureFlag';
-import { useUpdateFeatureFlag } from '../../hooks/useStaffManagement';
+import { useUpdateFeatureFlag, useUpdateStoreConfig } from '../../hooks/useStaffManagement';
+import { useStoreConfig } from '../../hooks/useStoreConfig';
 import type { AdminNavProp } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
 
-// Flags removed from product — hide from UI even if rows exist in DB
-// storm_mode_active is hidden here — its canonical surface is the toggle in
-// Operations Manager (StoreConfig). Both surfaces write to the same source of
-// truth; showing it twice invites operator confusion.
+// Flags removed from product — hide from UI even if rows exist in DB.
+// storm_mode_active is surfaced separately at the top of this screen as a
+// dedicated section (canonical source: store_config.storm_mode_active), so
+// the feature_flags row itself stays hidden to avoid two-toggle confusion.
 const HIDDEN_FLAGS = new Set(['loyalty_program', 'route_pdf_generation', 'storm_mode_active']);
 
 // Flags wired in app code — show as active toggles.
@@ -37,6 +38,28 @@ const FLAG_NOTES: Record<string, string> = {};
 export function FeatureFlagsScreen({ navigation }: { navigation: AdminNavProp }) {
   const { data: flags = [], isLoading } = useFeatureFlags();
   const updateFlag = useUpdateFeatureFlag();
+  const { data: storeConfig } = useStoreConfig();
+  const updateStoreConfig = useUpdateStoreConfig();
+  const stormActive = storeConfig?.storm_mode_active === true;
+
+  const handleStormToggle = (next: boolean) => {
+    if (next) {
+      Alert.alert(
+        '⚠ Enable Storm Mode?',
+        'This will pause all new orders immediately. Existing orders continue processing.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Enable',
+            style: 'destructive',
+            onPress: () => updateStoreConfig.mutate({ storm_mode_active: true }),
+          },
+        ],
+      );
+    } else {
+      updateStoreConfig.mutate({ storm_mode_active: false });
+    }
+  };
 
   const handleToggle = (flag: any) => {
     const apply = (value: boolean) => updateFlag.mutate(
@@ -82,6 +105,34 @@ export function FeatureFlagsScreen({ navigation }: { navigation: AdminNavProp })
           data={flags.filter((f: any) => !HIDDEN_FLAGS.has(f.flag_key))}
           keyExtractor={(f: any) => String(f.id)}
           contentContainerStyle={{ paddingBottom: Theme.spacing.xl * 2 }}
+          ListHeaderComponent={
+            <View>
+              <ThemedText variant="small" color="muted" style={styles.sectionLabel}>EMERGENCY</ThemedText>
+              <View style={[styles.flagRow, styles.flagBorder]}>
+                <View style={{ flex: 1 }}>
+                  <ThemedText
+                    variant="body"
+                    color="primary"
+                    style={{ fontSize: B, color: Theme.colors.status.error }}
+                  >
+                    ⚠ Storm Mode
+                  </ThemedText>
+                  <ThemedText variant="small" color="muted" style={{ fontSize: S, marginTop: 2 }}>
+                    {stormActive ? 'All new orders are paused' : 'Pause all new orders instantly'}
+                  </ThemedText>
+                </View>
+                <Switch
+                  value={stormActive}
+                  onValueChange={handleStormToggle}
+                  trackColor={{
+                    true: Theme.colors.status.error,
+                    false: Theme.colors.background.tertiary,
+                  }}
+                />
+              </View>
+              <ThemedText variant="small" color="muted" style={styles.sectionLabel}>FEATURE FLAGS</ThemedText>
+            </View>
+          }
           ListEmptyComponent={
             <ThemedText variant="body" color="muted" style={styles.empty}>
               No feature flags configured
@@ -146,5 +197,13 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: Theme.spacing.xl,
     paddingHorizontal: Theme.spacing.lg,
+  },
+
+  sectionLabel: {
+    fontSize: Theme.typography.sizes.small,
+    letterSpacing: 0.5,
+    paddingHorizontal: Theme.spacing.md,
+    paddingTop: Theme.spacing.md,
+    paddingBottom: Theme.spacing.sm,
   },
 });

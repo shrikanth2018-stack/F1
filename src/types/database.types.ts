@@ -336,6 +336,7 @@ export type Database = {
           landmark: string | null
           latitude: number | null
           longitude: number | null
+          phone_number: string | null
           pincode: string | null
           updated_at: string | null
           user_id: string | null
@@ -357,6 +358,7 @@ export type Database = {
           landmark?: string | null
           latitude?: number | null
           longitude?: number | null
+          phone_number?: string | null
           pincode?: string | null
           updated_at?: string | null
           user_id?: string | null
@@ -378,6 +380,7 @@ export type Database = {
           landmark?: string | null
           latitude?: number | null
           longitude?: number | null
+          phone_number?: string | null
           pincode?: string | null
           updated_at?: string | null
           user_id?: string | null
@@ -1222,6 +1225,7 @@ export type Database = {
           exit_date: string | null
           full_name: string | null
           id: string
+          is_super_admin: boolean
           joining_date: string | null
           loyalty_points: number | null
           monthly_salary: number | null
@@ -1243,6 +1247,7 @@ export type Database = {
           exit_date?: string | null
           full_name?: string | null
           id: string
+          is_super_admin?: boolean
           joining_date?: string | null
           loyalty_points?: number | null
           monthly_salary?: number | null
@@ -1264,6 +1269,7 @@ export type Database = {
           exit_date?: string | null
           full_name?: string | null
           id?: string
+          is_super_admin?: boolean
           joining_date?: string | null
           loyalty_points?: number | null
           monthly_salary?: number | null
@@ -1756,7 +1762,6 @@ export type Database = {
       }
       store_config: {
         Row: {
-          branch_management_active: boolean | null
           cancellation_window_hours: number | null
           created_at: string | null
           delivery_fee: number | null
@@ -1773,7 +1778,6 @@ export type Database = {
           winback_inactive_days: number | null
         }
         Insert: {
-          branch_management_active?: boolean | null
           cancellation_window_hours?: number | null
           created_at?: string | null
           delivery_fee?: number | null
@@ -1790,7 +1794,6 @@ export type Database = {
           winback_inactive_days?: number | null
         }
         Update: {
-          branch_management_active?: boolean | null
           cancellation_window_hours?: number | null
           created_at?: string | null
           delivery_fee?: number | null
@@ -2165,6 +2168,10 @@ export type Database = {
         }
         Returns: number
       }
+      admin_cancel_order_atomic: {
+        Args: { p_order_id: number; p_reason?: string; p_refund_amount: number }
+        Returns: Json
+      }
       admin_cancel_subscription_atomic: {
         Args: { p_refund_amount: number; p_subscription_id: number }
         Returns: Json
@@ -2185,18 +2192,18 @@ export type Database = {
       complete_onboarding_atomic: {
         Args: {
           p_address_line: string
-          p_city: string
+          p_city?: string
           p_full_name: string
-          p_hub_id: number
-          p_is_serviceable: boolean
+          p_hub_id?: number
+          p_is_serviceable?: boolean
           p_label: string
-          p_landmark: string
-          p_latitude: number
-          p_longitude: number
+          p_landmark?: string
+          p_latitude?: number
+          p_longitude?: number
           p_phone_number: string
-          p_pincode: string
+          p_pincode?: string
           p_user_id: string
-          p_zone_id: number
+          p_zone_id?: number
         }
         Returns: number
       }
@@ -2252,6 +2259,7 @@ export type Database = {
         }[]
       }
       get_server_time: { Args: never; Returns: string }
+      has_branch_access: { Args: { row_branch_id: number }; Returns: boolean }
       increment_loyalty_points: {
         Args: { p_points: number; p_user_id: string }
         Returns: undefined
@@ -2303,7 +2311,15 @@ export type Database = {
         Args: { p_cycle_id: number; p_target_date?: string }
         Returns: Json
       }
+      set_employee_designation: {
+        Args: { new_designation: string; target_id: string }
+        Returns: undefined
+      }
       trigger_kitchen_cutoff_pushes: { Args: never; Returns: undefined }
+      update_employee_profile: {
+        Args: { target_id: string; updates: Json }
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never

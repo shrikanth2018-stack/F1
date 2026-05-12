@@ -62,7 +62,8 @@ export function useStaffOrders(cycleId?: number) {
         .select(`
           *,
           order_items(*),
-          customer_addresses(*, delivery_zones(driver_code, zone_name), delivery_hubs(driver_code, hub_name))
+          customer_addresses(*, delivery_zones(driver_code, zone_name), delivery_hubs(driver_code, hub_name)),
+          profiles(phone_number)
         `)
         .eq('dispatch_date', today)
         .order('created_at', { ascending: false });

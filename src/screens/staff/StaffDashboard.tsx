@@ -40,6 +40,11 @@ import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Print from 'expo-print';
 import { Theme } from '../../theme';
+
+const PACKING_ICONS = {
+  call: require('../../../assets/icons/call.png'),
+  print: require('../../../assets/icons/print.png'),
+};
 import { ThemedText } from '../../components/ThemedText';
 import { Divider } from '../../components/Divider';
 import { EmptyState } from '../../components/EmptyState';
@@ -847,13 +852,13 @@ export function StaffDashboard() {
 
         <View style={styles.orderRowIcons}>
           <TouchableOpacity style={styles.circleIcon} onPress={() => handleCall(phone)}>
-            <Text style={styles.circleIconText}>☎</Text>
+            <Image source={PACKING_ICONS.call} style={styles.circleIconImg} />
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.circleIcon}
             onPress={() => handlePrintOrderLabel(item)}
           >
-            <Text style={styles.circleIconText}>⊟</Text>
+            <Image source={PACKING_ICONS.print} style={styles.circleIconImg} />
           </TouchableOpacity>
         </View>
       </View>
@@ -1161,18 +1166,15 @@ const styles = StyleSheet.create({
     marginTop: Theme.spacing.xs,
   },
   circleIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: Theme.colors.background.secondary,
-    borderWidth: 1,
-    borderColor: Theme.colors.layout.divider,
+    width: 40,
+    height: 40,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  circleIconText: {
-    fontSize: 13,
-    color: Theme.colors.text.accent,
+  circleIconImg: {
+    width: 40,
+    height: 40,
+    resizeMode: 'contain',
   },
 
   // Floating bar above footer

@@ -12,7 +12,6 @@ import {
   View,
   ScrollView,
   TextInput,
-  Switch,
   TouchableOpacity,
   Alert,
   StyleSheet,
@@ -24,11 +23,11 @@ import { ThemedText } from '../../components/ThemedText';
 import { Divider } from '../../components/Divider';
 import { useStoreConfig } from '../../hooks/useStoreConfig';
 import { useUpdateStoreConfig } from '../../hooks/useStaffManagement';
+import { useBranchFilter } from '../../hooks/useBranchFilter';
 import type { AdminNavProp } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
-const RED = Theme.colors.status.error;
 
 // ── Flat inline field: label left, plain input right ─────
 function Field({
@@ -70,59 +69,27 @@ function Field({
   );
 }
 
-// ── Flat toggle row ──────────────────────────────────────
-function ToggleRow({
+// ── Flat drill-down row (chevron, navigates on press) ────
+function DrillRow({
   label,
-  hint,
-  value,
-  onValueChange,
-  danger = false,
+  onPress,
   last = false,
 }: {
   label: string;
-  hint?: string;
-  value: boolean;
-  onValueChange: (v: boolean) => void;
-  danger?: boolean;
+  onPress: () => void;
   last?: boolean;
 }) {
   return (
-    <View style={[styles.fieldRow, !last && styles.fieldBorder]}>
-      <View style={{ flex: 1 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          {danger && value && (
-            <ThemedText variant="body" color="muted" style={{ fontSize: B, color: RED }}>
-              ⚠
-            </ThemedText>
-          )}
-          <ThemedText
-            variant="body"
-            color="primary"
-            style={[{ fontSize: B }, danger && { color: RED }]}
-          >
-            {label}
-          </ThemedText>
-        </View>
-        {hint ? (
-          <ThemedText
-            variant="small"
-            color="muted"
-            style={[{ fontSize: S, marginTop: 2 }, danger && value && { color: RED }]}
-          >
-            {hint}
-          </ThemedText>
-        ) : null}
-      </View>
-      <Switch
-        value={value}
-        onValueChange={onValueChange}
-        trackColor={{
-          true: danger ? RED : Theme.colors.status.success,
-          false: Theme.colors.background.tertiary,
-        }}
-        thumbColor={danger && value ? RED : undefined}
-      />
-    </View>
+    <TouchableOpacity
+      style={[styles.fieldRow, !last && styles.fieldBorder]}
+      onPress={onPress}
+      activeOpacity={0.6}
+    >
+      <ThemedText variant="body" color="primary" style={{ flex: 1, fontSize: B }}>
+        {label}
+      </ThemedText>
+      <ThemedText variant="body" color="muted" style={{ fontSize: B }}>›</ThemedText>
+    </TouchableOpacity>
   );
 }
 
@@ -144,13 +111,14 @@ export function StoreConfigScreen({ navigation }: { navigation: AdminNavProp }) 
   const { data: config, isLoading } = useStoreConfig();
   const updateConfig = useUpdateStoreConfig();
 
+  const branchFilter = useBranchFilter();
+
   const [taxRate, setTaxRate] = useState('');
   const [deliveryFee, setDeliveryFee] = useState('');
   const [cancelWindow, setCancelWindow] = useState('');
   const [minTopup, setMinTopup] = useState('');
   const [loyaltyRate, setLoyaltyRate] = useState('');
   const [whatsappNum, setWhatsappNum] = useState('');
-  const [stormMode, setStormMode] = useState(false);
 
   useEffect(() => {
     if (config) {
@@ -160,7 +128,6 @@ export function StoreConfigScreen({ navigation }: { navigation: AdminNavProp }) 
       setMinTopup(String(config.min_wallet_topup));
       setLoyaltyRate(String(config.loyalty_points_per_rupee));
       setWhatsappNum(config.whatsapp_support_number ?? '');
-      setStormMode(config.storm_mode_active);
     }
   }, [config]);
 
@@ -173,25 +140,9 @@ export function StoreConfigScreen({ navigation }: { navigation: AdminNavProp }) 
         min_wallet_topup: parseFloat(minTopup) || 100,
         loyalty_points_per_rupee: parseFloat(loyaltyRate) || 0.1,
         whatsapp_support_number: whatsappNum || null,
-        storm_mode_active: stormMode,
       },
       { onSuccess: () => Alert.alert('Saved', 'Operations config updated.') },
     );
-  };
-
-  const handleStormToggle = (next: boolean) => {
-    if (next) {
-      Alert.alert(
-        '⚠ Enable Storm Mode?',
-        'This will pause all new orders immediately. Existing orders continue processing.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Enable', style: 'destructive', onPress: () => setStormMode(true) },
-        ],
-      );
-    } else {
-      setStormMode(false);
-    }
   };
 
   if (isLoading) {
@@ -254,20 +205,24 @@ export function StoreConfigScreen({ navigation }: { navigation: AdminNavProp }) 
           <Field label="WhatsApp Number" value={whatsappNum} onChangeText={setWhatsappNum} keyboardType="phone-pad" last />
         </View>
 
-        <Divider />
-
-        {/* EMERGENCY */}
-        <SectionLabel title="Emergency" />
-        <View style={styles.group}>
-          <ToggleRow
-            label="Storm Mode"
-            hint={stormMode ? 'All new orders are paused' : 'Pause all new orders instantly'}
-            value={stormMode}
-            onValueChange={handleStormToggle}
-            danger
-            last
-          />
-        </View>
+        {/* SUPER-ADMIN — branches CRUD + customer export, only visible to super-admin */}
+        {branchFilter.isSuperAdmin && (
+          <>
+            <Divider />
+            <SectionLabel title="Super-Admin" />
+            <View style={styles.group}>
+              <DrillRow
+                label="Manage Branches"
+                onPress={() => navigation.navigate('BranchesManage')}
+              />
+              <DrillRow
+                label="Export Customers"
+                onPress={() => navigation.navigate('CustomerExport')}
+                last
+              />
+            </View>
+          </>
+        )}
 
       </ScrollView>
 

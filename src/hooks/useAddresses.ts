@@ -30,6 +30,7 @@ export function useAddresses() {
 interface AddAddressPayload {
   label: string;
   full_name: string;
+  phone_number: string;
   address_line: string;
   landmark?: string;
   city?: string;
@@ -51,6 +52,24 @@ export function useAddAddress() {
         ...payload,
         user_id: session?.user.id,
       }),
+    [QUERY_KEYS.ADDRESSES as unknown as string[]]
+  );
+}
+
+interface UpdateAddressPayload extends AddAddressPayload {
+  id: number;
+}
+
+export function useUpdateAddress() {
+  const { session } = useAuth();
+
+  return useSupabaseMutation<UpdateAddressPayload>(
+    ({ id, ...patch }) =>
+      supabase
+        .from('customer_addresses')
+        .update(patch)
+        .eq('id', id)
+        .eq('user_id', session?.user.id ?? ''),
     [QUERY_KEYS.ADDRESSES as unknown as string[]]
   );
 }

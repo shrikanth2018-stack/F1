@@ -79,12 +79,18 @@ export function AddressesScreen({ navigation }: any) {
             {isSettingDefault ? (
               <ActivityIndicator size="small" color={Theme.colors.text.muted} />
             ) : (
-              <ThemedText variant="small" color="muted" style={styles.setDefaultText}>
+              <ThemedText variant="small" color="muted">
                 Set default
               </ThemedText>
             )}
           </TouchableOpacity>
         )}
+        <TouchableOpacity
+          onPress={() => navigation.navigate('AddAddress', { addressId: item.id })}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <ThemedText variant="small" color="mint">Edit</ThemedText>
+        </TouchableOpacity>
         {canDelete && (
           <TouchableOpacity
             onPress={() => handleDelete(item.id)}
@@ -165,7 +171,6 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   defaultLabel: { fontWeight: '500' },
-  setDefaultText: { textDecorationLine: 'underline' },
   deleteBtn: { marginTop: 2 },
   deleteText: { color: Theme.colors.status.error },
   addBtn: {

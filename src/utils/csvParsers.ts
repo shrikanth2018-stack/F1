@@ -66,7 +66,10 @@ export type EssentialRow = {
 export type PlanRow = {
   name: string;
   cycle_name: string;
-  type: 'food' | 'essentials';
+  // 'food' / 'essentials' when recognized; otherwise the raw lowercased
+  // value from the CSV so the import screen can surface it as a per-row
+  // error ("type 'meal' not recognized") instead of silently coercing.
+  type: 'food' | 'essentials' | string;
   duration_days: number;
   price: number;
   core_items: Array<{ name: string; quantity: number }>;
@@ -130,10 +133,20 @@ export function parsePlansCsv(text: string): PlanRow[] {
     .filter(Boolean)
     .map((line) => {
       const [name, cycle_name, type, daysStr, priceStr, coreItemsRaw, savingsStr] = splitCsvLine(line);
+      const rawType = (type ?? '').trim().toLowerCase();
+      // Accept both forms: food/foods → 'food', essential/essentials → 'essentials'.
+      // Anything else: keep the raw value so the screen can flag the row instead
+      // of silently coercing to 'food' (which used to swallow "essential" typos).
+      const normalizedType =
+        rawType === 'food' || rawType === 'foods'
+          ? 'food'
+          : rawType === 'essential' || rawType === 'essentials'
+            ? 'essentials'
+            : rawType;
       return {
         name: name?.trim() ?? '',
         cycle_name: cycle_name?.trim() ?? '',
-        type: type?.trim().toLowerCase() === 'essentials' ? ('essentials' as const) : ('food' as const),
+        type: normalizedType,
         duration_days: parseInt(daysStr ?? '', 10) || 30,
         price: parseFloat(priceStr ?? '') || 0,
         core_items: parseCoreItems(coreItemsRaw ?? ''),

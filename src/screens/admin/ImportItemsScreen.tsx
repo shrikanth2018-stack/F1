@@ -28,6 +28,7 @@ import { ThemedText } from '../../components/ThemedText';
 import { supabase } from '../../api/supabaseClient';
 import { useAllDeliveryCycles, useAllMenuItems } from '../../hooks/useMenuManagement';
 import { useEssentialsCatalog } from '../../hooks/useEssentials';
+import { useBranchFilter } from '../../hooks/useBranchFilter';
 import {
   parseMenuCsv,
   parseEssentialsCsv,
@@ -95,6 +96,7 @@ export function ImportItemsScreen({ navigation, route }: AdminScreenProps<'Impor
   const isPlans = type === 'plans';
 
   const queryClient = useQueryClient();
+  const branchFilter = useBranchFilter();
   const { data: cycles = [] } = useAllDeliveryCycles();
   // Menu + essentials only fetched when building the Plans template (needed for Core Items example lookup).
   const { data: menuItems = [] } = useAllMenuItems();
@@ -163,113 +165,138 @@ export function ImportItemsScreen({ navigation, route }: AdminScreenProps<'Impor
   };
 
   // ── Bulk insert ────────────────────────────────────────
-  const handleImport = async () => {
-    if (!parsedRows?.length) return;
-    setImporting(true);
-    try {
-      if (isMenu) {
-        const rows = parsedRows as MenuRow[];
-        // Build cycle_name → id map
-        const cycleMap: Record<string, number> = {};
-        for (const c of cycles) {
-          cycleMap[(c as any).cycle_name?.toLowerCase()] = (c as any).id;
-        }
+  // Two phases:
+  //  1. Build validated records + collect per-row skip reasons (cycle miss,
+  //     unknown plan type, unresolved plan core item).
+  //  2. If anything was skipped, confirm with the user before inserting.
+  //     If everything was skipped, abort.
+  type Skip = { row: number; reason: string };
 
-        const records = rows.map((r) => ({
+  const buildRecords = (): { records: any[]; skipped: Skip[]; table: string; queryKeys: string[][] } => {
+    const cycleMap: Record<string, number> = {};
+    for (const c of cycles) {
+      cycleMap[(c as any).cycle_name?.toLowerCase()] = (c as any).id;
+    }
+    const writeBranchId = branchFilter.branchIdForWrite;
+    const skipped: Skip[] = [];
+
+    if (isMenu) {
+      const rows = parsedRows as MenuRow[];
+      const records: any[] = [];
+      rows.forEach((r, i) => {
+        const csvRow = i + 2; // header is row 1
+        const cycle_id = cycleMap[r.cycle_name.toLowerCase()];
+        if (cycle_id == null) {
+          skipped.push({ row: csvRow, reason: `cycle "${r.cycle_name}" not recognized` });
+          return;
+        }
+        records.push({
           name: r.name,
-          cycle_id: cycleMap[r.cycle_name.toLowerCase()] ?? null,
+          cycle_id,
           ingredients: r.ingredients || null,
           price: r.price,
           is_active: true,
           sort_order: 0,
-        })).filter((r) => r.cycle_id !== null);
+          branch_id: writeBranchId,
+        });
+      });
+      return { records, skipped, table: 'menu_items', queryKeys: [['admin_menu_items'], ['menuItems']] };
+    }
 
-        if (!records.length) {
-          Alert.alert('No matching cycles', 'None of the cycle names matched existing delivery cycles.');
-          setImporting(false);
-          return;
-        }
-
-        const { error } = await supabase.from('menu_items').insert(records);
-        if (error) throw error;
-        queryClient.invalidateQueries({ queryKey: ['admin_menu_items'] });
-        queryClient.invalidateQueries({ queryKey: ['menuItems'] });
-      } else if (isPlans) {
-        const rows = parsedRows as PlanRow[];
-        const cycleMap: Record<string, number> = {};
-        for (const c of cycles) {
-          cycleMap[(c as any).cycle_name?.toLowerCase()] = (c as any).id;
-        }
-        // Build item-name → id maps per catalog, for resolving Core Items.
-        const menuMap: Record<string, { id: number; name: string }> = {};
-        for (const m of menuItems as AnyItem[]) {
-          if (m.name) menuMap[m.name.toLowerCase()] = { id: m.id, name: m.name };
-        }
-        const essMap: Record<string, { id: number; name: string }> = {};
-        for (const e of essItems as AnyItem[]) {
-          if (e.name) essMap[e.name.toLowerCase()] = { id: e.id, name: e.name };
-        }
-
-        const records = rows
-          .map((r) => {
-            const cycle_id = cycleMap[r.cycle_name.toLowerCase()] ?? null;
-            const catalog = r.type === 'essentials' ? essMap : menuMap;
-            const resolvedItems = r.core_items
-              .map((ci) => {
-                const hit = catalog[ci.name.toLowerCase()];
-                return hit ? { item_id: hit.id, item_name: hit.name, quantity: ci.quantity } : null;
-              })
-              .filter((x): x is { item_id: number; item_name: string; quantity: number } => x !== null);
-            return {
-              plan_name: r.name,
-              cycle_id,
-              plan_type: r.type,
-              duration_days: r.duration_days,
-              price: r.price,
-              plan_items: JSON.stringify(resolvedItems),
-              savings_amount: r.savings_amount,
-              is_active: true,
-            };
-          })
-          .filter((r) => r.cycle_id !== null);
-
-        if (!records.length) {
-          Alert.alert('No matching cycles', 'None of the cycle names matched existing delivery cycles.');
-          setImporting(false);
-          return;
-        }
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { error } = await supabase.from('subscription_plans').insert(records as any);
-        if (error) throw error;
-        queryClient.invalidateQueries({ queryKey: ['admin_plans'] });
-      } else {
-        const rows = parsedRows as EssentialRow[];
-        const cycleMap: Record<string, number> = {};
-        for (const c of cycles) {
-          cycleMap[(c as any).cycle_name?.toLowerCase()] = (c as any).id;
-        }
-        const records = rows
-          .map((r) => ({
-            name: r.name,
-            cycle_id: cycleMap[r.cycle_name.toLowerCase()] ?? null,
-            price: r.price,
-            unit: r.unit || null,
-            is_active: true,
-          }))
-          .filter((r) => r.cycle_id !== null);
-        if (!records.length) {
-          Alert.alert('No matching cycles', 'None of the cycle names matched existing delivery cycles.');
-          setImporting(false);
-          return;
-        }
-        const { error } = await supabase.from('essentials_catalog').insert(records);
-        if (error) throw error;
-        queryClient.invalidateQueries({ queryKey: ['admin_essentials'] });
+    if (isPlans) {
+      const rows = parsedRows as PlanRow[];
+      const menuLookup: Record<string, { id: number; name: string }> = {};
+      for (const m of menuItems as AnyItem[]) {
+        if (m.name) menuLookup[m.name.toLowerCase()] = { id: m.id, name: m.name };
+      }
+      const essLookup: Record<string, { id: number; name: string }> = {};
+      for (const e of essItems as AnyItem[]) {
+        if (e.name) essLookup[e.name.toLowerCase()] = { id: e.id, name: e.name };
       }
 
+      const records: any[] = [];
+      rows.forEach((r, i) => {
+        const csvRow = i + 2;
+        const cycle_id = cycleMap[r.cycle_name.toLowerCase()];
+        if (cycle_id == null) {
+          skipped.push({ row: csvRow, reason: `cycle "${r.cycle_name}" not recognized` });
+          return;
+        }
+        if (r.type !== 'food' && r.type !== 'essentials') {
+          skipped.push({ row: csvRow, reason: `type "${r.type}" not recognized — use food or essentials` });
+          return;
+        }
+        const catalog = r.type === 'essentials' ? essLookup : menuLookup;
+        const missing: string[] = [];
+        const resolvedItems: Array<{ item_id: number; item_name: string; quantity: number }> = [];
+        for (const ci of r.core_items) {
+          const hit = catalog[ci.name.toLowerCase()];
+          if (hit) {
+            resolvedItems.push({ item_id: hit.id, item_name: hit.name, quantity: ci.quantity });
+          } else {
+            missing.push(ci.name);
+          }
+        }
+        if (missing.length > 0) {
+          // Whole-row reject: a partial plan would shortchange the subscriber.
+          skipped.push({
+            row: csvRow,
+            reason: `${missing.length} ${r.type} item${missing.length !== 1 ? 's' : ''} not in catalog: ${missing.join(', ')}`,
+          });
+          return;
+        }
+        if (resolvedItems.length === 0) {
+          skipped.push({ row: csvRow, reason: 'no core items specified' });
+          return;
+        }
+        records.push({
+          plan_name: r.name,
+          cycle_id,
+          plan_type: r.type,
+          duration_days: r.duration_days,
+          price: r.price,
+          plan_items: JSON.stringify(resolvedItems),
+          savings_amount: r.savings_amount,
+          is_active: true,
+          branch_id: writeBranchId,
+        });
+      });
+      return { records, skipped, table: 'subscription_plans', queryKeys: [['admin_plans']] };
+    }
+
+    // Essentials catalog
+    const rows = parsedRows as EssentialRow[];
+    const records: any[] = [];
+    rows.forEach((r, i) => {
+      const csvRow = i + 2;
+      const cycle_id = cycleMap[r.cycle_name.toLowerCase()];
+      if (cycle_id == null) {
+        skipped.push({ row: csvRow, reason: `cycle "${r.cycle_name}" not recognized` });
+        return;
+      }
+      records.push({
+        name: r.name,
+        cycle_id,
+        price: r.price,
+        unit: r.unit || null,
+        is_active: true,
+        branch_id: writeBranchId,
+      });
+    });
+    return { records, skipped, table: 'essentials_catalog', queryKeys: [['admin_essentials']] };
+  };
+
+  const performInsert = async (records: any[], table: string, queryKeys: string[][]) => {
+    try {
+      // PostgREST .from() expects a literal table-name union; runtime table is
+      // one of the three import targets, all valid. Cast keeps the helper generic.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error } = await (supabase.from(table as any) as any).insert(records as any);
+      if (error) throw error;
+      queryKeys.forEach((qk) => queryClient.invalidateQueries({ queryKey: qk }));
       Alert.alert(
         'Import complete',
-        `${parsedRows.length} item${parsedRows.length !== 1 ? 's' : ''} imported.`,
+        `${records.length} item${records.length !== 1 ? 's' : ''} imported.`,
         [{ text: 'OK', onPress: () => navigation.goBack() }]
       );
     } catch (err: any) {
@@ -277,6 +304,39 @@ export function ImportItemsScreen({ navigation, route }: AdminScreenProps<'Impor
     } finally {
       setImporting(false);
     }
+  };
+
+  const handleImport = async () => {
+    if (!parsedRows?.length) return;
+    setImporting(true);
+
+    const { records, skipped, table, queryKeys } = buildRecords();
+
+    if (skipped.length === 0) {
+      await performInsert(records, table, queryKeys);
+      return;
+    }
+
+    const head = skipped.slice(0, 5).map((s) => `Row ${s.row}: ${s.reason}`).join('\n');
+    const tail = skipped.length > 5 ? `\n…and ${skipped.length - 5} more` : '';
+
+    if (records.length === 0) {
+      Alert.alert(
+        'Nothing to import',
+        `All ${skipped.length} row${skipped.length !== 1 ? 's' : ''} had issues:\n\n${head}${tail}\n\nFix your CSV and try again.`,
+      );
+      setImporting(false);
+      return;
+    }
+
+    Alert.alert(
+      `Skip ${skipped.length} row${skipped.length !== 1 ? 's' : ''}?`,
+      `${head}${tail}\n\nImport the ${records.length} valid row${records.length !== 1 ? 's' : ''} and skip the rest?`,
+      [
+        { text: 'Cancel', style: 'cancel', onPress: () => setImporting(false) },
+        { text: `Import ${records.length}`, onPress: () => performInsert(records, table, queryKeys) },
+      ]
+    );
   };
 
   const title = isMenu ? 'Import Menu Items' : isPlans ? 'Import Plans' : 'Import Essentials';

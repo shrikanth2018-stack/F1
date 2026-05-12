@@ -67,7 +67,8 @@ export function DriverDashboardScreen({ navigation }: CustomerScreenProps<'Drive
         .select(`
           *,
           order_items(*),
-          customer_addresses(*)
+          customer_addresses(*),
+          profiles(phone_number)
         `)
         .eq('dispatch_date', today)
         .in('status', ACTIVE_DELIVERY_STATUSES)

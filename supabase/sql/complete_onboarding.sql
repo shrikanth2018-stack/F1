@@ -82,12 +82,14 @@ BEGIN
         branch_id = EXCLUDED.branch_id;
 
   -- Insert the first delivery address. is_default = TRUE
-  -- since this is the user's only address.
+  -- since this is the user's only address. phone_number is
+  -- mirrored from p_phone_number — the customer can change it
+  -- per-address later via AddAddressScreen.
   INSERT INTO customer_addresses (
-    user_id, label, full_name, address_line, landmark, city, pincode,
+    user_id, label, full_name, phone_number, address_line, landmark, city, pincode,
     latitude, longitude, zone_id, hub_id, is_serviceable, is_default, branch_id
   ) VALUES (
-    p_user_id, p_label, p_full_name, p_address_line, p_landmark, p_city, p_pincode,
+    p_user_id, p_label, p_full_name, p_phone_number, p_address_line, p_landmark, p_city, p_pincode,
     p_latitude, p_longitude, p_zone_id, p_hub_id, p_is_serviceable, TRUE, v_branch_id
   )
   RETURNING id INTO v_address_id;

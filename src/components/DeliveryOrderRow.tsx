@@ -15,8 +15,14 @@
  */
 
 import React from 'react';
-import { View, Text, TouchableOpacity, Alert, Linking, StyleSheet } from 'react-native';
+import { View, Text, Image, TouchableOpacity, Alert, Linking, StyleSheet } from 'react-native';
 import { Theme } from '../theme';
+
+const ICONS = {
+  call: require('../../assets/icons/call.png'),
+  navigate: require('../../assets/icons/navigate.png'),
+  home: require('../../assets/icons/home.png'),
+};
 import { ThemedText } from './ThemedText';
 import { nextDeliveryStatus, type AdvancePersona } from '../utils/deliveryStatus';
 import type { OrderStatus } from '../types';
@@ -159,13 +165,13 @@ export function DeliveryOrderRow({
 
       <View style={styles.iconsRow}>
         <TouchableOpacity style={styles.iconBtn} onPress={handleCall} accessibilityLabel="Call customer">
-          <Text style={styles.iconText}>☎</Text>
+          <Image source={ICONS.call} style={styles.iconImg} />
         </TouchableOpacity>
         <TouchableOpacity style={styles.iconBtn} onPress={handleMap} accessibilityLabel="Open in maps">
-          <Text style={styles.iconText}>⊙</Text>
+          <Image source={ICONS.navigate} style={styles.iconImg} />
         </TouchableOpacity>
         <TouchableOpacity style={styles.iconBtn} onPress={handleShowAddress} accessibilityLabel="Show full address">
-          <Text style={styles.iconText}>⊞</Text>
+          <Image source={ICONS.home} style={styles.iconImg} />
         </TouchableOpacity>
       </View>
     </View>
@@ -208,17 +214,14 @@ const styles = StyleSheet.create({
     marginTop: Theme.spacing.xs,
   },
   iconBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: Theme.colors.background.secondary,
-    borderWidth: 1,
-    borderColor: Theme.colors.layout.divider,
+    width: 40,
+    height: 40,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  iconText: {
-    fontSize: 13,
-    color: Theme.colors.text.accent,
+  iconImg: {
+    width: 40,
+    height: 40,
+    resizeMode: 'contain',
   },
 });
