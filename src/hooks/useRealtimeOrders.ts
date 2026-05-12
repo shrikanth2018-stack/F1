@@ -6,11 +6,16 @@
  * invalidates the staff_orders React Query cache so the
  * kitchen / packing / delivery views refresh instantly.
  *
- * Designed to be called once inside StaffDashboard.
- * Zero new queries — piggybacks on the existing useStaffOrders cache.
+ * Mounted by StaffDashboard, AdminHome, HubDashboardScreen,
+ * DriverDashboardScreen. Zero new queries — piggybacks on
+ * the existing order-reading caches via invalidateOrderQueries.
+ *
+ * Auth attach: the Realtime client's JWT is kept current in
+ * `useAuth` (onAuthStateChange + the initial getSession path).
+ * No per-subscriber setAuth here — see CLAUDE.md.
  */
 
-import { useEffect, useId } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../api/supabaseClient';
 import { invalidateOrderQueries } from '../api/invalidateOrderQueries';
@@ -20,19 +25,37 @@ function todayIST(): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
 }
 
+/**
+ * Milliseconds from `now` until the next IST midnight, plus a 5s margin.
+ *
+ * Implemented with UTC arithmetic. Do not use
+ *   `new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }))`
+ * — Hermes returns Invalid Date for that format, the delay becomes NaN,
+ * and `setTimeout(fn, NaN)` is coerced to 0, causing the rollover to fire
+ * immediately and the hook to recurse into a tight subscribe loop. See
+ * CLAUDE.md for the longer note.
+ */
+function msUntilNextIstMidnight(now: Date): number {
+  const IST_OFFSET_MIN = 330; // IST = UTC+5:30
+  const istWallMs = now.getTime() + IST_OFFSET_MIN * 60_000;
+  const istWall = new Date(istWallMs);
+  const nextIstMidnightUtcMs =
+    Date.UTC(istWall.getUTCFullYear(), istWall.getUTCMonth(), istWall.getUTCDate() + 1)
+    - IST_OFFSET_MIN * 60_000;
+  return nextIstMidnightUtcMs + 5_000 - now.getTime();
+}
+
 export function useRealtimeOrders(enabled = true) {
   const queryClient = useQueryClient();
-  // Unique per mount — prevents channel-name collisions when this hook
-  // is mounted concurrently in dev (HMR) or by sibling screens.
-  const instanceId = useId();
+  // Alphanumeric per-mount suffix prevents channel-name collisions when
+  // sibling screens or HMR mount the hook in the same render pass.
+  // (React's useId() returns `:r4:` with colons, which historically
+  // tripped Realtime topic parsers — kept off-limits here.)
+  const instanceId = useMemo(() => Math.random().toString(36).slice(2, 10), []);
 
   useEffect(() => {
     if (!enabled) return;
 
-    // BF-38b (F4.3): rebuild subscription at midnight so a dashboard left
-    // open overnight starts receiving the new day's orders. Without this,
-    // `today` was captured once at mount and the filter pointed at the
-    // previous day forever.
     let channel: ReturnType<typeof supabase.channel> | null = null;
     let rolloverTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -49,28 +72,23 @@ export function useRealtimeOrders(enabled = true) {
             filter: `dispatch_date=eq.${today}`,
           },
           () => {
-            // BF-44 (2026-05-12): invalidate every order-reading cache key,
-            // not just STAFF_ORDERS. Hub Dash uses STAFF_ORDERS (covered by
-            // prefix match) but Driver Dash uses ['driver_orders', ...] —
-            // previously bypassed. invalidateOrderQueries is the canonical
-            // "order-changed" cache buster shared with order mutations.
+            // Invalidate every order-reading cache key so Staff / Hub /
+            // Driver / Admin views all refetch off the same realtime tick.
             invalidateOrderQueries(queryClient);
           },
         )
         .subscribe();
 
-      // Schedule re-subscribe at next IST midnight (+ a 5s safety margin).
-      const now = new Date();
-      const istNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
-      const istMidnight = new Date(istNow);
-      istMidnight.setHours(24, 0, 5, 0);
-      const msUntilMidnight = istMidnight.getTime() - istNow.getTime();
+      // Re-subscribe at next IST midnight (+ 5s margin) so a dashboard
+      // left open across midnight starts receiving the new day's orders.
+      // Critical for cross-midnight cycles (cutoff_time > delivery_start
+      // in delivery_cycles) — those create orders with dispatch_date=tomorrow,
+      // which today's channel filter wouldn't surface.
       rolloverTimer = setTimeout(() => {
         if (channel) supabase.removeChannel(channel);
-        // Also invalidate so the React Query cache resets to today's data.
         invalidateOrderQueries(queryClient);
         subscribe();
-      }, msUntilMidnight);
+      }, msUntilNextIstMidnight(new Date()));
     };
 
     subscribe();

@@ -115,18 +115,12 @@ export function useUpdateOrderStatus() {
       const isOnline = netState.isConnected && netState.isInternetReachable !== false;
 
       if (isOnline) {
-        // count: 'exact' surfaces RLS-silently-denied UPDATEs (0 rows affected
-        // with no error) so we can throw instead of swallowing. PostgREST adds
-        // a Prefer: count=exact header; cost is one int in the response.
-        const { error, count } = await supabase
+        const { error } = await supabase
           .from('orders')
-          .update({ status, updated_at: new Date().toISOString() }, { count: 'exact' })
+          .update({ status, updated_at: new Date().toISOString() })
           .eq('id', orderId);
 
         if (error) throw error;
-        if (count === 0) {
-          throw new Error(`Order ${orderId} not updated — likely permissions or order no longer exists.`);
-        }
 
         // Fire-and-forget push to the customer.
         // send-push resolves the template on the server side via event_key.

@@ -114,6 +114,12 @@ Templates are admin-editable per `event_key` with `{{variable}}` substitution. M
 ### Storm mode
 Dual-control kill switch (`store_config` column + `feature_flags` row, either true → orders rejected).
 
+### Realtime auth attach (centralized)
+`supabase.realtime.setAuth(token)` is called from exactly one place — `useAuth`'s `onAuthStateChange` listener, plus the initial `getSession()` path on app boot. Never replicate this per-subscriber. Without a current JWT attached to the Realtime client, any channel subscribed shortly after sign-in joins as anon, RLS rejects it, and supabase-js auto-reconnects into a tight CLOSED/subscribe loop (visible as a sign-out stall of several seconds as the loop drains, plus zero events delivered). New code that calls `supabase.channel(...).subscribe()` should just subscribe — the auth attach is already handled upstream.
+
+### Hermes Date-parsing trap
+Do not write `new Date(d.toLocaleString('en-US', { timeZone: ... }))` anywhere in the RN bundle. Hermes returns Invalid Date for the locale string format, so any downstream `.getTime()` is NaN, which silently propagates into `setTimeout(fn, NaN)` → coerced to 0 → immediate fire → infinite loop if the callback re-schedules itself. For timezone-aware date math use UTC arithmetic and `Date.UTC(...)`, or `Intl.DateTimeFormat('en-CA', { timeZone })` purely as a `YYYY-MM-DD` formatter (never a parse source).
+
 ### Known production-only objects (MF-08)
 The following live only on production, not in tracked `supabase/sql/`:
 

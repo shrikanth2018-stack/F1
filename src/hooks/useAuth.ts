@@ -82,10 +82,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Initial session check (reads JWT from AsyncStorage)
+    // Initial session check (reads JWT from AsyncStorage). Also attach
+    // the token to the Realtime client up-front so a channel subscribed
+    // in the same render pass as a restored session doesn't race the
+    // onAuthStateChange listener below.
     supabase.auth.getSession()
       .then(({ data: { session: existingSession } }) => {
         setSession(extractRole(existingSession));
+        supabase.realtime.setAuth(existingSession?.access_token ?? null);
       })
       .catch(() => {
         setSession(null);
@@ -94,10 +98,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setIsLoading(false);
       });
 
-    // Listen for auth state changes (token refresh, sign out)
+    // Listen for auth state changes (token refresh, sign out).
+    // Also keep the Realtime client's auth in lockstep — without this, any
+    // channel subscribed shortly after sign-in (e.g. useRealtimeOrders on
+    // StaffDashboard) joins as anon, gets rejected by RLS, and triggers
+    // supabase-js's auto-reconnect into a tight CLOSED/subscribe loop in
+    // React Native. Setting auth here, once, covers every current and
+    // future Realtime subscriber.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, newSession) => {
         setSession(extractRole(newSession));
+        supabase.realtime.setAuth(newSession?.access_token ?? null);
       }
     );
 
@@ -148,33 +159,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = useCallback(async () => {
     // Best-effort: delete this device's push token row so the previous user
-    // doesn't keep receiving pushes after logout (shared-device case). Fired
-    // before supabase.auth.signOut() so the DELETE request goes out with the
-    // live JWT, but intentionally NOT awaited — the 3s Promise.race + the
-    // .catch keep the background work bounded and observable without blocking
-    // the sign-out path. On simulator / emulator without FCM or APNs,
-    // getExpoPushTokenAsync() never resolves; the previous awaited form
-    // stalled every sign-out for the full 3s window.
+    // doesn't keep receiving pushes after logout (shared-device case).
     if (session?.user.id && Device.isDevice) {
-      const userId = session.user.id;
-      void Promise.race([
-        (async () => {
-          const projectId = Constants.expoConfig?.extra?.eas?.projectId;
-          const tokenData = await Notifications.getExpoPushTokenAsync(
-            projectId ? { projectId } : undefined,
-          );
-          if (tokenData.data) {
-            await supabase
-              .from('push_notification_tokens')
-              .delete()
-              .eq('user_id', userId)
-              .eq('token', tokenData.data);
-          }
-        })(),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('push-token cleanup timed out')), 3000),
-        ),
-      ]).catch((e) => console.warn('[useAuth] push token cleanup failed or timed out:', e));
+      // Race the cleanup against a 3s timeout — a slow/dead network must not
+      // block the user from signing out.
+      try {
+        await Promise.race([
+          (async () => {
+            const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+            const tokenData = await Notifications.getExpoPushTokenAsync(
+              projectId ? { projectId } : undefined,
+            );
+            if (tokenData.data) {
+              await supabase
+                .from('push_notification_tokens')
+                .delete()
+                .eq('user_id', session.user.id)
+                .eq('token', tokenData.data);
+            }
+          })(),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('push-token cleanup timed out')), 3000),
+          ),
+        ]);
+      } catch (e) {
+        console.warn('[useAuth] push token cleanup failed or timed out:', e);
+      }
     }
 
     await supabase.auth.signOut();
