@@ -103,6 +103,9 @@ interface AggregateItem {
   total_quantity: number;
   status: OrderStatus;
   order_ids: number[];
+  /** Parallel to order_ids: user_ids[i] is the customer who placed order_ids[i].
+   *  Needed so the Kitchen Mark-Ready tap fires per-customer order.ready pushes. */
+  user_ids: string[];
 }
 
 /**
@@ -153,6 +156,7 @@ function aggregateKitchenItems(
     qty: number,
     status: OrderStatus,
     orderId: number,
+    userId: string,
   ) => {
     // Extract optional numeric prefix and unit suffix from the token.
     // "200g" → { num: 200, unit: "g" }, "2" → { num: 2, unit: "" }
@@ -165,7 +169,10 @@ function aggregateKitchenItems(
     const existing = map.get(key);
     if (existing) {
       existing.total_quantity += totalNumeric;
-      if (!existing.order_ids.includes(orderId)) existing.order_ids.push(orderId);
+      if (!existing.order_ids.includes(orderId)) {
+        existing.order_ids.push(orderId);
+        existing.user_ids.push(userId);
+      }
     } else {
       map.set(key, {
         key,
@@ -174,6 +181,7 @@ function aggregateKitchenItems(
         total_quantity: totalNumeric,
         status,
         order_ids: [orderId],
+        user_ids: [userId],
       });
     }
   };
@@ -188,10 +196,10 @@ function aggregateKitchenItems(
 
       if (components.length === 0) {
         // Fallback — no breakdown defined, show the meal itself
-        mergeInto(oi.item_name ?? `Item #${oi.item_id}`, String(oi.quantity), 1, order.status, order.id);
+        mergeInto(oi.item_name ?? `Item #${oi.item_id}`, String(oi.quantity), 1, order.status, order.id, order.user_id);
       } else {
         for (const c of components) {
-          mergeInto(c.name, c.token, oi.quantity, order.status, order.id);
+          mergeInto(c.name, c.token, oi.quantity, order.status, order.id, order.user_id);
         }
       }
     }
@@ -796,8 +804,12 @@ export function StaffDashboard() {
           style={[styles.statusToggle, { borderColor: statusColor(item.status) }]}
           disabled={!canAct || updateStatus.isPending}
           onPress={() => {
-            for (const id of item.order_ids) {
-              updateStatus.mutate({ orderId: id, status: 'Ready' });
+            for (let i = 0; i < item.order_ids.length; i++) {
+              updateStatus.mutate({
+                orderId: item.order_ids[i],
+                status: 'Ready',
+                userId: item.user_ids[i],
+              });
             }
           }}
         >

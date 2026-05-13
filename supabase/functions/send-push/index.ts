@@ -66,7 +66,10 @@ Deno.serve(async (req) => {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     // Auth: accept service-role key (internal/edge-function callers)
-    // OR a staff/admin user JWT (hooks calling after status update).
+    // OR a staff/admin user JWT (hooks calling after status update)
+    // OR a hub-operator JWT (role='customer' + assigned_hub_id, performs
+    // staff-like status transitions on hub-routed orders → must be able
+    // to fire order.delivered push to the customer).
     const auth = req.headers.get('Authorization') ?? '';
     const token = auth.replace('Bearer ', '').trim();
     let authorized = token === SUPABASE_SERVICE_ROLE_KEY;
@@ -75,8 +78,11 @@ Deno.serve(async (req) => {
       const caller = getUserFromJwt(token);
       if (caller) {
         const { data: profile } = await supabase
-          .from('profiles').select('role').eq('id', caller.id).maybeSingle();
-        authorized = profile?.role === 'staff' || profile?.role === 'admin';
+          .from('profiles').select('role, assigned_hub_id').eq('id', caller.id).maybeSingle();
+        authorized =
+          profile?.role === 'staff' ||
+          profile?.role === 'admin' ||
+          (profile?.role === 'customer' && profile?.assigned_hub_id != null);
       }
     }
 
