@@ -63,6 +63,7 @@ export default ({ config }) => {
         backgroundColor: '#151515',
       },
       package: 'com.stone1st.f1',
+      googleServicesFile: process.env.GOOGLE_SERVICES_JSON ?? './google-services.json',
       permissions: [
         'ACCESS_FINE_LOCATION',
         'ACCESS_COARSE_LOCATION',

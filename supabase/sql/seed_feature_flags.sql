@@ -13,7 +13,5 @@ INSERT INTO feature_flags (flag_key, flag_value, description) VALUES
   ('referral_system',            TRUE,  'Referral code generation, apply-referral, share links'),
   ('hub_delivery_active',        FALSE, 'Enables hub assignment on address save + hub flow on staff delivery tab'),
   ('branch_management_active',   FALSE, 'Multi-branch filtering for admin dashboards and write scoping'),
-  ('loyalty_program',            FALSE, 'Loyalty points accrual on orders and referrals'),
-  ('route_pdf_generation',       FALSE, 'Server-side route sheet PDFs for delivery staff'),
   ('storm_mode_active',          FALSE, 'Blocks new orders + subscription renewals across the store')
 ON CONFLICT (flag_key) DO NOTHING;

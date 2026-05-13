@@ -41,17 +41,7 @@ import { RAZORPAY_KEY_ID } from '../../utils/env';
 import { trackOrderPlaced, trackOrderFailed } from '../../utils/analytics';
 import { infoDialog, confirmDialog } from '../../utils/confirmDialog';
 import { formatDateLong } from '../../utils/formatters';
-
-/** Safe UUID generator — falls back to Math.random when crypto.randomUUID is unavailable (Expo Go, older Android) */
-function generateId(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID();
-  }
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-    const r = Math.random() * 16 | 0;
-    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
-  });
-}
+import { newIdempotencyKey } from '../../utils/idempotency';
 
 type PaymentChoice = 'razorpay' | 'wallet';
 
@@ -102,7 +92,7 @@ export function CheckoutScreen({ navigation, route }: any) {
   const [isPlacing, setIsPlacing] = useState(false);
   // Idempotency key — generated once per checkout session, refreshed after successful order
   // Use Math.random fallback: crypto.randomUUID() is not available in all RN/Expo Go environments
-  const idempotencyKeyRef = useRef<string>(generateId());
+  const idempotencyKeyRef = useRef<string>(newIdempotencyKey());
   const isPlacingRef = useRef(false);    // synchronous double-tap guard
   const razorpayOpenRef = useRef(false); // tracks whether Razorpay sheet is live
   const queryClient = useQueryClient();
@@ -376,7 +366,7 @@ export function CheckoutScreen({ navigation, route }: any) {
       } else {
         if (cartType === 'food') clearFood(); else clearEss();
       }
-      idempotencyKeyRef.current = generateId();
+      idempotencyKeyRef.current = newIdempotencyKey();
       setGlobalLoading(false);
 
       const hadPlans = activePlans.length > 0;

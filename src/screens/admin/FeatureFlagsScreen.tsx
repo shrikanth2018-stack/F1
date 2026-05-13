@@ -25,11 +25,10 @@ import type { AdminNavProp } from '../../navigation/types';
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
 
-// Flags removed from product — hide from UI even if rows exist in DB.
 // storm_mode_active is surfaced separately at the top of this screen as a
 // dedicated section (canonical source: store_config.storm_mode_active), so
 // the feature_flags row itself stays hidden to avoid two-toggle confusion.
-const HIDDEN_FLAGS = new Set(['loyalty_program', 'route_pdf_generation', 'storm_mode_active']);
+const HIDDEN_FLAGS = new Set(['storm_mode_active']);
 
 // Flags wired in app code — show as active toggles.
 // Per-flag helper notes shown on the admin row (empty object = no notes today).

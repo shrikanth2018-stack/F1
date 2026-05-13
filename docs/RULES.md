@@ -95,6 +95,9 @@ Production bundle does not ship to Play Store with known multi-branch gaps. Inte
 ### Preserve existing behavior
 Don't change behavior, rename, or refactor unless explicitly approved.
 
+### No mid-session pipeline runs or commits (strict)
+Don't run `npm run check`, `jest`, `tsc`, or any `npx … 2>&1`-style background command between iterative changes. Don't commit between iterations. The session loop is: **edit files → targeted supabase / grep / Read inspection → explain → wait**. The pipeline runs **once** — only when Shrikanth says "test and commit" (or equivalent explicit phrase), or as the EOD verification gate at end-of-day, whichever comes first. Reaffirmed 2026-05-12 after the BF-43..49 session accumulated test-pipeline noise across iterations.
+
 ## Source-of-truth hierarchy
 
 When sources conflict:

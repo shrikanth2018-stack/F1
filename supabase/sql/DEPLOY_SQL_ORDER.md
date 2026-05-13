@@ -124,3 +124,21 @@ SELECT endpoint, COUNT(*) FROM idempotency_keys GROUP BY endpoint;
 - RPC changes → edit `rpc_atomic_increments.sql` and re-run (CREATE OR REPLACE).
 - Push payload changes → edit `kitchen_cutoff_push.sql` and re-run; the cron
   job redefinition is idempotent (the DO block unschedules first).
+
+## 7. Folder contents not listed above
+
+The `supabase/sql/` folder also contains files that are **not** part of the
+initial deploy order in §1. Categories:
+
+- **Post-launch migrations** — applied chronologically as schema needs evolved
+  (column adds, RLS additions, RPC adds, triggers, fixes). Each is idempotent
+  and the file name describes its purpose (`add_*`, `fix_*`, `customer_addresses_*`,
+  etc.). Chronological order is the file mtime; `ls -ltr supabase/sql/*.sql`
+  reproduces the application sequence on prod.
+- **`schema.sql`** — base CREATE TABLE reference. Not a migration; do not run
+  on an environment that has already received the §1 initial deploy. Kept as
+  the source of truth for from-scratch table shapes.
+- **`prefill-data.sql`** — initial production seed. Run **once** after
+  `schema.sql` on a brand-new environment. Not re-runnable.
+- **`seed_reset_test_data.sql`** — dev utility. Wipes order/sub/transaction
+  history and re-seeds test data. **Never run on prod.**

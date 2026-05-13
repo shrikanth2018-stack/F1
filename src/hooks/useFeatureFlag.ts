@@ -6,9 +6,7 @@
  * - essentials (grocery module)
  * - hub_delivery (hub routing)
  * - branch_management (multi-branch)
- * - loyalty_program
  * - referral_system
- * - route_pdf_generation
  */
 
 import { useQuery } from '@tanstack/react-query';

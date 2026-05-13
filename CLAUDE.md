@@ -135,4 +135,3 @@ A fresh DB rebuild from `supabase/sql/` would NOT produce these. Captured as MF-
 | Master Doc §4 lists "11 edge functions" (text) — table lists 12 | 12 deployed (post-CL-03/CL-04) | Doc text update in next master doc revision. |
 | Master Doc §5 "RLS policies enforcing scope on every writeable table" | RLS branch-scoped via has_branch_access(); three intentional gaps documented | Closed 2026-05-11 (Tier 1 Flow 6 audit). |
 | Master Doc §9.4 service-role key references | Key was rotated; old revoked key removed (CL-08) | Resolved. |
-| `feature_flags.branch_management_active` vs `store_config.branch_management_active` | Code only reads `feature_flags`; `store_config` column is dead duplicate | Cleanup post-V-06: drop `store_config` column or remove from selects. |

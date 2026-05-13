@@ -66,13 +66,14 @@ CREATE TABLE store_config (
     cancellation_window_hours INTEGER DEFAULT 2,
     storm_mode_active BOOLEAN DEFAULT FALSE,
     essentials_module_active BOOLEAN DEFAULT FALSE,
-    branch_management_active BOOLEAN DEFAULT FALSE,
     hub_delivery_active BOOLEAN DEFAULT FALSE,
     loyalty_points_per_rupee DECIMAL(5,2) DEFAULT 0.10,
     min_wallet_topup DECIMAL(10,2) DEFAULT 100.00,
     whatsapp_support_number TEXT DEFAULT '9448364017',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    low_wallet_threshold NUMERIC DEFAULT 200,
+    winback_inactive_days INTEGER DEFAULT 14
 );
 CREATE TRIGGER trg_store_config_updated BEFORE UPDATE ON store_config
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

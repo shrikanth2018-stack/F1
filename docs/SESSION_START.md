@@ -15,7 +15,7 @@
 5. **`docs/HISTORY.md`** — skim the most recent 2–3 entries only when researching "why does X work this way."
 6. **`docs/AUDIT_<flow>.md`** — on demand only, for per-flow audit detail (Flows 0–8 — order generation, payments + wallet, subscription lifecycle, one-off orders, staff ops, driver+hub, admin actions + MF-03, notifications + cron, auth + branch routing). Each ends with a "Tier 2 targets" + "Deferred" section.
 
-That's it for default bring-up. **Do NOT read `1stOne_F1_Master_Document.docx` by default** — it's a 100+ page product/business reference rarely needed for engineering work. Reference on demand if a task explicitly hinges on product / business decisions; markdown extract is at `Dcos/master_doc_extracted.md`.
+That's it for default bring-up. **Do NOT read `1stOne_F1_Master_Document.docx` by default** — it's a 100+ page product/business reference rarely needed for engineering work. Reference on demand if a task explicitly hinges on product / business decisions; markdown extract is at `docs/master_doc_extracted.md`.
 
 ## Working pattern
 
