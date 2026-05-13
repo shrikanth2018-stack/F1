@@ -1,6 +1,6 @@
 # 1stOne F1 — Status
 
-> Where we are right now. Updated end-of-day or whenever state shifts. For working rules see `docs/RULES.md`. For history see `docs/HISTORY.md`. For open task ledger see `docs/DECISIONS.md`. For per-flow audit detail see `docs/AUDIT_*.md`.
+> Where we are right now. Updated end-of-day or whenever state shifts. For working rules see `docs/RULES.md`. For history see `docs/HISTORY.md`. For open task ledger see `docs/DECISIONS.md`.
 
 ## As of 2026-05-12 (end-of-day; address phone + hub history + customer export + Manage restructure)
 

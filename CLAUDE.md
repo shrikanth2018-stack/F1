@@ -73,7 +73,7 @@ All styling references `Theme` from `src/theme/index.ts`. No hardcoded hex codes
 
 ## Operational architecture notes
 
-> Durable architectural truths captured during planning. Treat as binding context. Working rules — D-06 / D-07 / D-08, change-request format, etc. — live in `docs/RULES.md`. For current state see `docs/STATUS.md`. For history see `docs/HISTORY.md`. For per-flow audit detail (Flows 0-8 closed 2026-05-11) see `docs/AUDIT_*.md`.
+> Durable architectural truths captured during planning. Treat as binding context. Working rules — D-06 / D-07 / D-08, change-request format, etc. — live in `docs/RULES.md`. For current state see `docs/STATUS.md`. For history see `docs/HISTORY.md`.
 
 ### Three carts, not one bundled cart (AC-01)
 Customers have three separate carts in the UI — food, essentials, and subscriptions — each with its own checkout. All three accept the same two payment methods (wallet, Razorpay). Implementation: separate `cartStore` and `essentialsCartStore`; subscription plan-buy flow goes through `place-order` independently with a one-plan-in-cart invariant.
@@ -88,7 +88,7 @@ Mobile app (primary, Expo), `1stone.in` static landing page (Cloudflare Pages), 
 Prices, delivery method, delivery fee derived server-side; client cannot tamper. Wallet atomicity via single SQL call ("if balance ≥ X, deduct X" atomically). Idempotency keys required on all payment endpoints; same table doubles as a 5/60s rate limiter.
 
 ### Branch filtering
-Via JWT `branch_id` claim + RLS policies. Today the app runs single-branch (`feature_flags.branch_management_active = false`); multi-branch readiness is the D-08 launch gate. See `docs/MF-03_multi_branch_audit.md`.
+Via JWT `branch_id` claim + RLS policies. Today the app runs single-branch (`feature_flags.branch_management_active = false`); multi-branch readiness is the D-08 launch gate.
 
 ### Subscription billing model (D-01)
 Customer pays the full plan price upfront from wallet (or Razorpay), no daily debits afterward. Plan price is all-inclusive (food + tax + delivery). Pause/skip on subscriptions extends duration — paid meals eventually all get delivered.
@@ -127,11 +127,3 @@ The following live only on production, not in tracked `supabase/sql/`:
 - Trigger functions: `handle_new_user`, `on_auth_user_created`, `handle_first_order_referral_bonus`, `trg_first_order_referral_bonus`.
 
 A fresh DB rebuild from `supabase/sql/` would NOT produce these. Captured as MF-08 in `docs/DECISIONS.md`. When designing a fix that touches these objects, read the production `pg_get_functiondef` output before writing migrations.
-
-### Doc-vs-reality items to track
-
-| Doc claim | Reality | Action |
-|---|---|---|
-| Master Doc §4 lists "11 edge functions" (text) — table lists 12 | 12 deployed (post-CL-03/CL-04) | Doc text update in next master doc revision. |
-| Master Doc §5 "RLS policies enforcing scope on every writeable table" | RLS branch-scoped via has_branch_access(); three intentional gaps documented | Closed 2026-05-11 (Tier 1 Flow 6 audit). |
-| Master Doc §9.4 service-role key references | Key was rotated; old revoked key removed (CL-08) | Resolved. |

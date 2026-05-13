@@ -12,7 +12,6 @@
 | `docs/DECISIONS.md` | *What's open?* Pending task ledger. |
 | `docs/HISTORY.md` | *How did we get here?* Timeline of shipped milestones. |
 | `CLAUDE.md` | *Codebase shape* — architecture, env vars, pinned facts. |
-| `1stOne_F1_Master_Document.docx` | *What is the app, by design?* Product/business reference. **Load on demand only — don't read by default.** |
 
 ## Roles
 
@@ -76,7 +75,7 @@ Feature surface is closed. No new screens, flows, hooks, Edge Functions, or capa
 If a proposal needs new functionality, flag why and wait for approval to extend scope.
 
 ### D-08 — Multi-branch readiness is a launch gate
-Production bundle does not ship to Play Store with known multi-branch gaps. Internal Testing track is exempt. See `docs/MF-03_multi_branch_audit.md`.
+Production bundle does not ship to Play Store with known multi-branch gaps. Internal Testing track is exempt.
 
 ### Verify before fix
 - Re-read the actual file (not a summary).
@@ -105,8 +104,6 @@ When sources conflict:
 1. **Live system** — Supabase query, function logs, real-device test. Empirical evidence wins.
 2. **`docs/RULES.md`** — joint working rules + architectural decisions. Supersedes code reads on contested points.
 3. **Live code in the repo** — authoritative on current behavior.
-4. **Master Document** — product/business reference (load on demand; not part of default bring-up).
-5. **Older audits, `SYSTEM_FLOWS.md`** — historical context only.
 
 ## Change-request format
 

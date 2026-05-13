@@ -1,6 +1,6 @@
 # 1stOne F1 — Open task ledger
 
-> What's still open and what's worth attempting EOD today. Lifecycle: items open here; when shipped they graduate to `docs/HISTORY.md` with sha + file paths. For working rules see `docs/RULES.md`. For current state see `docs/STATUS.md`. For per-flow audit detail see `docs/AUDIT_*.md`.
+> What's still open and what's worth attempting EOD today. Lifecycle: items open here; when shipped they graduate to `docs/HISTORY.md` with sha + file paths. For working rules see `docs/RULES.md`. For current state see `docs/STATUS.md`.
 
 ## Pre-launch must-do (D-08 gate)
 
@@ -15,12 +15,11 @@ All four closed this session (see Done log below).
 ## Post-launch / no-action
 
 - **F4.4** — offline queue order-of-failure can cause status skips. Bounded by retry cap.
-- **F4.5** — offline-replayed status mutations don't fire customer push. **Closed as "no" (option b)** — operationally staff is offline briefly, replays happen within minutes; firing stale "Order Ready!" pushes hours later is worse UX. Customer sees current state on next app open. Documented in `docs/AUDIT_staff_operations.md`.
+- **F4.5** — offline-replayed status mutations don't fire customer push. **Closed as "no" (option b)** — operationally staff is offline briefly, replays happen within minutes; firing stale "Order Ready!" pushes hours later is worse UX. Customer sees current state on next app open.
 - **F5.1** — atomic RPC for driver assignment. **Closed as not-a-bug** — the audit doc misframed the problem. Driver assignment writes a single column (`delivery_zones.driver_user_id` OR `delivery_hubs.driver_user_id`), so the UPDATE is already atomic. `assign_hub_operator` exists because hub-operator assignment touches two tables (profiles + delivery_hubs); driver doesn't have that coupling. The audit doc's secondary suggestion (row-scoped RLS on orders UPDATE keyed on driver_user_id) is a real tightening but rippled across `orders_staff_update` + new policy + careful split — not single-session safe. **Re-classified to post-launch FT.**
 - **F6.1** — `notification_templates` not branch-scoped. Multi-branch concern only.
 - **F6.2** — `referrals_self` admin clause is `is_admin()` only. **Documented intentional.**
 - **MF-06** — Staging Supabase project. Needs you to create the project in the dashboard.
-- **Master Document v1.1 refresh** — text-only against post-2026-05-02 reality.
 - **Scheduled push multi-branch spot-check** — once branch 2 exists, ~30 min.
 
 ## Done — closed today (2026-05-11)
@@ -36,7 +35,7 @@ All four closed this session (see Done log below).
 - ✅ **FT-06** — skipped. Supabase Dashboard 2FA on Shrikanth's own account covers the recovery-path attack surface; in-app TOTP would add lockout risk for the solo super-admin without proportional value. Revisit only if SIM-swap pattern shows up in production.
 
 
-- ✅ **Tier 1 audit ladder (8 / 8 flows)** — BF-31 → BF-37 shipped + verified live. Per-flow detail in `docs/AUDIT_*.md`.
+- ✅ **Tier 1 audit ladder (8 / 8 flows)** — BF-31 → BF-37 shipped + verified live.
 - ✅ **Tier 2 Jest backfill** — 191 → 300 tests across 18 suites. `@testing-library/react-native` added. Three small utility extractions (`orderFilters`, `packingFlow`, `subscriptionMath`) for testability.
 - ✅ **BF-38 (F1.3 + F4.3)** — wallet topup Idempotency-Key header + `useRealtimeOrders` IST-midnight rollover.
 - ✅ **F3.Y** — `delivery_cycles.kitchen_push_time` bumped to `cutoff_time + 10 min` on all 4 active cycles.
