@@ -81,3 +81,8 @@ scripts/
 
 # Files marked for deletion, kept here as a reversible staging area
 _marked_for_deletion/
+
+# Master document (board / investor doc, sensitive business detail)
+# Sourced exclusively from code + Supabase + installed app.
+# Build a single .docx via scripts/build-master-docx.sh (scripts/ also gitignored).
+docs/master/

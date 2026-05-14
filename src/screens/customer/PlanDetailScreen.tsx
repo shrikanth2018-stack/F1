@@ -214,6 +214,33 @@ export function PlanDetailScreen({ route, navigation }: any) {
           <InfoRow label="Plan Duration" value={`${plan.duration_days} Days`} />
           <InfoRow label="Daily Dispatch Time" value={dailyDispatch} />
           <InfoRow label="Total Cost" value={formatPriceShort(plan.price)} highlight />
+          {plan.savings_amount > 0 && (
+            <InfoRow label="You Save" value={formatPriceShort(plan.savings_amount)} highlight large />
+          )}
+        </View>
+
+        <Divider />
+
+        {/* Included items — labeled with the cycle (Plan For) */}
+        <View style={styles.section}>
+          <ThemedText variant="small" color="muted" style={styles.sectionLabel}>
+            {`INCLUDED IN ${planFor.toUpperCase()}`}
+          </ThemedText>
+          {(planItems ?? []).map((pi: any, idx: number) => (
+            <View key={pi.item_id ?? idx} style={styles.itemRow}>
+              <ThemedText variant="body" color="primary">
+                {pi.item_name ?? `Item #${pi.item_id}`}
+              </ThemedText>
+              <ThemedText variant="small" color="subtitle">
+                x{pi.quantity}
+              </ThemedText>
+            </View>
+          ))}
+          {(!planItems || planItems.length === 0) && (
+            <ThemedText variant="small" color="muted">
+              Items will be assigned daily based on the cycle menu
+            </ThemedText>
+          )}
         </View>
 
         <Divider />
@@ -254,30 +281,6 @@ export function PlanDetailScreen({ route, navigation }: any) {
             })}
           </ScrollView>
         </View>
-
-        <Divider />
-
-        {/* Included items — labeled with the cycle (Plan For) */}
-        <View style={styles.section}>
-          <ThemedText variant="small" color="muted" style={styles.sectionLabel}>
-            {`INCLUDED IN ${planFor.toUpperCase()}`}
-          </ThemedText>
-          {(planItems ?? []).map((pi: any, idx: number) => (
-            <View key={pi.item_id ?? idx} style={styles.itemRow}>
-              <ThemedText variant="body" color="primary">
-                {pi.item_name ?? `Item #${pi.item_id}`}
-              </ThemedText>
-              <ThemedText variant="small" color="subtitle">
-                x{pi.quantity}
-              </ThemedText>
-            </View>
-          ))}
-          {(!planItems || planItems.length === 0) && (
-            <ThemedText variant="small" color="muted">
-              Items will be assigned daily based on the cycle menu
-            </ThemedText>
-          )}
-        </View>
       </ScrollView>
 
       {/* BUY — direct to Cart (sub-only mode) */}
@@ -295,11 +298,17 @@ export function PlanDetailScreen({ route, navigation }: any) {
   );
 }
 
-function InfoRow({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+function InfoRow({ label, value, highlight, large }: { label: string; value: string; highlight?: boolean; large?: boolean }) {
   return (
     <View style={styles.infoRow}>
       <ThemedText variant="small" color="muted">{label}</ThemedText>
-      <ThemedText variant="body" color={highlight ? 'mint' : 'primary'}>{value}</ThemedText>
+      <ThemedText
+        variant="body"
+        color={highlight ? 'mint' : 'primary'}
+        style={large ? { fontSize: Theme.typography.sizes.body + 2 } : undefined}
+      >
+        {value}
+      </ThemedText>
     </View>
   );
 }

@@ -388,7 +388,7 @@ export function LoginScreen({ onExistingUser, onNewUser, referralCode }: LoginSc
             >
               Terms of Service
             </Text>
-            {'  and  '}
+            {' & '}
             <Text
               style={styles.footLink}
               onPress={() => Linking.openURL('https://wcvqxzqqwcxlcgrjyunf.supabase.co/storage/v1/object/public/assets/Privacy-Policy.pdf')}

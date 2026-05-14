@@ -6,7 +6,7 @@
 
 - **V-06 persona regression** — operational test on real device. Customer → staff (kitchen + packing) → driver → hub-op → branch-admin walkthrough. Covers everything Jest mocks can't (push tokens, Razorpay sandbox, cron-fired sub dispatches landing in staff UI).
 - **Flag flip SQL** — once V-06 green, run `UPDATE feature_flags SET flag_value = TRUE WHERE flag_key = 'branch_management_active';`. I can run it on say-so.
-- **FT-08 UX punch list** — reorder menu items + small UX tweaks. Awaiting your list. Will land before next AAB.
+- ✅ **FT-08 UX punch list (closed 2026-05-14)** — absorbed by 2026-05-14 session work: customer profile menu restructure (Loyalty/Referrals split, FAQ row, Help & Support relabel, Privacy/Terms legal row), staff profile cleanup (Close removed), LoginScreen footer simplification, PlansScreen full UX overhaul (sliding pill toggle, dispatch labels, chevron-circle, GradientSep, floating Back, leading icons), PlanDetail section reorder + "You Save" highlight, app icon + notification icon brand refresh. Migrate to HISTORY.md on EOD commit.
 
 ## Could close today — EOD candidates
 

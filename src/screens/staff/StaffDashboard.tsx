@@ -504,9 +504,6 @@ function ProfilePopup({
         <Divider />
 
         <View style={popup.footer}>
-          <TouchableOpacity onPress={onClose} style={popup.footerBtn}>
-            <ThemedText variant="body" color="muted">Close</ThemedText>
-          </TouchableOpacity>
           <TouchableOpacity onPress={handleSignOut} style={popup.footerBtn}>
             <ThemedText variant="body" color="primary" style={popup.logoutText}>Sign Out</ThemedText>
           </TouchableOpacity>
@@ -1365,7 +1362,7 @@ const popup = StyleSheet.create({
   },
   footer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     paddingHorizontal: Theme.spacing.md,
     paddingVertical: Theme.spacing.sm + 2,
   },

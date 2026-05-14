@@ -59,6 +59,8 @@ async function registerForPushNotifications(): Promise<string | null> {
       name: '1stOne Notifications',
       importance: Notifications.AndroidImportance.HIGH,
       vibrationPattern: [0, 250, 250, 250],
+      lightColor: '#38bdf8',
+      sound: 'default',
     });
   }
 

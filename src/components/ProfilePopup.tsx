@@ -14,6 +14,7 @@ import {
   StyleSheet,
   Dimensions,
   Text,
+  Linking,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -168,6 +169,25 @@ export function ProfilePopup() {
     openWhatsApp(config?.whatsapp_support_number);
   };
 
+  const handleQA = () => {
+    close();
+    Linking.openURL('https://1stone.in/faq').catch(() => {});
+  };
+
+  const handlePrivacy = () => {
+    close();
+    Linking.openURL(
+      'https://wcvqxzqqwcxlcgrjyunf.supabase.co/storage/v1/object/public/assets/Privacy-Policy.pdf'
+    ).catch(() => {});
+  };
+
+  const handleTerms = () => {
+    close();
+    Linking.openURL(
+      'https://wcvqxzqqwcxlcgrjyunf.supabase.co/storage/v1/object/public/assets/Terms.pdf'
+    ).catch(() => {});
+  };
+
   const handleSignOut = async () => {
     close();
     const confirmed = await confirmDialog({
@@ -218,8 +238,16 @@ export function ProfilePopup() {
             <IOSRow label="My Subscriptions" onPress={() => go('Subscriptions')} />
             <InsetDivider />
             <IOSRow label="My Addresses" onPress={() => go('Addresses')} />
-            <InsetDivider />
+          </IOSGroup>
+
+          <IOSGroup>
             <IOSRow label={loyaltyLabel} onPress={() => go('LoyaltyPoints')} />
+            {referralEnabled && (
+              <>
+                <InsetDivider />
+                <IOSRow label="My Referrals" onPress={() => go('Referral')} />
+              </>
+            )}
           </IOSGroup>
 
           {isHubManager && (
@@ -235,15 +263,23 @@ export function ProfilePopup() {
           )}
 
           <IOSGroup>
-            {referralEnabled && (
-              <>
-                <IOSRow label="Referrals" onPress={() => go('Referral')} />
-                <InsetDivider />
-              </>
-            )}
-            <IOSRow label="Rate the App" onPress={() => go('Feedback')} />
+            <IOSRow label="FAQ" onPress={handleQA} />
             <InsetDivider />
-            <IOSRow label="Support / Help" onPress={handleWhatsApp} />
+            <IOSRow label="Help & Support" onPress={handleWhatsApp} />
+            <InsetDivider />
+            <IOSRow label="Rate the App" onPress={() => go('Feedback')} />
+          </IOSGroup>
+
+          <IOSGroup>
+            <View style={[group.row, { justifyContent: 'center' }]}>
+              <TouchableOpacity onPress={handlePrivacy} activeOpacity={0.55}>
+                <Text style={[group.label, { fontSize: Theme.typography.sizes.body - 1 }]}>Privacy Policy</Text>
+              </TouchableOpacity>
+              <Text style={[group.label, { fontSize: Theme.typography.sizes.body - 1, color: Theme.colors.text.muted, paddingHorizontal: 12 }]}>|</Text>
+              <TouchableOpacity onPress={handleTerms} activeOpacity={0.55}>
+                <Text style={[group.label, { fontSize: Theme.typography.sizes.body - 1 }]}>Terms of Service</Text>
+              </TouchableOpacity>
+            </View>
           </IOSGroup>
 
           <IOSGroup>

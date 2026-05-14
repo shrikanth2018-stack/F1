@@ -2,6 +2,61 @@
 
 > Timeline of major milestones, shipped items, and architectural pivots. Append-only. Skim recent entries when researching "why does X work this way." Not exhaustive — read the relevant files for full detail. For open items see `docs/DECISIONS.md`. For working rules see `docs/RULES.md`.
 
+## 2026-05-14 — Brand-icon refresh, UX session, master document, FT-08 closed (309 tests stable)
+
+Single bundled session-end commit. Day flowed visual-first → infra-cleanup → documentation. EAS production build v1.3.0(16) green at session end; Play Console upload manual.
+
+**Shipped (single commit):**
+
+- **App icon + notification icon brand refresh.** Generated 3 assets via Pillow from `~/Desktop/SC-claude/icons/AppIcon_Blk.png` + `AppIcon_Trnsprt.png` (2101×2248 source, padded to square + downscaled). `assets/icon.png` (1024×1024 solid-black iOS launcher + Android fallback), `assets/adaptive-icon.png` (1024×1024 transparent foreground, mark inset to inner 66% safe zone for OEM masks), `assets/notification-icon.png` (256×256 transparent for Android status bar — cyan-tinted at render time since Android strips colors from small icons). Files: 3 assets + `app.config.js` (notification icon ref swap).
+
+- **Push channel polish.** Android "default" channel gains `lightColor: '#38bdf8'` + `sound: 'default'`. Note Android channel-stickiness on upgrade: existing testers need uninstall+reinstall to pick up the new channel config; icon swap applies normally. Files: `src/hooks/usePushNotifications.ts`.
+
+- **Staff profile popup cleanup.** Close button removed (backdrop tap already closes). Sign Out center-aligned in footer. Files: `src/screens/staff/StaffDashboard.tsx`.
+
+- **Customer profile menu restructure.** "Referrals" → "My Referrals". Loyalty + Referrals split into their own visual group. New "FAQ" row opens `https://1stone.in/faq` via Linking. "Support / Help" relabeled to "Help & Support"; row order swapped to FAQ → Help & Support → Rate the App (utility-first, self-promo last). New centered Privacy Policy | Terms of Service legal row (body-1 font, muted pipe separator) — reuses existing Supabase Storage PDFs from LoginScreen. Files: `src/components/ProfilePopup.tsx`.
+
+- **LoginScreen footer simplified.** Two-line "By continuing, you agree to our [Terms of Service] & [Privacy Policy]" — same two-line layout, "and" → "&" for cleaner read. Files: `src/screens/auth/LoginScreen.tsx`.
+
+- **PlansScreen full UX overhaul.** Sliding pill toggle (Food / Essentials) mirroring HomeScreen exactly: spring entrance, sliding mint-tinted indicator, active/inactive font-size differential. Cycle section header now right-aligns a dispatch label `Dispatched every {morning|afternoon|evening} at H:MM AM/PM` derived from `delivery_cycles.delivery_start`. BUY → mint `›` chevron-circle (same 30×30 mint-bordered shape as HomeScreen's `+`-circle; tap still navigates to PlanDetail — does NOT add to cart directly, preserves AC-01 subscription cart singleton). Top-right Close button removed; replaced by floating bottom "Back" pill (same 40h/20r mint-border shape as HomeScreen's Subscription Plans pill). `handleClose` uses `navigation.goBack()` with reset-to-Home fallback — correctly respects all 3 entry paths (HomeScreen / My Subscriptions / My Orders) where previous `reset → Home` was wrong on two of three. Per-plan-type leading mint Ionicons (`restaurant-outline` / `basket-outline`) matching HomeScreen rows. Faded mint `GradientSep` between rows via SectionList `ItemSeparatorComponent`. Subtext line ("30 days · Save ₹X") removed — savings moved to PlanDetail. Files: `src/screens/customer/PlansScreen.tsx`.
+
+- **PlanDetail polish.** New "You Save ₹X" InfoRow with `large` variant (body+2 font, highlight color) under Total Cost when `savings_amount > 0` — preserves the value signal lost from PlansScreen subtext removal. Section reorder: structured plan info → Included Items → Starting Date (was: structured → Starting Date → Included). Files: `src/screens/customer/PlanDetailScreen.tsx`.
+
+- **`profiles.branch_id` FK constraint.** One-line ALTER applied to prod after zero-orphan verification (live SQL query returned 0 rows). Idempotent guard via `DO $$ ... IF NOT EXISTS (SELECT 1 FROM pg_constraint ...)`. Files: `supabase/sql/add_profiles_branch_id_fk.sql` (new tracked migration), prod schema.
+
+- **All 12 Edge functions redeployed.** 5 functions had post-deploy git commits indicating possible drift (place-order 7 days, apply-referral / confirm-topup 3 days each, verify-payment 1 day, send-push 16 min). One-command redeploy of all 12 ensures HEAD === prod parity. No code changes — just `supabase functions deploy --project-ref wcvqxzqqwcxlcgrjyunf`.
+
+- **Sentry user-context verified live.** Already wired in `useAuth.ts:138-144` (useEffect on session change calls `setSentryUser(userId, phone)` / `clearSentryUser()`); my initial grep missed it because I searched for `Sentry` not `setSentryUser`. No code change needed — confirmed working, crashes carry user_id + phone.
+
+- **FT-08 closed.** Absorbed by today's UX session work. `docs/DECISIONS.md` updated with closure note + attribution to today's commits. `docs/LAUNCH_CHECKLIST.md` marks closed. Files: `docs/DECISIONS.md`.
+
+- **`docs/LAUNCH_CHECKLIST.md` (new, tracked).** Single-page launch tracker covering D-08 hard gates + soft gates (Apple Developer enrollment, FSSAI/GST/DLT paperwork, Razorpay flip, MSG91 production sender, Play Store listing assets, post-launch monitoring). Living doc until launch.
+
+- **Master document scaffold + full content fill.** New `docs/master/` directory (gitignored — business-sensitivity; build script also gitignored). 19 markdown files: README index + 7 front-of-book parts (executive summary, business model, personas, architecture, advantages, risk register, security & data governance) + 11 annexures (flows, database+Edge functions, tech deps, compliance, performance, operations, runbooks, branch expansion, test & quality, glossary, methodology). ~2466 markdown lines compile to ~87 KB single `.docx` via `scripts/build-master-docx.sh` (pandoc + TOC + snapshot stamp embedding HEAD + Supabase project ref + app version + UTC compile timestamp). Audience: board / investor. **Sourced exclusively from code + Supabase live queries + installed app behaviour — no working docs (CLAUDE.md / STATUS.md / HISTORY.md / DECISIONS.md / RULES.md) consulted.** Each section carries inline citations to file path / line / table / RPC name.
+
+- **Adjacent finding noted, not acted on.** `package.json:3` declares `"version": "1.2.1"` while `app.config.js:37` declares `'1.3.0'`. Expo build uses `app.config.js`, so production AAB is genuinely 1.3.0 (confirmed via EAS build log `Incrementing versionCode from 15 to 16`). `package.json` version is stale but doesn't affect the build — left untouched per minimum-diff rule; sync at next convenience.
+
+**Verified live:**
+
+- Kitchen-cutoff-push-tick cron firing precisely (±50ms drift) at configured `kitchen_push_time` for all 4 cycles. One outlier 2026-05-13 21:35 breakfast push traced to manual testing during yesterday's push session, not cron drift (cron fires are at HH:MM:00, this one was at :35:18).
+- Order push chain for 555 / order #10385 on 2026-05-13: Confirmed → On the Way → At Hub → Delivered, all `status='sent'`, 0 failures across the 46-min real-device test window.
+- Order #10384 confirmed Cancelled 4 min after placement (Razorpay test order); customer-cancel pushes intentionally silent per architecture.
+- `profiles.branch_id` orphan check returned 0 rows before FK ALTER — safe to apply.
+
+**Build + release:**
+
+- HEAD = `<new>` on `main`, working tree clean.
+- Pipeline green at EOD: 309 / 309 tests across 19 suites; tsc clean.
+- EAS Android production build green — build ID `bd7acb8e-5187-4e14-b153-86852dcfe1ac`, v1.3.0 versionCode 16. AAB: `https://expo.dev/artifacts/eas/pp54du2MTM2CeMEXAaJjBo.aab`. Play Console upload manual (Shrikanth handling — service-account JSON still off disk).
+
+**Pivots noted (worth surfacing for future architectural calls):**
+
+- For PlansScreen "BUY → `+` circle" mimicking HomeScreen ask: pushed back because subscription cart is singleton (AC-01) — `+` semantics ("repeatable add, increment qty") don't apply. Pivoted to `›` chevron in same mint circle — visual parity without misleading semantics. Shrikanth approved the trade.
+- Initially proposed designing a separate silhouette for the notification icon. Realised Android strips colors regardless, so the same `AppIcon_Trnsprt.png` source PNG works fine when scaled to 256×256 — the silhouette emerges from the alpha channel and gets tinted with the configured accent (`#38bdf8`).
+- Master document scope grew during structure proposal: initial ~40 page estimate; final compiles to denser content across ~80-90 pages with TOC. Density-over-prose discipline held throughout per Shrikanth's "maximum info, minimum page" rule.
+
+**Long-term memory:** none added today (all relevant patterns already saved).
+
 ## 2026-05-12 — Address-owns-phone, hub history, customer export, Manage restructure (300 → 309 tests)
 
 Morning closed BF-43..49 (realtime auth attach + Hermes Date trap fixes) as discrete commits `7589da3` → `5d5376a`. The EOD push was consolidated into a single session-end commit `6b4da96`. See git log for the per-fix breakdown.
