@@ -78,11 +78,10 @@ function dispatchLabelFor(timeStr: string | null | undefined): string | null {
   const hh = Number(parts[0]);
   const mm = Number(parts[1] ?? 0);
   if (!Number.isFinite(hh) || !Number.isFinite(mm)) return null;
-  const tod = hh < 12 ? 'morning' : hh < 17 ? 'afternoon' : 'evening';
   const period = hh < 12 ? 'AM' : 'PM';
   const h12 = hh % 12 === 0 ? 12 : hh % 12;
   const minutes = String(mm).padStart(2, '0');
-  return `Dispatched every ${tod} at ${h12}:${minutes} ${period}`;
+  return `Dispatched every day ${h12}:${minutes} ${period}`;
 }
 
 export function PlansScreen({ navigation, route }: any) {

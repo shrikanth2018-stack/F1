@@ -74,14 +74,14 @@ const group = StyleSheet.create({
     backgroundColor: Theme.colors.background.secondary,
     borderRadius: 12,
     marginHorizontal: 12,
-    marginBottom: 8,
+    marginBottom: 4,
     overflow: 'hidden',
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 11,
   },
   label: {
     fontFamily: Theme.typography.fontFamily,
@@ -313,10 +313,10 @@ const styles = StyleSheet.create({
   },
   nameSection: {
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 11,
     borderBottomWidth: 0.5,
     borderBottomColor: Theme.colors.layout.divider,
-    marginBottom: 8,
+    marginBottom: 4,
   },
   userName: {
     fontFamily: Theme.typography.fontFamily,
@@ -325,6 +325,6 @@ const styles = StyleSheet.create({
     fontWeight: '400',
   },
   scrollContent: {
-    paddingBottom: 12,
+    paddingBottom: 8,
   },
 });

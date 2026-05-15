@@ -86,3 +86,7 @@ _marked_for_deletion/
 # Sourced exclusively from code + Supabase + installed app.
 # Build a single .docx via scripts/build-master-docx.sh (scripts/ also gitignored).
 docs/master/
+
+# Operational playbooks (admin handbook + branch expansion playbook).
+# Compile to a single .docx via scripts/build-playbooks-docx.sh.
+docs/playbooks/

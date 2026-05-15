@@ -38,6 +38,8 @@ export default ({ config }) => {
     orientation: 'portrait',
     icon: './assets/icon.png',
     userInterfaceStyle: 'dark',
+    // Hermes is the Expo SDK 54 default; declared explicitly so future readers don't have to infer.
+    jsEngine: 'hermes',
     splash: {
       image: './assets/splash.png',
       resizeMode: 'contain',
