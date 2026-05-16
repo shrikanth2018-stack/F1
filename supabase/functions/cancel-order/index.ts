@@ -1,18 +1,26 @@
 /**
  * 1stOne F1 — Cancel Order (Edge Function)
  *
- * Input:  { order_id }
- * Guards:
- *   - Order must belong to the authenticated user
- *   - Status must be Pending / Confirmed / Preparing (not yet in kitchen/dispatched)
- *   - Must be within cancellation_window_hours from store_config
- * Actions:
- *   - Set order status → 'Cancelled'
- *   - Refund wallet_amount_used back to wallet (if any)
- *   - Razorpay portion is noted in response; manual refund handled by admin
+ * MF-10: a customer-facing "order" is an order GROUP — one or more
+ * `orders` rows sharing an order_group_id, one row per dispatch cycle.
+ * A customer cancellation cancels the WHOLE group in a single action.
  *
- * Idempotency: if the order is already 'Cancelled', returns success immediately
- * (the DB status IS the idempotency record — no second refund is issued).
+ * Input:  { order_id }   — any row of the group
+ * Guards:
+ *   - The order must belong to the authenticated user
+ *   - At least one row must still be in a cancellable status
+ *   - Within cancellation_window_hours of creation
+ *   - The EARLIEST dispatch cycle's cutoff must not have passed —
+ *     the "1st item cutoff" governs the whole group (once the kitchen
+ *     has the first cycle, the order locks)
+ * Actions:
+ *   - Every still-cancellable row in the group → 'Cancelled'
+ *   - Refund the SUM of those rows' wallet_amount_used to the wallet
+ *     (per-row money model — each row carries its own real amount)
+ *   - Razorpay portion is noted in the response; manual admin refund
+ *
+ * Idempotency: if every row in the group is already 'Cancelled',
+ * returns success without re-processing (no second refund).
  *
  * Deploy: supabase functions deploy cancel-order --no-verify-jwt
  */
@@ -88,50 +96,57 @@ Deno.serve(async (req: Request) => {
     const { order_id } = await req.json();
     if (!order_id) return json({ error: 'order_id is required' }, 400);
 
-    // Load order — must belong to this user
-    const { data: order, error: orderErr } = await supabase
+    // ── Resolve the order group from the passed row ────────────
+    const { data: anchor, error: anchorErr } = await supabase
       .from('orders')
-      .select('id, user_id, status, payment_method, total_amount, wallet_amount_used, created_at, cycle_id, dispatch_date, branch_id')
+      .select('id, user_id, order_group_id')
       .eq('id', order_id)
       .eq('user_id', user.id)
       .maybeSingle();
 
-    if (orderErr) throw orderErr;
-    if (!order) return json({ error: 'Order not found' }, 404);
+    if (anchorErr) throw anchorErr;
+    if (!anchor) return json({ error: 'Order not found' }, 404);
+
+    // ── Load every row in the group ────────────────────────────
+    const { data: groupRows, error: groupErr } = await supabase
+      .from('orders')
+      .select('id, status, payment_method, total_amount, wallet_amount_used, created_at, cycle_id, dispatch_date, branch_id')
+      .eq('order_group_id', anchor.order_group_id)
+      .eq('user_id', user.id);
+
+    if (groupErr) throw groupErr;
+    if (!groupRows || groupRows.length === 0) return json({ error: 'Order not found' }, 404);
+
+    const sumWallet = (rows: any[]) => rows.reduce((s, r) => s + (Number(r.wallet_amount_used) || 0), 0);
+    const sumTotal  = (rows: any[]) => rows.reduce((s, r) => s + (Number(r.total_amount) || 0), 0);
 
     // ── Idempotency guard ──────────────────────────────────────
-    // If the order is already cancelled, return success without re-processing.
-    // This prevents a double-refund if the client retries after a network drop.
-    if (order.status === 'Cancelled') {
-      const walletRefund = Number(order.wallet_amount_used) || 0;
-      const razorpayRefundDue = Math.max(0, Number(order.total_amount) - walletRefund);
+    // Whole group already cancelled — return success, no second refund.
+    if (groupRows.every((r) => r.status === 'Cancelled')) {
+      const walletRefund = sumWallet(groupRows);
       return json({
         status: 'cancelled',
         wallet_refunded: walletRefund,
-        razorpay_refund_due: razorpayRefundDue,
+        razorpay_refund_due: Math.max(0, sumTotal(groupRows) - walletRefund),
         idempotent: true,
       });
     }
 
-    // Status check
-    if (!CANCELLABLE_STATUSES.has(order.status)) {
+    // Rows we can still cancel (skip already-Cancelled — already refunded).
+    const cancellable = groupRows.filter((r) => CANCELLABLE_STATUSES.has(r.status));
+    if (cancellable.length === 0) {
+      const blocking = groupRows.find((r) => r.status !== 'Cancelled');
       return json({
-        error: `Order cannot be cancelled — it is already ${order.status}.`,
+        error: `Order cannot be cancelled — it is already ${blocking?.status ?? 'in progress'}.`,
       }, 409);
     }
 
-    // ── Parallel: load config + cycle cutoff ──────────────────
-    const [configRes, cycleRes] = await Promise.all([
-      supabase.from('store_config').select('cancellation_window_hours').limit(1).maybeSingle(),
-      order.cycle_id
-        ? supabase.from('delivery_cycles').select('cutoff_time, delivery_start').eq('id', order.cycle_id).maybeSingle()
-        : Promise.resolve({ data: null }),
-    ]);
-
-    // Guard 1: cancellation window from order creation time
-    const windowHours: number = configRes.data?.cancellation_window_hours ?? 2;
-    const ageMs = Date.now() - new Date(order.created_at).getTime();
-    const ageHours = ageMs / (1000 * 60 * 60);
+    // ── Guard 1: cancellation window from creation ─────────────
+    const { data: configRow } = await supabase
+      .from('store_config').select('cancellation_window_hours').limit(1).maybeSingle();
+    const windowHours: number = configRow?.cancellation_window_hours ?? 2;
+    const earliestCreated = Math.min(...groupRows.map((r) => new Date(r.created_at).getTime()));
+    const ageHours = (Date.now() - earliestCreated) / (1000 * 60 * 60);
 
     if (ageHours > windowHours) {
       return json({
@@ -139,30 +154,44 @@ Deno.serve(async (req: Request) => {
       }, 409);
     }
 
-    // Guard 2: cycle cutoff — once the kitchen receives the order, it cannot be cancelled.
-    //
-    // Cross-midnight cycles (e.g. cutoff 22:30, delivery 07:00 next day):
-    //   cutoff_time > delivery_start → dispatch_date is TOMORROW when cutoff fires TONIGHT.
-    //   We must block if dispatch_date == tomorrow AND cutoff has passed tonight.
-    //
-    // Same-day cycles (e.g. cutoff 11:00, delivery 13:00 same day):
-    //   dispatch_date == TODAY and cutoff has passed.
-    const cycleData = (cycleRes as any).data;
-    const cutoffTime: string | null = cycleData?.cutoff_time ?? null;
-    const deliveryStart: string | null = cycleData?.delivery_start ?? null;
+    // ── Guard 2: earliest dispatch cycle's cutoff ──────────────
+    // The "1st item" cutoff governs the whole group: once the earliest
+    // cycle's kitchen window closes, the order can no longer be cancelled.
+    const cycleIds = [...new Set(groupRows.map((r) => r.cycle_id).filter((c) => c != null))];
+    let cyclesById = new Map<number, any>();
+    if (cycleIds.length > 0) {
+      const { data: cycleRows } = await supabase
+        .from('delivery_cycles')
+        .select('id, cutoff_time, delivery_start')
+        .in('id', cycleIds);
+      cyclesById = new Map((cycleRows ?? []).map((c: any) => [c.id, c]));
+    }
 
-    if (cutoffTime && order.dispatch_date) {
+    // Earliest row: min dispatch_date, tie-break on the cycle's cutoff_time.
+    const sortedRows = [...groupRows].sort((a, b) => {
+      if (a.dispatch_date !== b.dispatch_date) {
+        return a.dispatch_date < b.dispatch_date ? -1 : 1;
+      }
+      const ca = cyclesById.get(a.cycle_id)?.cutoff_time ?? '99:99';
+      const cb = cyclesById.get(b.cycle_id)?.cutoff_time ?? '99:99';
+      return ca < cb ? -1 : ca > cb ? 1 : 0;
+    });
+    const earliest = sortedRows[0];
+    const earliestCycle = cyclesById.get(earliest.cycle_id);
+
+    if (earliestCycle?.cutoff_time && earliest.dispatch_date) {
       const { todayStr, tomorrowStr, nowMins } = istDateInfo();
 
-      const [cutH, cutM] = cutoffTime.split(':').map(Number);
+      const [cutH, cutM] = earliestCycle.cutoff_time.split(':').map(Number);
       const cutoffMins = cutH * 60 + cutM;
       const cutoffPassed = nowMins >= cutoffMins;
 
-      // Cross-midnight: cutoff_time lexicographically > delivery_start (both HH:MM:SS)
-      const isCrossMidnight = deliveryStart ? cutoffTime > deliveryStart : false;
+      // Cross-midnight: cutoff_time lexicographically > delivery_start.
+      const isCrossMidnight = earliestCycle.delivery_start
+        ? earliestCycle.cutoff_time > earliestCycle.delivery_start : false;
 
-      const blockedSameDay       = !isCrossMidnight && order.dispatch_date === todayStr    && cutoffPassed;
-      const blockedCrossMidnight =  isCrossMidnight && order.dispatch_date === tomorrowStr && cutoffPassed;
+      const blockedSameDay       = !isCrossMidnight && earliest.dispatch_date === todayStr    && cutoffPassed;
+      const blockedCrossMidnight =  isCrossMidnight && earliest.dispatch_date === tomorrowStr && cutoffPassed;
 
       if (blockedSameDay || blockedCrossMidnight) {
         return json({
@@ -171,40 +200,35 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // Cancel the order
+    // ── Cancel every cancellable row in the group ──────────────
+    const cancellableIds = cancellable.map((r) => r.id);
     const { error: cancelErr } = await supabase
       .from('orders')
       .update({ status: 'Cancelled', updated_at: new Date().toISOString() })
-      .eq('id', order_id)
+      .in('id', cancellableIds)
       .eq('user_id', user.id);
 
     if (cancelErr) throw cancelErr;
 
-    // Wallet refund (if any)
-    const walletRefund = Number(order.wallet_amount_used) || 0;
+    // ── Wallet refund — sum over the rows we just cancelled ────
+    const walletRefund = sumWallet(cancellable);
     if (walletRefund > 0) {
       const { error: refundErr } = await supabase.rpc('increment_wallet_balance', {
         p_user_id: user.id,
         p_amount: walletRefund,
-        p_description: `Refund for cancelled order #${order_id}`,
+        p_description: `Refund for cancelled order #${anchor.id}`,
       });
       if (refundErr) {
-        // BF-39 (F1.5): the order is already Cancelled (atomic from the
+        // BF-39 (F1.5): the order(s) are already Cancelled (atomic from the
         // customer's perspective) but the wallet refund didn't credit.
-        // Pre-fix this was a money-at-risk silent failure — only
-        // console.error. Now: loud structured log + role-targeted push to
-        // branch admins so reconciliation is human-visible. Order stays
-        // Cancelled; do not throw — the customer's cancel succeeded.
+        // Loud structured log + role-targeted push to branch admins so
+        // reconciliation is human-visible. Do not throw — the cancel succeeded.
         const ref = new Date().toISOString();
         console.error('[cancel-order] [REFUND-FAILURE-ALERT] Wallet refund failed', {
-          order_id, user_id: user.id, amount: walletRefund,
-          reason: refundErr.message, reference: ref,
+          order_group_id: anchor.order_group_id, order_id: anchor.id,
+          user_id: user.id, amount: walletRefund, reason: refundErr.message, reference: ref,
         });
 
-        // Direct call to send-push: resolveAndSendPush only supports
-        // userIds; send-push natively accepts role+branch_id for
-        // role-based fan-out. send-push will also resolve the
-        // admin.wallet_refund_failed template if admin has customized it.
         fetch(`${SUPABASE_URL}/functions/v1/send-push`, {
           method: 'POST',
           headers: {
@@ -213,14 +237,14 @@ Deno.serve(async (req: Request) => {
           },
           body: JSON.stringify({
             role: 'admin',
-            branch_id: order.branch_id ?? undefined,
+            branch_id: cancellable[0]?.branch_id ?? undefined,
             event_key: 'admin.wallet_refund_failed',
-            vars: { order_id, amount: walletRefund, reference: ref },
+            vars: { order_id: anchor.id, amount: walletRefund, reference: ref },
             title: 'Wallet refund failed',
-            body: `Order #${order_id} cancelled but wallet refund of ₹${walletRefund} did not credit. Manual reconciliation needed (ref ${ref}).`,
-            data: { screen: 'AdminOrderDetail', params: { orderId: order_id } },
+            body: `Order #${anchor.id} cancelled but wallet refund of ₹${walletRefund} did not credit. Manual reconciliation needed (ref ${ref}).`,
+            data: { screen: 'AdminOrderDetail', params: { orderId: anchor.id } },
             trigger_source: 'admin_alert',
-            reference_id: String(order_id),
+            reference_id: String(anchor.id),
           }),
         }).catch((e: any) =>
           console.error('[cancel-order] admin alert push failed:', e?.message),
@@ -228,8 +252,8 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    const razorpayRefundDue = Math.max(0, Number(order.total_amount) - walletRefund);
-    console.log(`[cancel-order] Order ${order_id} cancelled. Wallet refund: ${walletRefund}, Razorpay refund due: ${razorpayRefundDue}`);
+    const razorpayRefundDue = Math.max(0, sumTotal(cancellable) - walletRefund);
+    console.log(`[cancel-order] Group ${anchor.order_group_id} cancelled (${cancellableIds.length} row(s)). Wallet refund: ${walletRefund}, Razorpay refund due: ${razorpayRefundDue}`);
 
     return json({
       status: 'cancelled',

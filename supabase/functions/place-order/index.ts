@@ -1,26 +1,42 @@
 /**
  * 1stOne F1 — Place Order Edge Function
  *
- * Handles food + essentials items in one order.
+ * Handles food + essentials items in one order. MF-10: a single
+ * checkout can span multiple delivery cycles / days — each (cycle,
+ * dispatch_date) becomes its own `orders` row (a single-cycle
+ * fulfillment unit), all sharing one order_group_id.
  *
  * Rules (do not weaken without agreement):
- *   1. Order status starts at 'Pending' for razorpay; moves to 'Paid' via
- *      verify-payment webhook. Wallet payments start at 'Confirmed' (debit
- *      already succeeded atomically).
- *   2. Wallet debit uses decrement_wallet_balance_if_sufficient RPC — never
- *      read-modify-write at this layer.
- *   3. Orders + order_items insert is a single atomic RPC (place_order_atomic).
- *   4. Idempotency-Key header is enforced: duplicate keys return the cached
- *      response instead of creating a second order.
- *   5. delivery_method and hub_id are derived from the address server-side,
- *      never trusted from the client payload.
+ *   1. Order status starts at 'Pending' for razorpay; moves to
+ *      'Confirmed' via confirm-order / verify-payment. Wallet payments
+ *      start at 'Confirmed' (debit already succeeded atomically).
+ *   2. Wallet debit uses decrement_wallet_balance_if_sufficient RPC —
+ *      never read-modify-write at this layer. ONE debit for the whole
+ *      checkout (grand total across all groups).
+ *   3. All orders + order_items for the checkout are inserted in a
+ *      single atomic RPC (place_order_atomic, multi-group signature).
+ *   4. Idempotency-Key header is enforced: duplicate keys return the
+ *      cached response instead of creating a second order.
+ *   5. delivery_method and hub_id are derived from the address
+ *      server-side, never trusted from the client payload.
+ *   6. Each cart item's cycle is re-derived from the DB and validated
+ *      against the group it was placed in — the client cannot
+ *      mis-group an item into the wrong cycle.
+ *   7. Money is per-row: each group carries its own subtotal + tax;
+ *      the delivery fee is charged ONCE, on the earliest-dispatch
+ *      group. So SUM(orders.total_amount) stays correct.
  *
  * Deploy: supabase functions deploy place-order --no-verify-jwt
+ * NOTE: the payload shape changed for MF-10 — deploy this together
+ * with the matching app build, never alone.
  *
  * Body:
- *   food_items:       [{ menu_item_id, quantity }]         (optional)
- *   essentials_items: [{ essential_item_id, quantity }]    (optional)
- *   delivery_address_id, payment_method, dispatch_date, notes, cycle_id
+ *   groups: [{ cycle_id, dispatch_date,
+ *              food_items:[{menu_item_id,quantity}],
+ *              essentials_items:[{essential_item_id,quantity}] }]
+ *   subscription_plans: [{ plan_id, start_date }]   (optional)
+ *   dispatch_date        (optional — used only for a subscription order)
+ *   delivery_address_id, payment_method, notes
  */
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
@@ -94,20 +110,16 @@ serve(async (req) => {
 
     const body = await req.json();
     const {
-      food_items = [],
-      essentials_items = [],
-      items: legacy_items = [],
+      groups = [],
       subscription_plans = [],
-      cycle_id,
+      cycle_id: legacy_cycle_id,
       delivery_address_id,
       payment_method,
       dispatch_date,
       notes,
     } = body;
 
-    const foodItems = food_items.length > 0 ? food_items : legacy_items;
-
-    if (foodItems.length === 0 && essentials_items.length === 0 && subscription_plans.length === 0) {
+    if ((!Array.isArray(groups) || groups.length === 0) && subscription_plans.length === 0) {
       return json({ error: 'No items or plans provided' }, 400);
     }
 
@@ -170,59 +182,86 @@ serve(async (req) => {
     const hubId = addressData.hub_id ?? null;
     const branchId = addressData.branch_id ?? null;
 
-    // ── Price from DB (never trust client) ────────────────────
-    let subtotal = 0;
-    const orderItemRows: any[] = [];
-    let resolvedCycleId = cycle_id ?? null;
+    // ── Build dispatch groups (price from DB — never trust client) ──
+    // Each group: one cycle + one dispatch_date + its own item rows.
+    type DispatchGroup = {
+      cycle_id: number | null;
+      dispatch_date: string;
+      items: any[];
+      subtotal: number;
+    };
+    const dispatchGroups: DispatchGroup[] = [];
 
-    if (foodItems.length > 0) {
-      const foodIds = foodItems.map((i: any) => i.menu_item_id);
-      const { data: menuItems, error: menuError } = await supabase
-        .from('menu_items')
-        .select('id, name, price, is_active')
-        .in('id', foodIds);
-      if (menuError) throw menuError;
+    for (const g of groups) {
+      const groupCycleId: number | null = g.cycle_id ?? null;
+      const groupDate: string | undefined = g.dispatch_date;
+      const foodItems = g.food_items ?? [];
+      const essItems = g.essentials_items ?? [];
 
-      const menuMap = new Map(menuItems!.map((m) => [m.id, m]));
-      for (const item of foodItems) {
-        const m = menuMap.get(item.menu_item_id);
-        if (!m || !m.is_active) return json({ error: `Item ${item.menu_item_id} unavailable` }, 400);
-        subtotal += m.price * item.quantity;
-        orderItemRows.push({
-          item_id: item.menu_item_id,
-          item_type: 'food',
-          item_name: m.name,
-          quantity: item.quantity,
-          price_at_time: m.price,
-        });
+      if (!groupDate) return json({ error: 'dispatch_date is required for every group' }, 400);
+
+      const items: any[] = [];
+      let subtotal = 0;
+
+      if (foodItems.length > 0) {
+        const foodIds = foodItems.map((i: any) => i.menu_item_id);
+        const { data: menuItems, error: menuError } = await supabase
+          .from('menu_items')
+          .select('id, name, price, is_active, cycle_id')
+          .in('id', foodIds);
+        if (menuError) throw menuError;
+
+        const menuMap = new Map(menuItems!.map((m) => [m.id, m]));
+        for (const item of foodItems) {
+          const m = menuMap.get(item.menu_item_id);
+          if (!m || !m.is_active) return json({ error: `Item ${item.menu_item_id} unavailable` }, 400);
+          // Server-authoritative cycle check — the item's real cycle must
+          // match the group it was placed in. Blocks the mis-scheduling bug.
+          if (m.cycle_id !== groupCycleId) {
+            return json({ error: `"${m.name}" cannot be ordered in the selected delivery cycle` }, 400);
+          }
+          subtotal += m.price * item.quantity;
+          items.push({
+            item_id: m.id,
+            item_type: 'food',
+            item_name: m.name,
+            quantity: item.quantity,
+            price_at_time: m.price,
+          });
+        }
       }
+
+      if (essItems.length > 0) {
+        const essIds = essItems.map((i: any) => i.essential_item_id);
+        const { data: essRows, error: essError } = await supabase
+          .from('essentials_catalog')
+          .select('id, name, price, is_active, cycle_id')
+          .in('id', essIds);
+        if (essError) throw essError;
+
+        const essMap = new Map(essRows!.map((e) => [e.id, e]));
+        for (const item of essItems) {
+          const e = essMap.get(item.essential_item_id);
+          if (!e || !e.is_active) return json({ error: `Essential ${item.essential_item_id} unavailable` }, 400);
+          if (e.cycle_id !== groupCycleId) {
+            return json({ error: `"${e.name}" cannot be ordered in the selected delivery cycle` }, 400);
+          }
+          subtotal += e.price * item.quantity;
+          items.push({
+            item_id: e.id,
+            item_type: 'essential',
+            item_name: e.name,
+            quantity: item.quantity,
+            price_at_time: e.price,
+          });
+        }
+      }
+
+      if (items.length === 0) continue;
+      dispatchGroups.push({ cycle_id: groupCycleId, dispatch_date: groupDate, items, subtotal });
     }
 
-    if (essentials_items.length > 0) {
-      const essIds = essentials_items.map((i: any) => i.essential_item_id);
-      const { data: essRows, error: essError } = await supabase
-        .from('essentials_catalog')
-        .select('id, name, price, is_active, cycle_id')
-        .in('id', essIds);
-      if (essError) throw essError;
-
-      const essMap = new Map(essRows!.map((e) => [e.id, e]));
-      for (const item of essentials_items) {
-        const e = essMap.get(item.essential_item_id);
-        if (!e || !e.is_active) return json({ error: `Essential ${item.essential_item_id} unavailable` }, 400);
-        subtotal += e.price * item.quantity;
-        if (!resolvedCycleId && e.cycle_id) resolvedCycleId = e.cycle_id;
-        orderItemRows.push({
-          item_id: item.essential_item_id,
-          item_type: 'essential',
-          item_name: e.name,
-          quantity: item.quantity,
-          price_at_time: e.price,
-        });
-      }
-    }
-
-    // ── Subscription plans: validate + core-items conflict + add to subtotal ──
+    // ── Subscription plans: validate + core-items conflict + own group ──
     const planStartById = new Map<number, string>();
     const loadedPlans: any[] = [];
     if (subscription_plans.length > 0) {
@@ -298,26 +337,65 @@ serve(async (req) => {
         }
       }
 
-      // Roll plan prices into subtotal + order lines so the customer receipt shows them
+      // Subscription purchase is a single revenue record — one group.
+      // Its dispatch_date is just the purchase day; the daily meal
+      // dispatches are generated later by generate_daily_manifest.
+      const subItems: any[] = [];
+      let subSubtotal = 0;
+      let subCycleId: number | null = legacy_cycle_id ?? null;
       for (const plan of loadedPlans) {
-        subtotal += plan.price;
-        orderItemRows.push({
+        subSubtotal += plan.price;
+        subItems.push({
           item_id: plan.id,
           item_type: 'subscription',
           item_name: plan.plan_name,
           quantity: 1,
           price_at_time: plan.price,
         });
-        if (!resolvedCycleId && plan.cycle_id) resolvedCycleId = plan.cycle_id;
+        if (!subCycleId && plan.cycle_id) subCycleId = plan.cycle_id;
+      }
+      dispatchGroups.push({
+        cycle_id: subCycleId,
+        dispatch_date: dispatch_date ?? new Date().toISOString().split('T')[0],
+        items: subItems,
+        subtotal: subSubtotal,
+      });
+    }
+
+    if (dispatchGroups.length === 0) {
+      return json({ error: 'No valid items to order' }, 400);
+    }
+
+    // ── Money: per-group, delivery fee charged once on earliest group ──
+    let earliestIdx = 0;
+    for (let i = 1; i < dispatchGroups.length; i++) {
+      if (dispatchGroups[i].dispatch_date < dispatchGroups[earliestIdx].dispatch_date) {
+        earliestIdx = i;
       }
     }
 
-    const taxAmount = Math.round(subtotal * (taxRate / 100) * 100) / 100;
-    const totalAmount = Math.round((subtotal + taxAmount + deliveryFee) * 100) / 100;
-    // orderType: items drive it when present; else infer from first plan's type
-    const orderType = foodItems.length > 0 || loadedPlans.some((p) => (p.plan_type ?? 'food') === 'food')
-      ? 'food'
-      : 'essential';
+    const groupPayloads = dispatchGroups.map((g, idx) => {
+      const tax = Math.round(g.subtotal * (taxRate / 100) * 100) / 100;
+      const fee = idx === earliestIdx ? deliveryFee : 0;
+      const total = Math.round((g.subtotal + tax + fee) * 100) / 100;
+      return {
+        cycle_id: g.cycle_id,
+        dispatch_date: g.dispatch_date,
+        items: g.items,
+        tax_amount: tax,
+        delivery_fee: fee,
+        total_amount: total,
+      };
+    });
+
+    const grandTotal = Math.round(
+      groupPayloads.reduce((s, g) => s + g.total_amount, 0) * 100,
+    ) / 100;
+
+    // orderType: food when any food item or food plan is present; else essential.
+    const hasFoodItem = dispatchGroups.some((g) => g.items.some((it) => it.item_type === 'food'));
+    const hasFoodPlan = loadedPlans.some((p) => (p.plan_type ?? 'food') === 'food');
+    const orderType = hasFoodItem || hasFoodPlan ? 'food' : 'essential';
 
     // ── Razorpay: create the order BEFORE we touch our DB ─────
     let razorpayOrderId: string | null = null;
@@ -332,7 +410,7 @@ serve(async (req) => {
           Authorization: `Basic ${btoa(`${RAZORPAY_KEY_ID}:${RAZORPAY_KEY_SECRET}`)}`,
         },
         body: JSON.stringify({
-          amount: Math.round(totalAmount * 100),
+          amount: Math.round(grandTotal * 100),
           currency: 'INR',
           receipt: `1stone_${user.id.slice(0, 8)}_${Date.now()}`,
           notes: { user_id: user.id, order_type: orderType },
@@ -343,50 +421,57 @@ serve(async (req) => {
       razorpayOrderId = rzpOrder.id;
     }
 
-    // ── Wallet debit (atomic, only if sufficient) ─────────────
+    // ── Wallet debit (atomic, only if sufficient) — ONE debit for the checkout ──
     let walletAmountUsed = 0;
     if (payment_method === 'wallet') {
       const { data: debited, error: debitError } = await supabase.rpc(
         'decrement_wallet_balance_if_sufficient',
         {
           p_user_id: user.id,
-          p_amount: totalAmount,
+          p_amount: grandTotal,
           p_description: 'Order payment',
         },
       );
       if (debitError) throw new Error(`Wallet debit RPC failed: ${debitError.message}`);
       if (debited !== true) return json({ error: 'Insufficient wallet balance' }, 400);
-      walletAmountUsed = totalAmount;
+      walletAmountUsed = grandTotal;
     }
 
-    // ── Insert order + items atomically ───────────────────────
+    // ── Insert all orders + items atomically ──────────────────
     // Status:
-    //   razorpay → 'Pending' (verify-payment webhook flips to 'Paid')
+    //   razorpay → 'Pending' (confirm-order / verify-payment flips to 'Confirmed')
     //   wallet   → 'Confirmed' (payment already settled)
+    // Per-group wallet_amount_used: the group's own total for wallet
+    // payments, 0 for razorpay (the per-row money model — each row is
+    // self-describing for refunds).
     const orderStatus = payment_method === 'razorpay' ? 'Pending' : 'Confirmed';
 
-    const { data: newOrderId, error: rpcError } = await supabase.rpc('place_order_atomic', {
+    const pGroups = groupPayloads.map((g) => ({
+      cycle_id: g.cycle_id,
+      dispatch_date: g.dispatch_date,
+      total_amount: g.total_amount,
+      tax_amount: g.tax_amount,
+      delivery_fee: g.delivery_fee,
+      wallet_amount_used: payment_method === 'wallet' ? g.total_amount : 0,
+      items: g.items,
+    }));
+
+    const { data: createdRows, error: rpcError } = await supabase.rpc('place_order_atomic', {
       p_user_id: user.id,
-      p_total_amount: totalAmount,
-      p_tax_amount: taxAmount,
-      p_delivery_fee: deliveryFee,
       p_status: orderStatus,
       p_order_type: orderType,
-      p_dispatch_date: dispatch_date,
-      p_cycle_id: resolvedCycleId,
       p_delivery_method: deliveryMethod,
       p_hub_id: hubId,
       p_payment_method: payment_method,
       p_razorpay_order_id: razorpayOrderId,
-      p_wallet_amount_used: walletAmountUsed,
       p_delivery_address_id: delivery_address_id,
       p_notes: notes || null,
       p_branch_id: branchId,
-      p_items: orderItemRows,
+      p_groups: pGroups,
     });
 
-    if (rpcError || !newOrderId) {
-      // Rollback wallet debit if the order could not be persisted
+    if (rpcError || !createdRows || (createdRows as any[]).length === 0) {
+      // Rollback wallet debit if the orders could not be persisted
       if (payment_method === 'wallet' && walletAmountUsed > 0) {
         let refundFailed = false;
         let refundErrMessage = '';
@@ -423,11 +508,20 @@ serve(async (req) => {
       throw new Error(`place_order_atomic failed: ${rpcError?.message ?? 'unknown'}`);
     }
 
+    const rows = createdRows as Array<{
+      new_order_id: number;
+      new_group_id: string;
+      new_cycle_id: number | null;
+      new_dispatch_date: string;
+    }>;
+    const orderIds = rows.map((r) => r.new_order_id);
+    const orderGroupId = rows[0].new_group_id;
+    const primaryOrderId = orderIds[0];
+
     // ── Create user_subscriptions rows for any plans in this order ──
     // Wallet path: is_active=true immediately (payment already settled).
     // Razorpay path: is_active=false + razorpay_order_id matching the order —
-    // verify-payment webhook flips them active on payment.captured using
-    // razorpay_order_id (existing logic, unchanged).
+    // confirm-order / verify-payment flips them active on payment.
     for (const plan of loadedPlans) {
       const start = planStartById.get(plan.id);
       const { error: subErr } = await supabase.from('user_subscriptions').insert({
@@ -445,15 +539,17 @@ serve(async (req) => {
       if (subErr) {
         // Non-blocking — order is already live. Log for manual reconciliation.
         console.error('[place-order] user_subscriptions insert failed:', {
-          plan_id: plan.id, order_id: newOrderId, error: subErr.message,
+          plan_id: plan.id, order_id: primaryOrderId, error: subErr.message,
         });
       }
     }
 
     const responsePayload = {
-      id: newOrderId,
+      id: primaryOrderId,
+      order_group_id: orderGroupId,
+      order_ids: orderIds,
       status: orderStatus,
-      total_amount: totalAmount,
+      total_amount: grandTotal,
       razorpay_order_id: razorpayOrderId,
       payment_method,
       wallet_amount_used: walletAmountUsed,
@@ -471,7 +567,8 @@ serve(async (req) => {
     }
 
     // ── Push notification (wallet orders are immediately Confirmed) ──
-    // Razorpay orders start as Pending — push fires when verify-payment confirms them.
+    // One push per checkout (the whole order group), not one per row.
+    // Razorpay orders start as Pending — push fires when payment confirms them.
     if (payment_method === 'wallet') {
       resolveAndSendPush({
         supabase,
@@ -479,13 +576,13 @@ serve(async (req) => {
         serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY,
         eventKey: 'order.confirmed',
         userIds: [user.id],
-        vars: { order_id: newOrderId },
+        vars: { order_id: primaryOrderId },
         fallback: {
           title: 'Order Confirmed!',
-          body: `Your order #${newOrderId} is confirmed. We are getting it ready!`,
+          body: `Your order #${primaryOrderId} is confirmed. We are getting it ready!`,
         },
-        data: { screen: 'OrderDetail', params: { orderId: newOrderId } },
-        referenceId: String(newOrderId),
+        data: { screen: 'OrderDetail', params: { orderId: primaryOrderId } },
+        referenceId: String(orderGroupId),
       }).catch((e) => console.error('[place-order] push failed:', e));
     }
 

@@ -1073,6 +1073,7 @@ export type Database = {
           hub_id: number | null
           id: number
           notes: string | null
+          order_group_id: string
           order_type: string | null
           paid_at: string | null
           payment_method: string | null
@@ -1097,6 +1098,7 @@ export type Database = {
           hub_id?: number | null
           id?: number
           notes?: string | null
+          order_group_id?: string
           order_type?: string | null
           paid_at?: string | null
           payment_method?: string | null
@@ -1121,6 +1123,7 @@ export type Database = {
           hub_id?: number | null
           id?: number
           notes?: string | null
+          order_group_id?: string
           order_type?: string | null
           paid_at?: string | null
           payment_method?: string | null

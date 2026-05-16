@@ -121,11 +121,16 @@ Deno.serve(async (req: Request) => {
     }
 
     // Service-role client bypasses RLS — direct update is safe here.
-    // Idempotent: only transitions Pending → Paid.
+    // MF-10: a single Razorpay payment can cover multiple orders — one
+    // per dispatch cycle, all sharing this razorpay_order_id. Flip the
+    // WHOLE group by razorpay_order_id, not just the row we looked up,
+    // so sibling-cycle rows aren't stranded in 'Pending' (money taken,
+    // item never reaches the kitchen).
+    // Idempotent: only transitions Pending → Confirmed.
     const { error: paidErr } = await supabase
       .from('orders')
       .update({ status: 'Confirmed' })
-      .eq('id', order_id)
+      .eq('razorpay_order_id', razorpay_order_id)
       .eq('user_id', user.id)
       .eq('status', 'Pending');
 

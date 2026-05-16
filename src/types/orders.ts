@@ -17,6 +17,9 @@ export type PaymentMethod = 'wallet' | 'razorpay' | 'split';
 
 export interface Order {
   id: number;
+  // MF-10: a customer "order" can span multiple delivery cycles — each
+  // cycle is its own Order row, all sharing one order_group_id.
+  order_group_id: string;
   user_id: string;
   subscription_id: number | null;
   total_amount: number;

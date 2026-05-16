@@ -142,3 +142,33 @@ initial deploy order in §1. Categories:
   `schema.sql` on a brand-new environment. Not re-runnable.
 - **`seed_reset_test_data.sql`** — dev utility. Wipes order/sub/transaction
   history and re-seeds test data. **Never run on prod.**
+
+## 8. MF-10 — multi-cycle order (pending deploy)
+
+Lets one checkout span multiple delivery cycles as a single order group
+(one payment, one cancellation, one `orders` row per cycle sharing an
+`order_group_id`). Apply as **one bundle** — the `place-order` payload shape
+changes, so an old app build hitting the new function (or a new build hitting
+the old function) breaks checkout.
+
+**SQL — run in SQL editor, in this order:**
+
+| #  | File                          | What it installs                                                                                          |
+|----|-------------------------------|------------------------------------------------------------------------------------------------------------|
+| 1  | `add_order_group_id.sql`      | `orders.order_group_id` (UUID, `DEFAULT gen_random_uuid()`, NOT NULL) + backfill of existing rows + index   |
+| 2  | `mf10_place_order_atomic.sql` | Multi-group `place_order_atomic` — drops the prior 17-arg overload, creates the `p_groups` signature. Run **after** `rpc_atomic_increments.sql`. |
+
+**Edge Functions — redeploy:**
+
+```bash
+supabase functions deploy place-order    --no-verify-jwt
+supabase functions deploy confirm-order  --no-verify-jwt
+supabase functions deploy verify-payment --no-verify-jwt
+supabase functions deploy cancel-order   --no-verify-jwt
+```
+
+**App build:** ship the matching app build in the same window as the
+`place-order` deploy — the two are not backward-compatible.
+
+No change to RLS, cron jobs, `generate_daily_manifest`, or staff-facing
+functions — each `orders` row remains a single-cycle fulfillment unit.

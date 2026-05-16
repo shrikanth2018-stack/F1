@@ -5,13 +5,13 @@
  * useMyOrders uses infinite-scroll pagination (20 orders per page).
  */
 
-import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../api/supabaseClient';
 import { useSupabaseQuery, useSupabaseMutation } from '../api/useSupabaseQuery';
 import { invalidateOrderQueries } from '../api/invalidateOrderQueries';
 import { QUERY_KEYS } from '../utils/constants';
 import { useAuth } from './useAuth';
-import type { Order } from '../types';
+import type { Order, OrderItem } from '../types';
 
 const PAGE_SIZE = 20;
 
@@ -50,6 +50,39 @@ export function useOrderDetail(orderId: number) {
         .eq('id', orderId)
         .limit(1),
   );
+}
+
+export type OrderWithItems = Order & { order_items: OrderItem[] };
+
+/**
+ * MF-10: a customer-facing "order" can be a GROUP of `orders` rows —
+ * one per dispatch cycle, all sharing order_group_id. Given any row id,
+ * this resolves the whole group and returns every row with its items,
+ * sorted by dispatch date. OrderDetail renders one section per row.
+ */
+export function useOrderGroup(orderId: number) {
+  return useQuery({
+    queryKey: [...QUERY_KEYS.ORDERS, 'group', orderId],
+    queryFn: async (): Promise<OrderWithItems[]> => {
+      const { data: anchor, error: anchorErr } = await supabase
+        .from('orders')
+        .select('order_group_id')
+        .eq('id', orderId)
+        .maybeSingle();
+      if (anchorErr) throw anchorErr;
+      if (!anchor) throw new Error('Order not found');
+
+      const { data: rows, error: rowsErr } = await supabase
+        .from('orders')
+        .select('*, order_items(*)')
+        .eq('order_group_id', anchor.order_group_id)
+        .order('dispatch_date', { ascending: true })
+        .order('id', { ascending: true });
+      if (rowsErr) throw rowsErr;
+      return (rows ?? []) as OrderWithItems[];
+    },
+    enabled: !!orderId,
+  });
 }
 
 export function useCancelOrder() {

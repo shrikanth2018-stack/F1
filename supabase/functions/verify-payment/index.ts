@@ -108,24 +108,27 @@ Deno.serve(async (req: Request) => {
       console.error('[verify-payment] mark_order_paid error:', paidErr.message);
     } else if (paidOrders && paidOrders.length > 0) {
       matchedAny = true;
-      console.log('[verify-payment] Customer order marked paid:', razorpayOrderId);
-      const { data: orderRow } = await supabase
-        .from('orders').select('id, user_id')
-        .eq('razorpay_order_id', razorpayOrderId).maybeSingle();
-      if (orderRow?.user_id) {
+      // MF-10: mark_order_paid flips every order sharing this
+      // razorpay_order_id (one per dispatch cycle) and RETURNs them all.
+      // Use the primary returned row directly — a re-query with
+      // .maybeSingle() would error now that multiple rows can match.
+      // One push per group, keyed on the primary order.
+      console.log('[verify-payment] Customer order(s) marked paid:', razorpayOrderId, paidOrders.map((o: any) => o.order_id));
+      const primary = paidOrders[0];
+      if (primary?.user_id) {
         resolveAndSendPush({
           supabase,
           supabaseUrl: SUPABASE_URL,
           serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY,
           eventKey: 'order.razorpay_confirmed',
-          userIds: [orderRow.user_id],
-          vars: { order_id: orderRow.id },
+          userIds: [primary.user_id],
+          vars: { order_id: primary.order_id },
           fallback: {
             title: 'Order Confirmed!',
-            body: `Your order #${orderRow.id} payment is confirmed. We're getting it ready!`,
+            body: `Your order #${primary.order_id} payment is confirmed. We're getting it ready!`,
           },
-          data: { screen: 'OrderDetail', params: { orderId: orderRow.id } },
-          referenceId: String(orderRow.id),
+          data: { screen: 'OrderDetail', params: { orderId: primary.order_id } },
+          referenceId: String(primary.order_id),
         }).catch((e: any) => console.error('[verify-payment] order push failed:', e));
       }
     }
@@ -220,9 +223,11 @@ Deno.serve(async (req: Request) => {
     if (failErr) {
       console.error('[verify-payment] mark_order_failed error:', failErr.message);
     } else {
+      // MF-10: mark_order_failed flips every order sharing this
+      // razorpay_order_id — .limit(1) keeps this push lookup single-row.
       const { data: failedOrder } = await supabase
         .from('orders').select('id, user_id')
-        .eq('razorpay_order_id', razorpayOrderId).maybeSingle();
+        .eq('razorpay_order_id', razorpayOrderId).limit(1).maybeSingle();
       if (failedOrder?.user_id) {
         resolveAndSendPush({
           supabase,

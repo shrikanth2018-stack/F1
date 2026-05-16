@@ -198,26 +198,40 @@ export function CheckoutScreen({ navigation, route }: any) {
 
     try {
       const today = new Date();
-      let dispatchDate: string;
-      if (cartType === 'food') {
-        // Validate all items share the same dispatch scenario before proceeding
-        const scenarios = [...new Set(evaluations.map((e) => e.scenario))];
-        if (scenarios.length > 1) {
-          throw new Error('Your cart has items dispatching on different days. Please checkout one cycle at a time.');
-        }
-        // Smart-cart scenario:
-        //   A = today; B = tomorrow; C = day after tomorrow (BF-41 / F3.X
-        //   cross-midnight after-cutoff). Scenario C fires a consent popup
-        //   so customer explicitly accepts the 2-day shift.
-        const firstEval = evaluations[0];
-        if (firstEval?.scenario === 'C') {
-          const dayAfter = new Date(today);
-          dayAfter.setDate(dayAfter.getDate() + 2);
-          dispatchDate = dayAfter.toISOString().split('T')[0];
+      const dateStr = (d: Date) => d.toISOString().split('T')[0];
+      const todayStr = dateStr(today);
+      const tomorrowStr = (() => { const d = new Date(today); d.setDate(d.getDate() + 1); return dateStr(d); })();
+      const dayAfterStr = (() => { const d = new Date(today); d.setDate(d.getDate() + 2); return dateStr(d); })();
+      // Smart-cart scenario per cycle: A = today, B = tomorrow,
+      // C = day after tomorrow (BF-41 cross-midnight after-cutoff).
+      const scenarioToDate = (s: string | undefined) =>
+        s === 'C' ? dayAfterStr : s === 'B' ? tomorrowStr : todayStr;
 
+      // ── Build dispatch groups (MF-10) ──────────────────────
+      // A checkout can span multiple cycles; each cycle is one group →
+      // one order row. Items are grouped by cycle_id. The server
+      // re-derives + validates each item's cycle before pricing.
+      const groups: any[] = [];
+
+      if (!isSubscriptionOnly && cartType === 'food' && foodItems.length > 0) {
+        const cycleIds = [...new Set(foodItems.map((i) => i.cycle_id))];
+        let anyDayAfter = false;
+        for (const cycleId of cycleIds) {
+          const scenario = evaluations.find((e) => e.cycle_id === cycleId)?.scenario;
+          if (scenario === 'C') anyDayAfter = true;
+          groups.push({
+            cycle_id: cycleId,
+            dispatch_date: scenarioToDate(scenario),
+            food_items: foodItems
+              .filter((i) => i.cycle_id === cycleId)
+              .map((i) => ({ menu_item_id: i.menu_item_id, quantity: i.quantity })),
+          });
+        }
+        // Scenario-C consent — once, if any cycle has shifted to day-after.
+        if (anyDayAfter) {
           const proceed = await confirmDialog({
             title: 'Delivery in 2 days',
-            message: `You've missed the cutoff for tomorrow's ${firstEval.cycle_name}. This order will be delivered on ${formatDateLong(dispatchDate)}. Continue?`,
+            message: `Some items have missed tomorrow's cutoff and will be delivered on ${formatDateLong(dayAfterStr)}. Continue?`,
             confirmLabel: 'Place Order',
             cancelLabel: 'Cancel',
           });
@@ -227,16 +241,20 @@ export function CheckoutScreen({ navigation, route }: any) {
             setGlobalLoading(false);
             return;
           }
-        } else if (firstEval?.scenario === 'B') {
-          const tomorrow = new Date(today);
-          tomorrow.setDate(tomorrow.getDate() + 1);
-          dispatchDate = tomorrow.toISOString().split('T')[0];
-        } else {
-          dispatchDate = today.toISOString().split('T')[0];
         }
-      } else {
-        // Essentials always dispatch today
-        dispatchDate = today.toISOString().split('T')[0];
+      } else if (!isSubscriptionOnly && cartType === 'essentials' && essItems.length > 0) {
+        // Essentials dispatch today; still one group per cycle so each
+        // cycle's items reach the correct kitchen / packing queue.
+        const cycleIds = [...new Set(essItems.map((i) => i.cycle_id))];
+        for (const cycleId of cycleIds) {
+          groups.push({
+            cycle_id: cycleId,
+            dispatch_date: todayStr,
+            essentials_items: essItems
+              .filter((i) => i.cycle_id === cycleId)
+              .map((i) => ({ essential_item_id: i.essential_item_id, quantity: i.quantity })),
+          });
+        }
       }
 
       const { data: { session: rawSession } } = await supabase.auth.getSession();
@@ -247,27 +265,15 @@ export function CheckoutScreen({ navigation, route }: any) {
           'Idempotency-Key': idempotencyKeyRef.current,
         },
         body: {
-          // In subscription-only mode, items are fully suppressed from the payload.
-          food_items: (!isSubscriptionOnly && cartType === 'food') ? foodItems.map((i) => ({
-            menu_item_id: i.menu_item_id,
-            quantity: i.quantity,
-          })) : [],
-          essentials_items: (!isSubscriptionOnly && cartType === 'essentials') ? essItems.map((i) => ({
-            essential_item_id: i.essential_item_id,
-            quantity: i.quantity,
-          })) : [],
+          groups,
           subscription_plans: activePlans.map((p) => ({
             plan_id: p.plan_id,
             start_date: p.start_date,
           })),
-          cycle_id: isSubscriptionOnly
-            ? (subPlan?.cycle_id ?? null)
-            : cartType === 'food'
-              ? (foodItems[0]?.cycle_id ?? foodPlans[0]?.cycle_id ?? null)
-              : (essItems[0]?.cycle_id ?? essPlans[0]?.cycle_id ?? null),
+          // Used by place-order only for a subscription-purchase order.
+          dispatch_date: todayStr,
           delivery_address_id: selectedAddressId,
           payment_method: paymentMethod,
-          dispatch_date: dispatchDate,
         },
       });
 

@@ -1,7 +1,11 @@
 /**
  * 1stOne F1 — Order Detail Screen
- * Shows full order info: items, status timeline, address, payment.
- * Dispatch time shown next to current status from delivery cycle.
+ *
+ * MF-10: a customer "order" can span multiple delivery cycles. This
+ * screen resolves the whole order group (via useOrderGroup) and renders
+ * ONE schedule section per dispatch row — each with its own status
+ * timeline, dispatch date and items — followed by one shared totals /
+ * payment block. Cancellation acts on the whole group.
  */
 
 import React, { useState, useCallback } from 'react';
@@ -18,14 +22,11 @@ import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { Divider } from '../../components/Divider';
 import { ErrorRetry } from '../../components/ErrorRetry';
-import { useOrderDetail, useCancelOrder } from '../../hooks/useOrders';
+import { useOrderGroup, useCancelOrder, type OrderWithItems } from '../../hooks/useOrders';
 import { useDeliveryCycles } from '../../hooks/useDeliveryCycles';
 import { useStoreConfig } from '../../hooks/useStoreConfig';
-import { useSupabaseQuery } from '../../api/useSupabaseQuery';
-import { supabase } from '../../api/supabaseClient';
 import { formatPriceShort, formatDateLong, formatOrderStatus } from '../../utils/formatters';
 import { formatTime12h } from '../../utils/timeEngine';
-import type { OrderItem } from '../../types';
 
 // 'Paid' = Razorpay webhook confirmed but kitchen hasn't started yet — still cancellable
 const CANCELLABLE_STATUSES = new Set(['Pending', 'Confirmed', 'Paid', 'Preparing']);
@@ -48,35 +49,65 @@ function buildStatusFlow(orderType: string | null | undefined, deliveryMethod: s
 
 export function OrderDetailScreen({ route, navigation }: any) {
   const { orderId } = route.params;
-  const { data: orders, isLoading, error, refetch } = useOrderDetail(orderId);
-  const order = orders?.[0];
+  const { data: rows, isLoading, error, refetch } = useOrderGroup(orderId);
 
   const { data: cycles } = useDeliveryCycles();
   const { data: config } = useStoreConfig();
   const { mutateAsync: cancelOrder } = useCancelOrder();
   const [isCancelling, setIsCancelling] = useState(false);
 
-  const { data: orderItems } = useSupabaseQuery<OrderItem>(
-    ['order_items', orderId],
-    () =>
-      supabase
-        .from('order_items')
-        .select('*')
-        .eq('order_id', orderId),
-  );
+  // ── Group-level derived values (safe on empty — guarded before use) ──
+  const groupRows: OrderWithItems[] = rows ?? [];
+  const primaryId = groupRows.length > 0 ? Math.min(...groupRows.map((r) => r.id)) : orderId;
+  const allCancelled = groupRows.length > 0 && groupRows.every((r) => r.status === 'Cancelled');
+
+  const groupTotal    = groupRows.reduce((s, r) => s + (Number(r.total_amount) || 0), 0);
+  const groupTax      = groupRows.reduce((s, r) => s + (Number(r.tax_amount) || 0), 0);
+  const groupDelivery = groupRows.reduce((s, r) => s + (Number(r.delivery_fee) || 0), 0);
+  const groupSubtotal = groupTotal - groupTax - groupDelivery;
+  const groupWallet   = groupRows.reduce((s, r) => s + (Number(r.wallet_amount_used) || 0), 0);
+
+  // ── Cancellation eligibility (whole group) ──────────────────
+  const windowHours = config?.cancellation_window_hours ?? 2;
+  const earliestCreatedMs = groupRows.length > 0
+    ? Math.min(...groupRows.map((r) => new Date(r.created_at).getTime()))
+    : Date.now();
+  const ageHours = (Date.now() - earliestCreatedMs) / 3_600_000;
+  const cancellableRows = groupRows.filter((r) => CANCELLABLE_STATUSES.has(r.status));
+
+  // Earliest-dispatch row governs the cutoff guard (the "1st item" rule).
+  const earliestRow = groupRows[0]; // useOrderGroup sorts by dispatch_date asc
+  const earliestCycle = (cycles ?? []).find((c) => c.id === earliestRow?.cycle_id);
+  let earliestCutoffPassed = false;
+  if (earliestRow && earliestCycle) {
+    const istOffsetMs = 5.5 * 60 * 60 * 1000;
+    const nowIST = new Date(Date.now() + istOffsetMs);
+    const todayISTStr    = nowIST.toISOString().split('T')[0];
+    const tomorrowISTStr = new Date(Date.now() + istOffsetMs + 86_400_000).toISOString().split('T')[0];
+    const [cutH, cutM] = earliestCycle.cutoff_time.split(':').map(Number);
+    const cutoffMins = cutH * 60 + cutM;
+    const nowMins = nowIST.getUTCHours() * 60 + nowIST.getUTCMinutes();
+    const isCrossMidnight = earliestCycle.cutoff_time > earliestCycle.delivery_start;
+    const cutoffReached = nowMins >= cutoffMins;
+    earliestCutoffPassed =
+      (!isCrossMidnight && earliestRow.dispatch_date === todayISTStr    && cutoffReached) ||
+      ( isCrossMidnight && earliestRow.dispatch_date === tomorrowISTStr && cutoffReached);
+  }
+
+  const canCancel =
+    cancellableRows.length > 0 && ageHours <= windowHours && !earliestCutoffPassed && !allCancelled;
 
   // Must be before early returns — Rules of Hooks
   const handleCancel = useCallback(() => {
-    if (!order) return;
-    const walletRefund = order.wallet_amount_used ?? 0;
-    const razorpayDue = order.total_amount - walletRefund;
-    const refundNote = walletRefund > 0
-      ? `₹${walletRefund} will be returned to your wallet instantly.${razorpayDue > 0 ? ` ₹${razorpayDue} Razorpay refund will be processed by admin.` : ''}`
+    if (groupRows.length === 0) return;
+    const razorpayDue = Math.max(0, groupTotal - groupWallet);
+    const refundNote = groupWallet > 0
+      ? `₹${groupWallet} will be returned to your wallet instantly.${razorpayDue > 0 ? ` ₹${razorpayDue} Razorpay refund will be processed by admin.` : ''}`
       : 'Razorpay refund will be processed by admin.';
 
     Alert.alert(
       'Cancel Order?',
-      `This cannot be undone.\n\n${refundNote}`,
+      `This cancels every delivery in this order and cannot be undone.\n\n${refundNote}`,
       [
         { text: 'Keep Order', style: 'cancel' },
         {
@@ -85,8 +116,8 @@ export function OrderDetailScreen({ route, navigation }: any) {
           onPress: async () => {
             setIsCancelling(true);
             try {
-              const result = await cancelOrder({ order_id: order.id });
-              const serverWallet = (result as any)?.wallet_refunded ?? walletRefund;
+              const result = await cancelOrder({ order_id: primaryId });
+              const serverWallet = (result as any)?.wallet_refunded ?? groupWallet;
               const serverRzp = (result as any)?.razorpay_refund_due ?? 0;
               refetch();
 
@@ -108,13 +139,13 @@ export function OrderDetailScreen({ route, navigation }: any) {
         },
       ]
     );
-  }, [order, cancelOrder, refetch]);
+  }, [groupRows, groupTotal, groupWallet, primaryId, cancelOrder, refetch]);
 
   if (error) {
     return <ErrorRetry message="Could not load order" onRetry={refetch} />;
   }
 
-  if (isLoading || !order) {
+  if (isLoading || groupRows.length === 0) {
     return (
       <SafeAreaView style={styles.container}>
         <ThemedText variant="body" color="subtitle" style={styles.loading}>
@@ -124,53 +155,8 @@ export function OrderDetailScreen({ route, navigation }: any) {
     );
   }
 
-  const statusFlow = buildStatusFlow((order as any).order_type, (order as any).delivery_method);
-  const currentStatusIndex = statusFlow.indexOf(order.status);
-  const dispatchCycle = (cycles ?? []).find((c) => c.id === order.cycle_id);
-  const dispatchTime = formatTime12h(dispatchCycle?.delivery_start);
-
-  // Hide the "Scheduled to dispatch by" line once the dispatch window has passed.
-  // delivery_start is HH:MM (e.g., "07:30"); combine with order.dispatch_date.
-  const dispatchPassed = (() => {
-    if (!dispatchCycle?.delivery_start || !order.dispatch_date) return false;
-    const [hh, mm] = dispatchCycle.delivery_start.split(':').map(Number);
-    if (Number.isNaN(hh) || Number.isNaN(mm)) return false;
-    const dispatchAt = new Date(order.dispatch_date);
-    dispatchAt.setHours(hh, mm, 0, 0);
-    return Date.now() > dispatchAt.getTime();
-  })();
-
-  const windowHours = config?.cancellation_window_hours ?? 2;
-  const ageHours = (Date.now() - new Date(order.created_at).getTime()) / 3_600_000;
-
-  const orderCycle = (cycles ?? []).find((c) => c.id === order.cycle_id);
-  const istOffsetMs = 5.5 * 60 * 60 * 1000;
-  const nowIST = new Date(Date.now() + istOffsetMs);
-  const todayISTStr    = nowIST.toISOString().split('T')[0];
-  const tomorrowISTStr = new Date(Date.now() + istOffsetMs + 86_400_000).toISOString().split('T')[0];
-  let cutoffPassed = false;
-  if (orderCycle) {
-    const [cutH, cutM] = orderCycle.cutoff_time.split(':').map(Number);
-    const cutoffMins = cutH * 60 + cutM;
-    const nowMins = nowIST.getUTCHours() * 60 + nowIST.getUTCMinutes();
-    const isCrossMidnight = orderCycle.cutoff_time > orderCycle.delivery_start;
-    const cutoffReached = nowMins >= cutoffMins;
-    cutoffPassed =
-      (!isCrossMidnight && order.dispatch_date === todayISTStr    && cutoffReached) ||
-      ( isCrossMidnight && order.dispatch_date === tomorrowISTStr && cutoffReached);
-  }
-
-  const canCancel = CANCELLABLE_STATUSES.has(order.status) && ageHours <= windowHours && !cutoffPassed;
-
-  const cancelRefundLine = (() => {
-    if (order.status !== 'Cancelled') return '';
-    const w = order.wallet_amount_used ?? 0;
-    const r = Math.max(0, order.total_amount - w);
-    if (w > 0 && r > 0) return `₹${w} returned to wallet · ₹${r} Razorpay refund in 5–7 days`;
-    if (w > 0) return `₹${w} returned to your wallet`;
-    if (r > 0) return `₹${r} Razorpay refund will be processed in 5–7 business days`;
-    return '';
-  })();
+  const isMulti = groupRows.length > 1;
+  const statusFlow = buildStatusFlow(groupRows[0].order_type, groupRows[0].delivery_method);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -180,145 +166,169 @@ export function OrderDetailScreen({ route, navigation }: any) {
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <ThemedText variant="body" color="accent">‹ Back</ThemedText>
           </TouchableOpacity>
-          <ThemedText variant="header" color="primary">Order #{order.id}</ThemedText>
+          <ThemedText variant="header" color="primary">Order #{primaryId}</ThemedText>
           <View style={{ width: 40 }} />
         </View>
 
-        {/* Dispatch date + scheduled time — stacked, dispatch line right-aligned and smaller */}
-        <View style={styles.section}>
-          <View style={styles.statusRow}>
-            <ThemedText variant="body" color="subtitle">
-              {formatDateLong(order.dispatch_date)}
-            </ThemedText>
-            {dispatchCycle && !dispatchPassed && (
-              <ThemedText variant="small" color="mint" style={styles.dispatchScheduledLine}>
-                Scheduled to dispatch by {dispatchTime}
-              </ThemedText>
-            )}
-          </View>
-        </View>
-
-        {/* Cancelled banner */}
-        {order.status === 'Cancelled' && (
+        {/* Cancelled banner — whole group cancelled */}
+        {allCancelled && (
           <View style={styles.cancelledBanner}>
             <ThemedText variant="subtitle" style={styles.cancelledTitle}>Order Cancelled</ThemedText>
-            {cancelRefundLine ? (
-              <ThemedText variant="small" color="muted" style={styles.cancelledRefund}>{cancelRefundLine}</ThemedText>
-            ) : null}
+            {(() => {
+              const r = Math.max(0, groupTotal - groupWallet);
+              let line = '';
+              if (groupWallet > 0 && r > 0) line = `₹${groupWallet} returned to wallet · ₹${r} Razorpay refund in 5–7 days`;
+              else if (groupWallet > 0) line = `₹${groupWallet} returned to your wallet`;
+              else if (r > 0) line = `₹${r} Razorpay refund will be processed in 5–7 business days`;
+              return line ? (
+                <ThemedText variant="small" color="muted" style={styles.cancelledRefund}>{line}</ThemedText>
+              ) : null;
+            })()}
           </View>
         )}
 
-        {/* Status Timeline */}
-        {order.status !== 'Cancelled' && (
-          <View style={styles.section}>
-            <View style={styles.statusHeader}>
-              <ThemedText variant="body" color="muted" style={[styles.sectionLabel, { marginBottom: 0 }]}>
-                STATUS
-              </ThemedText>
-              {canCancel && (
-                isCancelling
-                  ? <ActivityIndicator color={Theme.colors.status.error} size="small" />
-                  : (
-                    <TouchableOpacity onPress={handleCancel} activeOpacity={0.6}>
-                      <ThemedText variant="body" style={styles.cancelText}>Cancel Order</ThemedText>
-                    </TouchableOpacity>
-                  )
-              )}
-            </View>
-            {statusFlow.map((status, index) => {
-              const isCompleted = index <= currentStatusIndex;
-              const isCurrent = index === currentStatusIndex;
-              return (
-                <View key={status} style={styles.timelineRow}>
-                  <View
-                    style={[
-                      styles.dot,
-                      isCompleted && styles.dotCompleted,
-                      isCurrent && styles.dotCurrent,
-                    ]}
-                  />
-                  {index < statusFlow.length - 1 && (
-                    <View
-                      style={[
-                        styles.line,
-                        isCompleted && styles.lineCompleted,
-                      ]}
-                    />
-                  )}
-                  <ThemedText
-                    variant="body"
-                    color={isCompleted ? 'primary' : 'muted'}
-                    style={styles.timelineLabel}
-                  >
-                    {status}
-                  </ThemedText>
-                </View>
-              );
-            })}
-            {order.status === 'Delivered' && (
-              <TouchableOpacity
-                onPress={() => navigation.navigate('Feedback', { orderId: order.id })}
-                style={styles.reviewLink}
-              >
-                <ThemedText variant="body" color="mint">Leave a Review ›</ThemedText>
+        {/* Group-level cancel action */}
+        {canCancel && (
+          <View style={styles.cancelBar}>
+            {isCancelling ? (
+              <ActivityIndicator color={Theme.colors.status.error} size="small" />
+            ) : (
+              <TouchableOpacity onPress={handleCancel} activeOpacity={0.6}>
+                <ThemedText variant="body" style={styles.cancelText}>Cancel Order</ThemedText>
               </TouchableOpacity>
             )}
-            {canCancel && (
-              <ThemedText variant="micro" color="muted" style={styles.cancelHint}>
-                {orderCycle
-                  ? `Cancellable within ${windowHours}h of placing or before ${orderCycle.cutoff_time.slice(0, 5)} cutoff`
+            <ThemedText variant="micro" color="muted" style={styles.cancelHint}>
+              {isMulti
+                ? `Cancelling removes all ${groupRows.length} deliveries in this order`
+                : earliestCycle
+                  ? `Cancellable within ${windowHours}h of placing or before ${earliestCycle.cutoff_time.slice(0, 5)} cutoff`
                   : `Cancellable within ${windowHours}h of placing`}
-              </ThemedText>
-            )}
+            </ThemedText>
           </View>
         )}
 
-        <Divider />
+        {/* ── One section per dispatch schedule ───────────────── */}
+        {groupRows.map((row) => {
+          const cycle = (cycles ?? []).find((c) => c.id === row.cycle_id);
+          const dispatchTime = formatTime12h(cycle?.delivery_start);
+          const currentStatusIndex = statusFlow.indexOf(row.status);
+          const rowCancelled = row.status === 'Cancelled';
 
-        {/* Items */}
-        <View style={styles.section}>
-          <ThemedText variant="body" color="muted" style={styles.sectionLabel}>
-            ITEMS
-          </ThemedText>
-          {(orderItems ?? []).map((item) => (
-            <View key={item.id} style={styles.itemRow}>
-              <ThemedText variant="body" color="primary">
-                {item.item_name} x{item.quantity}
-              </ThemedText>
-              <ThemedText variant="body" color="mint">
-                {formatPriceShort(item.price_at_time * item.quantity)}
-              </ThemedText>
+          // Hide "Scheduled to dispatch by" once the dispatch window has passed.
+          const dispatchPassed = (() => {
+            if (!cycle?.delivery_start || !row.dispatch_date) return false;
+            const [hh, mm] = cycle.delivery_start.split(':').map(Number);
+            if (Number.isNaN(hh) || Number.isNaN(mm)) return false;
+            const dispatchAt = new Date(row.dispatch_date);
+            dispatchAt.setHours(hh, mm, 0, 0);
+            return Date.now() > dispatchAt.getTime();
+          })();
+
+          return (
+            <View key={row.id} style={styles.scheduleSection}>
+              {/* Schedule header — cycle name (multi) + date + dispatch time */}
+              <View style={styles.statusRow}>
+                <View style={styles.scheduleHeadLeft}>
+                  {isMulti && cycle?.cycle_name && (
+                    <ThemedText variant="small" color="mint" style={styles.cycleLabel}>
+                      {cycle.cycle_name}
+                    </ThemedText>
+                  )}
+                  <ThemedText variant="body" color="subtitle">
+                    {formatDateLong(row.dispatch_date)}
+                  </ThemedText>
+                </View>
+                {cycle && !dispatchPassed && !rowCancelled && (
+                  <ThemedText variant="small" color="mint" style={styles.dispatchScheduledLine}>
+                    Dispatch by {dispatchTime}
+                  </ThemedText>
+                )}
+              </View>
+
+              {/* Status — timeline, or a Cancelled tag for an individually-cancelled row */}
+              {rowCancelled ? (
+                <View style={styles.rowCancelledTag}>
+                  <ThemedText variant="small" style={styles.cancelledTitle}>
+                    This delivery was cancelled
+                  </ThemedText>
+                </View>
+              ) : (
+                <View style={styles.timeline}>
+                  {statusFlow.map((status, index) => {
+                    const isCompleted = index <= currentStatusIndex;
+                    const isCurrent = index === currentStatusIndex;
+                    return (
+                      <View key={status} style={styles.timelineRow}>
+                        <View
+                          style={[
+                            styles.dot,
+                            isCompleted && styles.dotCompleted,
+                            isCurrent && styles.dotCurrent,
+                          ]}
+                        />
+                        {index < statusFlow.length - 1 && (
+                          <View style={[styles.line, isCompleted && styles.lineCompleted]} />
+                        )}
+                        <ThemedText
+                          variant="body"
+                          color={isCompleted ? 'primary' : 'muted'}
+                          style={styles.timelineLabel}
+                        >
+                          {status}
+                        </ThemedText>
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+
+              {/* Items for this schedule */}
+              <View style={styles.itemsBlock}>
+                {(row.order_items ?? []).map((item) => (
+                  <View key={item.id} style={styles.itemRow}>
+                    <ThemedText variant="body" color="primary">
+                      {item.item_name} x{item.quantity}
+                    </ThemedText>
+                    <ThemedText variant="body" color="mint">
+                      {formatPriceShort(item.price_at_time * item.quantity)}
+                    </ThemedText>
+                  </View>
+                ))}
+              </View>
+
+              {row.status === 'Delivered' && (
+                <TouchableOpacity
+                  onPress={() => navigation.navigate('Feedback', { orderId: row.id })}
+                  style={styles.reviewLink}
+                >
+                  <ThemedText variant="body" color="mint">Leave a Review ›</ThemedText>
+                </TouchableOpacity>
+              )}
+
+              <Divider />
             </View>
-          ))}
-        </View>
+          );
+        })}
 
-        <Divider />
-
-        {/* Totals */}
+        {/* ── Shared totals (summed across the group) ──────────── */}
         <View style={styles.section}>
           <View style={styles.itemRow}>
             <ThemedText variant="body" color="subtitle">Subtotal</ThemedText>
-            <ThemedText variant="body" color="subtitle">
-              {formatPriceShort(order.total_amount - order.tax_amount - order.delivery_fee)}
-            </ThemedText>
+            <ThemedText variant="body" color="subtitle">{formatPriceShort(groupSubtotal)}</ThemedText>
           </View>
           <View style={styles.itemRow}>
             <ThemedText variant="body" color="subtitle">Tax</ThemedText>
-            <ThemedText variant="body" color="subtitle">
-              {formatPriceShort(order.tax_amount)}
-            </ThemedText>
+            <ThemedText variant="body" color="subtitle">{formatPriceShort(groupTax)}</ThemedText>
           </View>
           <View style={styles.itemRow}>
             <ThemedText variant="body" color="subtitle">Delivery</ThemedText>
             <ThemedText variant="body" color="subtitle">
-              {order.delivery_fee === 0 ? 'Free' : formatPriceShort(order.delivery_fee)}
+              {groupDelivery === 0 ? 'Free' : formatPriceShort(groupDelivery)}
             </ThemedText>
           </View>
           <View style={[styles.itemRow, styles.totalRow]}>
             <ThemedText variant="subtitle" color="primary">Total</ThemedText>
-            <ThemedText variant="subtitle" color="mint">
-              {formatPriceShort(order.total_amount)}
-            </ThemedText>
+            <ThemedText variant="subtitle" color="mint">{formatPriceShort(groupTotal)}</ThemedText>
           </View>
         </View>
 
@@ -329,16 +339,14 @@ export function OrderDetailScreen({ route, navigation }: any) {
             PAYMENT
           </ThemedText>
           <ThemedText variant="body" color="primary">
-            {formatOrderStatus(order.payment_method)}
+            {formatOrderStatus(groupRows[0].payment_method)}
           </ThemedText>
-          {order.wallet_amount_used > 0 && (
+          {groupWallet > 0 && (
             <ThemedText variant="body" color="subtitle">
-              Wallet: {formatPriceShort(order.wallet_amount_used)}
+              Wallet: {formatPriceShort(groupWallet)}
             </ThemedText>
           )}
         </View>
-
-
       </ScrollView>
     </SafeAreaView>
   );
@@ -357,20 +365,21 @@ const styles = StyleSheet.create({
   },
   section: { padding: Theme.spacing.md },
   sectionLabel: { letterSpacing: 1, marginBottom: Theme.spacing.sm },
-  statusHeader: {
+  scheduleSection: { paddingTop: Theme.spacing.sm },
+  scheduleHeadLeft: { flexDirection: 'column', flex: 1 },
+  cycleLabel: { marginBottom: 2, letterSpacing: 0.5 },
+  statusRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Theme.spacing.sm,
-  },
-  statusRow: {
-    flexDirection: 'column',
-    alignItems: 'stretch',
+    alignItems: 'flex-start',
+    paddingHorizontal: Theme.spacing.md,
+    paddingBottom: Theme.spacing.sm,
   },
   dispatchScheduledLine: {
     textAlign: 'right',
     marginTop: 2,
   },
+  timeline: { paddingHorizontal: Theme.spacing.md },
   timelineRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -400,14 +409,30 @@ const styles = StyleSheet.create({
   },
   lineCompleted: { backgroundColor: Theme.colors.status.success },
   timelineLabel: { flex: 1, paddingVertical: 6 },
-  reviewLink: { marginTop: Theme.spacing.sm },
+  rowCancelledTag: {
+    marginHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.sm,
+  },
+  itemsBlock: {
+    paddingHorizontal: Theme.spacing.md,
+    paddingTop: Theme.spacing.sm,
+  },
+  reviewLink: {
+    marginTop: Theme.spacing.sm,
+    paddingHorizontal: Theme.spacing.md,
+  },
+  cancelBar: {
+    paddingHorizontal: Theme.spacing.md,
+    paddingBottom: Theme.spacing.sm,
+    alignItems: 'center',
+    gap: 4,
+  },
   cancelText: {
     color: Theme.colors.status.error,
     fontWeight: '600',
   },
   cancelHint: {
     textAlign: 'center',
-    marginTop: Theme.spacing.xs,
   },
   cancelledBanner: {
     margin: Theme.spacing.md,

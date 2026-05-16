@@ -2,6 +2,11 @@
  * 1stOne F1 — Customer Orders Screen
  * Food and Essentials orders in separate tabs.
  * Infinite scroll — 20 orders per page, more loaded on reaching list bottom.
+ *
+ * MF-10: a customer "order" can span multiple delivery cycles — each
+ * cycle is its own `orders` row sharing one order_group_id. Rows are
+ * grouped here so the customer sees ONE card per checkout, with a
+ * per-schedule status line for multi-cycle orders.
  */
 
 import React, { useState, useCallback } from 'react';
@@ -38,6 +43,47 @@ const statusVariant: Record<string, 'success' | 'warning' | 'info' | 'error'> = 
 
 type OrderTab = 'food' | 'essentials';
 
+// ── Order-group model ─────────────────────────────────────────
+// One checkout = one order_group_id = one or more `orders` rows.
+
+interface OrderGroup {
+  key: string;
+  primaryId: number;       // lowest row id — the customer-facing order number
+  rows: Order[];           // sorted by dispatch_date asc
+  totalAmount: number;     // sum across the group (per-row money model)
+  createdAt: string;
+}
+
+function groupOrders(orders: Order[]): OrderGroup[] {
+  const map = new Map<string, Order[]>();
+  for (const o of orders) {
+    const key = o.order_group_id ?? `single-${o.id}`;
+    const list = map.get(key) ?? [];
+    list.push(o);
+    map.set(key, list);
+  }
+
+  const groups: OrderGroup[] = [];
+  map.forEach((rows) => {
+    const sorted = [...rows].sort((a, b) =>
+      a.dispatch_date < b.dispatch_date ? -1
+        : a.dispatch_date > b.dispatch_date ? 1
+        : a.id - b.id,
+    );
+    groups.push({
+      key: sorted[0].order_group_id ?? `single-${sorted[0].id}`,
+      primaryId: Math.min(...rows.map((r) => r.id)),
+      rows: sorted,
+      totalAmount: rows.reduce((s, r) => s + (Number(r.total_amount) || 0), 0),
+      createdAt: sorted[0].created_at,
+    });
+  });
+
+  // Most recent checkout first.
+  groups.sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0));
+  return groups;
+}
+
 export function OrdersScreen({ navigation }: any) {
   const [activeTab, setActiveTab] = useState<OrderTab>('food');
   const {
@@ -60,30 +106,56 @@ export function OrdersScreen({ navigation }: any) {
   const filtered = allOrders.filter((o) =>
     activeTab === 'food' ? o.order_type === 'food' : o.order_type === 'essential'
   );
+  const groups = groupOrders(filtered);
 
-  const renderOrder = ({ item }: { item: Order }) => (
-    <TouchableOpacity
-      style={styles.row}
-      activeOpacity={0.7}
-      onPress={() => navigation.navigate('OrderDetail', { orderId: item.id })}
-    >
-      <View style={styles.rowTop}>
-        <ThemedText variant="subtitle" color="primary">Order #{item.id}</ThemedText>
-        <DispatchBadge
-          label={item.status}
-          variant={statusVariant[item.status] ?? 'info'}
-        />
-      </View>
-      <View style={styles.rowMid}>
-        <ThemedText variant="body" color="subtitle">
-          {formatDateShort(item.dispatch_date)} · {formatPriceShort(item.total_amount)}
-        </ThemedText>
-        <ThemedText variant="small" color="muted">
-          {formatRelativeTime(item.created_at)}
-        </ThemedText>
-      </View>
-    </TouchableOpacity>
-  );
+  const renderGroup = ({ item }: { item: OrderGroup }) => {
+    const isMulti = item.rows.length > 1;
+    return (
+      <TouchableOpacity
+        style={styles.row}
+        activeOpacity={0.7}
+        onPress={() => navigation.navigate('OrderDetail', { orderId: item.primaryId })}
+      >
+        <View style={styles.rowTop}>
+          <ThemedText variant="subtitle" color="primary">Order #{item.primaryId}</ThemedText>
+          {!isMulti && (
+            <DispatchBadge
+              label={item.rows[0].status}
+              variant={statusVariant[item.rows[0].status] ?? 'info'}
+            />
+          )}
+        </View>
+
+        {/* Multi-cycle: one status line per dispatch schedule */}
+        {isMulti && (
+          <View style={styles.schedules}>
+            {item.rows.map((r) => (
+              <View key={r.id} style={styles.scheduleRow}>
+                <ThemedText variant="small" color="muted">
+                  {formatDateShort(r.dispatch_date)}
+                </ThemedText>
+                <DispatchBadge
+                  label={r.status}
+                  variant={statusVariant[r.status] ?? 'info'}
+                />
+              </View>
+            ))}
+          </View>
+        )}
+
+        <View style={styles.rowMid}>
+          <ThemedText variant="body" color="subtitle">
+            {isMulti
+              ? `${item.rows.length} deliveries · ${formatPriceShort(item.totalAmount)}`
+              : `${formatDateShort(item.rows[0].dispatch_date)} · ${formatPriceShort(item.totalAmount)}`}
+          </ThemedText>
+          <ThemedText variant="small" color="muted">
+            {formatRelativeTime(item.createdAt)}
+          </ThemedText>
+        </View>
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -123,9 +195,9 @@ export function OrdersScreen({ navigation }: any) {
       </View>
 
       <FlatList
-        data={filtered}
-        keyExtractor={(item) => item.id.toString()}
-        renderItem={renderOrder}
+        data={groups}
+        keyExtractor={(item) => item.key}
+        renderItem={renderGroup}
         contentContainerStyle={styles.list}
         refreshControl={
           <RefreshControl
@@ -199,6 +271,15 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 4,
+  },
+  schedules: {
+    marginBottom: 4,
+    gap: 3,
+  },
+  scheduleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   rowMid: {
     flexDirection: 'row',
