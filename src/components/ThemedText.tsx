@@ -15,11 +15,17 @@ type TextColor = 'primary' | 'subtitle' | 'muted' | 'accent' | 'mint';
 interface ThemedTextProps extends TextProps {
   variant?: TextVariant;
   color?: TextColor;
+  /**
+   * Emphasis WITHOUT weight — bumps the size by Theme.typography.emphasisStep.
+   * This is how the app stands text out: size + colour, never bold.
+   */
+  emphasis?: boolean;
 }
 
 export function ThemedText({
   variant = 'body',
   color = 'primary',
+  emphasis = false,
   style,
   ...props
 }: ThemedTextProps) {
@@ -29,7 +35,9 @@ export function ThemedText({
       style={[
         {
           fontFamily: Theme.typography.fontFamily,
-          fontSize: Theme.typography.sizes[variant],
+          fontSize:
+            Theme.typography.sizes[variant] +
+            (emphasis ? Theme.typography.emphasisStep : 0),
           color: Theme.colors.text[color],
           letterSpacing: Theme.typography.letterSpacing.normal,
         },

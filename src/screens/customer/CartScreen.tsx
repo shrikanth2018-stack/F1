@@ -1,9 +1,10 @@
 /**
  * 1stOne F1 — Cart Screen
  *
- * Food and Essentials shown as separate sections.
- * Items grouped by dispatch scenario: Today (A) on top, Tomorrow (B) below.
- * Each checkout tap shows a confirmation with today/tomorrow counts.
+ * Food and Essentials shown as separate sections. Within each, items are
+ * grouped BY DELIVERY CYCLE — one block per cycle, headed with the cycle name
+ * and its dispatch day. This mirrors HomeScreen (cycle-grouped menu) and the
+ * order itself (one row per cycle), so the whole flow reads consistently.
  */
 
 import React, { useCallback, useMemo } from 'react';
@@ -30,6 +31,46 @@ import { confirmDialog } from '../../utils/confirmDialog';
 import { useOrderQuote } from '../../hooks/useOrderQuote';
 import { useAddresses } from '../../hooks/useAddresses';
 
+type Scenario = 'A' | 'B' | 'C';
+
+interface CycleGroup<T> {
+  cycleId: number;
+  cycleName: string;
+  scenario: Scenario;
+  items: T[];
+}
+
+/** Group cart items by delivery cycle, ordered earliest dispatch day first. */
+function groupByCycle<T extends { cycle_id: number }>(
+  items: T[],
+  scenarioOf: (item: T) => Scenario,
+  cycles: { id: number; cycle_name: string }[],
+): CycleGroup<T>[] {
+  const byCycle = new Map<number, T[]>();
+  for (const it of items) {
+    const list = byCycle.get(it.cycle_id) ?? [];
+    list.push(it);
+    byCycle.set(it.cycle_id, list);
+  }
+  const rank: Record<Scenario, number> = { A: 0, B: 1, C: 2 };
+  const groups: CycleGroup<T>[] = [...byCycle.entries()].map(([cycleId, list]) => ({
+    cycleId,
+    cycleName: cycles.find((c) => c.id === cycleId)?.cycle_name ?? 'Items',
+    scenario: scenarioOf(list[0]),
+    items: list,
+  }));
+  groups.sort((a, b) => rank[a.scenario] - rank[b.scenario] || a.cycleName.localeCompare(b.cycleName));
+  return groups;
+}
+
+const dayLabel = (s: Scenario): string =>
+  s === 'A' ? 'Today' : s === 'B' ? 'Tomorrow' : 'Day after tomorrow';
+
+const itemsToday = (groups: CycleGroup<any>[]): number =>
+  groups.filter((g) => g.scenario === 'A').reduce((s, g) => s + g.items.length, 0);
+const itemsLater = (groups: CycleGroup<any>[]): number =>
+  groups.filter((g) => g.scenario !== 'A').reduce((s, g) => s + g.items.length, 0);
+
 export function CartScreen({ navigation, route }: any) {
   const insets = useSafeAreaInsets();
   const subscriptionPlanId: number | undefined = route?.params?.subscriptionPlanId;
@@ -55,8 +96,8 @@ export function CartScreen({ navigation, route }: any) {
   const { data: cycles } = useDeliveryCycles();
 
   // Server-authoritative cart preview. Pre-pass uses the default serviceable
-  // address (point 7) so the cart shows the full total incl. delivery fee; if
-  // there's no usable default it quotes address-less (fee shown at checkout).
+  // address so the cart shows the full total incl. delivery fee; with no
+  // usable default it quotes address-less (fee shown at checkout).
   const { data: addresses } = useAddresses();
   const defaultAddressId = useMemo(
     () =>
@@ -78,104 +119,105 @@ export function CartScreen({ navigation, route }: any) {
     enabled: subscriptionPlanId == null && (essItems.length > 0 || essPlans.length > 0),
   });
 
-  // Find delivery_start for a given cycle_id
   const getDeliveryTime = useCallback(
-    (cycleId: number) => {
-      const cycle = (cycles ?? []).find((c) => c.id === cycleId);
-      return formatTime12h(cycle?.delivery_start);
-    },
-    [cycles]
+    (cycleId: number) => formatTime12h((cycles ?? []).find((c) => c.id === cycleId)?.delivery_start),
+    [cycles],
   );
 
-  // BF-42: detect cycles with a missed-cutoff item so the cart can render a
-  // contextual yellow banner above the tabs. Without this, scenario 'B'/'C'
-  // items silently shift to the Tomorrow tab and customers re-entering the
-  // cart can't tell why items "moved". Map of cycle_name → scenario; 'C'
-  // wins over 'B' if both exist for the same cycle (highest severity).
-  const cutoffMissedCycles = useMemo(() => {
-    const m = new Map<string, 'B' | 'C'>();
-    const ingest = (ev: { scenario: 'A' | 'B' | 'C'; cycle_name: string }) => {
-      if (ev.scenario !== 'B' && ev.scenario !== 'C') return;
-      const prev = m.get(ev.cycle_name);
-      if (prev !== 'C') m.set(ev.cycle_name, ev.scenario);
-    };
-    for (const ev of evaluations) ingest(ev);
-    for (const ev of essEvaluations) ingest(ev);
-    return m;
-  }, [evaluations, essEvaluations]);
-
-  // Group food items by scenario. Scenario 'C' (cross-midnight after-cutoff
-  // → day after tomorrow) groups with 'B' in the "next-day" tab; per-item
-  // dispatch badge surfaces the exact day.
-  const todayFood = useMemo(
-    () => foodItems.filter((i) => {
-      const ev = evaluations.find((e) => e.menu_item_id === i.menu_item_id);
-      return !ev || ev.scenario === 'A';
-    }),
-    [foodItems, evaluations]
+  // ── Cycle grouping ──────────────────────────────────────────
+  const foodGroups = useMemo(
+    () => groupByCycle(
+      foodItems,
+      (it) => evaluations.find((e) => e.menu_item_id === it.menu_item_id)?.scenario ?? 'A',
+      cycles ?? [],
+    ),
+    [foodItems, evaluations, cycles],
   );
-  const tomorrowFood = useMemo(
-    () => foodItems.filter((i) => {
-      const ev = evaluations.find((e) => e.menu_item_id === i.menu_item_id);
-      return ev && (ev.scenario === 'B' || ev.scenario === 'C');
-    }),
-    [foodItems, evaluations]
+  const essGroups = useMemo(
+    () => groupByCycle(
+      essItems,
+      (it) => essEvaluations.find((e) => e.essential_item_id === it.essential_item_id)?.scenario ?? 'A',
+      cycles ?? [],
+    ),
+    [essItems, essEvaluations, cycles],
   );
 
-  // Group essentials by scenario
-  const todayEss = useMemo(
-    () => essItems.filter((i) => {
-      const ev = essEvaluations.find((e) => e.essential_item_id === i.essential_item_id);
-      return !ev || ev.scenario === 'A';
-    }),
-    [essItems, essEvaluations]
-  );
-  const tomorrowEss = useMemo(
-    () => essItems.filter((i) => {
-      const ev = essEvaluations.find((e) => e.essential_item_id === i.essential_item_id);
-      return ev && (ev.scenario === 'B' || ev.scenario === 'C');
-    }),
-    [essItems, essEvaluations]
-  );
+  // Any cycle with a missed cutoff → one-line banner.
+  const anyMissedCutoff =
+    foodGroups.some((g) => g.scenario !== 'A') || essGroups.some((g) => g.scenario !== 'A');
 
   const confirmCheckout = useCallback(
     (cartType: 'food' | 'essentials') => {
-      const todayCount = cartType === 'food' ? todayFood.length : todayEss.length;
-      const tomorrowCount = cartType === 'food' ? tomorrowFood.length : tomorrowEss.length;
+      const groups = cartType === 'food' ? foodGroups : essGroups;
+      const today = itemsToday(groups);
+      const later = itemsLater(groups);
 
-      const hasMixed = todayCount > 0 && tomorrowCount > 0;
-
-      if (!hasMixed) {
+      if (!(today > 0 && later > 0)) {
         navigation.navigate('Checkout', { cartType });
         return;
       }
-
-      const todayText = `${todayCount} item${todayCount !== 1 ? 's' : ''} dispatched today`;
-      const tomorrowText = `${tomorrowCount} item${tomorrowCount !== 1 ? 's' : ''} dispatched tomorrow`;
-
       Alert.alert(
         'Mixed Dispatch',
-        `${todayText}\n${tomorrowText}\n\nContinue to checkout?`,
+        `${today} item${today !== 1 ? 's' : ''} dispatched today\n` +
+        `${later} item${later !== 1 ? 's' : ''} dispatched later\n\nContinue to checkout?`,
         [
           { text: 'Alter Order', style: 'cancel' },
           { text: 'Yes, Continue', onPress: () => navigation.navigate('Checkout', { cartType }) },
-        ]
+        ],
       );
     },
-    [todayFood, tomorrowFood, todayEss, tomorrowEss, navigation]
+    [foodGroups, essGroups, navigation],
+  );
+
+  // ── Shared item-row renderer (DRY — used by food + essentials) ──
+  const renderRow = (
+    key: string,
+    name: string,
+    qty: number,
+    lineTotal: number,
+    onDecrement: () => void,
+    onIncrement: () => void,
+  ) => (
+    <View key={key} style={styles.itemRow}>
+      <View style={styles.itemInfo}>
+        <ThemedText variant="body" color="primary">{name}</ThemedText>
+      </View>
+      <View style={styles.itemRight}>
+        <View style={styles.stepper}>
+          <TouchableOpacity style={styles.stepBtn} onPress={onDecrement}>
+            <ThemedText variant="body" color="primary">−</ThemedText>
+          </TouchableOpacity>
+          <ThemedText variant="body" color="primary" style={styles.qty}>{qty}</ThemedText>
+          <TouchableOpacity style={styles.stepBtn} onPress={onIncrement}>
+            <ThemedText variant="body" color="primary">+</ThemedText>
+          </TouchableOpacity>
+        </View>
+        <ThemedText variant="body" color="accent">{formatPriceShort(lineTotal)}</ThemedText>
+      </View>
+    </View>
+  );
+
+  /** One cycle block — header (name + dispatch day) then its item rows. */
+  const renderCycleGroup = (g: CycleGroup<any>, rows: React.ReactNode) => (
+    <View key={`cyc-${g.cycleId}`} style={styles.cycleGroup}>
+      <ThemedText variant="small" color="mint" style={styles.cycleName}>{g.cycleName}</ThemedText>
+      <ThemedText
+        variant="micro"
+        style={[styles.cycleDay, g.scenario !== 'A' && styles.cycleDayMissed]}
+      >
+        {dayLabel(g.scenario)} · dispatch by {getDeliveryTime(g.cycleId)}
+      </ThemedText>
+      {rows}
+    </View>
   );
 
   // ── Subscription-only mode ─────────────────────────────────
-  // Entered via PlansScreen BUY (or PlanDetail BUY). Shows only the one plan,
-  // no items, no other plans. One checkout button. Close → Home.
   const subPlan = subscriptionPlanId != null
     ? (foodPlans.find((p) => p.plan_id === subscriptionPlanId)
        ?? essPlans.find((p) => p.plan_id === subscriptionPlanId)
        ?? null)
     : null;
 
-  // "Browse after clearing" — if we were in sub-mode but the plan has vanished
-  // (checkout cleared the cart, or user removed it), bail to Home.
   React.useEffect(() => {
     if (subscriptionPlanId != null && !subPlan) {
       navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
@@ -194,7 +236,6 @@ export function CartScreen({ navigation, route }: any) {
 
     return (
       <SafeAreaView style={styles.container}>
-        {/* Header — close-only (no back) */}
         <View style={styles.header}>
           <View style={{ width: 60 }} />
           <ThemedText variant="header" color="primary">Cart</ThemedText>
@@ -269,6 +310,9 @@ export function CartScreen({ navigation, route }: any) {
     );
   }
 
+  const foodHasContent = foodItems.length > 0 || foodPlans.length > 0;
+  const essHasContent = essItems.length > 0 || essPlans.length > 0;
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -291,13 +335,11 @@ export function CartScreen({ navigation, route }: any) {
         </TouchableOpacity>
       </View>
 
-      {/* BF-42: missed-cutoff banner. Yellow, non-dismissible while
-          condition holds. Single line per affected cycle; severity stronger
-          for cross-midnight 'C' (day after tomorrow). */}
-      {cutoffMissedCycles.size > 0 && (
+      {/* Missed-cutoff banner — one line, persistent while any cycle is late */}
+      {anyMissedCutoff && (
         <View style={styles.cutoffBanner}>
           <ThemedText variant="small" style={styles.cutoffBannerText}>
-            Some items missed today's cutoff — check each item's delivery day below.
+            Some items missed today's cutoff — check each cycle's delivery day below.
           </ThemedText>
         </View>
       )}
@@ -305,7 +347,7 @@ export function CartScreen({ navigation, route }: any) {
       <ScrollView contentContainerStyle={styles.content}>
 
         {/* ── FOOD CART ── */}
-        {(foodItems.length > 0 || foodPlans.length > 0) && (
+        {foodHasContent && (
           <View style={styles.cartSection}>
             <View style={styles.sectionHeader}>
               <ThemedText variant="small" color="muted" style={styles.sectionLabel}>FOOD</ThemedText>
@@ -314,107 +356,27 @@ export function CartScreen({ navigation, route }: any) {
               </TouchableOpacity>
             </View>
 
-            {/* Today group */}
-            {todayFood.length > 0 && (
-              <>
-                {todayFood.map((item) => (
-                  <View key={item.menu_item_id} style={styles.itemRow}>
-                    <View style={styles.itemInfo}>
-                      <ThemedText variant="body" color="primary">{item.name}</ThemedText>
-                      <ThemedText variant="small" color="muted">
-                        Dispatch by {getDeliveryTime(item.cycle_id)}
-                      </ThemedText>
-                    </View>
-                    <View style={styles.itemRight}>
-                      <View style={styles.stepper}>
-                        <TouchableOpacity
-                          style={styles.stepBtn}
-                          onPress={() =>
-                            item.quantity <= 1
-                              ? removeFoodItem(item.menu_item_id)
-                              : updateFoodQty(item.menu_item_id, item.quantity - 1)
-                          }
-                        >
-                          <ThemedText variant="body" color="primary">−</ThemedText>
-                        </TouchableOpacity>
-                        <ThemedText variant="body" color="primary" style={styles.qty}>
-                          {item.quantity}
-                        </ThemedText>
-                        <TouchableOpacity
-                          style={styles.stepBtn}
-                          onPress={() => updateFoodQty(item.menu_item_id, item.quantity + 1)}
-                        >
-                          <ThemedText variant="body" color="primary">+</ThemedText>
-                        </TouchableOpacity>
-                      </View>
-                      <ThemedText variant="body" color="accent">
-                        {formatPriceShort(item.display_price * item.quantity)}
-                      </ThemedText>
-                    </View>
-                  </View>
-                ))}
-                <View style={styles.groupFooter}>
-                  <ThemedText variant="small" style={styles.todayLabel}>Dispatch Today</ThemedText>
-                </View>
-              </>
-            )}
-
-            {/* Separator between groups */}
-            {todayFood.length > 0 && tomorrowFood.length > 0 && (
-              <View style={styles.groupDivider} />
-            )}
-
-            {/* Tomorrow group */}
-            {tomorrowFood.length > 0 && (
-              <>
-                {tomorrowFood.map((item) => (
-                  <View key={item.menu_item_id} style={styles.itemRow}>
-                    <View style={styles.itemInfo}>
-                      <ThemedText variant="body" color="primary">{item.name}</ThemedText>
-                      <ThemedText variant="small" color="muted">
-                        Dispatch by {getDeliveryTime(item.cycle_id)}
-                      </ThemedText>
-                    </View>
-                    <View style={styles.itemRight}>
-                      <View style={styles.stepper}>
-                        <TouchableOpacity
-                          style={styles.stepBtn}
-                          onPress={() =>
-                            item.quantity <= 1
-                              ? removeFoodItem(item.menu_item_id)
-                              : updateFoodQty(item.menu_item_id, item.quantity - 1)
-                          }
-                        >
-                          <ThemedText variant="body" color="primary">−</ThemedText>
-                        </TouchableOpacity>
-                        <ThemedText variant="body" color="primary" style={styles.qty}>
-                          {item.quantity}
-                        </ThemedText>
-                        <TouchableOpacity
-                          style={styles.stepBtn}
-                          onPress={() => updateFoodQty(item.menu_item_id, item.quantity + 1)}
-                        >
-                          <ThemedText variant="body" color="primary">+</ThemedText>
-                        </TouchableOpacity>
-                      </View>
-                      <ThemedText variant="body" color="accent">
-                        {formatPriceShort(item.display_price * item.quantity)}
-                      </ThemedText>
-                    </View>
-                  </View>
-                ))}
-                <View style={styles.groupFooter}>
-                  <ThemedText variant="small" style={styles.tomorrowLabel}>
-                    Missed cutoff · Dispatched Tomorrow
-                  </ThemedText>
-                </View>
-              </>
+            {/* One block per delivery cycle */}
+            {foodGroups.map((g) =>
+              renderCycleGroup(
+                g,
+                g.items.map((item) => renderRow(
+                  `f-${item.menu_item_id}`,
+                  item.name,
+                  item.quantity,
+                  item.display_price * item.quantity,
+                  () => (item.quantity <= 1
+                    ? removeFoodItem(item.menu_item_id)
+                    : updateFoodQty(item.menu_item_id, item.quantity - 1)),
+                  () => updateFoodQty(item.menu_item_id, item.quantity + 1),
+                )),
+              ),
             )}
 
             {/* Food subscription plans */}
             {foodPlans.length > 0 && (
               <>
-                {(foodItems.length > 0) && <View style={styles.groupDivider} />}
+                {foodItems.length > 0 && <View style={styles.groupDivider} />}
                 <ThemedText variant="small" color="muted" style={styles.planSubLabel}>
                   SUBSCRIPTION PLANS
                 </ThemedText>
@@ -463,11 +425,10 @@ export function CartScreen({ navigation, route }: any) {
           </View>
         )}
 
-        {(foodItems.length > 0 || foodPlans.length > 0) &&
-         (essItems.length > 0 || essPlans.length > 0) && <Divider />}
+        {foodHasContent && essHasContent && <Divider />}
 
         {/* ── ESSENTIALS CART ── */}
-        {(essItems.length > 0 || essPlans.length > 0) && (
+        {essHasContent && (
           <View style={styles.cartSection}>
             <View style={styles.sectionHeader}>
               <ThemedText variant="small" color="muted" style={styles.sectionLabel}>ESSENTIALS</ThemedText>
@@ -476,107 +437,26 @@ export function CartScreen({ navigation, route }: any) {
               </TouchableOpacity>
             </View>
 
-            {/* Today group */}
-            {todayEss.length > 0 && (
-              <>
-                {todayEss.map((item) => (
-                  <View key={item.essential_item_id} style={styles.itemRow}>
-                    <View style={styles.itemInfo}>
-                      <ThemedText variant="body" color="primary">{item.name}</ThemedText>
-                      <ThemedText variant="small" color="muted">
-                        Dispatch by {getDeliveryTime(item.cycle_id)}
-                      </ThemedText>
-                    </View>
-                    <View style={styles.itemRight}>
-                      <View style={styles.stepper}>
-                        <TouchableOpacity
-                          style={styles.stepBtn}
-                          onPress={() =>
-                            item.quantity <= 1
-                              ? removeEssItem(item.essential_item_id)
-                              : updateEssQty(item.essential_item_id, item.quantity - 1)
-                          }
-                        >
-                          <ThemedText variant="body" color="primary">−</ThemedText>
-                        </TouchableOpacity>
-                        <ThemedText variant="body" color="primary" style={styles.qty}>
-                          {item.quantity}
-                        </ThemedText>
-                        <TouchableOpacity
-                          style={styles.stepBtn}
-                          onPress={() => updateEssQty(item.essential_item_id, item.quantity + 1)}
-                        >
-                          <ThemedText variant="body" color="primary">+</ThemedText>
-                        </TouchableOpacity>
-                      </View>
-                      <ThemedText variant="body" color="accent">
-                        {formatPriceShort(item.display_price * item.quantity)}
-                      </ThemedText>
-                    </View>
-                  </View>
-                ))}
-                <View style={styles.groupFooter}>
-                  <ThemedText variant="small" style={styles.todayLabel}>Dispatch Today</ThemedText>
-                </View>
-              </>
-            )}
-
-            {todayEss.length > 0 && tomorrowEss.length > 0 && (
-              <View style={styles.groupDivider} />
-            )}
-
-            {/* Tomorrow group */}
-            {/* ... */}
-            {tomorrowEss.length > 0 && (
-              <>
-                {tomorrowEss.map((item) => (
-                  <View key={item.essential_item_id} style={styles.itemRow}>
-                    <View style={styles.itemInfo}>
-                      <ThemedText variant="body" color="primary">{item.name}</ThemedText>
-                      <ThemedText variant="small" color="muted">
-                        Dispatch by {getDeliveryTime(item.cycle_id)}
-                      </ThemedText>
-                    </View>
-                    <View style={styles.itemRight}>
-                      <View style={styles.stepper}>
-                        <TouchableOpacity
-                          style={styles.stepBtn}
-                          onPress={() =>
-                            item.quantity <= 1
-                              ? removeEssItem(item.essential_item_id)
-                              : updateEssQty(item.essential_item_id, item.quantity - 1)
-                          }
-                        >
-                          <ThemedText variant="body" color="primary">−</ThemedText>
-                        </TouchableOpacity>
-                        <ThemedText variant="body" color="primary" style={styles.qty}>
-                          {item.quantity}
-                        </ThemedText>
-                        <TouchableOpacity
-                          style={styles.stepBtn}
-                          onPress={() => updateEssQty(item.essential_item_id, item.quantity + 1)}
-                        >
-                          <ThemedText variant="body" color="primary">+</ThemedText>
-                        </TouchableOpacity>
-                      </View>
-                      <ThemedText variant="body" color="accent">
-                        {formatPriceShort(item.display_price * item.quantity)}
-                      </ThemedText>
-                    </View>
-                  </View>
-                ))}
-                <View style={styles.groupFooter}>
-                  <ThemedText variant="small" style={styles.tomorrowLabel}>
-                    Missed cutoff · Dispatched Tomorrow
-                  </ThemedText>
-                </View>
-              </>
+            {essGroups.map((g) =>
+              renderCycleGroup(
+                g,
+                g.items.map((item) => renderRow(
+                  `e-${item.essential_item_id}`,
+                  item.name,
+                  item.quantity,
+                  item.display_price * item.quantity,
+                  () => (item.quantity <= 1
+                    ? removeEssItem(item.essential_item_id)
+                    : updateEssQty(item.essential_item_id, item.quantity - 1)),
+                  () => updateEssQty(item.essential_item_id, item.quantity + 1),
+                )),
+              ),
             )}
 
             {/* Essentials subscription plans */}
             {essPlans.length > 0 && (
               <>
-                {(essItems.length > 0) && <View style={styles.groupDivider} />}
+                {essItems.length > 0 && <View style={styles.groupDivider} />}
                 <ThemedText variant="small" color="muted" style={styles.planSubLabel}>
                   SUBSCRIPTION PLANS
                 </ThemedText>
@@ -627,7 +507,7 @@ export function CartScreen({ navigation, route }: any) {
       </ScrollView>
 
       {/* Floating checkout buttons */}
-      {(foodItems.length > 0 || foodPlans.length > 0) && (
+      {foodHasContent && (
         <TouchableOpacity
           style={[styles.floatBtn, { bottom: insets.bottom + 16 }]}
           activeOpacity={0.85}
@@ -639,12 +519,9 @@ export function CartScreen({ navigation, route }: any) {
           <ThemedText variant="body" style={styles.floatBtnText}>›</ThemedText>
         </TouchableOpacity>
       )}
-      {(essItems.length > 0 || essPlans.length > 0) && (
+      {essHasContent && (
         <TouchableOpacity
-          style={[
-            styles.floatBtn,
-            { bottom: (foodItems.length > 0 || foodPlans.length > 0) ? insets.bottom + 72 : insets.bottom + 16 },
-          ]}
+          style={[styles.floatBtn, { bottom: foodHasContent ? insets.bottom + 72 : insets.bottom + 16 }]}
           activeOpacity={0.85}
           onPress={() => confirmCheckout('essentials')}
         >
@@ -668,8 +545,6 @@ const styles = StyleSheet.create({
     paddingVertical: Theme.spacing.sm,
   },
   content: { paddingBottom: Theme.spacing.xl },
-  // BF-42: missed-cutoff banner — yellow background, warning text, persistent
-  // above the cart sections while any 'B' or 'C' item is in the cart.
   cutoffBanner: {
     backgroundColor: Theme.colors.status.warning + '22',
     borderLeftWidth: 3,
@@ -680,10 +555,7 @@ const styles = StyleSheet.create({
     paddingVertical: Theme.spacing.sm,
     borderRadius: 6,
   },
-  cutoffBannerText: {
-    color: Theme.colors.status.warning,
-    fontWeight: '600',
-  },
+  cutoffBannerText: { color: Theme.colors.status.warning },
   cartSection: { paddingHorizontal: Theme.spacing.md },
   sectionHeader: {
     flexDirection: 'row',
@@ -692,6 +564,16 @@ const styles = StyleSheet.create({
     paddingVertical: Theme.spacing.sm,
   },
   sectionLabel: { letterSpacing: 1 },
+
+  // Per-cycle block
+  cycleGroup: { marginBottom: Theme.spacing.sm },
+  cycleName: { letterSpacing: 0.5, marginTop: Theme.spacing.xs },
+  cycleDay: {
+    color: Theme.colors.text.muted,
+    marginBottom: Theme.spacing.xs,
+  },
+  cycleDayMissed: { color: Theme.colors.status.warning },
+
   itemRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -711,18 +593,6 @@ const styles = StyleSheet.create({
   },
   stepBtn: { paddingHorizontal: 12, paddingVertical: 6 },
   qty: { minWidth: 24, textAlign: 'center' },
-  groupFooter: {
-    paddingVertical: Theme.spacing.sm,
-    paddingHorizontal: Theme.spacing.xs,
-  },
-  todayLabel: {
-    color: Theme.colors.status.success,
-    fontFamily: Theme.typography.fontFamily,
-  },
-  tomorrowLabel: {
-    color: Theme.colors.status.warning,
-    fontFamily: Theme.typography.fontFamily,
-  },
   groupDivider: {
     height: 1,
     backgroundColor: Theme.colors.layout.divider,
@@ -757,6 +627,5 @@ const styles = StyleSheet.create({
     color: Theme.colors.text.mint,
     fontFamily: Theme.typography.fontFamily,
     fontSize: Theme.typography.sizes.subtitle + 2,
-    fontWeight: '400',
   },
 });

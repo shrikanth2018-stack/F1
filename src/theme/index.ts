@@ -59,6 +59,11 @@ export const Theme = {
       normal: 0,
       wide: 0.5,
     },
+    /**
+     * Emphasis is conveyed by SIZE, never weight (no bold anywhere).
+     * `ThemedText emphasis` bumps a variant's size by this step.
+     */
+    emphasisStep: 2,
   },
   components: {
     inputRadius: 12,

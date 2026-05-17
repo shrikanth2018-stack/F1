@@ -25,7 +25,7 @@ import { ErrorRetry } from '../../components/ErrorRetry';
 import { useOrderGroup, useCancelOrder, type OrderWithItems } from '../../hooks/useOrders';
 import { useDeliveryCycles } from '../../hooks/useDeliveryCycles';
 import { useStoreConfig } from '../../hooks/useStoreConfig';
-import { formatPriceShort, formatDateLong, formatOrderStatus } from '../../utils/formatters';
+import { formatPriceShort, formatDateLong } from '../../utils/formatters';
 import { formatTime12h } from '../../utils/timeEngine';
 
 // 'Paid' = Razorpay webhook confirmed but kitchen hasn't started yet — still cancellable
@@ -61,11 +61,8 @@ export function OrderDetailScreen({ route, navigation }: any) {
   const primaryId = groupRows.length > 0 ? Math.min(...groupRows.map((r) => r.id)) : orderId;
   const allCancelled = groupRows.length > 0 && groupRows.every((r) => r.status === 'Cancelled');
 
-  const groupTotal    = groupRows.reduce((s, r) => s + (Number(r.total_amount) || 0), 0);
-  const groupTax      = groupRows.reduce((s, r) => s + (Number(r.tax_amount) || 0), 0);
-  const groupDelivery = groupRows.reduce((s, r) => s + (Number(r.delivery_fee) || 0), 0);
-  const groupSubtotal = groupTotal - groupTax - groupDelivery;
-  const groupWallet   = groupRows.reduce((s, r) => s + (Number(r.wallet_amount_used) || 0), 0);
+  const groupTotal  = groupRows.reduce((s, r) => s + (Number(r.total_amount) || 0), 0);
+  const groupWallet = groupRows.reduce((s, r) => s + (Number(r.wallet_amount_used) || 0), 0);
 
   // ── Cancellation eligibility (whole group) ──────────────────
   const windowHours = config?.cancellation_window_hours ?? 2;
@@ -214,7 +211,14 @@ export function OrderDetailScreen({ route, navigation }: any) {
           const currentStatusIndex = statusFlow.indexOf(row.status);
           const rowCancelled = row.status === 'Cancelled';
 
-          // Hide "Scheduled to dispatch by" once the dispatch window has passed.
+          // Per-schedule invoice figures — per-row money model: each row is
+          // self-describing.
+          const rowTax      = Number(row.tax_amount) || 0;
+          const rowDelivery = Number(row.delivery_fee) || 0;
+          const rowTotal    = Number(row.total_amount) || 0;
+          const rowSubtotal = rowTotal - rowTax - rowDelivery;
+
+          // Hide the dispatch line once the dispatch window has passed.
           const dispatchPassed = (() => {
             if (!cycle?.delivery_start || !row.dispatch_date) return false;
             const [hh, mm] = cycle.delivery_start.split(':').map(Number);
@@ -226,53 +230,68 @@ export function OrderDetailScreen({ route, navigation }: any) {
 
           return (
             <View key={row.id} style={styles.scheduleSection}>
-              {/* Schedule header — cycle name (multi) + date + dispatch time */}
-              <View style={styles.statusRow}>
-                <View style={styles.scheduleHeadLeft}>
-                  {isMulti && cycle?.cycle_name && (
-                    <ThemedText variant="small" color="mint" style={styles.cycleLabel}>
-                      {cycle.cycle_name}
-                    </ThemedText>
-                  )}
-                  <ThemedText variant="body" color="subtitle">
-                    {formatDateLong(row.dispatch_date)}
+              {/* Schedule header — cycle name (multi) + date, then the
+                  dispatch line on its own row, right-aligned. */}
+              <View style={styles.scheduleHeader}>
+                {isMulti && cycle?.cycle_name && (
+                  <ThemedText variant="small" color="mint" style={styles.cycleLabel}>
+                    {cycle.cycle_name}
                   </ThemedText>
-                </View>
+                )}
+                <ThemedText variant="body" color="subtitle">
+                  {formatDateLong(row.dispatch_date)}
+                </ThemedText>
                 {cycle && !dispatchPassed && !rowCancelled && (
-                  <ThemedText variant="small" color="mint" style={styles.dispatchScheduledLine}>
-                    Dispatch by {dispatchTime}
+                  <ThemedText variant="small" color="mint" style={styles.dispatchLine}>
+                    Dispatch scheduled at {dispatchTime}
                   </ThemedText>
                 )}
               </View>
 
-              {/* Status — timeline, or a Cancelled tag for an individually-cancelled row */}
+              {/* Status — vertical timeline; collapses to a ✓ line once
+                  delivered; a Cancelled tag for an individually-cancelled row. */}
               {rowCancelled ? (
                 <View style={styles.rowCancelledTag}>
                   <ThemedText variant="small" style={styles.cancelledTitle}>
                     This delivery was cancelled
                   </ThemedText>
                 </View>
+              ) : row.status === 'Delivered' ? (
+                <View style={styles.deliveredTag}>
+                  <ThemedText variant="body" style={styles.deliveredText}>
+                    ✓  Delivered
+                  </ThemedText>
+                  <TouchableOpacity
+                    onPress={() => navigation.navigate('Feedback', { orderId: row.id })}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <ThemedText variant="body" color="mint">Leave a Review ›</ThemedText>
+                  </TouchableOpacity>
+                </View>
               ) : (
                 <View style={styles.timeline}>
                   {statusFlow.map((status, index) => {
-                    const isCompleted = index <= currentStatusIndex;
+                    const isDone = index < currentStatusIndex;
                     const isCurrent = index === currentStatusIndex;
+                    const isFuture = index > currentStatusIndex;
                     return (
                       <View key={status} style={styles.timelineRow}>
-                        <View
-                          style={[
-                            styles.dot,
-                            isCompleted && styles.dotCompleted,
-                            isCurrent && styles.dotCurrent,
-                          ]}
-                        />
-                        {index < statusFlow.length - 1 && (
-                          <View style={[styles.line, isCompleted && styles.lineCompleted]} />
-                        )}
+                        {/* Rail: a continuous vector line, green from the top
+                            down to the current dot. Two half-segments per row
+                            abut the next so the line reads as one stroke. */}
+                        <View style={styles.rail}>
+                          {index > 0 && (
+                            <View style={[styles.lineUp, index <= currentStatusIndex && styles.lineDone]} />
+                          )}
+                          {index < statusFlow.length - 1 && (
+                            <View style={[styles.lineDown, index < currentStatusIndex && styles.lineDone]} />
+                          )}
+                          <View style={[styles.dot, isDone && styles.dotDone, isCurrent && styles.dotCurrent]} />
+                        </View>
                         <ThemedText
                           variant="body"
-                          color={isCompleted ? 'primary' : 'muted'}
-                          style={styles.timelineLabel}
+                          color={isCurrent ? 'primary' : isFuture ? 'muted' : 'subtitle'}
+                          style={isCurrent ? styles.stepCurrent : styles.stepRest}
                         >
                           {status}
                         </ThemedText>
@@ -282,70 +301,62 @@ export function OrderDetailScreen({ route, navigation }: any) {
                 </View>
               )}
 
-              {/* Items for this schedule */}
-              <View style={styles.itemsBlock}>
+              {/* Separator — splits the tracker from the invoice */}
+              <Divider />
+
+              {/* Invoice — items + this schedule's own money (per-row model) */}
+              <View style={styles.invoiceBlock}>
                 {(row.order_items ?? []).map((item) => (
                   <View key={item.id} style={styles.itemRow}>
                     <ThemedText variant="body" color="primary">
                       {item.item_name} x{item.quantity}
                     </ThemedText>
-                    <ThemedText variant="body" color="mint">
+                    <ThemedText variant="body" color="subtitle">
                       {formatPriceShort(item.price_at_time * item.quantity)}
                     </ThemedText>
                   </View>
                 ))}
+                <View style={styles.invoiceRule} />
+                <View style={styles.itemRow}>
+                  <ThemedText variant="small" color="muted">Subtotal</ThemedText>
+                  <ThemedText variant="small" color="subtitle">{formatPriceShort(rowSubtotal)}</ThemedText>
+                </View>
+                <View style={styles.itemRow}>
+                  <ThemedText variant="small" color="muted">Tax</ThemedText>
+                  <ThemedText variant="small" color="subtitle">{formatPriceShort(rowTax)}</ThemedText>
+                </View>
+                <View style={styles.itemRow}>
+                  <ThemedText variant="small" color="muted">Delivery</ThemedText>
+                  <ThemedText variant="small" color="subtitle">
+                    {rowDelivery === 0 ? 'Free' : formatPriceShort(rowDelivery)}
+                  </ThemedText>
+                </View>
+                <View style={[styles.itemRow, styles.totalRow]}>
+                  <ThemedText variant="body" color="primary">Total</ThemedText>
+                  <ThemedText variant="body" color="mint">{formatPriceShort(rowTotal)}</ThemedText>
+                </View>
               </View>
-
-              {row.status === 'Delivered' && (
-                <TouchableOpacity
-                  onPress={() => navigation.navigate('Feedback', { orderId: row.id })}
-                  style={styles.reviewLink}
-                >
-                  <ThemedText variant="body" color="mint">Leave a Review ›</ThemedText>
-                </TouchableOpacity>
-              )}
 
               <Divider />
             </View>
           );
         })}
 
-        {/* ── Shared totals (summed across the group) ──────────── */}
-        <View style={styles.section}>
-          <View style={styles.itemRow}>
-            <ThemedText variant="body" color="subtitle">Subtotal</ThemedText>
-            <ThemedText variant="body" color="subtitle">{formatPriceShort(groupSubtotal)}</ThemedText>
+        {/* Order total — only when the order spans multiple schedules */}
+        {isMulti && (
+          <View style={styles.section}>
+            <View style={[styles.itemRow, styles.totalRow]}>
+              <ThemedText variant="subtitle" color="primary">Order total</ThemedText>
+              <ThemedText variant="subtitle" color="mint">{formatPriceShort(groupTotal)}</ThemedText>
+            </View>
           </View>
-          <View style={styles.itemRow}>
-            <ThemedText variant="body" color="subtitle">Tax</ThemedText>
-            <ThemedText variant="body" color="subtitle">{formatPriceShort(groupTax)}</ThemedText>
-          </View>
-          <View style={styles.itemRow}>
-            <ThemedText variant="body" color="subtitle">Delivery</ThemedText>
-            <ThemedText variant="body" color="subtitle">
-              {groupDelivery === 0 ? 'Free' : formatPriceShort(groupDelivery)}
-            </ThemedText>
-          </View>
-          <View style={[styles.itemRow, styles.totalRow]}>
-            <ThemedText variant="subtitle" color="primary">Total</ThemedText>
-            <ThemedText variant="subtitle" color="mint">{formatPriceShort(groupTotal)}</ThemedText>
-          </View>
-        </View>
+        )}
 
-        {/* Payment */}
-        <Divider />
+        {/* Payment — one line */}
         <View style={styles.section}>
-          <ThemedText variant="body" color="muted" style={styles.sectionLabel}>
-            PAYMENT
+          <ThemedText variant="body" color="subtitle">
+            Payment · {groupRows[0].payment_method === 'wallet' ? 'Wallet' : 'Online'} · {formatPriceShort(groupTotal)}
           </ThemedText>
-          <ThemedText variant="body" color="primary">
-            {formatOrderStatus(groupRows[0].payment_method)}
-          </ThemedText>
-          {groupWallet > 0 && (
-            <ThemedText variant="body" color="subtitle">
-              Wallet: {formatPriceShort(groupWallet)}
-            </ThemedText>
-          )}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -364,62 +375,83 @@ const styles = StyleSheet.create({
     paddingVertical: Theme.spacing.sm,
   },
   section: { padding: Theme.spacing.md },
-  sectionLabel: { letterSpacing: 1, marginBottom: Theme.spacing.sm },
   scheduleSection: { paddingTop: Theme.spacing.sm },
-  scheduleHeadLeft: { flexDirection: 'column', flex: 1 },
-  cycleLabel: { marginBottom: 2, letterSpacing: 0.5 },
-  statusRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
+  scheduleHeader: {
     paddingHorizontal: Theme.spacing.md,
     paddingBottom: Theme.spacing.sm,
   },
-  dispatchScheduledLine: {
-    textAlign: 'right',
+  cycleLabel: { marginBottom: 2, letterSpacing: 0.5 },
+  dispatchLine: {
+    alignSelf: 'flex-end',
     marginTop: 2,
   },
-  timeline: { paddingHorizontal: Theme.spacing.md },
-  timelineRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 2,
-  },
-  dot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+  timeline: { paddingHorizontal: Theme.spacing.md, paddingVertical: 2 },
+  // Minimal, fixed row height — keeps the connecting line continuous and tight.
+  timelineRow: { flexDirection: 'row', alignItems: 'center', height: 26 },
+  rail: { width: 14, height: '100%', alignItems: 'center', justifyContent: 'center' },
+  // Two half-segments per row (top + bottom of the dot). Consecutive rows abut,
+  // so the rail reads as one thin vector stroke.
+  lineUp: {
+    position: 'absolute',
+    left: 6.25,
+    top: 0,
+    width: 1.5,
+    height: '50%',
     backgroundColor: Theme.colors.background.input,
-    marginRight: Theme.spacing.sm,
   },
-  dotCompleted: { backgroundColor: Theme.colors.status.success },
+  lineDown: {
+    position: 'absolute',
+    left: 6.25,
+    top: '50%',
+    width: 1.5,
+    height: '50%',
+    backgroundColor: Theme.colors.background.input,
+  },
+  lineDone: { backgroundColor: Theme.colors.status.success },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: Theme.colors.background.input,
+  },
+  dotDone: { backgroundColor: Theme.colors.status.success },
   dotCurrent: {
-    backgroundColor: Theme.colors.action.primary,
     width: 12,
     height: 12,
     borderRadius: 6,
+    backgroundColor: Theme.colors.action.primary,
   },
-  line: {
-    position: 'absolute',
-    left: 4,
-    top: 12,
-    width: 2,
-    height: 18,
-    backgroundColor: Theme.colors.background.input,
+  // Current stage stands out (+2pt, bold); the rest are quieter (−2pt).
+  stepCurrent: {
+    marginLeft: Theme.spacing.xs,
+    fontSize: Theme.typography.sizes.body + 2,
   },
-  lineCompleted: { backgroundColor: Theme.colors.status.success },
-  timelineLabel: { flex: 1, paddingVertical: 6 },
+  stepRest: {
+    marginLeft: Theme.spacing.xs,
+    fontSize: Theme.typography.sizes.body - 2,
+  },
+  deliveredTag: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.xs,
+  },
+  deliveredText: {
+    color: Theme.colors.status.success,
+  },
   rowCancelledTag: {
     marginHorizontal: Theme.spacing.md,
     paddingVertical: Theme.spacing.sm,
   },
-  itemsBlock: {
+  invoiceBlock: {
     paddingHorizontal: Theme.spacing.md,
     paddingTop: Theme.spacing.sm,
   },
-  reviewLink: {
-    marginTop: Theme.spacing.sm,
-    paddingHorizontal: Theme.spacing.md,
+  invoiceRule: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: Theme.colors.layout.divider,
+    marginVertical: Theme.spacing.sm,
   },
   cancelBar: {
     paddingHorizontal: Theme.spacing.md,
