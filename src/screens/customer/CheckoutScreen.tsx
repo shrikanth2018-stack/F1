@@ -34,6 +34,8 @@ import { useAddresses } from '../../hooks/useAddresses';
 import { useStoreConfig } from '../../hooks/useStoreConfig';
 import { useWalletBalance } from '../../hooks/useWallet';
 import { useSmartCart } from '../../hooks/useSmartCart';
+import { useDeliveryCycles } from '../../hooks/useDeliveryCycles';
+import { useServerTime } from '../../hooks/useServerTime';
 import { useAuth } from '../../hooks/useAuth';
 import { formatPriceShort } from '../../utils/formatters';
 import { supabase } from '../../api/supabaseClient';
@@ -41,6 +43,7 @@ import { RAZORPAY_KEY_ID } from '../../utils/env';
 import { trackOrderPlaced, trackOrderFailed } from '../../utils/analytics';
 import { infoDialog, confirmDialog } from '../../utils/confirmDialog';
 import { formatDateLong } from '../../utils/formatters';
+import { getDispatchScenario } from '../../utils/timeEngine';
 import { newIdempotencyKey } from '../../utils/idempotency';
 
 type PaymentChoice = 'razorpay' | 'wallet';
@@ -85,6 +88,8 @@ export function CheckoutScreen({ navigation, route }: any) {
   const { data: config } = useStoreConfig();
   const { data: wallet } = useWalletBalance();
   const { evaluations } = useSmartCart();
+  const { data: cycles } = useDeliveryCycles();
+  const { data: serverTime } = useServerTime();
 
   const insets = useSafeAreaInsets();
   const [selectedAddressId, setSelectedAddressId] = useState<number | null>(null);
@@ -243,17 +248,37 @@ export function CheckoutScreen({ navigation, route }: any) {
           }
         }
       } else if (!isSubscriptionOnly && cartType === 'essentials' && essItems.length > 0) {
-        // Essentials dispatch today; still one group per cycle so each
-        // cycle's items reach the correct kitchen / packing queue.
+        // Essentials respect cycle cutoffs exactly like food: an item
+        // ordered after its cycle's cutoff dispatches the next day — so a
+        // freshly placed essentials order is never stamped with a past
+        // dispatch window (which would block the customer from cancelling).
         const cycleIds = [...new Set(essItems.map((i) => i.cycle_id))];
+        let anyDayAfter = false;
         for (const cycleId of cycleIds) {
+          const cycle = (cycles ?? []).find((c) => c.id === cycleId);
+          const scenario = cycle && serverTime ? getDispatchScenario(cycle, serverTime) : 'A';
+          if (scenario === 'C') anyDayAfter = true;
           groups.push({
             cycle_id: cycleId,
-            dispatch_date: todayStr,
+            dispatch_date: scenarioToDate(scenario),
             essentials_items: essItems
               .filter((i) => i.cycle_id === cycleId)
               .map((i) => ({ essential_item_id: i.essential_item_id, quantity: i.quantity })),
           });
+        }
+        if (anyDayAfter) {
+          const proceed = await confirmDialog({
+            title: 'Delivery in 2 days',
+            message: `Some items have missed tomorrow's cutoff and will be delivered on ${formatDateLong(dayAfterStr)}. Continue?`,
+            confirmLabel: 'Place Order',
+            cancelLabel: 'Cancel',
+          });
+          if (!proceed) {
+            isPlacingRef.current = false;
+            setIsPlacing(false);
+            setGlobalLoading(false);
+            return;
+          }
         }
       }
 
@@ -412,7 +437,7 @@ export function CheckoutScreen({ navigation, route }: any) {
     foodItems, essItems, foodPlans, essPlans, activePlans,
     isSubscriptionOnly, subPlan,
     selectedAddressId, paymentMethod,
-    evaluations, session, clearFood, clearEss, clearFoodPlans, clearEssPlans,
+    evaluations, cycles, serverTime, session, clearFood, clearEss, clearFoodPlans, clearEssPlans,
     navigation, setGlobalLoading,
     cartType, totalCartCount,
   ]);

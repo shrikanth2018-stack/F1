@@ -27,6 +27,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 import { getUserFromJwt } from '../_shared/auth.ts';
+import { resolveAndSendPush } from '../_shared/notifications.ts';
 
 // 'Paid' = Razorpay webhook confirmed but kitchen hasn't started yet — still cancellable
 const CANCELLABLE_STATUSES = new Set(['Pending', 'Confirmed', 'Paid', 'Preparing']);
@@ -229,26 +230,23 @@ Deno.serve(async (req: Request) => {
           user_id: user.id, amount: walletRefund, reason: refundErr.message, reference: ref,
         });
 
-        fetch(`${SUPABASE_URL}/functions/v1/send-push`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-          },
-          body: JSON.stringify({
-            role: 'admin',
-            branch_id: cancellable[0]?.branch_id ?? undefined,
-            event_key: 'admin.wallet_refund_failed',
+        const { data: adminRows } = await supabase
+          .from('profiles').select('id').eq('role', 'admin');
+        const adminIds = (adminRows ?? []).map((r: any) => r.id);
+        if (adminIds.length > 0) {
+          resolveAndSendPush({
+            supabase,
+            eventKey: 'admin.wallet_refund_failed',
+            userIds: adminIds,
             vars: { order_id: anchor.id, amount: walletRefund, reference: ref },
-            title: 'Wallet refund failed',
-            body: `Order #${anchor.id} cancelled but wallet refund of ₹${walletRefund} did not credit. Manual reconciliation needed (ref ${ref}).`,
+            fallback: {
+              title: 'Wallet refund failed',
+              body: `Order #${anchor.id} cancelled but wallet refund of ₹${walletRefund} did not credit. Manual reconciliation needed (ref ${ref}).`,
+            },
             data: { screen: 'AdminOrderDetail', params: { orderId: anchor.id } },
-            trigger_source: 'admin_alert',
-            reference_id: String(anchor.id),
-          }),
-        }).catch((e: any) =>
-          console.error('[cancel-order] admin alert push failed:', e?.message),
-        );
+            referenceId: String(anchor.id),
+          }).catch(() => {});
+        }
       }
     }
 

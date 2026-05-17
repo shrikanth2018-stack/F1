@@ -51,7 +51,7 @@ Staff operations (attendance, deliveries) are queued locally in `staffQueueStore
 ### Navigation Structure
 
 - `CustomerNavigator` — Stack only, 18 screens
-- `StaffNavigator` — Stack only, 5 screens; `StaffDashboard` has top tabs (Kitchen/Packing/Delivery)
+- `StaffNavigator` — Stack only, 5 screens; `StaffDashboard` has top tabs (Kitchen / Packing). Delivery is **not** a staff-dashboard tab — drivers use `DriverDashboardScreen` (reached from the customer ProfilePopup → "My Deliveries"), admins use Delivery Manager → "Live" tab.
 - `AdminNavigator` — Bottom tabs (Reports + Settings Hub), each tab has its own drill-down stack
 
 ### Theme / Styling
@@ -77,6 +77,9 @@ All styling references `Theme` from `src/theme/index.ts`. No hardcoded hex codes
 
 ### Three carts, not one bundled cart (AC-01)
 Customers have three separate carts in the UI — food, essentials, and subscriptions — each with its own checkout. All three accept the same two payment methods (wallet, Razorpay). Implementation: separate `cartStore` and `essentialsCartStore`; subscription plan-buy flow goes through `place-order` independently with a one-plan-in-cart invariant.
+
+### Multi-cycle orders — order groups (MF-10)
+A single customer checkout can span multiple delivery cycles/days. Each (cycle, dispatch_date) is its own `orders` row — still a single-cycle fulfillment unit (one status, one delivery; exactly what staff screens, `generate_daily_manifest`, and realtime operate on — all unchanged by MF-10). All rows from one checkout share an `order_group_id` (column has `DEFAULT gen_random_uuid()`, so subscription-dispatch and other standalone orders auto-get a group of one). Money is per-row: each row carries its own subtotal + tax; the delivery fee sits on the earliest-dispatch row only, so `SUM(orders.total_amount)` stays correct and every row is self-describing for admin refunds. One payment, one Razorpay order id (shared across all rows of the group), one whole-group customer cancellation (window governed by the earliest cycle's cutoff); admin cancels individual rows. `place_order_atomic` takes a `p_groups` JSONB array. `place-order` groups cart items by (cycle, dispatch_date) and server-validates each item's cycle against the DB. `confirm-order` / `verify-payment` confirm the whole group by `razorpay_order_id`; `cancel-order` is group-aware. Customer Orders/OrderDetail group rows by `order_group_id` (per-schedule status); admin Running Orders / AdminOrderDetail show individual rows. MF-10 also closed a latent bug where a same-day multi-cycle cart was stamped with only the first item's `cycle_id`, mis-routing off-cycle items in the kitchen.
 
 ### Subscription activation gap — resolved (AC-02)
 A previous production bug had Razorpay-paid subscriptions where payment succeeded, order showed Confirmed, but `user_subscriptions.is_active` stayed `false` — customer's "My Subscriptions" page showed "payment awaited." The current `confirm-order` function explicitly activates `user_subscriptions` rows tied to the same `razorpay_order_id` immediately after marking the order Confirmed. Useful regression context for any future change to the payment-confirmation flow.
