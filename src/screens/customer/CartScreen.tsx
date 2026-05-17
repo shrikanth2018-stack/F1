@@ -296,17 +296,9 @@ export function CartScreen({ navigation, route }: any) {
           for cross-midnight 'C' (day after tomorrow). */}
       {cutoffMissedCycles.size > 0 && (
         <View style={styles.cutoffBanner}>
-          {Array.from(cutoffMissedCycles.entries()).map(([cycleName, sc]) => (
-            <ThemedText
-              key={cycleName}
-              variant="small"
-              style={styles.cutoffBannerText}
-            >
-              {sc === 'C'
-                ? `Cutoff for tomorrow's ${cycleName} has passed. These items will be delivered the day after tomorrow.`
-                : `You've missed today's cutoff for ${cycleName}. These items will be delivered tomorrow.`}
-            </ThemedText>
-          ))}
+          <ThemedText variant="small" style={styles.cutoffBannerText}>
+            Some items missed today's cutoff — check each item's delivery day below.
+          </ThemedText>
         </View>
       )}
 

@@ -5,8 +5,8 @@
  *
  * MF-10: a customer "order" can span multiple delivery cycles — each
  * cycle is its own `orders` row sharing one order_group_id. Rows are
- * grouped here so the customer sees ONE card per checkout, with a
- * per-schedule status line for multi-cycle orders.
+ * grouped here so the customer sees ONE card per checkout, with a single
+ * rolled-up status; the per-cycle breakdown lives in OrderDetail.
  */
 
 import React, { useState, useCallback } from 'react';
@@ -84,6 +84,23 @@ function groupOrders(orders: Order[]): OrderGroup[] {
   return groups;
 }
 
+// A multi-cycle order has a status per cycle. The list card shows ONE
+// rolled-up status: the least-advanced of the still-active rows, so the
+// customer sees the slowest part. All rows cancelled → Cancelled.
+const STATUS_PROGRESSION = [
+  'Pending', 'Confirmed', 'Preparing', 'Ready', 'Packed',
+  'Dispatched', 'Received at Hub', 'On the Way', 'Delivered',
+];
+function rolledUpStatus(rows: Order[]): string {
+  const active = rows.filter((r) => r.status !== 'Cancelled');
+  if (active.length === 0) return 'Cancelled';
+  return active.reduce((least, r) => {
+    const li = STATUS_PROGRESSION.indexOf(least);
+    const ri = STATUS_PROGRESSION.indexOf(r.status);
+    return ri !== -1 && (li === -1 || ri < li) ? r.status : least;
+  }, active[0].status);
+}
+
 export function OrdersScreen({ navigation }: any) {
   const [activeTab, setActiveTab] = useState<OrderTab>('food');
   const {
@@ -110,6 +127,7 @@ export function OrdersScreen({ navigation }: any) {
 
   const renderGroup = ({ item }: { item: OrderGroup }) => {
     const isMulti = item.rows.length > 1;
+    const status = rolledUpStatus(item.rows);
     return (
       <TouchableOpacity
         style={styles.row}
@@ -118,30 +136,8 @@ export function OrdersScreen({ navigation }: any) {
       >
         <View style={styles.rowTop}>
           <ThemedText variant="subtitle" color="primary">Order #{item.primaryId}</ThemedText>
-          {!isMulti && (
-            <DispatchBadge
-              label={item.rows[0].status}
-              variant={statusVariant[item.rows[0].status] ?? 'info'}
-            />
-          )}
+          <DispatchBadge label={status} variant={statusVariant[status] ?? 'info'} />
         </View>
-
-        {/* Multi-cycle: one status line per dispatch schedule */}
-        {isMulti && (
-          <View style={styles.schedules}>
-            {item.rows.map((r) => (
-              <View key={r.id} style={styles.scheduleRow}>
-                <ThemedText variant="small" color="muted">
-                  {formatDateShort(r.dispatch_date)}
-                </ThemedText>
-                <DispatchBadge
-                  label={r.status}
-                  variant={statusVariant[r.status] ?? 'info'}
-                />
-              </View>
-            ))}
-          </View>
-        )}
 
         <View style={styles.rowMid}>
           <ThemedText variant="body" color="subtitle">
@@ -271,15 +267,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 4,
-  },
-  schedules: {
-    marginBottom: 4,
-    gap: 3,
-  },
-  scheduleRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
   },
   rowMid: {
     flexDirection: 'row',

@@ -70,12 +70,15 @@ export function useAdminCancelOrder() {
   return useMutation({
     mutationFn: async ({
       orderId,
-      walletAmountUsed,
+      refundAmount,
       userId,
       reason,
     }: {
       orderId: number;
-      walletAmountUsed: number;
+      /** Amount to credit the customer's wallet. The cancelled row's full
+       *  total_amount for a wallet refund; 0 when the admin will refund a
+       *  Razorpay payment manually instead. */
+      refundAmount: number;
       userId: string;
       reason?: string;
     }) => {
@@ -84,7 +87,7 @@ export function useAdminCancelOrder() {
       // admin_cancel_subscription_atomic in useSubscriptions.ts.
       const { error } = await supabase.rpc('admin_cancel_order_atomic' as never, {
         p_order_id:      orderId,
-        p_refund_amount: walletAmountUsed,
+        p_refund_amount: refundAmount,
         p_reason:        reason ?? 'Cancelled by admin',
       } as never);
       if (error) throw new Error(error.message);

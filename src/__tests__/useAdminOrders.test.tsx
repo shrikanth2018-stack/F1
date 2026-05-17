@@ -69,7 +69,7 @@ describe('useAdminCancelOrder — BF-34a atomic cancel', () => {
     await act(async () => {
       await result.current.mutateAsync({
         orderId: 9442,
-        walletAmountUsed: 250,
+        refundAmount: 250,
         userId: 'cust-1',
         reason: 'Customer requested by phone',
       });
@@ -95,7 +95,7 @@ describe('useAdminCancelOrder — BF-34a atomic cancel', () => {
     await act(async () => {
       await result.current.mutateAsync({
         orderId: 9442,
-        walletAmountUsed: 0,
+        refundAmount: 0,
         userId: 'cust-1',
       });
     });
@@ -115,7 +115,7 @@ describe('useAdminCancelOrder — BF-34a atomic cancel', () => {
       await expect(
         result.current.mutateAsync({
           orderId: 9442,
-          walletAmountUsed: 250,
+          refundAmount: 250,
           userId: 'cust-1',
         }),
       ).rejects.toThrow('already Cancelled');
@@ -132,7 +132,7 @@ describe('useAdminCancelOrder — BF-34a atomic cancel', () => {
     await act(async () => {
       await result.current.mutateAsync({
         orderId: 9442,
-        walletAmountUsed: 0,
+        refundAmount: 0,
         userId: 'cust-1',
       });
     });

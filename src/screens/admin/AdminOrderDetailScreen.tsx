@@ -146,46 +146,59 @@ export function AdminOrderDetailScreen({
   const handleCancel = () => {
     if (!order) return;
     const o: any = order;
-    const walletRefund = Number(o.wallet_amount_used ?? 0);
-    const razorpayDue = Number(o.total_amount ?? 0) - walletRefund;
-    const refundNote =
-      walletRefund > 0
-        ? `₹${walletRefund} returned to wallet instantly.${
-            razorpayDue > 0 ? `\n₹${razorpayDue} Razorpay — process manually.` : ''
-          }`
-        : razorpayDue > 0
-        ? `₹${razorpayDue} Razorpay — process manually.`
-        : 'No refund due.';
-    Alert.alert(
-      `Cancel Order #${o.id}?`,
-      refundNote,
-      [
-        { text: 'Keep', style: 'cancel' },
-        {
-          text: 'Cancel Order',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await cancelOrder({
-                orderId: o.id,
-                walletAmountUsed: walletRefund,
-                userId: o.user_id ?? '',
-                reason: 'Cancelled by admin',
-              });
-              Alert.alert(
-                'Done',
-                walletRefund > 0
-                  ? `Order cancelled. ₹${walletRefund} refunded to wallet.`
-                  : 'Order cancelled.',
-              );
-              refetch();
-            } catch (e: any) {
-              Alert.alert('Error', e?.message ?? 'Failed to cancel order');
-            }
-          },
-        },
-      ],
-    );
+    // The "adjusted balance" for this single cycle row IS its own total_amount
+    // (per-row money model) — it's what the customer paid for this row,
+    // whatever the payment method.
+    const rowTotal = Number(o.total_amount ?? 0);
+    const isRazorpay = o.payment_method === 'razorpay';
+
+    const doCancel = async (refundAmount: number, manualRazorpay: boolean) => {
+      try {
+        await cancelOrder({
+          orderId: o.id,
+          refundAmount,
+          userId: o.user_id ?? '',
+          reason: 'Cancelled by admin',
+        });
+        Alert.alert(
+          'Order Cancelled',
+          manualRazorpay
+            ? `Order #${o.id} cancelled. Refund ₹${rowTotal} to the customer via the Razorpay dashboard.`
+            : refundAmount > 0
+              ? `Order #${o.id} cancelled. ₹${refundAmount} refunded to the customer's wallet.`
+              : `Order #${o.id} cancelled.`,
+        );
+        refetch();
+      } catch (e: any) {
+        Alert.alert('Error', e?.message ?? 'Failed to cancel order');
+      }
+    };
+
+    if (isRazorpay && rowTotal > 0) {
+      // Online payment — admin picks the refund destination. Wallet credit is
+      // the default (instant); a manual Razorpay refund is the override.
+      Alert.alert(
+        `Cancel Order #${o.id}?`,
+        `Paid online — ₹${rowTotal}. Choose how to refund the customer.`,
+        [
+          { text: 'Keep', style: 'cancel' },
+          { text: `Refund ₹${rowTotal} to Wallet`, onPress: () => doCancel(rowTotal, false) },
+          { text: 'Cancel — refund via Razorpay', style: 'destructive', onPress: () => doCancel(0, true) },
+        ],
+      );
+    } else {
+      // Wallet-paid (or zero-value) — the refund goes back to the wallet.
+      Alert.alert(
+        `Cancel Order #${o.id}?`,
+        rowTotal > 0
+          ? `₹${rowTotal} will be refunded to the customer's wallet.`
+          : 'No refund due.',
+        [
+          { text: 'Keep', style: 'cancel' },
+          { text: 'Cancel Order', style: 'destructive', onPress: () => doCancel(rowTotal, false) },
+        ],
+      );
+    }
   };
 
   if (error) return <ErrorRetry message="Could not load order" onRetry={refetch} />;
