@@ -21,6 +21,8 @@ export interface QueuedMutation {
   payload: Record<string, unknown>;
   matchColumn?: string;
   matchValue?: unknown;
+  /** Customer to push once this mutation syncs (order status updates only). */
+  notifyUserId?: string | null;
   createdAt: number;
   retryCount: number;
 }

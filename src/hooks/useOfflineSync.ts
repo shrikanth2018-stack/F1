@@ -11,6 +11,7 @@ import NetInfo from '@react-native-community/netinfo';
 import { supabase } from '../api/supabaseClient';
 import { useStaffQueueStore } from '../store/staffQueueStore';
 import { MAX_QUEUE_RETRIES } from '../utils/constants';
+import { fireOrderStatusPush } from '../utils/orderStatusPush';
 
 export function useOfflineSync() {
   // queue + isSyncing kept as reactive subscriptions for the return value
@@ -70,6 +71,22 @@ export function useOfflineSync() {
           incrementRetry(mutation.id);
         } else {
           dequeue(mutation.id);
+          // An order status change made offline still owes the customer their
+          // push — the online path fires its own, the offline path fires here
+          // once the queued update actually lands. Non-milestone statuses and
+          // missing customers are no-ops inside the helper.
+          if (
+            mutation.table === 'orders' &&
+            mutation.operation === 'update' &&
+            mutation.notifyUserId &&
+            typeof mutation.payload.status === 'string'
+          ) {
+            fireOrderStatusPush(
+              Number(mutation.matchValue),
+              mutation.payload.status,
+              mutation.notifyUserId,
+            );
+          }
         }
       } catch {
         incrementRetry(mutation.id);

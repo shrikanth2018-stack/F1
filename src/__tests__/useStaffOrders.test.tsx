@@ -21,7 +21,7 @@ import { createWrapper } from './_helpers/queryClient';
 function makeBuilder(resolveValue: any) {
   const builder: any = {};
   const chain = [
-    'select', 'eq', 'in', 'order', 'limit', 'gte', 'lte',
+    'select', 'eq', 'neq', 'in', 'order', 'limit', 'gte', 'lte',
     'maybeSingle', 'single', 'range',
     'insert', 'update', 'upsert', 'delete',
   ];

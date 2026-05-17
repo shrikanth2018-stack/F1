@@ -80,14 +80,29 @@ export function usePushNotifications() {
     async (token: string) => {
       if (!session?.user.id) return;
 
+      // Register THIS device's current token. is_active:true also reactivates
+      // a row that an earlier cleanup pass had retired (user returns to a
+      // device they'd opened before).
       await supabase.from('push_notification_tokens').upsert(
         {
           user_id: session.user.id,
           token,
           platform: Platform.OS,
+          is_active: true,
         },
         { onConflict: 'user_id,token' }
       );
+
+      // Retire this user's OTHER token rows — stale tokens from old installs
+      // or builds whose Expo token has since changed. Without this they pile
+      // up as is_active=true forever, so one status push fans out to a stack
+      // of dead tokens (and a returning device gets the push more than once).
+      // One active token per user: the most recently registered device wins.
+      await supabase
+        .from('push_notification_tokens')
+        .update({ is_active: false })
+        .eq('user_id', session.user.id)
+        .neq('token', token);
     },
     [session?.user.id]
   );

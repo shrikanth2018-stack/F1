@@ -12,6 +12,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../api/supabaseClient';
 import { invalidateOrderQueries } from '../api/invalidateOrderQueries';
+import { fireOrderStatusPush } from '../utils/orderStatusPush';
 import { QUERY_KEYS, QUERY_STALE_TIME } from '../utils/constants';
 import { useBranchFilter } from './useBranchFilter';
 import type { OrderStatus } from '../types';
@@ -54,35 +55,6 @@ export function useAdminOrders(filters: AdminOrderFilters = {}) {
   });
 }
 
-const STATUS_PUSH: Record<string, { title: string; body: (id: number) => string }> = {
-  Confirmed:          { title: 'Order Confirmed!',  body: (id) => `Your order #${id} is confirmed. We are getting it ready!` },
-  Preparing:          { title: 'In the Kitchen',    body: (id) => `Order #${id} is being prepared now.` },
-  Ready:              { title: 'Order Ready!',       body: (id) => `Order #${id} is packed and ready for dispatch.` },
-  Dispatched:         { title: 'On the Way!',        body: (id) => `Your order #${id} is on the way. Should arrive soon!` },
-  'On the Way':       { title: 'On the Way!',        body: (id) => `Your order #${id} is on the way. Should arrive soon!` },
-  'Received at Hub':  { title: 'At Your Hub',        body: (id) => `Order #${id} has arrived at your pickup hub.` },
-  Delivered:          { title: 'Delivered!',          body: (id) => `Order #${id} delivered. Enjoy your meal!` },
-  Cancelled:          { title: 'Order Cancelled',    body: (id) => `Order #${id} has been cancelled.` },
-};
-
-async function firePush(orderId: number, status: string, userId: string) {
-  const msg = STATUS_PUSH[status];
-  if (!msg) return;
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session?.access_token) return;
-  supabase.functions.invoke('send-push', {
-    headers: { Authorization: `Bearer ${session.access_token}` },
-    body: {
-      user_ids: [userId],
-      title: msg.title,
-      body: msg.body(orderId),
-      data: { screen: 'OrderDetail', params: { orderId }, trigger_source: 'order_status' },
-      trigger_source: 'order_status',
-      reference_id: String(orderId),
-    },
-  }).catch((e) => console.error('[push admin]', e));
-}
-
 /**
  * BF-34a (F3.1, 2026-05-11): atomic admin order cancel + wallet refund.
  *
@@ -117,7 +89,9 @@ export function useAdminCancelOrder() {
       } as never);
       if (error) throw new Error(error.message);
 
-      firePush(orderId, 'Cancelled', userId);
+      // Same shared helper as the staff path → admin-cancel push now routes
+      // through the order.cancelled template (admin's editable/disable-able copy).
+      fireOrderStatusPush(orderId, 'Cancelled', userId);
     },
     onSuccess: () => {
       invalidateOrderQueries(queryClient);

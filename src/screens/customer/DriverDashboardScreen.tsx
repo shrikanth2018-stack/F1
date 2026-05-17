@@ -30,11 +30,10 @@ import { DeliveryOrderRow } from '../../components/DeliveryOrderRow';
 import { useAuth } from '../../hooks/useAuth';
 import { useUpdateOrderStatus } from '../../hooks/useStaffOrders';
 import { useRealtimeOrders } from '../../hooks/useRealtimeOrders';
+import { isOperationalOrder } from '../../utils/orderFilters';
 import { supabase } from '../../api/supabaseClient';
 import type { CustomerScreenProps } from '../../navigation/types';
 import type { OrderStatus } from '../../types';
-
-const ACTIVE_DELIVERY_STATUSES: OrderStatus[] = ['Dispatched', 'Received at Hub', 'On the Way'];
 
 export function DriverDashboardScreen({ navigation }: CustomerScreenProps<'DriverDashboard'>) {
   const { session } = useAuth();
@@ -60,8 +59,11 @@ export function DriverDashboardScreen({ navigation }: CustomerScreenProps<'Drive
 
       if (myHubIds.length === 0 && myZoneIds.length === 0) return [];
 
-      // Fetch today's active-delivery orders. Filter client-side by hub/zone
+      // Fetch all of today's orders, filtered client-side by hub/zone
       // membership — keeps the query simple, fine at trial scale.
+      // All statuses are returned: a driver sees every order routed to them
+      // from creation; the row's status pill stays non-tappable until Packing
+      // dispatches it (see nextDeliveryStatus). Cancelled excluded — dead order.
       const { data, error: ordersErr } = await supabase
         .from('orders')
         .select(`
@@ -71,12 +73,16 @@ export function DriverDashboardScreen({ navigation }: CustomerScreenProps<'Drive
           profiles(phone_number)
         `)
         .eq('dispatch_date', today)
-        .in('status', ACTIVE_DELIVERY_STATUSES)
+        .neq('status', 'Cancelled')
         .order('created_at', { ascending: false });
 
       if (ordersErr) throw ordersErr;
 
+      // Drop subscription-purchase orders (no physical delivery) — the same
+      // operational filter Kitchen/Packing/Hub use. Daily sub-dispatch rows
+      // carry real items and pass.
       return (data ?? []).filter((o: any) => {
+        if (!isOperationalOrder(o)) return false;
         const addr = o.customer_addresses;
         if (!addr) return false;
         if (addr.hub_id != null && myHubIds.includes(addr.hub_id)) return true;

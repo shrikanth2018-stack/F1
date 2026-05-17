@@ -18,26 +18,8 @@ import { useBranchFilter } from './useBranchFilter';
 import { useFeatureFlag } from './useFeatureFlag';
 import { useAuth } from './useAuth';
 import { isOperationalOrder } from '../utils/orderFilters';
+import { fireOrderStatusPush } from '../utils/orderStatusPush';
 import type { Order, OrderStatus } from '../types';
-
-// Blueprint Sec 5.3 — anti-spam filter.
-// Push ONLY at critical milestones: Ready, Dispatched, Received at Hub, Delivered, Cancelled.
-// "Preparing" and "On the Way" are intentionally omitted to avoid notification fatigue.
-//
-// Each entry pairs the event_key (for admin template lookup) with a hardcoded
-// fallback used when the template row is missing. Admin can override text or
-// disable any of these via the Notification Manager screen.
-const STATUS_PUSH: Record<string, {
-  event_key: string;
-  title: string;
-  body: (id: number) => string;
-}> = {
-  Ready:              { event_key: 'order.ready',           title: 'Order Ready!',    body: (id) => `Order #${id} is packed and ready for dispatch.` },
-  Dispatched:         { event_key: 'order.dispatched',      title: 'On the Way!',     body: (id) => `Your order #${id} is on the way. Should arrive soon!` },
-  'Received at Hub':  { event_key: 'order.received_at_hub', title: 'At Your Hub',     body: (id) => `Order #${id} has arrived at your pickup hub.` },
-  Delivered:          { event_key: 'order.delivered',       title: 'Delivered!',      body: (id) => `Order #${id} delivered. Enjoy your meal!` },
-  Cancelled:          { event_key: 'order.cancelled',       title: 'Order Cancelled', body: (id) => `Order #${id} has been cancelled.` },
-};
 
 /** Fetch today's orders for staff dashboard */
 export function useStaffOrders(cycleId?: number) {
@@ -65,7 +47,11 @@ export function useStaffOrders(cycleId?: number) {
           customer_addresses(*, delivery_zones(driver_code, zone_name), delivery_hubs(driver_code, hub_name)),
           profiles(phone_number)
         `)
+        // Cancelled orders never belong on operational staff/hub screens —
+        // they live only in order history (customer profile + admin). Excluded
+        // at the query so Kitchen, Packing and Hub Today are all clean by default.
         .eq('dispatch_date', today)
+        .neq('status', 'Cancelled')
         .order('created_at', { ascending: false });
 
       if (cycleId) {
@@ -123,29 +109,9 @@ export function useUpdateOrderStatus() {
 
         if (error) throw error;
 
-        // Fire-and-forget push to the customer.
-        // send-push resolves the template on the server side via event_key.
-        // Fallback title/body are sent along so the push still works even if
-        // the template row is missing. If admin disabled the event, server skips.
-        const msg = STATUS_PUSH[status];
-        if (msg && userId) {
-          const { data: { session: raw } } = await supabase.auth.getSession();
-          if (raw?.access_token) {
-            supabase.functions.invoke('send-push', {
-              headers: { Authorization: `Bearer ${raw.access_token}` },
-              body: {
-                user_ids: [userId],
-                event_key: msg.event_key,
-                vars: { order_id: orderId },
-                title: msg.title,
-                body: msg.body(orderId),
-                data: { screen: 'OrderDetail', params: { orderId } },
-                trigger_source: 'order_status',
-                reference_id: String(orderId),
-              },
-            }).catch((e) => console.error('[push status]', e));
-          }
-        }
+        // Fire-and-forget customer push — shared helper resolves the template
+        // (admin's editable copy) and skips non-milestone statuses.
+        fireOrderStatusPush(orderId, status, userId);
       } else {
         enqueue({
           userId: session?.user.id ?? '',
@@ -154,6 +120,8 @@ export function useUpdateOrderStatus() {
           payload: { status, updated_at: new Date().toISOString() },
           matchColumn: 'id',
           matchValue: orderId,
+          // Customer to push once this status update syncs (see useOfflineSync).
+          notifyUserId: userId ?? null,
         });
       }
     },
