@@ -100,7 +100,7 @@ const preview = StyleSheet.create({
     paddingHorizontal: Theme.spacing.md,
   },
   emoji: { fontSize: 28, marginBottom: 4 },
-  title: { fontSize: B + 4, fontWeight: '700', textAlign: 'center' },
+  title: { fontSize: B + 4, textAlign: 'center' },
   sub: { fontSize: S, textAlign: 'center', marginTop: 4 },
 });
 
@@ -472,7 +472,7 @@ const styles = StyleSheet.create({
   pipe: { marginHorizontal: Theme.spacing.sm, opacity: 0.4, fontSize: B },
   topTab: { paddingHorizontal: Theme.spacing.sm },
   tabText: { fontSize: B + 4 },
-  tabActive: { fontWeight: '600' },
+  tabActive: {  },
 
   scroll: {
     paddingHorizontal: Theme.spacing.md,

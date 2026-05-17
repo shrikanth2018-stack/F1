@@ -316,7 +316,6 @@ const editBar = StyleSheet.create({
   },
   text: {
     fontSize: B,
-    fontWeight: '600',
   },
 });
 
@@ -557,14 +556,14 @@ const att = StyleSheet.create({
     paddingVertical: Theme.spacing.sm,
   },
   navBtn:      { fontSize: B + 8, paddingHorizontal: Theme.spacing.sm },
-  monthLabel:  { fontSize: B + 2, fontWeight: '600' },
+  monthLabel:  { fontSize: B + 2 },
   summary: {
     flexDirection: 'row',
     paddingHorizontal: Theme.spacing.md,
     paddingBottom: Theme.spacing.sm,
   },
   summaryItem: { flex: 1, alignItems: 'center' },
-  summaryNum:  { fontSize: B + 4, fontWeight: '700' },
+  summaryNum:  { fontSize: B + 4 },
   summaryLbl:  { fontSize: S },
   calGrid: {
     flexDirection: 'row',
@@ -590,7 +589,7 @@ const att = StyleSheet.create({
     borderColor: Theme.colors.text.mint,
   },
   cellDay:   { fontSize: S - 1 },
-  cellLabel: { fontSize: S - 2, fontWeight: '700' },
+  cellLabel: { fontSize: S - 2 },
   logRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -687,7 +686,7 @@ function LeaveTab({ staffId }: { staffId: string }) {
             <ThemedText
               variant="small"
               color="muted"
-              style={{ fontSize: S, fontWeight: '600', color: l.status === 'Approved' ? Theme.colors.text.mint : Theme.colors.status.error }}
+              style={{ fontSize: S, color: l.status === 'Approved' ? Theme.colors.text.mint : Theme.colors.status.error }}
             >
               {l.status}
             </ThemedText>
@@ -773,7 +772,7 @@ function SalaryTab({ staffId }: { staffId: string }) {
         records.map((r) => (
           <View key={r.id} style={sal.card}>
             <View style={sal.cardHeader}>
-              <ThemedText variant="body" color="primary" style={{ fontSize: B, fontWeight: '600' }}>
+              <ThemedText variant="body" color="primary" style={{ fontSize: B }}>
                 {MONTH_NAMES[r.month - 1]} {r.year}
               </ThemedText>
               <View style={[sal.badge, r.is_paid ? sal.paidBadge : sal.pendingBadge]}>
@@ -803,8 +802,8 @@ function SalaryTab({ staffId }: { staffId: string }) {
               </View>
             )}
             <View style={[sal.lineRow, sal.netRow]}>
-              <ThemedText variant="body" color="primary" style={{ fontSize: B, fontWeight: '600' }}>Net</ThemedText>
-              <ThemedText variant="body" color="primary" style={{ fontSize: B, fontWeight: '700' }}>₹{r.net_salary.toLocaleString('en-IN')}</ThemedText>
+              <ThemedText variant="body" color="primary" style={{ fontSize: B }}>Net</ThemedText>
+              <ThemedText variant="body" color="primary" style={{ fontSize: B }}>₹{r.net_salary.toLocaleString('en-IN')}</ThemedText>
             </View>
             {!r.is_paid && (
               <TouchableOpacity
@@ -1034,5 +1033,5 @@ const styles = StyleSheet.create({
   },
   pipe:      { marginHorizontal: Theme.spacing.sm, opacity: 0.4, fontSize: B },
   tabTxt:    { fontSize: B },
-  tabActive: { fontWeight: '600' },
+  tabActive: {  },
 });

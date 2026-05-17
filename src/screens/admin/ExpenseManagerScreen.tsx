@@ -383,7 +383,7 @@ function ExpensesTab({ showForm, onCloseForm }: { showForm: boolean; onCloseForm
                 </ThemedText>
               </View>
               <View style={tab.histRight}>
-                <ThemedText variant="body" color="primary" style={{ fontSize: B, fontWeight: '600' }}>
+                <ThemedText variant="body" color="primary" style={{ fontSize: B }}>
                   {fmtAmt(e.amount)}
                 </ThemedText>
                 <TouchableOpacity onPress={() => handleMarkPaid(e)} activeOpacity={0.7}>
@@ -484,7 +484,7 @@ const tab = StyleSheet.create({
   },
   cardTop:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   cardLeft:  { flex: 1, marginRight: Theme.spacing.sm },
-  amount:    { fontSize: B + 2, fontWeight: '600', marginTop: 2 },
+  amount:    { fontSize: B + 2, marginTop: 2 },
   actionRow: { flexDirection: 'row', gap: 10, marginTop: Theme.spacing.sm },
   approveBtn: {
     backgroundColor: Theme.colors.status.success,
@@ -599,7 +599,7 @@ const styles = StyleSheet.create({
   },
   pipe:      { marginHorizontal: Theme.spacing.sm, opacity: 0.4, fontSize: B },
   tabTxt:    { fontSize: B },
-  tabActive: { fontWeight: '600' },
+  tabActive: {  },
 
   footer: {
     paddingHorizontal: Theme.spacing.md,

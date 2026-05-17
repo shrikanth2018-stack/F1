@@ -130,7 +130,7 @@ const row = StyleSheet.create({
   top: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   left: { flex: 1, marginRight: Theme.spacing.sm },
   right: { alignItems: 'flex-end' },
-  name: { fontSize: B, fontWeight: '600' },
+  name: { fontSize: B },
   phone: { fontSize: S, marginTop: 2 },
   date: { fontSize: S, marginTop: 2 },
   orderRef: { fontSize: S, marginTop: Theme.spacing.xs, color: Theme.colors.text.muted },
@@ -265,7 +265,7 @@ const styles = StyleSheet.create({
   pipe: { marginHorizontal: Theme.spacing.sm, opacity: 0.4, fontSize: B },
   topTab: { paddingHorizontal: Theme.spacing.sm },
   tabText: { fontSize: B + 4 },
-  tabActive: { fontWeight: '600' },
+  tabActive: {  },
   count: { fontSize: S },
 
   list: { paddingBottom: Theme.spacing.xl },

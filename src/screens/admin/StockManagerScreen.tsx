@@ -589,7 +589,7 @@ const styles = StyleSheet.create({
   pipe: { marginHorizontal: Theme.spacing.sm, opacity: 0.4 },
   topTab: { paddingHorizontal: Theme.spacing.sm },
   tabText: { fontSize: Theme.typography.sizes.body + 6 },
-  tabTextActive: { fontWeight: '600' },
+  tabTextActive: {  },
 
   tabContent: { flex: 1 },
   listPad: { paddingBottom: Theme.spacing.xl * 2, paddingTop: Theme.spacing.sm },
@@ -643,7 +643,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 4,
   },
   qtyBtnText: { fontSize: 18, color: Theme.colors.text.primary, lineHeight: 20 },
-  qtyNum: { width: 28, textAlign: 'center', fontSize: 16, color: Theme.colors.text.primary, fontWeight: '600' },
+  qtyNum: { width: 28, textAlign: 'center', fontSize: 16, color: Theme.colors.text.primary },
   removeBtn: {
     width: 28,
     height: 28,

@@ -394,7 +394,7 @@ const styles = StyleSheet.create({
   },
   pipe: { marginHorizontal: Theme.spacing.sm, opacity: 0.4, fontSize: B },
   subTabTxt: { fontSize: B },
-  subTabActive: { fontWeight: '600' },
+  subTabActive: {  },
 
   footer: {
     paddingHorizontal: Theme.spacing.md,

@@ -122,7 +122,7 @@ const er = StyleSheet.create({
     paddingVertical: 2,
     borderRadius: 10,
   },
-  badgeTxt: { fontSize: S, fontWeight: '600' },
+  badgeTxt: { fontSize: S },
   clockIn:  { fontSize: S },
   chevron:  { fontSize: B + 4, opacity: 0.4 },
 });
@@ -346,7 +346,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Theme.spacing.md,
   },
   statItem:    { flex: 1, alignItems: 'center' },
-  statNum:     { fontSize: B + 4, fontWeight: '600' },
+  statNum:     { fontSize: B + 4 },
   statLbl:     { fontSize: S, marginTop: 2 },
   statDivider: {
     width: StyleSheet.hairlineWidth,
@@ -376,7 +376,7 @@ const styles = StyleSheet.create({
   },
   pipe:         { marginHorizontal: Theme.spacing.sm, opacity: 0.4, fontSize: B },
   filterTxt:    { fontSize: B },
-  filterActive: { fontWeight: '600' },
+  filterActive: {  },
 
   list: { paddingBottom: Theme.spacing.xl },
 });

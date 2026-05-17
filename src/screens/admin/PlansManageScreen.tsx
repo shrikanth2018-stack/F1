@@ -254,7 +254,7 @@ const styles = StyleSheet.create({
   pipe: { marginHorizontal: Theme.spacing.sm, opacity: 0.4, fontSize: B },
   topTab: { paddingHorizontal: Theme.spacing.sm },
   tabText: { fontSize: B + 4 },
-  tabActive: { fontWeight: '600' },
+  tabActive: {  },
 
   cycleRow: {
     paddingHorizontal: Theme.spacing.md,

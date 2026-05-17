@@ -1072,7 +1072,6 @@ const styles = StyleSheet.create({
     color: Theme.colors.text.mint,
     fontFamily: Theme.typography.fontFamily,
     fontSize: Theme.typography.sizes.small,
-    fontWeight: '600',
   },
 
   messageBanner: {
@@ -1108,7 +1107,6 @@ const styles = StyleSheet.create({
     fontSize: Theme.typography.sizes.body + 4,
   },
   tabTextActive: {
-    fontWeight: '600',
   },
 
   subTabs: {
@@ -1124,7 +1122,7 @@ const styles = StyleSheet.create({
     borderBottomColor: 'transparent',
   },
   subTabActive: { borderBottomColor: Theme.colors.text.mint },
-  subTabTextActive: { fontWeight: '600' },
+  subTabTextActive: {  },
 
   list: { padding: Theme.spacing.md, paddingBottom: 90 },
 

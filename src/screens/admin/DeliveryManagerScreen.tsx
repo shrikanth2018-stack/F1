@@ -219,7 +219,6 @@ const card = StyleSheet.create({
   nameInput: {
     flex: 1,
     fontSize: B,
-    fontWeight: '600',
     color: Theme.colors.text.primary,
     paddingVertical: 0,
     marginRight: Theme.spacing.sm,
@@ -839,7 +838,7 @@ const zt = StyleSheet.create({
     borderBottomColor: Theme.colors.layout.divider,
   },
   zoneInfo: { flex: 1 },
-  zoneName: { fontSize: B, fontWeight: '600', marginBottom: 2 },
+  zoneName: { fontSize: B, marginBottom: 2 },
   zoneActions: { flexDirection: 'row', alignItems: 'center', gap: Theme.spacing.sm },
   editBtn: { paddingHorizontal: Theme.spacing.xs + 2 },
   delBtn: { paddingHorizontal: Theme.spacing.xs + 2 },
@@ -979,7 +978,7 @@ const ht = StyleSheet.create({
   },
   hubInfo: { flex: 1 },
   hubNameRow: { flexDirection: 'row', alignItems: 'baseline', gap: Theme.spacing.sm, marginBottom: 2 },
-  hubName: { fontSize: B, fontWeight: '600' },
+  hubName: { fontSize: B },
   hubCode: { fontSize: S },
   hubActions: { flexDirection: 'row', alignItems: 'center', gap: Theme.spacing.sm },
 });
@@ -1086,5 +1085,5 @@ const styles = StyleSheet.create({
   pipe: { marginHorizontal: Theme.spacing.sm, opacity: 0.4, fontSize: B },
   topTab: { paddingHorizontal: Theme.spacing.sm },
   tabText: { fontSize: B + 4 },
-  tabActive: { fontWeight: '600' },
+  tabActive: {  },
 });

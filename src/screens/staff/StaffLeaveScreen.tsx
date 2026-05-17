@@ -201,7 +201,7 @@ function LeaveRow({ item }: { item: StaffLeave }) {
         <ThemedText
           variant="small"
           color="muted"
-          style={{ fontSize: S, fontWeight: '600', color: STATUS_COLOR[item.status] ?? Theme.colors.text.muted }}
+          style={{ fontSize: S, color: STATUS_COLOR[item.status] ?? Theme.colors.text.muted }}
         >
           {item.status}
         </ThemedText>
@@ -321,7 +321,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Theme.spacing.md,
   },
   summaryItem:    { flex: 1, alignItems: 'center' },
-  summaryNum:     { fontSize: B + 4, fontWeight: '600' },
+  summaryNum:     { fontSize: B + 4 },
   summaryLbl:     { fontSize: S, marginTop: 2 },
   summaryDivider: {
     width: StyleSheet.hairlineWidth,

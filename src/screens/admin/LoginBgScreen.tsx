@@ -341,7 +341,6 @@ const styles = StyleSheet.create({
   uploadBtnText: {
     color: Theme.colors.background.primary,
     fontFamily: Theme.typography.fontFamily,
-    fontWeight: '600',
   },
   hint: {
     fontSize: Theme.typography.sizes.small,

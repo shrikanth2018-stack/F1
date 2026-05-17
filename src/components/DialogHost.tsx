@@ -134,7 +134,6 @@ const styles = StyleSheet.create({
     fontFamily: Theme.typography.fontFamily,
     fontSize: Theme.typography.sizes.body + 4,
     color: Theme.colors.text.primary,
-    fontWeight: '600',
     textAlign: 'center',
     marginBottom: 8,
   },
@@ -178,7 +177,6 @@ const styles = StyleSheet.create({
     fontFamily: Theme.typography.fontFamily,
     fontSize: Theme.typography.sizes.body + 1,
     color: Theme.colors.text.mint,
-    fontWeight: '600',
   },
   destructiveText: {
     color: Theme.colors.status.error,

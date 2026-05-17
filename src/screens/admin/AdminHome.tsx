@@ -391,7 +391,7 @@ const styles = StyleSheet.create({
   pipe: { marginHorizontal: Theme.spacing.sm, opacity: 0.4 },
   topTab: { paddingHorizontal: Theme.spacing.sm },
   tabText: { fontSize: Theme.typography.sizes.body + 8 },
-  tabTextActive: { fontWeight: '600' },
+  tabTextActive: {  },
 
   tabContent: { flex: 1 },
   tabScroll: { paddingBottom: Theme.spacing.xl * 2 },

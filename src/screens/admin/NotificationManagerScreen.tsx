@@ -233,7 +233,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: Theme.spacing.sm,
   },
-  eventKey: { fontWeight: '600' },
+  eventKey: {  },
   description: { marginTop: 2 },
   field: { marginTop: Theme.spacing.sm },
   fieldLabel: { letterSpacing: 1, marginBottom: 4 },

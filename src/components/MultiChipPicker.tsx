@@ -93,5 +93,5 @@ const styles = StyleSheet.create({
     backgroundColor: Theme.colors.text.mint + '15',
   },
   txt: { fontSize: S },
-  txtActive: { color: Theme.colors.text.mint, fontWeight: '600' },
+  txtActive: { color: Theme.colors.text.mint },
 });

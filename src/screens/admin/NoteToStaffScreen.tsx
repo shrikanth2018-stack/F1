@@ -217,7 +217,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: Theme.spacing.sm,
   },
-  groupLabel: { fontSize: B, fontWeight: '600' },
+  groupLabel: { fontSize: B },
 
   input: {
     color: Theme.colors.text.primary,

@@ -202,7 +202,6 @@ const styles = StyleSheet.create({
   },
   tabActive: {
     fontSize: Theme.typography.sizes.body + 4,
-    fontWeight: '600',
   },
   tabInactive: {
     fontSize: Theme.typography.sizes.body + 4,

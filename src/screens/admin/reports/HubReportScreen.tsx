@@ -171,7 +171,7 @@ function HubCard({ hub }: { hub: HubStat }) {
     <View style={styles.card}>
       {/* Hub name + completion % */}
       <View style={styles.cardHeader}>
-        <ThemedText variant="subtitle" color="primary" style={{ fontSize: B, fontWeight: '600' }}>
+        <ThemedText variant="subtitle" color="primary" style={{ fontSize: B }}>
           {hub.hub_name}
         </ThemedText>
         <ThemedText variant="small" color="accent" style={{ fontSize: S }}>
@@ -378,7 +378,7 @@ export function HubReportScreen({ navigation }: any) {
 function SummaryPill({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.summaryPill}>
-      <ThemedText variant="body" color="accent" style={{ fontSize: B, fontWeight: '600' }}>
+      <ThemedText variant="body" color="accent" style={{ fontSize: B }}>
         {value}
       </ThemedText>
       <ThemedText variant="micro" color="muted" style={{ fontSize: S - 2 }}>
@@ -460,7 +460,6 @@ const styles = StyleSheet.create({
   },
   statusValue: {
     fontSize: Theme.typography.sizes.body + 4,
-    fontWeight: '700',
   },
   statusLabel: {
     fontSize: Theme.typography.sizes.small,

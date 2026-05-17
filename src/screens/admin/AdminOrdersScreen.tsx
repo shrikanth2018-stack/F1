@@ -253,7 +253,7 @@ const styles = StyleSheet.create({
     paddingVertical: Theme.spacing.sm + 4,
     gap: Theme.spacing.sm,
   },
-  rowId: { fontSize: B, fontWeight: '600', minWidth: 56 },
+  rowId: { fontSize: B, minWidth: 56 },
   rowRouting: { fontSize: S, flex: 1 },
   txt: { fontSize: B },
 
@@ -279,7 +279,7 @@ const styles = StyleSheet.create({
     backgroundColor: Theme.colors.text.mint + '15',
   },
   chipText: { fontSize: S - 1 },
-  chipTextActive: { fontWeight: '600' },
+  chipTextActive: {  },
 
   searchRow: {
     flexDirection: 'row',

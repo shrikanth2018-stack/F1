@@ -126,7 +126,7 @@ const styles = StyleSheet.create({
   },
   pipe: { marginHorizontal: Theme.spacing.sm, opacity: 0.4, fontSize: B },
   txt: { fontSize: B },
-  active: { fontWeight: '600' },
+  active: {  },
   customRow: {
     flexDirection: 'row',
     paddingHorizontal: Theme.spacing.md,

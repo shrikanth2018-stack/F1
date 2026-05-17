@@ -239,7 +239,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  cancelText: { color: Theme.colors.status.error, fontWeight: '600', fontSize: S },
+  cancelText: { color: Theme.colors.status.error, fontSize: S },
   txt: { fontSize: B },
   sub: { fontSize: S },
 
@@ -277,7 +277,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: Theme.spacing.md,
     paddingVertical: Theme.spacing.sm,
     fontSize: B + 4,
-    fontWeight: '600',
     textAlign: 'right',
     marginBottom: Theme.spacing.xs,
   },
@@ -303,7 +302,6 @@ const styles = StyleSheet.create({
   },
   confirmText: {
     color: Theme.colors.status.error,
-    fontWeight: '600',
     fontSize: B,
   },
 });

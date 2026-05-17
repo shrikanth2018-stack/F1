@@ -65,6 +65,5 @@ const styles = StyleSheet.create({
     color: Theme.colors.text.mint,
     fontFamily: Theme.typography.fontFamily,
     fontSize: Theme.typography.sizes.body,
-    fontWeight: '600',
   },
 });

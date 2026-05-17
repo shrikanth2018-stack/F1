@@ -461,7 +461,6 @@ const styles = StyleSheet.create({
   },
   cancelText: {
     color: Theme.colors.status.error,
-    fontWeight: '600',
   },
   cancelHint: {
     textAlign: 'center',

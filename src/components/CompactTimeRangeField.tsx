@@ -194,6 +194,5 @@ const sheet = StyleSheet.create({
   },
   done: {
     fontSize: Theme.typography.sizes.body + 2,
-    fontWeight: '600',
   },
 });

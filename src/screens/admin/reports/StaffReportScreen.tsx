@@ -162,7 +162,7 @@ const styles = StyleSheet.create({
     borderBottomColor: Theme.colors.layout.divider,
   },
   pipe: { marginHorizontal: Theme.spacing.sm, opacity: 0.4, fontSize: B },
-  active: { fontWeight: '600' },
+  active: {  },
   colHeader: {
     flexDirection: 'row',
     paddingHorizontal: Theme.spacing.md,

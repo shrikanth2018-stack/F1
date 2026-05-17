@@ -48,7 +48,7 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   left: { flex: 1 },
-  title: { color: Theme.colors.status.warning, fontWeight: '600', marginBottom: 2 },
+  title: { color: Theme.colors.status.warning, marginBottom: 2 },
   btn: { paddingLeft: Theme.spacing.sm },
   dismiss: { paddingLeft: Theme.spacing.sm },
 });

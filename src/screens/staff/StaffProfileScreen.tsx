@@ -168,7 +168,7 @@ export function StaffProfileScreen() {
             )}
             <View style={styles.detailRow}>
               <ThemedText variant="body" color="muted" style={{ fontSize: B }}>Net Salary</ThemedText>
-              <ThemedText variant="body" color="primary" style={{ fontSize: B + 2, fontWeight: '600' }}>
+              <ThemedText variant="body" color="primary" style={{ fontSize: B + 2 }}>
                 ₹{salary.net_salary.toLocaleString('en-IN')}
               </ThemedText>
             </View>

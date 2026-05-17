@@ -378,7 +378,7 @@ const styles = StyleSheet.create({
     borderBottomColor: 'transparent',
   },
   labelTabActive: { borderBottomColor: Theme.colors.text.mint },
-  labelTabTextActive: { fontWeight: '600' },
+  labelTabTextActive: {  },
   mapFooter: {
     paddingHorizontal: Theme.spacing.md,
     paddingVertical: Theme.spacing.sm,

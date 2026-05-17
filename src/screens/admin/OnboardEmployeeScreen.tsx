@@ -105,7 +105,7 @@ const cp = StyleSheet.create({
     backgroundColor: Theme.colors.text.mint + '15',
   },
   txt:      { fontSize: S },
-  txtActive: { color: Theme.colors.text.mint, fontWeight: '600' },
+  txtActive: { color: Theme.colors.text.mint },
 });
 
 // ── Main screen ───────────────────────────────────────────────
@@ -391,7 +391,6 @@ const styles = StyleSheet.create({
   sectionLabel: {
     fontSize: S,
     letterSpacing: 1.2,
-    fontWeight: '600',
     paddingHorizontal: Theme.spacing.md,
     paddingTop: Theme.spacing.md,
     paddingBottom: Theme.spacing.xs,

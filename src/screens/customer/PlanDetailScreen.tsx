@@ -346,7 +346,7 @@ const styles = StyleSheet.create({
     minWidth: 60,
   },
   datePillSelected: { borderColor: Theme.colors.text.mint },
-  datePillNumActive: { fontWeight: '600' },
+  datePillNumActive: {  },
   itemRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -376,6 +376,5 @@ const styles = StyleSheet.create({
     color: Theme.colors.text.mint,
     fontFamily: Theme.typography.fontFamily,
     fontSize: Theme.typography.sizes.body,
-    fontWeight: '600',
   },
 });

@@ -157,6 +157,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: Theme.spacing.sm,
   },
-  name: { fontWeight: '600' },
+  name: {  },
   clearBtn: { paddingHorizontal: Theme.spacing.sm, paddingVertical: 4 },
 });

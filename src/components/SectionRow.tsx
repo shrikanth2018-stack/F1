@@ -37,7 +37,6 @@ const styles = StyleSheet.create({
     paddingLeft: Theme.spacing.md,
     fontSize: Theme.typography.sizes.small,
     letterSpacing: 1.2,
-    fontWeight: '600',
     textTransform: 'uppercase',
   },
   child: {
