@@ -27,6 +27,8 @@ import { useDeliveryCycles } from '../../hooks/useDeliveryCycles';
 import { formatPriceShort, formatDateShort } from '../../utils/formatters';
 import { formatTime12h } from '../../utils/timeEngine';
 import { confirmDialog } from '../../utils/confirmDialog';
+import { useOrderQuote } from '../../hooks/useOrderQuote';
+import { useAddresses } from '../../hooks/useAddresses';
 
 export function CartScreen({ navigation, route }: any) {
   const insets = useSafeAreaInsets();
@@ -51,6 +53,30 @@ export function CartScreen({ navigation, route }: any) {
   const { evaluations } = useSmartCart();
   const { evaluations: essEvaluations } = useSmartEssentialsCart();
   const { data: cycles } = useDeliveryCycles();
+
+  // Server-authoritative cart preview. Pre-pass uses the default serviceable
+  // address (point 7) so the cart shows the full total incl. delivery fee; if
+  // there's no usable default it quotes address-less (fee shown at checkout).
+  const { data: addresses } = useAddresses();
+  const defaultAddressId = useMemo(
+    () =>
+      addresses?.find((a) => a.is_default && a.is_serviceable !== false)?.id ??
+      addresses?.find((a) => a.is_serviceable !== false)?.id ??
+      null,
+    [addresses],
+  );
+  const { data: foodQuote } = useOrderQuote({
+    items: foodItems.map((i) => ({ item_id: i.menu_item_id, item_type: 'food' as const, quantity: i.quantity })),
+    subscriptionPlans: foodPlans.map((p) => ({ plan_id: p.plan_id, start_date: p.start_date })),
+    deliveryAddressId: defaultAddressId,
+    enabled: subscriptionPlanId == null && (foodItems.length > 0 || foodPlans.length > 0),
+  });
+  const { data: essQuote } = useOrderQuote({
+    items: essItems.map((i) => ({ item_id: i.essential_item_id, item_type: 'essential' as const, quantity: i.quantity })),
+    subscriptionPlans: essPlans.map((p) => ({ plan_id: p.plan_id, start_date: p.start_date })),
+    deliveryAddressId: defaultAddressId,
+    enabled: subscriptionPlanId == null && (essItems.length > 0 || essPlans.length > 0),
+  });
 
   // Find delivery_start for a given cycle_id
   const getDeliveryTime = useCallback(
@@ -426,6 +452,21 @@ export function CartScreen({ navigation, route }: any) {
                 <ThemedText variant="small" color="subtitle">Subtotal</ThemedText>
                 <ThemedText variant="small" color="primary">{formatPriceShort(foodTotal)}</ThemedText>
               </View>
+              <View style={styles.totalRow}>
+                <ThemedText variant="small" color="subtitle">Tax</ThemedText>
+                <ThemedText variant="small" color="primary">
+                  {foodQuote ? formatPriceShort(foodQuote.tax_total) : '—'}
+                </ThemedText>
+              </View>
+              <View style={styles.totalRow}>
+                <ThemedText variant="small" color="subtitle">Total</ThemedText>
+                <ThemedText variant="small" color="accent">
+                  {foodQuote ? formatPriceShort(foodQuote.grand_total) : '—'}
+                </ThemedText>
+              </View>
+              {foodQuote?.fee_pending && (
+                <ThemedText variant="micro" color="muted">+ delivery fee added at checkout</ThemedText>
+              )}
             </View>
           </View>
         )}
@@ -573,6 +614,21 @@ export function CartScreen({ navigation, route }: any) {
                 <ThemedText variant="small" color="subtitle">Subtotal</ThemedText>
                 <ThemedText variant="small" color="primary">{formatPriceShort(essTotal)}</ThemedText>
               </View>
+              <View style={styles.totalRow}>
+                <ThemedText variant="small" color="subtitle">Tax</ThemedText>
+                <ThemedText variant="small" color="primary">
+                  {essQuote ? formatPriceShort(essQuote.tax_total) : '—'}
+                </ThemedText>
+              </View>
+              <View style={styles.totalRow}>
+                <ThemedText variant="small" color="subtitle">Total</ThemedText>
+                <ThemedText variant="small" color="accent">
+                  {essQuote ? formatPriceShort(essQuote.grand_total) : '—'}
+                </ThemedText>
+              </View>
+              {essQuote?.fee_pending && (
+                <ThemedText variant="micro" color="muted">+ delivery fee added at checkout</ThemedText>
+              )}
             </View>
           </View>
         )}

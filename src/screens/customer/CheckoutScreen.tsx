@@ -1,9 +1,15 @@
 /**
  * 1stOne F1 — Checkout Screen
  *
- * Handles food + essentials orders. Razorpay payments are confirmed
- * via the confirm-order Edge Function (service-role, HMAC-verified).
- * The verify-payment webhook is a secondary safety net.
+ * Server-authoritative: the screen sends only the cart (item ids + quantities)
+ * and gets the binding price + dispatch dates from the `quote-order` endpoint
+ * (`useOrderQuote`). It never computes cycles, dates, tax or fees. On Pay it
+ * echoes that quote to `place-order`; if the server's fresh derivation has
+ * drifted (a cutoff passed, a price changed) place-order returns 409 and the
+ * screen re-quotes for the customer to re-confirm.
+ *
+ * Razorpay payments are confirmed via the confirm-order Edge Function; the
+ * verify-payment webhook is a secondary safety net.
  */
 
 import React, { useState, useCallback, useRef, useMemo } from 'react';
@@ -25,25 +31,21 @@ import { ThemedText } from '../../components/ThemedText';
 import { ThemedButton } from '../../components/ThemedButton';
 import { Divider } from '../../components/Divider';
 import { DispatchBadge } from '../../components/DispatchBadge';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { QUERY_KEYS } from '../../utils/constants';
 import { useCartStore } from '../../store/cartStore';
 import { useEssentialsCartStore } from '../../store/essentialsCartStore';
 import { useUIStore } from '../../store/uiStore';
 import { useAddresses } from '../../hooks/useAddresses';
-import { useStoreConfig } from '../../hooks/useStoreConfig';
 import { useWalletBalance } from '../../hooks/useWallet';
 import { useSmartCart } from '../../hooks/useSmartCart';
-import { useDeliveryCycles } from '../../hooks/useDeliveryCycles';
-import { useServerTime } from '../../hooks/useServerTime';
+import { useOrderQuote, type QuoteItemInput } from '../../hooks/useOrderQuote';
 import { useAuth } from '../../hooks/useAuth';
-import { formatPriceShort } from '../../utils/formatters';
+import { formatPriceShort, formatDateLong } from '../../utils/formatters';
 import { supabase } from '../../api/supabaseClient';
 import { RAZORPAY_KEY_ID } from '../../utils/env';
 import { trackOrderPlaced, trackOrderFailed } from '../../utils/analytics';
 import { infoDialog, confirmDialog } from '../../utils/confirmDialog';
-import { formatDateLong } from '../../utils/formatters';
-import { getDispatchScenario } from '../../utils/timeEngine';
 import { newIdempotencyKey } from '../../utils/idempotency';
 
 type PaymentChoice = 'razorpay' | 'wallet';
@@ -58,13 +60,11 @@ export function CheckoutScreen({ navigation, route }: any) {
   const foodPlans = useCartStore((s) => s.plans);
   const clearFood = useCartStore((s) => s.clearCart);
   const clearFoodPlans = useCartStore((s) => s.clearPlans);
-  const foodTotal = useCartStore((s) => s.getDisplayTotal());
 
   const essItems = useEssentialsCartStore((s) => s.items);
   const essPlans = useEssentialsCartStore((s) => s.plans);
   const clearEss = useEssentialsCartStore((s) => s.clearCart);
   const clearEssPlans = useEssentialsCartStore((s) => s.clearPlans);
-  const essTotal = useEssentialsCartStore((s) => s.getDisplayTotal());
 
   // In subscription-only mode, ignore items completely; only the one plan flows through.
   const subPlan = isSubscriptionOnly
@@ -77,34 +77,27 @@ export function CheckoutScreen({ navigation, route }: any) {
   const activePlans = isSubscriptionOnly
     ? (subPlan ? [subPlan] : [])
     : (cartType === 'food' ? foodPlans : essPlans);
-  const displayTotal = isSubscriptionOnly
-    ? (subPlan?.price ?? 0)
-    : (cartType === 'food' ? foodTotal : essTotal);
-  // Cart has something to check out when there are items OR plans
   const totalCartCount = activeItems.length + activePlans.length;
 
   const setGlobalLoading = useUIStore((s) => s.setGlobalLoading);
   const { data: addresses } = useAddresses();
-  const { data: config } = useStoreConfig();
   const { data: wallet } = useWalletBalance();
   const { evaluations } = useSmartCart();
-  const { data: cycles } = useDeliveryCycles();
-  const { data: serverTime } = useServerTime();
 
   const insets = useSafeAreaInsets();
   const [selectedAddressId, setSelectedAddressId] = useState<number | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<PaymentChoice>('razorpay');
   const [isPlacing, setIsPlacing] = useState(false);
-  // Idempotency key — generated once per checkout session, refreshed after successful order
-  // Use Math.random fallback: crypto.randomUUID() is not available in all RN/Expo Go environments
+  // Idempotency key — one per checkout session, refreshed only after a
+  // successful order. A 409 drift retry deliberately reuses the same key.
   const idempotencyKeyRef = useRef<string>(newIdempotencyKey());
   const isPlacingRef = useRef(false);    // synchronous double-tap guard
   const razorpayOpenRef = useRef(false); // tracks whether Razorpay sheet is live
   const queryClient = useQueryClient();
 
-  // If the OS brings the app to foreground while Razorpay was open but never
-  // called back (killed webview, memory pressure), unstick the Pay button.
-  // The order stays Pending — PendingPaymentBanner handles recovery on HomeScreen.
+  // If the OS foregrounds the app while Razorpay was open but never called
+  // back, unstick the Pay button. The order stays Pending — PendingPaymentBanner
+  // handles recovery on HomeScreen.
   React.useEffect(() => {
     const sub = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active' && razorpayOpenRef.current) {
@@ -128,45 +121,45 @@ export function CheckoutScreen({ navigation, route }: any) {
     }
   }, [addresses, selectedAddressId]);
 
-  // Derive zone_id from the selected address
-  const selectedZoneId = useMemo(
-    () => addresses?.find((a) => a.id === selectedAddressId)?.zone_id ?? null,
-    [addresses, selectedAddressId]
+  // ── Server-authoritative quote ──────────────────────────────
+  // Flat cart → quote-order derives cycles, dates, tax, fee, grand total.
+  // Re-fetches whenever the selected address changes (the fee depends on it).
+  const quoteItems = useMemo<QuoteItemInput[]>(() => {
+    if (isSubscriptionOnly) return [];
+    return cartType === 'food'
+      ? foodItems.map((i) => ({ item_id: i.menu_item_id, item_type: 'food' as const, quantity: i.quantity }))
+      : essItems.map((i) => ({ item_id: i.essential_item_id, item_type: 'essential' as const, quantity: i.quantity }));
+  }, [isSubscriptionOnly, cartType, foodItems, essItems]);
+
+  const quotePlans = useMemo(
+    () => activePlans.map((p) => ({ plan_id: p.plan_id, start_date: p.start_date })),
+    [activePlans],
   );
 
-  // Fetch the zone's delivery_fee_override when the address belongs to a zone
-  const { data: zoneOverride } = useQuery({
-    queryKey: ['zone_fee', selectedZoneId],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from('delivery_zones')
-        .select('delivery_fee_override')
-        .eq('id', selectedZoneId!)
-        .maybeSingle();
-      return data?.delivery_fee_override ?? null;
-    },
-    enabled: selectedZoneId != null,
-    staleTime: 10 * 60 * 1000,
+  const {
+    data: quote,
+    isLoading: quoteLoading,
+    isError: quoteIsError,
+    error: quoteError,
+    refetch: refetchQuote,
+  } = useOrderQuote({
+    items: quoteItems,
+    subscriptionPlans: quotePlans,
+    deliveryAddressId: selectedAddressId,
+    enabled: selectedAddressId != null && totalCartCount > 0,
   });
-
-  const taxRate = config?.tax_rate_percentage ?? 5;
-  const globalDeliveryFee = config?.delivery_fee ?? 0;
-  // Use zone override when the address belongs to a zone that has one set
-  const deliveryFee = zoneOverride != null ? zoneOverride : globalDeliveryFee;
-  const estimatedTax = displayTotal * (taxRate / 100);
-  const estimatedTotal = displayTotal + estimatedTax + deliveryFee;
 
   const walletBalance = wallet?.balance ?? 0;
   const walletLoaded = wallet !== undefined;
-  const walletInsufficient = paymentMethod === 'wallet' && walletLoaded && walletBalance < estimatedTotal;
+  const grandTotal = quote?.grand_total ?? 0;
+  const walletInsufficient =
+    paymentMethod === 'wallet' && walletLoaded && !!quote && walletBalance < grandTotal;
 
   const handlePlaceOrder = useCallback(async () => {
     if (isPlacingRef.current) return;
     isPlacingRef.current = true;
 
-    // Razorpay's React Native SDK doesn't support browsers. Customers on
-    // web can browse + view their account but must use the mobile app to
-    // pay. Block before any DB writes happen.
+    // Razorpay's RN SDK has no web support — wallet-only on web.
     if (Platform.OS === 'web' && paymentMethod === 'razorpay') {
       isPlacingRef.current = false;
       await infoDialog(
@@ -175,21 +168,9 @@ export function CheckoutScreen({ navigation, route }: any) {
       );
       return;
     }
-
-    if (config?.storm_mode_active) {
-      isPlacingRef.current = false;
-      Alert.alert('Orders Paused', 'Deliveries are paused due to adverse conditions. Please try again later.');
-      return;
-    }
     if (!selectedAddressId) {
       isPlacingRef.current = false;
       Alert.alert('Address Required', 'Please select a delivery address');
-      return;
-    }
-    const selectedAddr = addresses?.find((a) => a.id === selectedAddressId);
-    if (selectedAddr && selectedAddr.is_serviceable === false) {
-      isPlacingRef.current = false;
-      Alert.alert('Outside Delivery Area', 'This address is outside our delivery zone. Please select a different address or add a new one.');
       return;
     }
     if (totalCartCount === 0) {
@@ -197,91 +178,45 @@ export function CheckoutScreen({ navigation, route }: any) {
       Alert.alert('Empty Cart', 'Add items or a subscription plan to your cart first');
       return;
     }
+    if (!quote) {
+      isPlacingRef.current = false;
+      Alert.alert('One moment', 'Still calculating your order total — please try again in a second.');
+      return;
+    }
+    if (quote.storm_mode) {
+      isPlacingRef.current = false;
+      Alert.alert('Orders Paused', 'Deliveries are paused due to adverse conditions. Please try again later.');
+      return;
+    }
+    if (quote.serviceable === false) {
+      isPlacingRef.current = false;
+      Alert.alert('Outside Delivery Area', 'This address is outside our delivery zone. Please select a different address or add a new one.');
+      return;
+    }
+
+    // Scenario-C consent — server-derived; the quote tells us if any cycle
+    // shifted to the day after tomorrow.
+    if (quote.has_scenario_c) {
+      const latestDate = quote.dispatches.reduce(
+        (m, d) => (d.dispatch_date > m ? d.dispatch_date : m),
+        quote.dispatches[0]?.dispatch_date ?? '',
+      );
+      const proceed = await confirmDialog({
+        title: 'Delivery in 2 days',
+        message: `Some items have missed tomorrow's cutoff and will be delivered on ${formatDateLong(latestDate)}. Continue?`,
+        confirmLabel: 'Place Order',
+        cancelLabel: 'Cancel',
+      });
+      if (!proceed) {
+        isPlacingRef.current = false;
+        return;
+      }
+    }
 
     setIsPlacing(true);
     setGlobalLoading(true, 'Placing order...');
 
     try {
-      const today = new Date();
-      const dateStr = (d: Date) => d.toISOString().split('T')[0];
-      const todayStr = dateStr(today);
-      const tomorrowStr = (() => { const d = new Date(today); d.setDate(d.getDate() + 1); return dateStr(d); })();
-      const dayAfterStr = (() => { const d = new Date(today); d.setDate(d.getDate() + 2); return dateStr(d); })();
-      // Smart-cart scenario per cycle: A = today, B = tomorrow,
-      // C = day after tomorrow (BF-41 cross-midnight after-cutoff).
-      const scenarioToDate = (s: string | undefined) =>
-        s === 'C' ? dayAfterStr : s === 'B' ? tomorrowStr : todayStr;
-
-      // ── Build dispatch groups (MF-10) ──────────────────────
-      // A checkout can span multiple cycles; each cycle is one group →
-      // one order row. Items are grouped by cycle_id. The server
-      // re-derives + validates each item's cycle before pricing.
-      const groups: any[] = [];
-
-      if (!isSubscriptionOnly && cartType === 'food' && foodItems.length > 0) {
-        const cycleIds = [...new Set(foodItems.map((i) => i.cycle_id))];
-        let anyDayAfter = false;
-        for (const cycleId of cycleIds) {
-          const scenario = evaluations.find((e) => e.cycle_id === cycleId)?.scenario;
-          if (scenario === 'C') anyDayAfter = true;
-          groups.push({
-            cycle_id: cycleId,
-            dispatch_date: scenarioToDate(scenario),
-            food_items: foodItems
-              .filter((i) => i.cycle_id === cycleId)
-              .map((i) => ({ menu_item_id: i.menu_item_id, quantity: i.quantity })),
-          });
-        }
-        // Scenario-C consent — once, if any cycle has shifted to day-after.
-        if (anyDayAfter) {
-          const proceed = await confirmDialog({
-            title: 'Delivery in 2 days',
-            message: `Some items have missed tomorrow's cutoff and will be delivered on ${formatDateLong(dayAfterStr)}. Continue?`,
-            confirmLabel: 'Place Order',
-            cancelLabel: 'Cancel',
-          });
-          if (!proceed) {
-            isPlacingRef.current = false;
-            setIsPlacing(false);
-            setGlobalLoading(false);
-            return;
-          }
-        }
-      } else if (!isSubscriptionOnly && cartType === 'essentials' && essItems.length > 0) {
-        // Essentials respect cycle cutoffs exactly like food: an item
-        // ordered after its cycle's cutoff dispatches the next day — so a
-        // freshly placed essentials order is never stamped with a past
-        // dispatch window (which would block the customer from cancelling).
-        const cycleIds = [...new Set(essItems.map((i) => i.cycle_id))];
-        let anyDayAfter = false;
-        for (const cycleId of cycleIds) {
-          const cycle = (cycles ?? []).find((c) => c.id === cycleId);
-          const scenario = cycle && serverTime ? getDispatchScenario(cycle, serverTime) : 'A';
-          if (scenario === 'C') anyDayAfter = true;
-          groups.push({
-            cycle_id: cycleId,
-            dispatch_date: scenarioToDate(scenario),
-            essentials_items: essItems
-              .filter((i) => i.cycle_id === cycleId)
-              .map((i) => ({ essential_item_id: i.essential_item_id, quantity: i.quantity })),
-          });
-        }
-        if (anyDayAfter) {
-          const proceed = await confirmDialog({
-            title: 'Delivery in 2 days',
-            message: `Some items have missed tomorrow's cutoff and will be delivered on ${formatDateLong(dayAfterStr)}. Continue?`,
-            confirmLabel: 'Place Order',
-            cancelLabel: 'Cancel',
-          });
-          if (!proceed) {
-            isPlacingRef.current = false;
-            setIsPlacing(false);
-            setGlobalLoading(false);
-            return;
-          }
-        }
-      }
-
       const { data: { session: rawSession } } = await supabase.auth.getSession();
 
       const { data, error } = await supabase.functions.invoke('place-order', {
@@ -290,29 +225,38 @@ export function CheckoutScreen({ navigation, route }: any) {
           'Idempotency-Key': idempotencyKeyRef.current,
         },
         body: {
-          groups,
-          subscription_plans: activePlans.map((p) => ({
-            plan_id: p.plan_id,
-            start_date: p.start_date,
-          })),
-          // Used by place-order only for a subscription-purchase order.
-          dispatch_date: todayStr,
+          items: quoteItems,
+          subscription_plans: quotePlans,
           delivery_address_id: selectedAddressId,
           payment_method: paymentMethod,
+          // The drift tripwire — echoed verbatim from the quote the customer saw.
+          client_quote: { total_paise: quote.total_paise, dispatches: quote.dispatches },
         },
       });
 
       if (error) {
-        let message = 'Failed to place order';
+        let parsed: any = null;
         try {
           const ctx = (error as any).context;
           if (ctx) {
             const text = await (ctx.clone ? ctx.clone() : ctx).text();
-            const parsed = JSON.parse(text);
-            if (parsed?.error) message = parsed.error;
+            parsed = JSON.parse(text);
           }
         } catch {}
-        throw new Error(message);
+
+        // Drift / stale quote — re-quote and ask the customer to re-confirm.
+        if (parsed?.error === 'quote_changed' || parsed?.error === 'quote_required') {
+          await refetchQuote();
+          isPlacingRef.current = false;
+          setIsPlacing(false);
+          setGlobalLoading(false);
+          Alert.alert(
+            'Order Updated',
+            'Pricing or delivery timing changed since you opened checkout. Please review the updated total and tap Pay again.',
+          );
+          return;
+        }
+        throw new Error(parsed?.error || 'Failed to place order');
       }
 
       const order = data;
@@ -337,7 +281,6 @@ export function CheckoutScreen({ navigation, route }: any) {
 
         let rzpResult: any;
         try {
-          // 500ms lets UIKit finish dismissing the loading modal before Razorpay presents.
           razorpayOpenRef.current = true;
           rzpResult = await new Promise<any>((resolve, reject) => {
             setTimeout(() => RazorpayCheckout.open(options).then(resolve).catch(reject), 500);
@@ -351,7 +294,6 @@ export function CheckoutScreen({ navigation, route }: any) {
           if (e?.code === 'PAYMENT_CANCELLED') {
             Alert.alert('Payment Cancelled', 'Your order was not placed. Please try again.');
           } else {
-            // Payment may have reached Razorpay — leave Pending, webhook resolves it.
             Alert.alert(
               'Payment Status Unknown',
               'There was a connectivity issue. Check the Orders tab in a few minutes.',
@@ -390,8 +332,7 @@ export function CheckoutScreen({ navigation, route }: any) {
         queryClient.invalidateQueries({ queryKey: QUERY_KEYS.SUBSCRIPTIONS });
       }
 
-      trackOrderPlaced(order.id ?? '', order.total_amount ?? estimatedTotal, paymentMethod, cartType);
-      // Sub-only checkout must not wipe user's regular cart items — only clear the plan slot.
+      trackOrderPlaced(order.id ?? '', order.total_amount ?? grandTotal, paymentMethod, cartType);
       if (isSubscriptionOnly) {
         if (cartType === 'food') clearFoodPlans(); else clearEssPlans();
       } else {
@@ -406,20 +347,17 @@ export function CheckoutScreen({ navigation, route }: any) {
           hadPlans ? 'Order & Subscription Activated!' : 'Order Placed!',
           hadPlans
             ? 'Payment received. Your receipt is in My Orders; the plan is active in My Subscriptions.'
-            : 'Payment received. You can track your order in the Orders tab.'
+            : 'Payment received. You can track your order in the Orders tab.',
         );
       } else if (hadPlans) {
         Alert.alert(
           'Order & Subscription Activated!',
-          'Your receipt is in My Orders; the plan is active in My Subscriptions.'
+          'Your receipt is in My Orders; the plan is active in My Subscriptions.',
         );
       } else {
-        Alert.alert(
-          'Order Placed!',
-          'You can track your order in the Orders tab.'
-        );
+        Alert.alert('Order Placed!', 'You can track your order in the Orders tab.');
       }
-      // Sub-only flow: ensure we don't linger on the now-empty filtered Cart — land on Home.
+
       if (isSubscriptionOnly) {
         navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
       } else {
@@ -434,12 +372,10 @@ export function CheckoutScreen({ navigation, route }: any) {
       setGlobalLoading(false);
     }
   }, [
-    foodItems, essItems, foodPlans, essPlans, activePlans,
-    isSubscriptionOnly, subPlan,
-    selectedAddressId, paymentMethod,
-    evaluations, cycles, serverTime, session, clearFood, clearEss, clearFoodPlans, clearEssPlans,
-    navigation, setGlobalLoading,
-    cartType, totalCartCount,
+    quote, quoteItems, quotePlans, activePlans, isSubscriptionOnly,
+    selectedAddressId, paymentMethod, session, refetchQuote,
+    clearFood, clearEss, clearFoodPlans, clearEssPlans,
+    navigation, setGlobalLoading, queryClient, cartType, totalCartCount, grandTotal,
   ]);
 
   return (
@@ -466,8 +402,7 @@ export function CheckoutScreen({ navigation, route }: any) {
                 style={[styles.addressCard, addr.id === selectedAddressId && styles.addressSelected]}
                 onPress={async () => {
                   // MF-09: switching to an address in a different branch clears
-                  // the cart — its items belong to the previously-selected
-                  // branch's catalog and won't price-validate in place-order.
+                  // the cart — its items belong to the previous branch's catalog.
                   const currentBranch = addresses?.find((a) => a.id === selectedAddressId)?.branch_id ?? null;
                   const nextBranch = addr.branch_id ?? null;
                   const cartHasItems = (foodItems.length + foodPlans.length + essItems.length + essPlans.length) > 0;
@@ -516,7 +451,7 @@ export function CheckoutScreen({ navigation, route }: any) {
             ORDER SUMMARY
           </ThemedText>
 
-          {cartType === 'food' && foodItems.map((item) => {
+          {!isSubscriptionOnly && cartType === 'food' && foodItems.map((item) => {
             const dispatch = evaluations.find((e) => e.menu_item_id === item.menu_item_id);
             return (
               <View key={item.menu_item_id} style={styles.summaryRow}>
@@ -530,7 +465,7 @@ export function CheckoutScreen({ navigation, route }: any) {
                       variant={
                         dispatch.scenario === 'A' ? 'today'
                           : dispatch.scenario === 'B' ? 'tomorrow'
-                          : 'warning' /* 'C' — day after tomorrow, visually distinct */
+                          : 'warning'
                       }
                     />
                   )}
@@ -542,7 +477,7 @@ export function CheckoutScreen({ navigation, route }: any) {
             );
           })}
 
-          {cartType === 'essentials' && essItems.map((item) => (
+          {!isSubscriptionOnly && cartType === 'essentials' && essItems.map((item) => (
             <View key={item.essential_item_id} style={styles.summaryRow}>
               <ThemedText variant="body" color="primary">
                 {item.name} x{item.quantity}
@@ -567,27 +502,44 @@ export function CheckoutScreen({ navigation, route }: any) {
 
         <Divider />
 
-        {/* Price Breakdown */}
+        {/* Price Breakdown — server-authoritative (from quote-order) */}
         <View style={styles.section}>
-          <View style={styles.priceRow}>
-            <ThemedText variant="small" color="subtitle">Subtotal</ThemedText>
-            <ThemedText variant="small" color="subtitle">{formatPriceShort(displayTotal)}</ThemedText>
-          </View>
-          <View style={styles.priceRow}>
-            <ThemedText variant="small" color="subtitle">Tax ({taxRate}%)</ThemedText>
-            <ThemedText variant="small" color="subtitle">{formatPriceShort(estimatedTax)}</ThemedText>
-          </View>
-          <View style={styles.priceRow}>
-            <ThemedText variant="small" color="subtitle">Delivery</ThemedText>
-            <ThemedText variant="small" color="subtitle">
-              {deliveryFee === 0 ? 'Free' : formatPriceShort(deliveryFee)}
-            </ThemedText>
-          </View>
-          <View style={[styles.priceRow, styles.totalRow]}>
-            <ThemedText variant="subtitle" color="primary">Estimated Total</ThemedText>
-            <ThemedText variant="subtitle" color="accent">{formatPriceShort(estimatedTotal)}</ThemedText>
-          </View>
-          <ThemedText variant="micro" color="muted">Server recalculates final amount</ThemedText>
+          {quoteLoading || (!quote && !quoteIsError) ? (
+            <View style={styles.quoteLoading}>
+              <ActivityIndicator color={Theme.colors.action.primary} />
+              <ThemedText variant="small" color="muted">Calculating total…</ThemedText>
+            </View>
+          ) : quoteIsError ? (
+            <View style={styles.quoteLoading}>
+              <Text style={styles.quoteErrorText}>
+                {(quoteError as Error)?.message ?? 'Could not price your cart.'}
+              </Text>
+              <TouchableOpacity onPress={() => refetchQuote()}>
+                <ThemedText variant="small" color="accent">Retry</ThemedText>
+              </TouchableOpacity>
+            </View>
+          ) : quote ? (
+            <>
+              <View style={styles.priceRow}>
+                <ThemedText variant="small" color="subtitle">Subtotal</ThemedText>
+                <ThemedText variant="small" color="subtitle">{formatPriceShort(quote.subtotal_total)}</ThemedText>
+              </View>
+              <View style={styles.priceRow}>
+                <ThemedText variant="small" color="subtitle">Tax</ThemedText>
+                <ThemedText variant="small" color="subtitle">{formatPriceShort(quote.tax_total)}</ThemedText>
+              </View>
+              <View style={styles.priceRow}>
+                <ThemedText variant="small" color="subtitle">Delivery</ThemedText>
+                <ThemedText variant="small" color="subtitle">
+                  {quote.fee_pending ? 'At checkout' : quote.delivery_fee === 0 ? 'Free' : formatPriceShort(quote.delivery_fee)}
+                </ThemedText>
+              </View>
+              <View style={[styles.priceRow, styles.totalRow]}>
+                <ThemedText variant="subtitle" color="primary">Total</ThemedText>
+                <ThemedText variant="subtitle" color="accent">{formatPriceShort(quote.grand_total)}</ThemedText>
+              </View>
+            </>
+          ) : null}
         </View>
 
         <Divider />
@@ -596,10 +548,7 @@ export function CheckoutScreen({ navigation, route }: any) {
         <View style={styles.section}>
           <ThemedText variant="small" color="muted" style={styles.sectionLabel}>PAYMENT</ThemedText>
           <TouchableOpacity
-            style={[
-              styles.paymentOption,
-              paymentMethod === 'razorpay' && styles.paymentSelected,
-            ]}
+            style={[styles.paymentOption, paymentMethod === 'razorpay' && styles.paymentSelected]}
             onPress={() => setPaymentMethod('razorpay')}
             activeOpacity={0.7}
             accessibilityRole="radio"
@@ -618,14 +567,14 @@ export function CheckoutScreen({ navigation, route }: any) {
           >
             <View style={styles.paymentRow}>
               <ThemedText variant="body" color="primary">Wallet Balance</ThemedText>
-              <ThemedText variant="body" color={walletBalance >= estimatedTotal ? 'accent' : 'subtitle'}>
+              <ThemedText variant="body" color={!quote || walletBalance >= grandTotal ? 'accent' : 'subtitle'}>
                 {formatPriceShort(walletBalance)}
               </ThemedText>
             </View>
             {paymentMethod === 'wallet' && walletInsufficient && (
               <View style={styles.paymentRow}>
                 <ThemedText variant="small" color="muted">
-                  Need {formatPriceShort(estimatedTotal - walletBalance)} more
+                  Need {formatPriceShort(grandTotal - walletBalance)} more
                 </ThemedText>
                 <TouchableOpacity onPress={() => navigation.navigate('Wallet')}>
                   <ThemedText variant="small" color="accent">Top Up ›</ThemedText>
@@ -640,18 +589,20 @@ export function CheckoutScreen({ navigation, route }: any) {
         style={[styles.floatBtn, { bottom: insets.bottom + 16 }]}
         activeOpacity={0.85}
         onPress={handlePlaceOrder}
-        disabled={!selectedAddressId || totalCartCount === 0 || isPlacing}
+        disabled={!selectedAddressId || totalCartCount === 0 || isPlacing || !quote || walletInsufficient}
         accessibilityRole="button"
         accessibilityLabel={paymentMethod === 'wallet' ? 'Pay from wallet' : 'Pay online'}
         accessibilityState={{
-          disabled: !selectedAddressId || totalCartCount === 0 || isPlacing,
+          disabled: !selectedAddressId || totalCartCount === 0 || isPlacing || !quote || walletInsufficient,
           busy: isPlacing,
         }}
       >
         {isPlacing
           ? <ActivityIndicator color={Theme.colors.text.mint} />
           : <>
-              <Text style={styles.floatBtnText}>Pay {formatPriceShort(estimatedTotal)}</Text>
+              <Text style={styles.floatBtnText}>
+                Pay {quote ? formatPriceShort(quote.grand_total) : '…'}
+              </Text>
               <Text style={styles.floatBtnText}>›</Text>
             </>
         }
@@ -672,7 +623,6 @@ const styles = StyleSheet.create({
   },
   section: { padding: Theme.spacing.md },
   sectionLabel: { letterSpacing: 1, marginBottom: Theme.spacing.sm },
-  subSectionLabel: { letterSpacing: 1, marginTop: Theme.spacing.sm, marginBottom: Theme.spacing.xs },
   addressCard: {
     backgroundColor: Theme.colors.background.secondary,
     borderRadius: Theme.components.inputRadius,
@@ -695,6 +645,18 @@ const styles = StyleSheet.create({
     paddingTop: Theme.spacing.xs,
     borderTopWidth: 1,
     borderTopColor: Theme.colors.layout.divider,
+  },
+  quoteLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Theme.spacing.sm,
+    paddingVertical: Theme.spacing.sm,
+  },
+  quoteErrorText: {
+    flex: 1,
+    color: Theme.colors.status.error,
+    fontFamily: Theme.typography.fontFamily,
+    fontSize: Theme.typography.sizes.small,
   },
   paymentOption: {
     backgroundColor: Theme.colors.background.secondary,

@@ -50,6 +50,7 @@ After step 4, toggle the hook in the dashboard:
 
 ```bash
 supabase functions deploy place-order              --no-verify-jwt
+supabase functions deploy quote-order              --no-verify-jwt
 supabase functions deploy verify-payment           --no-verify-jwt
 supabase functions deploy wallet-topup             --no-verify-jwt
 supabase functions deploy apply-referral           --no-verify-jwt
@@ -172,3 +173,35 @@ supabase functions deploy cancel-order   --no-verify-jwt
 
 No change to RLS, cron jobs, `generate_daily_manifest`, or staff-facing
 functions — each `orders` row remains a single-cycle fulfillment unit.
+
+## 9. Server-authoritative order (place-order rewrite)
+
+Moves all order scheduling + pricing to the server. The client sends only its
+cart (item ids + quantities, address, payment method); the server derives
+cycles, dispatch dates (IST), tax and delivery fee. `dispatch_date` is no
+longer trusted from the device.
+
+**No SQL / schema / RLS changes.** App + edge functions only.
+
+New shared modules: `_shared/dispatch.ts` (IST clock + A/B/C derivation),
+`_shared/orderBuild.ts` (the single derivation both endpoints call).
+
+**Edge Functions:**
+
+```bash
+supabase functions deploy quote-order  --no-verify-jwt   # NEW — read-only cart preview
+supabase functions deploy place-order  --no-verify-jwt   # rewritten — flat `items` contract
+```
+
+- **`quote-order`** is new — the server-authoritative cart/checkout preview.
+- **`place-order`** has a **breaking contract change**: it now expects a flat
+  `items` array + a `client_quote` echo, not `groups`. An app build sending
+  the old `groups` payload gets a clean "please update the app" error.
+
+**App build:** ship the matching app build in the same window as the
+`place-order` deploy — the two are not backward-compatible. Deploy
+`quote-order` first (additive, harmless if the app isn't using it yet), then
+`place-order` together with the app build.
+
+Rollback: redeploy the previous `place-order` and ship the previous app build;
+`quote-order` can be left deployed (nothing else calls it).
