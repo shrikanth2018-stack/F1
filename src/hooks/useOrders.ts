@@ -33,18 +33,6 @@ export function useMyOrders() {
   );
 }
 
-export function useOrderDetail(orderId: number) {
-  return useSupabaseQuery<Order>(
-    [...QUERY_KEYS.ORDERS, orderId],
-    () =>
-      supabase
-        .from('orders')
-        .select('*')
-        .eq('id', orderId)
-        .limit(1),
-  );
-}
-
 export type OrderWithItems = Order & { order_items: OrderItem[] };
 
 /**

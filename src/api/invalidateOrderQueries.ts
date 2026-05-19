@@ -32,8 +32,7 @@ export function invalidateOrderQueries(queryClient: QueryClient) {
   // Driver dashboard (own query, own key)
   queryClient.invalidateQueries({ queryKey: ['driver_orders'] });
 
-  // Admin order surfaces — legacy useAdminOrders + BF-08 list + BF-08 detail
-  queryClient.invalidateQueries({ queryKey: ['admin_orders'] });
+  // Admin order surfaces — BF-08 manage list + BF-08 detail
   queryClient.invalidateQueries({ queryKey: ['admin_orders_manage'] });
   queryClient.invalidateQueries({ queryKey: ['admin_order_detail'] });
 

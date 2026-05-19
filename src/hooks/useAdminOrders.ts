@@ -1,59 +1,14 @@
 /**
  * 1stOne F1 — useAdminOrders
  *
- * Admin-facing order hooks:
- * - All orders with filters (date range, status, cycle)
- * - Update any order status
- * - Cancel order
- * Realtime via useRealtimeOrders.
- * Filtered by branch when branch_management_active is on.
+ * Admin order mutation: atomic cancel + wallet refund (useAdminCancelOrder).
  */
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../api/supabaseClient';
 import { invalidateOrderQueries } from '../api/invalidateOrderQueries';
 import { fireOrderStatusPush } from '../utils/orderStatusPush';
-import { QUERY_KEYS, QUERY_STALE_TIME } from '../utils/constants';
-import { useBranchFilter } from './useBranchFilter';
-import type { OrderStatus } from '../types';
-
-interface AdminOrderFilters {
-  date?: string;         // YYYY-MM-DD, defaults to today
-  status?: OrderStatus;
-  cycleId?: number;
-}
-
-/** Fetch all orders with optional filters */
-export function useAdminOrders(filters: AdminOrderFilters = {}) {
-  const date = filters.date ?? new Date().toISOString().split('T')[0];
-  const bf = useBranchFilter();
-
-  return useQuery({
-    queryKey: ['admin_orders', date, filters.status, filters.cycleId, bf.isActive ? bf.branchId ?? 'all' : 'off'],
-    queryFn: async () => {
-      let query = supabase
-        .from('orders')
-        .select('*, order_items(*), customer_addresses(*), profiles!orders_user_id_fkey(full_name, phone_number)')
-        .eq('dispatch_date', date)
-        .order('created_at', { ascending: false });
-
-      if (filters.status) {
-        query = query.eq('status', filters.status);
-      }
-      if (filters.cycleId) {
-        query = query.eq('cycle_id', filters.cycleId);
-      }
-      if (bf.isActive && bf.branchId != null) {
-        query = query.eq('branch_id', bf.branchId);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-      return (data ?? []) as any[];
-    },
-    staleTime: QUERY_STALE_TIME,
-  });
-}
+import { QUERY_KEYS } from '../utils/constants';
 
 /**
  * BF-34a (F3.1, 2026-05-11): atomic admin order cancel + wallet refund.
