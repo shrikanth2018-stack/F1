@@ -28,3 +28,25 @@ export function isOperationalOrder(
     (oi) => oi.item_type === 'food' || oi.item_type === 'essential'
   );
 }
+
+/** Order statuses that mean the order is finished — no longer "in flight". */
+const TERMINAL_STATUSES = new Set(['Delivered', 'Cancelled', 'Failed']);
+
+/**
+ * D2: an order is an "unsuccessful delivery" when its dispatch date is
+ * already in the past (IST) and it still isn't Delivered / Cancelled /
+ * Failed — a perishable order left undelivered.
+ *
+ * The batch board hides an order once the next cycle pushes; an
+ * unsuccessful-delivery order must NOT vanish — staff / hub / driver /
+ * admin keep it visible, flagged yellow, so it gets resolved.
+ */
+export function isUnsuccessfulDelivery(
+  order: { dispatch_date?: string | null; status?: string | null },
+): boolean {
+  if (!order.dispatch_date) return false;
+  if (TERMINAL_STATUSES.has(order.status ?? '')) return false;
+  // IST calendar date — same basis as dispatch_date (a 'YYYY-MM-DD' string).
+  const todayIST = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
+  return order.dispatch_date < todayIST;
+}

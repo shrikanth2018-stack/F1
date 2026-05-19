@@ -22,7 +22,7 @@ import { createWrapper } from './_helpers/queryClient';
 function makeBuilder(resolveValue: any) {
   const builder: any = {};
   const chain = [
-    'select', 'eq', 'neq', 'in', 'order', 'limit', 'gte', 'lte',
+    'select', 'eq', 'neq', 'in', 'or', 'order', 'limit', 'gte', 'lte',
     'maybeSingle', 'single', 'range',
     'insert', 'update', 'upsert', 'delete',
   ];
@@ -231,11 +231,18 @@ describe('useStaffOrders — active-batch scoping', () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-    expect(builder.eq).toHaveBeenCalledWith('cycle_id', 7);
-    expect(builder.eq).toHaveBeenCalledWith('dispatch_date', '2026-06-01');
+    // cycle + push_date now go into a PostgREST .or() (active batch OR
+    // unsuccessful-delivery, D2), not separate .eq() calls.
+    const orArg = (builder.or.mock.calls[0]?.[0] ?? '') as string;
+    expect(orArg).toContain('cycle_id.eq.7');
+    expect(orArg).toContain('dispatch_date.eq.2026-06-01');
   });
 
-  it('returns nothing and runs no query when no cycle has been pushed', async () => {
+  it('still queries unsuccessful-delivery orders when no cycle has been pushed', async () => {
+    // D2: even with no active batch, a past-dated undelivered order must
+    // surface — so the hook still runs a query (the unsuccessful clause).
+    const builder = makeBuilder({ data: [], error: null });
+    mockFromImpl.mockReturnValueOnce(builder);
     mockBranchFilter.mockReturnValue({ isActive: false, branchId: null });
     mockFeatureFlag.mockReturnValue(false);
     mockAuth.mockReturnValue({ session: baseSession });
@@ -246,8 +253,10 @@ describe('useStaffOrders — active-batch scoping', () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
+    expect(mockFromImpl).toHaveBeenCalled();
+    const orArg = (builder.or.mock.calls[0]?.[0] ?? '') as string;
+    expect(orArg).toContain('status.not.in.(Delivered,Cancelled,Failed)');
     expect(result.current.data).toEqual([]);
-    expect(mockFromImpl).not.toHaveBeenCalled();
   });
 
   it('stays pending until the active-batch lookup resolves', async () => {

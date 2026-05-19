@@ -25,6 +25,7 @@ const ICONS = {
 };
 import { ThemedText } from './ThemedText';
 import { nextDeliveryStatus, type AdvancePersona } from '../utils/deliveryStatus';
+import { isUnsuccessfulDelivery } from '../utils/orderFilters';
 import type { OrderStatus } from '../types';
 
 const BODY2 = Theme.typography.sizes.body + 2;
@@ -82,6 +83,10 @@ export function DeliveryOrderRow({
   const next = nextDeliveryStatus(order.status, order.delivery_method, persona);
   const canAdvance = next != null && !isUpdating;
 
+  // D2: a past-dated, still-undelivered order — flagged so it doesn't get
+  // lost when the batch flips. Perishable; needs admin resolution.
+  const unsuccessful = isUnsuccessfulDelivery(order);
+
   const driverInfo = showDriverInfo && getDriverInfo ? getDriverInfo(order) : null;
   const driverUnassigned = driverInfo && !driverInfo.code;
 
@@ -130,6 +135,11 @@ export function DeliveryOrderRow({
           <ThemedText variant="subtitle" color="primary" style={styles.idText}>
             #{order.id}
           </ThemedText>
+          {unsuccessful && (
+            <View style={styles.unsuccessfulBadge}>
+              <Text style={styles.unsuccessfulText}>UNSUCCESSFUL DELIVERY</Text>
+            </View>
+          )}
           <ThemedText variant="small" color="subtitle" numberOfLines={2} style={styles.smallLine}>
             {itemNames || '—'}
           </ThemedText>
@@ -191,6 +201,20 @@ const styles = StyleSheet.create({
   },
   idText: { fontSize: BODY2 },
   smallLine: { fontSize: SMALL2, marginTop: 2 },
+  unsuccessfulBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: `${Theme.colors.status.warning}22`,
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    marginTop: 3,
+  },
+  unsuccessfulText: {
+    fontFamily: Theme.typography.fontFamily,
+    fontSize: Theme.typography.sizes.small,
+    color: Theme.colors.status.warning,
+    letterSpacing: 0.5,
+  },
   rightColumn: {
     alignItems: 'flex-end',
     justifyContent: 'center',

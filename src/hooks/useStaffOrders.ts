@@ -36,6 +36,8 @@ export function useStaffOrders() {
   const { session } = useAuth();
   const assignedHubId = session?.assignedHubId ?? null;
   const { data: batch } = useActiveStaffBatch();
+  // IST calendar date — the basis for the D2 "unsuccessful delivery" cut-off.
+  const todayIST = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
 
   return useQuery({
     queryKey: [
@@ -43,12 +45,16 @@ export function useStaffOrders() {
       batch ? `${batch.cycle_id}:${batch.push_date}` : 'none',
       bf.isActive ? bf.branchId ?? 'all' : 'off',
       hubDeliveryActive && assignedHubId != null ? assignedHubId : 'no-hub',
+      todayIST,
     ],
     queryFn: async () => {
-      // No cycle pushed yet → staff see nothing (orders arrive only via push).
-      if (!batch) return [] as (Order & { order_items: any[]; customer_addresses: any })[];
+      // The list = the active batch's cycle, PLUS any "unsuccessful delivery"
+      // — a past-dated order still not Delivered/Cancelled/Failed. D2: the
+      // batch flip must not hide an undelivered perishable order.
+      const unsuccessful =
+        `and(dispatch_date.lt.${todayIST},status.not.in.(Delivered,Cancelled,Failed))`;
 
-      // Also pull the zone's + hub's driver_code so the Delivery tab can label each row.
+      // Pull the zone's + hub's driver_code so the Delivery tab can label each row.
       let query = supabase
         .from('orders')
         .select(`
@@ -57,12 +63,18 @@ export function useStaffOrders() {
           customer_addresses(*, delivery_zones(driver_code, zone_name), delivery_hubs(driver_code, hub_name)),
           profiles(phone_number)
         `)
-        // Scoped to the active batch: exactly one cycle + its push_date.
-        // Cancelled orders never belong on operational staff/hub screens.
-        .eq('cycle_id', batch.cycle_id)
-        .eq('dispatch_date', batch.push_date)
-        .neq('status', 'Cancelled')
         .order('created_at', { ascending: false });
+
+      if (batch) {
+        // Active batch (one cycle + its push_date, Cancelled excluded) OR
+        // any unsuccessful-delivery order.
+        const active =
+          `and(cycle_id.eq.${batch.cycle_id},dispatch_date.eq.${batch.push_date},status.neq.Cancelled)`;
+        query = query.or(`${active},${unsuccessful}`);
+      } else {
+        // No cycle pushed yet — staff still see any unsuccessful-delivery order.
+        query = query.or(unsuccessful);
+      }
 
       if (bf.isActive && bf.branchId != null) {
         query = query.eq('branch_id', bf.branchId);

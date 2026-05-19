@@ -42,17 +42,17 @@ export function DriverDashboardScreen({ navigation }: CustomerScreenProps<'Drive
   // The driver board shows exactly one cycle's batch — the active batch
   // released by the most recent kitchen push (same as Kitchen/Packing/Hub).
   const { data: batch } = useActiveStaffBatch();
+  // IST calendar date — basis for the D2 "unsuccessful delivery" cut-off.
+  const todayIST = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
 
   const { mutateAsync: updateStatus, isPending: isUpdating } = useUpdateOrderStatus();
   // Realtime: refresh when an order is dispatched / advances through hub handoff.
   useRealtimeOrders(true);
 
   const { data: orders = [], isLoading, isRefetching, error, refetch } = useQuery({
-    queryKey: ['driver_orders', userId, batch ? `${batch.cycle_id}:${batch.push_date}` : 'none'],
+    queryKey: ['driver_orders', userId, batch ? `${batch.cycle_id}:${batch.push_date}` : 'none', todayIST],
     queryFn: async () => {
       if (!userId) return [];
-      // No cycle pushed yet → nothing on the board (orders arrive only via push).
-      if (!batch) return [];
 
       // Find which hubs and zones this driver is assigned to.
       const [hubsRes, zonesRes] = await Promise.all([
@@ -64,12 +64,13 @@ export function DriverDashboardScreen({ navigation }: CustomerScreenProps<'Drive
 
       if (myHubIds.length === 0 && myZoneIds.length === 0) return [];
 
-      // Fetch the active batch's orders, filtered client-side by hub/zone
-      // membership — keeps the query simple, fine at trial scale.
-      // All statuses are returned: a driver sees every order routed to them
-      // from the push; the row's status pill stays non-tappable until Packing
-      // dispatches it (see nextDeliveryStatus). Cancelled excluded — dead order.
-      const { data, error: ordersErr } = await supabase
+      // The driver's list = the active batch's cycle, PLUS any "unsuccessful
+      // delivery" (D2) — a past-dated order still not Delivered/Cancelled/
+      // Failed — so an undelivered perishable order never vanishes when the
+      // batch flips. Filtered client-side by hub/zone membership below.
+      const unsuccessful =
+        `and(dispatch_date.lt.${todayIST},status.not.in.(Delivered,Cancelled,Failed))`;
+      let ordersQuery = supabase
         .from('orders')
         .select(`
           *,
@@ -77,10 +78,15 @@ export function DriverDashboardScreen({ navigation }: CustomerScreenProps<'Drive
           customer_addresses(*),
           profiles(phone_number)
         `)
-        .eq('cycle_id', batch.cycle_id)
-        .eq('dispatch_date', batch.push_date)
-        .neq('status', 'Cancelled')
         .order('created_at', { ascending: false });
+      if (batch) {
+        const active =
+          `and(cycle_id.eq.${batch.cycle_id},dispatch_date.eq.${batch.push_date},status.neq.Cancelled)`;
+        ordersQuery = ordersQuery.or(`${active},${unsuccessful}`);
+      } else {
+        ordersQuery = ordersQuery.or(unsuccessful);
+      }
+      const { data, error: ordersErr } = await ordersQuery;
 
       if (ordersErr) throw ordersErr;
 
