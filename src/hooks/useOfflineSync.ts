@@ -12,18 +12,13 @@ import { supabase } from '../api/supabaseClient';
 import { useStaffQueueStore } from '../store/staffQueueStore';
 import { MAX_QUEUE_RETRIES } from '../utils/constants';
 import { fireOrderStatusPush } from '../utils/orderStatusPush';
+import { ORDER_STATUS_FLOW } from '../utils/orderStatus';
 
-/**
- * Order status pipeline, earliest → latest. Used to guard offline replay:
- * a queued status update only applies while the order is still at a status
- * logically EARLIER than the queued target — so a mutation that sat in the
- * offline queue can never REGRESS an order another staffer/driver already
- * advanced. (BF — audit G3: the doc claimed this guard; it did not exist.)
- */
-const STATUS_PIPELINE = [
-  'Pending', 'Confirmed', 'Preparing', 'Ready',
-  'Packed', 'Dispatched', 'Received at Hub', 'On the Way', 'Delivered',
-];
+// Status progression used to guard offline replay: a queued status update
+// only applies while the order is still at a status logically EARLIER than
+// the queued target — so a mutation that sat in the offline queue can never
+// REGRESS an order another staffer/driver already advanced (audit G3).
+// ORDER_STATUS_FLOW is the single shared taxonomy (audit D19).
 
 export function useOfflineSync() {
   // queue + isSyncing kept as reactive subscriptions for the return value
@@ -76,9 +71,11 @@ export function useOfflineSync() {
           // only while the row is still at a status earlier than the target;
           // otherwise it lands as a harmless 0-row no-op.
           if (mutation.table === 'orders' && typeof mutation.payload.status === 'string') {
-            const targetIdx = STATUS_PIPELINE.indexOf(mutation.payload.status as string);
+            const targetIdx = ORDER_STATUS_FLOW.indexOf(
+              mutation.payload.status as typeof ORDER_STATUS_FLOW[number],
+            );
             if (targetIdx > 0) {
-              query = query.in('status', STATUS_PIPELINE.slice(0, targetIdx));
+              query = query.in('status', ORDER_STATUS_FLOW.slice(0, targetIdx));
             }
           }
         } else if (mutation.operation === 'upsert') {

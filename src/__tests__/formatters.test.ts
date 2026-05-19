@@ -23,7 +23,7 @@ describe('formatPrice', () => {
 
   it('formats decimal amounts correctly', () => {
     expect(formatPrice(99.5)).toBe('₹99.50');
-    expect(formatPrice(1234.99)).toBe('₹1234.99');
+    expect(formatPrice(1234.99)).toBe('₹1,234.99');
   });
 });
 
@@ -32,6 +32,11 @@ describe('formatPriceShort', () => {
     expect(formatPriceShort(99.9)).toBe('₹100');
     expect(formatPriceShort(99.4)).toBe('₹99');
     expect(formatPriceShort(500)).toBe('₹500');
+  });
+
+  it('Indian-groups large amounts', () => {
+    expect(formatPriceShort(1234)).toBe('₹1,234');
+    expect(formatPriceShort(150000)).toBe('₹1,50,000');
   });
 });
 

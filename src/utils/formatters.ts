@@ -5,21 +5,33 @@
  */
 
 /**
- * Format price in INR (₹)
- * Always shows 2 decimal places for consistency.
+ * Format price in INR (₹) — 2 decimals, Indian-grouped (₹1,23,456.00).
+ * The single currency formatter for the app (audit D25).
  */
 export function formatPrice(amount: number): string {
-  return `₹${amount.toFixed(2)}`;
+  return `₹${amount.toLocaleString('en-IN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 /** Alias for formatPrice — preferred in UI contexts */
 export const formatCurrency = formatPrice;
 
 /**
- * Format price without decimals (for whole-number displays)
+ * Format price without decimals, Indian-grouped (₹1,23,456) — for
+ * whole-number displays (cart totals, balances, list rows).
  */
 export function formatPriceShort(amount: number): string {
-  return `₹${Math.round(amount)}`;
+  return `₹${Math.round(amount).toLocaleString('en-IN')}`;
+}
+
+/**
+ * Count + pluralised noun: plural(1, 'item') → "1 item", plural(3, 'item')
+ * → "3 items". Pass an explicit plural form for irregular nouns.
+ */
+export function plural(count: number, noun: string, pluralForm?: string): string {
+  return count === 1 ? `1 ${noun}` : `${count} ${pluralForm ?? noun + 's'}`;
 }
 
 /**

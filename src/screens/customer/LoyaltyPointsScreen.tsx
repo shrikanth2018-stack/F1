@@ -23,6 +23,7 @@ import { ThemedText } from '../../components/ThemedText';
 import { Divider } from '../../components/Divider';
 import { EmptyState } from '../../components/EmptyState';
 import { useWalletBalance, useRefreshWallet } from '../../hooks/useWallet';
+import { formatPriceShort } from '../../utils/formatters';
 import { supabase } from '../../api/supabaseClient';
 import type { CustomerNavProp } from '../../navigation/types';
 
@@ -47,7 +48,7 @@ export function LoyaltyPointsScreen({ navigation }: { navigation: CustomerNavPro
       setRedeemInput('');
       Alert.alert(
         'Points Redeemed',
-        `₹${res.wallet_credited} added to your wallet. ${res.loyalty_points_remaining} points left.`,
+        `${formatPriceShort(res.wallet_credited)} added to your wallet. ${res.loyalty_points_remaining} points left.`,
       );
     },
     onError: (e: Error) => Alert.alert('Could not redeem', e.message),

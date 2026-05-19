@@ -30,6 +30,7 @@ import { ErrorRetry } from '../../components/ErrorRetry';
 import { DispatchBadge } from '../../components/DispatchBadge';
 import { supabase } from '../../api/supabaseClient';
 import { formatDateShort } from '../../utils/formatters';
+import { orderStatusVariant } from '../../utils/orderStatus';
 import { isUnsuccessfulDelivery } from '../../utils/orderFilters';
 import { todayIST, istDateWithOffset } from '../../utils/istDate';
 import type { AdminNavProp } from '../../navigation/types';
@@ -37,11 +38,6 @@ import type { AdminNavProp } from '../../navigation/types';
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
 
-const STATUS_VARIANT: Record<string, 'success' | 'warning' | 'info' | 'error'> = {
-  Confirmed: 'info', Preparing: 'info', Ready: 'info', Packed: 'info',
-  Dispatched: 'warning', 'On the Way': 'warning', Delivered: 'success',
-  'Received at Hub': 'info', Cancelled: 'error', Pending: 'warning', Failed: 'error',
-};
 
 const STATUS_OPTIONS = [
   'All', 'Confirmed', 'Preparing', 'Ready', 'Packed',
@@ -216,7 +212,7 @@ export function AdminOrdersScreen({ navigation }: { navigation: AdminNavProp }) 
                 </ThemedText>
                 <DispatchBadge
                   label={status}
-                  variant={STATUS_VARIANT[status] ?? 'info'}
+                  variant={orderStatusVariant(status)}
                 />
               </View>
               {unsuccessful && (

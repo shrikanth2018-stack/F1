@@ -47,16 +47,6 @@ export const BUCKETS = {
   ROUTE_MAPS: 'route-maps',
 } as const;
 
-/** Order status flow */
-export const ORDER_STATUSES = [
-  'pending',
-  'confirmed',
-  'preparing',
-  'out_for_delivery',
-  'delivered',
-  'cancelled',
-] as const;
-
 /** Max retry for offline queue before flagging */
 export const MAX_QUEUE_RETRIES = 5;
 

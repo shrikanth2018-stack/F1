@@ -32,6 +32,7 @@ import { useStoreConfig } from '../../hooks/useStoreConfig';
 import { useAuth } from '../../hooks/useAuth';
 import { invokeFunction } from '../../api/invokeFunction';
 import { RAZORPAY_KEY_ID } from '../../utils/env';
+import { formatPriceShort } from '../../utils/formatters';
 import { infoDialog } from '../../utils/confirmDialog';
 import type { CustomerNavProp } from '../../navigation/types';
 
@@ -60,11 +61,11 @@ export function WalletScreen({ navigation }: { navigation: CustomerNavProp }) {
       return;
     }
     if (amount < minTopup) {
-      Alert.alert('Minimum', `Minimum top-up is \u20B9${minTopup}`);
+      Alert.alert('Minimum', `Minimum top-up is ${formatPriceShort(minTopup)}`);
       return;
     }
     if (amount > maxTopup) {
-      Alert.alert('Maximum', `Maximum top-up is \u20B9${maxTopup.toLocaleString('en-IN')}`);
+      Alert.alert('Maximum', `Maximum top-up is ${formatPriceShort(maxTopup)}`);
       return;
     }
     topup.mutate(amount, {
@@ -102,7 +103,7 @@ export function WalletScreen({ navigation }: { navigation: CustomerNavProp }) {
             },
           );
           if (confirmData?.status === 'credited') {
-            Alert.alert('Wallet Topped Up!', `₹${confirmData.amount} has been added to your wallet.`);
+            Alert.alert('Wallet Topped Up!', `${formatPriceShort(confirmData.amount ?? 0)} has been added to your wallet.`);
           }
         } catch {
           // Webhook will resolve — silent fail is intentional.
@@ -140,7 +141,7 @@ export function WalletScreen({ navigation }: { navigation: CustomerNavProp }) {
       {/* Balance — prominent, centred */}
       <View style={styles.balanceSection}>
         <ThemedText variant="title" color="primary" style={styles.balanceAmount}>
-          {'\u20B9'}{(wallet?.balance ?? 0).toLocaleString('en-IN')}
+          {formatPriceShort(wallet?.balance ?? 0)}
         </ThemedText>
         <ThemedText variant="small" color="subtitle">Available Balance</ThemedText>
         {(wallet?.loyaltyPoints ?? 0) > 0 && (
@@ -159,7 +160,7 @@ export function WalletScreen({ navigation }: { navigation: CustomerNavProp }) {
         {/* Custom input */}
         <TextInput
           style={styles.input}
-          placeholder={`Enter amount (min \u20B9${minTopup})`}
+          placeholder={`Enter amount (min ${formatPriceShort(minTopup)})`}
           placeholderTextColor={Theme.colors.text.muted}
           value={customAmount}
           onChangeText={setCustomAmount}
@@ -174,7 +175,7 @@ export function WalletScreen({ navigation }: { navigation: CustomerNavProp }) {
               onPress={() => setCustomAmount(amt.toString())}
               hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
             >
-              <ThemedText variant="body" color="accent">{'\u20B9'}{amt}</ThemedText>
+              <ThemedText variant="body" color="accent">{formatPriceShort(amt)}</ThemedText>
             </TouchableOpacity>
           ))}
         </View>
@@ -224,7 +225,7 @@ export function WalletScreen({ navigation }: { navigation: CustomerNavProp }) {
                       : Theme.colors.status.error,
                   }]}
                 >
-                  {tx.transaction_type === 'credit' ? '+' : '-'}{'\u20B9'}{Math.abs(tx.amount)}
+                  {tx.transaction_type === 'credit' ? '+' : '-'}{formatPriceShort(Math.abs(tx.amount))}
                 </ThemedText>
               </View>
             </React.Fragment>

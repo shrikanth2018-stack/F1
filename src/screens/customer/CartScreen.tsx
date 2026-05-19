@@ -25,7 +25,7 @@ import { useEssentialsCartStore } from '../../store/essentialsCartStore';
 import { useSmartCart } from '../../hooks/useSmartCart';
 import { useSmartEssentialsCart } from '../../hooks/useSmartEssentialsCart';
 import { useDeliveryCycles } from '../../hooks/useDeliveryCycles';
-import { formatPriceShort, formatDateShort } from '../../utils/formatters';
+import { formatPriceShort, formatDateShort, plural } from '../../utils/formatters';
 import { formatTime12h } from '../../utils/timeEngine';
 import { confirmDialog } from '../../utils/confirmDialog';
 import { useOrderQuote } from '../../hooks/useOrderQuote';
@@ -164,8 +164,8 @@ export function CartScreen({ navigation, route }: any) {
       }
       Alert.alert(
         'Mixed Dispatch',
-        `${today} item${today !== 1 ? 's' : ''} dispatched today\n` +
-        `${later} item${later !== 1 ? 's' : ''} dispatched later\n\nContinue to checkout?`,
+        `${plural(today, 'item')} dispatched today\n` +
+        `${plural(later, 'item')} dispatched later\n\nContinue to checkout?`,
         [
           { text: 'Alter Order', style: 'cancel' },
           { text: 'Yes, Continue', onPress: () => navigation.navigate('Checkout', { cartType }) },

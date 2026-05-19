@@ -32,7 +32,7 @@ import {
   useApplyReferralCode,
   REFERRAL_DEFAULTS,
 } from '../../hooks/useReferrals';
-import { formatDateShort } from '../../utils/formatters';
+import { formatDateShort, formatPriceShort } from '../../utils/formatters';
 import { trackReferralApplied, trackReferralShared } from '../../utils/analytics';
 import type { CustomerNavProp } from '../../navigation/types';
 
@@ -225,7 +225,7 @@ export function ReferralScreen({ navigation }: { navigation: CustomerNavProp }) 
               <View style={styles.tierRow}>
                 <ThemedText variant="body" color="muted" style={styles.tierWho}>Friend signs up</ThemedText>
                 <ThemedText variant="body" color="primary" style={styles.tierVal}>
-                  Friend gets ₹{g('referee_signup_credit')} wallet credit
+                  Friend gets {formatPriceShort(g('referee_signup_credit'))} wallet credit
                   {g('referee_reward_points') > 0 ? ` + ${g('referee_reward_points')} pts` : ''}
                 </ThemedText>
               </View>
@@ -234,7 +234,7 @@ export function ReferralScreen({ navigation }: { navigation: CustomerNavProp }) 
                 <ThemedText variant="body" color="muted" style={styles.tierWho}>Friend orders</ThemedText>
                 <ThemedText variant="body" color="primary" style={styles.tierVal}>
                   You get {g('referrer_first_order_points')} pts
-                  {g('referrer_first_order_credit') > 0 ? ` + ₹${g('referrer_first_order_credit')}` : ''}
+                  {g('referrer_first_order_credit') > 0 ? ` + ${formatPriceShort(g('referrer_first_order_credit'))}` : ''}
                 </ThemedText>
               </View>
               {/* After 30 days */}
@@ -242,7 +242,7 @@ export function ReferralScreen({ navigation }: { navigation: CustomerNavProp }) 
                 <View style={styles.tierRow}>
                   <ThemedText variant="body" color="muted" style={styles.tierWho}>After 30 days</ThemedText>
                   <ThemedText variant="body" color="primary" style={styles.tierVal}>
-                    You get ₹{g('referrer_month_credit')} bonus
+                    You get {formatPriceShort(g('referrer_month_credit'))} bonus
                   </ThemedText>
                 </View>
               )}

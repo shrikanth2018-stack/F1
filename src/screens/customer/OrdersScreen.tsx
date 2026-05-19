@@ -27,21 +27,8 @@ import { EmptyState } from '../../components/EmptyState';
 import { ErrorRetry } from '../../components/ErrorRetry';
 import { useMyOrders } from '../../hooks/useOrders';
 import { formatPriceShort, formatDateShort, formatRelativeTime } from '../../utils/formatters';
+import { ORDER_STATUS_FLOW, orderStatusVariant } from '../../utils/orderStatus';
 import type { Order } from '../../types';
-
-const statusVariant: Record<string, 'success' | 'warning' | 'info' | 'error'> = {
-  Pending: 'warning',
-  Confirmed: 'info',
-  Preparing: 'info',
-  Ready: 'info',
-  Packed: 'info',
-  Dispatched: 'warning',
-  'On the Way': 'warning',
-  Delivered: 'success',
-  'Received at Hub': 'info',
-  Cancelled: 'error',
-  Failed: 'error',
-};
 
 type OrderTab = 'food' | 'essentials';
 
@@ -89,16 +76,12 @@ function groupOrders(orders: Order[]): OrderGroup[] {
 // A multi-cycle order has a status per cycle. The list card shows ONE
 // rolled-up status: the least-advanced of the still-active rows, so the
 // customer sees the slowest part. All rows cancelled → Cancelled.
-const STATUS_PROGRESSION = [
-  'Pending', 'Confirmed', 'Preparing', 'Ready', 'Packed',
-  'Dispatched', 'Received at Hub', 'On the Way', 'Delivered',
-];
 function rolledUpStatus(rows: Order[]): string {
   const active = rows.filter((r) => r.status !== 'Cancelled');
   if (active.length === 0) return 'Cancelled';
   return active.reduce((least, r) => {
-    const li = STATUS_PROGRESSION.indexOf(least);
-    const ri = STATUS_PROGRESSION.indexOf(r.status);
+    const li = ORDER_STATUS_FLOW.indexOf(least as typeof ORDER_STATUS_FLOW[number]);
+    const ri = ORDER_STATUS_FLOW.indexOf(r.status as typeof ORDER_STATUS_FLOW[number]);
     return ri !== -1 && (li === -1 || ri < li) ? r.status : least;
   }, active[0].status);
 }
@@ -143,7 +126,7 @@ export function OrdersScreen({ navigation }: any) {
       >
         <View style={styles.rowTop}>
           <ThemedText variant="subtitle" color="primary">Order #{item.primaryId}</ThemedText>
-          <DispatchBadge label={status} variant={statusVariant[status] ?? 'info'} />
+          <DispatchBadge label={status} variant={orderStatusVariant(status)} />
         </View>
 
         <View style={styles.rowMid}>

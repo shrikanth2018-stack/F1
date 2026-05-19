@@ -41,6 +41,7 @@ import { useAdminCancelOrder } from '../../hooks/useAdminOrders';
 import { useUpdateOrderStatus } from '../../hooks/useStaffOrders';
 import { formatPriceShort, formatDateLong } from '../../utils/formatters';
 import { nextDeliveryStatus } from '../../utils/deliveryStatus';
+import { orderStatusVariant } from '../../utils/orderStatus';
 import { isUnsuccessfulDelivery } from '../../utils/orderFilters';
 import type { AdminScreenProps } from '../../navigation/types';
 import type { OrderStatus } from '../../types';
@@ -49,12 +50,6 @@ const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
 
 const CANCELLABLE = new Set(['Pending', 'Confirmed', 'Preparing', 'Ready', 'Packed']);
-
-const STATUS_VARIANT: Record<string, 'success' | 'warning' | 'info' | 'error'> = {
-  Confirmed: 'info', Preparing: 'info', Ready: 'info', Packed: 'info',
-  Dispatched: 'warning', 'On the Way': 'warning', Delivered: 'success',
-  'Received at Hub': 'info', Cancelled: 'error', Pending: 'warning', Failed: 'error',
-};
 
 function useAdminOrderDetail(orderId: number) {
   return useQuery({
@@ -281,7 +276,7 @@ export function AdminOrderDetailScreen({
           <View style={styles.statusRow}>
             <DispatchBadge
               label={o.status ?? ''}
-              variant={STATUS_VARIANT[o.status ?? ''] ?? 'info'}
+              variant={orderStatusVariant(o.status)}
             />
             <ThemedText variant="small" color="subtitle">{routingLabel}</ThemedText>
           </View>

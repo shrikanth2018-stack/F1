@@ -102,7 +102,7 @@ export function OrderDetailScreen({ route, navigation }: any) {
     if (groupRows.length === 0) return;
     const razorpayDue = Math.max(0, groupTotal - groupWallet);
     const refundNote = groupWallet > 0
-      ? `₹${groupWallet} will be returned to your wallet instantly.${razorpayDue > 0 ? ` ₹${razorpayDue} Razorpay refund will be processed by admin.` : ''}`
+      ? `${formatPriceShort(groupWallet)} will be returned to your wallet instantly.${razorpayDue > 0 ? ` ${formatPriceShort(razorpayDue)} Razorpay refund will be processed by admin.` : ''}`
       : 'Razorpay refund will be processed by admin.';
 
     Alert.alert(
@@ -123,11 +123,11 @@ export function OrderDetailScreen({ route, navigation }: any) {
 
               let msg = 'Your order has been cancelled.';
               if (serverWallet > 0 && serverRzp > 0) {
-                msg = `₹${serverWallet} returned to your wallet. ₹${serverRzp} Razorpay refund will be processed within 5–7 business days.`;
+                msg = `${formatPriceShort(serverWallet)} returned to your wallet. ${formatPriceShort(serverRzp)} Razorpay refund will be processed within 5–7 business days.`;
               } else if (serverWallet > 0) {
-                msg = `₹${serverWallet} has been returned to your wallet.`;
+                msg = `${formatPriceShort(serverWallet)} has been returned to your wallet.`;
               } else if (serverRzp > 0) {
-                msg = `Your order has been cancelled. ₹${serverRzp} Razorpay refund will be processed within 5–7 business days.`;
+                msg = `Your order has been cancelled. ${formatPriceShort(serverRzp)} Razorpay refund will be processed within 5–7 business days.`;
               }
               Alert.alert('Order Cancelled', msg);
             } catch (err: any) {
@@ -177,9 +177,9 @@ export function OrderDetailScreen({ route, navigation }: any) {
             {(() => {
               const r = Math.max(0, groupTotal - groupWallet);
               let line = '';
-              if (groupWallet > 0 && r > 0) line = `₹${groupWallet} returned to wallet · ₹${r} Razorpay refund in 5–7 days`;
-              else if (groupWallet > 0) line = `₹${groupWallet} returned to your wallet`;
-              else if (r > 0) line = `₹${r} Razorpay refund will be processed in 5–7 business days`;
+              if (groupWallet > 0 && r > 0) line = `${formatPriceShort(groupWallet)} returned to wallet · ${formatPriceShort(r)} Razorpay refund in 5–7 days`;
+              else if (groupWallet > 0) line = `${formatPriceShort(groupWallet)} returned to your wallet`;
+              else if (r > 0) line = `${formatPriceShort(r)} Razorpay refund will be processed in 5–7 business days`;
               return line ? (
                 <ThemedText variant="small" color="muted" style={styles.cancelledRefund}>{line}</ThemedText>
               ) : null;

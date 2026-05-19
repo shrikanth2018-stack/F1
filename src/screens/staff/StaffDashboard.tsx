@@ -55,6 +55,7 @@ import {
 } from '../../hooks/useStaffOrders';
 import { nextPackingStatus } from '../../utils/packingFlow';
 import { isUnsuccessfulDelivery } from '../../utils/orderFilters';
+import { ORDER_STATUS_FLOW } from '../../utils/orderStatus';
 import { useAllMenuItems } from '../../hooks/useMenuManagement';
 import { useRealtimeOrders } from '../../hooks/useRealtimeOrders';
 import { useOfflineSync } from '../../hooks/useOfflineSync';
@@ -203,12 +204,10 @@ function aggregateKitchenItems(
     }
   }
 
-  const statusOrder = [
-    'Confirmed', 'Preparing', 'Ready',
-    'Packed', 'Dispatched', 'Received at Hub', 'On the Way', 'Delivered',
-  ];
+  const statusIdx = (s: string) =>
+    ORDER_STATUS_FLOW.indexOf(s as typeof ORDER_STATUS_FLOW[number]);
   return Array.from(map.values()).sort(
-    (a, b) => statusOrder.indexOf(a.status) - statusOrder.indexOf(b.status)
+    (a, b) => statusIdx(a.status) - statusIdx(b.status)
   );
 }
 
