@@ -10,8 +10,8 @@
  * all branches' items until they add one.
  */
 
-import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../api/supabaseClient';
+import { useSupabaseQuery } from '../api/useSupabaseQuery';
 import { QUERY_KEYS, QUERY_STALE_TIME } from '../utils/constants';
 import { useBranchFilter } from './useBranchFilter';
 import type { EssentialItem } from '../types';
@@ -20,13 +20,13 @@ import type { EssentialItem } from '../types';
 export function useEssentialsCatalog(cycleId?: number) {
   const bf = useBranchFilter();
 
-  return useQuery({
-    queryKey: [
+  return useSupabaseQuery<EssentialItem>(
+    [
       ...QUERY_KEYS.ESSENTIALS,
       cycleId ?? 'all',
       bf.isActive ? bf.branchId ?? 'all' : 'off',
     ],
-    queryFn: async () => {
+    () => {
       let query = supabase
         .from('essentials_catalog')
         .select('*')
@@ -39,11 +39,8 @@ export function useEssentialsCatalog(cycleId?: number) {
       if (bf.isActive && bf.branchId != null) {
         query = query.eq('branch_id', bf.branchId);
       }
-
-      const { data, error } = await query;
-      if (error) throw error;
-      return (data ?? []) as EssentialItem[];
+      return query;
     },
-    staleTime: QUERY_STALE_TIME,
-  });
+    { staleTime: QUERY_STALE_TIME },
+  );
 }

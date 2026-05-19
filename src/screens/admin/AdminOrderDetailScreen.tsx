@@ -30,7 +30,7 @@ import {
   Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useQuery } from '@tanstack/react-query';
+import { useSupabaseSingle } from '../../api/useSupabaseQuery';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { Divider } from '../../components/Divider';
@@ -52,10 +52,10 @@ const S = Theme.typography.sizes.small + 2;
 const CANCELLABLE = new Set(['Pending', 'Confirmed', 'Preparing', 'Ready', 'Packed']);
 
 function useAdminOrderDetail(orderId: number) {
-  return useQuery({
-    queryKey: ['admin_order_detail', orderId],
-    queryFn: async () => {
-      const { data, error } = await supabase
+  return useSupabaseSingle(
+    ['admin_order_detail', orderId],
+    () =>
+      supabase
         .from('orders')
         .select(`
           *,
@@ -68,12 +68,9 @@ function useAdminOrderDetail(orderId: number) {
           profiles!orders_user_id_fkey(full_name, phone_number)
         `)
         .eq('id', orderId)
-        .maybeSingle();
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!orderId,
-  });
+        .maybeSingle(),
+    { enabled: !!orderId },
+  );
 }
 
 export function AdminOrderDetailScreen({

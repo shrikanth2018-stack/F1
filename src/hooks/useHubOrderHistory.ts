@@ -10,8 +10,8 @@
  * Used only by HubDashboardScreen's History tab.
  */
 
-import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../api/supabaseClient';
+import { useSupabaseQuery } from '../api/useSupabaseQuery';
 import { useAuth } from './useAuth';
 
 const HISTORY_LIMIT = 100;
@@ -20,12 +20,10 @@ export function useHubOrderHistory() {
   const { session } = useAuth();
   const assignedHubId = session?.assignedHubId ?? null;
 
-  return useQuery({
-    queryKey: ['hub_order_history', assignedHubId],
-    queryFn: async () => {
-      if (assignedHubId == null) return [];
-
-      const { data, error } = await supabase
+  return useSupabaseQuery(
+    ['hub_order_history', assignedHubId],
+    () =>
+      supabase
         .from('orders')
         .select(`
           *,
@@ -35,18 +33,15 @@ export function useHubOrderHistory() {
         `)
         .order('dispatch_date', { ascending: false })
         .order('created_at', { ascending: false })
-        .limit(HISTORY_LIMIT);
-
-      if (error) throw error;
-
-      // Filter to the operator's hub via the joined address. We can't .eq
-      // through the embedded relation, so we filter client-side. RLS still
-      // enforces the visibility contract — this is just for narrowing the
-      // already-scoped result set down to the operator's exact hub.
+        .limit(HISTORY_LIMIT),
+    {
+      enabled: assignedHubId != null,
+      staleTime: 30_000,
+      // Narrow to the operator's exact hub via the joined address — can't
+      // .eq through an embedded relation. RLS already enforces visibility.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return (data ?? []).filter((o: any) => (o.customer_addresses as any)?.hub_id === assignedHubId);
+      transform: (rows: any[]) =>
+        rows.filter((o) => (o.customer_addresses as any)?.hub_id === assignedHubId),
     },
-    enabled: assignedHubId != null,
-    staleTime: 30_000,
-  });
+  );
 }

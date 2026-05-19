@@ -13,63 +13,63 @@
  * 4. Client polls for updated balance
  */
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../api/supabaseClient';
+import { useSupabaseQuery } from '../api/useSupabaseQuery';
 import { invokeFunction } from '../api/invokeFunction';
 import { useAuth } from './useAuth';
 import { QUERY_KEYS, QUERY_STALE_TIME } from '../utils/constants';
 import { newIdempotencyKey } from '../utils/idempotency';
 import type { WalletTransaction } from '../types';
 
+interface ProfileWalletRow {
+  wallet_balance?: number | null;
+  loyalty_points?: number | null;
+  full_name?: string | null;
+}
+
 /** Fetch wallet balance from profile */
 export function useWalletBalance() {
   const { session } = useAuth();
 
-  return useQuery({
-    queryKey: [...QUERY_KEYS.WALLET, 'balance', session?.user.id],
-    queryFn: async () => {
-      if (!session) return { balance: 0, loyaltyPoints: 0, fullName: '' };
-
-      const { data, error } = await supabase
+  return useSupabaseQuery(
+    [...QUERY_KEYS.WALLET, 'balance', session?.user.id],
+    () =>
+      supabase
         .from('profiles')
         .select('wallet_balance, loyalty_points, full_name')
-        .eq('id', session.user.id)
-        .single();
-
-      if (error) throw error;
-      return {
-        balance: data?.wallet_balance ?? 0,
-        loyaltyPoints: data?.loyalty_points ?? 0,
-        fullName: data?.full_name ?? '',
-      };
+        .eq('id', session?.user.id ?? '')
+        .single(),
+    {
+      enabled: !!session,
+      staleTime: 30 * 1000, // 30s — balance changes often
+      transform: (rows: ProfileWalletRow[]) => {
+        const r = rows[0] ?? {};
+        return {
+          balance: r.wallet_balance ?? 0,
+          loyaltyPoints: r.loyalty_points ?? 0,
+          fullName: r.full_name ?? '',
+        };
+      },
     },
-    enabled: !!session,
-    staleTime: 30 * 1000, // 30s — balance changes often
-  });
+  );
 }
 
 /** Fetch wallet transaction history */
 export function useWalletTransactions() {
   const { session } = useAuth();
 
-  return useQuery({
-    queryKey: [...QUERY_KEYS.WALLET, 'transactions', session?.user.id],
-    queryFn: async () => {
-      if (!session) return [];
-
-      const { data, error } = await supabase
+  return useSupabaseQuery<WalletTransaction>(
+    [...QUERY_KEYS.WALLET, 'transactions', session?.user.id],
+    () =>
+      supabase
         .from('wallet_transactions')
         .select('*')
-        .eq('user_id', session.user.id)
+        .eq('user_id', session?.user.id ?? '')
         .order('created_at', { ascending: false })
-        .limit(50);
-
-      if (error) throw error;
-      return (data ?? []) as WalletTransaction[];
-    },
-    enabled: !!session,
-    staleTime: QUERY_STALE_TIME,
-  });
+        .limit(50),
+    { enabled: !!session, staleTime: QUERY_STALE_TIME },
+  );
 }
 
 /** Initiate wallet top-up (creates Razorpay order via Edge Function).
