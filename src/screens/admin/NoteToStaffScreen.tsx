@@ -29,6 +29,7 @@ import {
   NOTE_TARGETS,
   type NoteTarget,
 } from '../../hooks/useAdminNotes';
+import { useHubOperatorIds } from '../../hooks/useDeliveryHubs';
 import type { AdminNavProp } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
@@ -38,6 +39,7 @@ type NoteState = { text: string; active: boolean };
 
 export function NoteToStaffScreen({ navigation }: { navigation: AdminNavProp }) {
   const { data: notes = [], isLoading } = useAdminNotes();
+  const { data: hubOperators = [] } = useHubOperatorIds();
   const upsert = useUpsertNote();
 
   // Local state keyed by target
@@ -84,17 +86,20 @@ export function NoteToStaffScreen({ navigation }: { navigation: AdminNavProp }) 
         )
       );
 
-      // Fire push to staff for active notes only
+      // Push active notes only. Staff groups (Kitchen / Packing / Delivery /
+      // All Staff) go to role 'staff'; the Hub group goes only to assigned
+      // hub operators — they are role 'customer', so a staff push would
+      // never reach them, and staff shouldn't receive a hub-only note.
       const activeTargets = targets.filter((t) => state[t.key].active);
-      if (activeTargets.length > 0) {
-        // send-push targets a whole role, not staff sub-groups — one push
-        // reaches every staff member. With a single active note, send its
-        // text as-is; with several, label each group so no group's message
-        // is dropped or misattributed (the per-tab banner still shows the
-        // group-specific note on the dashboard).
-        const pushBody = activeTargets.length === 1
-          ? state[activeTargets[0].key].text.trim()
-          : activeTargets
+
+      const staffActive = activeTargets.filter((t) => t.key !== 'hub');
+      if (staffActive.length > 0) {
+        // One push per role, not per sub-group. With a single active note
+        // send its text as-is; with several, label each so no group's
+        // message is dropped (the per-tab banner still shows each note).
+        const pushBody = staffActive.length === 1
+          ? state[staffActive[0].key].text.trim()
+          : staffActive
               .map((t) => `${t.label}: ${state[t.key].text.trim()}`)
               .join('\n');
         sendPush({
@@ -104,6 +109,20 @@ export function NoteToStaffScreen({ navigation }: { navigation: AdminNavProp }) 
           data: { screen: 'StaffDashboard' },
           trigger_source: 'admin_push',
         });
+      }
+
+      // Hub note → assigned hub operators, addressed by user_id.
+      if (activeTargets.some((t) => t.key === 'hub')) {
+        const hubIds = hubOperators.map((o) => o.id);
+        if (hubIds.length > 0) {
+          sendPush({
+            user_ids: hubIds,
+            title: 'Note from Admin',
+            body: state.hub.text.trim(),
+            data: { screen: 'HubDashboard' },
+            trigger_source: 'admin_push',
+          });
+        }
       }
 
       Alert.alert('Done', 'Notes updated for staff dashboard.');
