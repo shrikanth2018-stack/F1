@@ -36,6 +36,7 @@ import { useAuth } from './useAuth';
 import { useFeatureFlag } from './useFeatureFlag';
 import { useBranchStore } from '../store/branchStore';
 import { useAddresses } from './useAddresses';
+import { useBranches } from './useBranches';
 
 export interface BranchFilter {
   /** Resolved branch ID to filter by. null when super-admin views all. */
@@ -80,13 +81,23 @@ export function useBranchFilter(): BranchFilter {
       ?? null
     : null;
 
+  // Single-branch fallback: when exactly one branch exists, every row
+  // belongs to it — so resolve to that branch automatically instead of
+  // forcing a super-admin to "pick" from a list of one. The multi-branch
+  // guard (requireWriteBranch throws on null) returns the instant a 2nd
+  // branch is created.
+  const { data: branches } = useBranches();
+  const soleBranchId = branches?.length === 1 ? branches[0].id : null;
+
   // JWT branch overrides everything; super-admin uses store selection;
-  // customer falls through to default-address branch.
+  // customer falls through to default-address branch; finally, if there
+  // is only one branch, that branch.
   const branchId = jwtBranchId
     ?? (isSuperAdmin ? selectedBranchId : null)
-    ?? customerBranchId;
-  // Writes use the same resolved branch — null when it cannot be determined.
-  // Callers must guard via requireWriteBranch().
+    ?? customerBranchId
+    ?? soleBranchId;
+  // Writes use the same resolved branch — null only when 2+ branches exist
+  // and none is selected. Callers must guard via requireWriteBranch().
   const branchIdForWrite = branchId;
 
   return { branchId, isActive, isSuperAdmin, branchIdForWrite };

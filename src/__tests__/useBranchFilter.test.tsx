@@ -22,6 +22,7 @@ const mockUseAuth = jest.fn();
 const mockUseFeatureFlag = jest.fn();
 const mockUseAddresses = jest.fn();
 const mockUseBranchStore = jest.fn();
+const mockUseBranches = jest.fn();
 
 jest.mock('@/hooks/useAuth', () => ({
   useAuth: () => mockUseAuth(),
@@ -35,6 +36,9 @@ jest.mock('@/hooks/useAddresses', () => ({
 jest.mock('@/store/branchStore', () => ({
   useBranchStore: (selector: any) => mockUseBranchStore(selector),
 }));
+jest.mock('@/hooks/useBranches', () => ({
+  useBranches: () => mockUseBranches(),
+}));
 
 import { useBranchFilter } from '@/hooks/useBranchFilter';
 
@@ -43,8 +47,12 @@ beforeEach(() => {
   mockUseFeatureFlag.mockReset();
   mockUseAddresses.mockReset();
   mockUseBranchStore.mockReset();
+  mockUseBranches.mockReset();
   mockUseFeatureFlag.mockReturnValue(true);
   mockUseBranchStore.mockReturnValue(null); // no super-admin selection
+  // Default: multiple branches exist, so the single-branch fallback is off
+  // and the existing multi-branch resolution is exercised.
+  mockUseBranches.mockReturnValue({ data: [{ id: 1 }, { id: 2 }] });
 });
 
 describe('useBranchFilter — customer path (MF-09)', () => {
@@ -156,6 +164,39 @@ describe('useBranchFilter — customer path (MF-09)', () => {
 
     expect(result.current.isSuperAdmin).toBe(true);
     expect(result.current.branchId).toBe(1); // JWT branch wins for filter; super-admin powers separate
+  });
+
+  it('single-branch fallback: resolves writes to the sole branch with no selection', () => {
+    // Super-admin who never opened the branch selector. With exactly one
+    // branch, writes resolve to it automatically — no "pick a branch" gate.
+    mockUseAuth.mockReturnValue({
+      session: { role: 'admin', branchId: null, isSuperAdmin: true, user: { id: 'super-1' } },
+    });
+    mockUseBranchStore.mockReturnValue(null);
+    mockUseAddresses.mockReturnValue({ data: [] });
+    mockUseBranches.mockReturnValue({ data: [{ id: 1 }] });
+
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(() => useBranchFilter(), { wrapper: Wrapper });
+
+    expect(result.current.branchId).toBe(1);
+    expect(result.current.branchIdForWrite).toBe(1);
+  });
+
+  it('multi-branch guard: super-admin with no selection still resolves null', () => {
+    // With 2+ branches the fallback is off — requireWriteBranch must fail
+    // loud so the admin picks the intended branch.
+    mockUseAuth.mockReturnValue({
+      session: { role: 'admin', branchId: null, isSuperAdmin: true, user: { id: 'super-1' } },
+    });
+    mockUseBranchStore.mockReturnValue(null);
+    mockUseAddresses.mockReturnValue({ data: [] });
+    mockUseBranches.mockReturnValue({ data: [{ id: 1 }, { id: 2 }] });
+
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(() => useBranchFilter(), { wrapper: Wrapper });
+
+    expect(result.current.branchIdForWrite).toBeNull();
   });
 
   it('FT-05: admin without isSuperAdmin claim is NOT super-admin even with null branch', () => {
