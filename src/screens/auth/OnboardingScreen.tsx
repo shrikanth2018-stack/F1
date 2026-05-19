@@ -34,6 +34,7 @@ import { useFeatureFlag } from '../../hooks/useFeatureFlag';
 import { useAuth } from '../../hooks/useAuth';
 import { isNonEmpty } from '../../utils/validators';
 import { checkZone, ZoneCheckResult } from '../../utils/serviceability';
+import { trackSignup } from '../../utils/analytics';
 
 const LABELS = ['Home', 'Office', 'Other'] as const;
 type LabelType = typeof LABELS[number];
@@ -206,6 +207,7 @@ export function OnboardingScreen({ phone, onComplete, onBack }: OnboardingScreen
         is_serviceable: zoneResult?.isServiceable ?? false,
       });
 
+      trackSignup('phone_otp');
       onComplete();
     } catch (err) {
       Alert.alert('Could not complete sign-up', getErrorMessage(err));

@@ -44,7 +44,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { formatPriceShort, formatDateLong, getErrorMessage } from '../../utils/formatters';
 import { supabase } from '../../api/supabaseClient';
 import { RAZORPAY_KEY_ID } from '../../utils/env';
-import { trackOrderPlaced, trackOrderFailed } from '../../utils/analytics';
+import { trackOrderPlaced, trackOrderFailed, trackSubscribed } from '../../utils/analytics';
 import { infoDialog, confirmDialog } from '../../utils/confirmDialog';
 import { newIdempotencyKey } from '../../utils/idempotency';
 
@@ -333,6 +333,9 @@ export function CheckoutScreen({ navigation, route }: any) {
       }
 
       trackOrderPlaced(order.id ?? '', order.total_amount ?? grandTotal, paymentMethod, cartType);
+      if (isSubscriptionOnly && subPlan) {
+        trackSubscribed(subPlan.plan_id, subPlan.plan_name, paymentMethod);
+      }
       if (isSubscriptionOnly) {
         if (cartType === 'food') clearFoodPlans(); else clearEssPlans();
       } else {

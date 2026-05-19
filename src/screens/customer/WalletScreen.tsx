@@ -31,6 +31,7 @@ import {
 import { useStoreConfig } from '../../hooks/useStoreConfig';
 import { useAuth } from '../../hooks/useAuth';
 import { invokeFunction } from '../../api/invokeFunction';
+import { trackWalletTopUp } from '../../utils/analytics';
 import { RAZORPAY_KEY_ID } from '../../utils/env';
 import { formatPriceShort } from '../../utils/formatters';
 import { infoDialog } from '../../utils/confirmDialog';
@@ -103,6 +104,7 @@ export function WalletScreen({ navigation }: { navigation: CustomerNavProp }) {
             },
           );
           if (confirmData?.status === 'credited') {
+            trackWalletTopUp(confirmData.amount ?? amount);
             Alert.alert('Wallet Topped Up!', `${formatPriceShort(confirmData.amount ?? 0)} has been added to your wallet.`);
           }
         } catch {

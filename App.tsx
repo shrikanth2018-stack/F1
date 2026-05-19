@@ -30,8 +30,10 @@ import { useUIStore } from './src/store/uiStore';
 import { useOTAUpdates } from './src/hooks/useOTAUpdates';
 import { QUERY_STALE_TIME } from './src/utils/constants';
 import { initSentry } from './src/utils/sentry';
+import { initAnalytics } from './src/utils/analytics';
 
 initSentry();
+initAnalytics();
 
 // Suppress known harmless warnings in dev
 LogBox.ignoreLogs([

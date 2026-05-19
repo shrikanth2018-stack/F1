@@ -17,6 +17,7 @@ import { useCartStore } from '../store/cartStore';
 import { useEssentialsCartStore } from '../store/essentialsCartStore';
 import { useStaffQueueStore } from '../store/staffQueueStore';
 import { setSentryUser, clearSentryUser } from '../utils/sentry';
+import { identifyUser, resetAnalyticsUser, trackLogin } from '../utils/analytics';
 import type { UserRole, AuthSession } from '../types';
 import type { Session } from '@supabase/supabase-js';
 
@@ -138,8 +139,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (session?.user.id) {
       setSentryUser(session.user.id, session.user.phone);
+      identifyUser(session.user.id, { phone: session.user.phone });
     } else {
       clearSentryUser();
+      resetAnalyticsUser();
     }
   }, [session?.user.id, session?.user.phone]);
 
@@ -154,6 +157,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       token,
       type: 'sms',
     });
+    if (!error) trackLogin();
     return { error: error ? new Error(error.message) : null };
   }, []);
 

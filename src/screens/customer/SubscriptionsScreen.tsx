@@ -34,6 +34,7 @@ import {
 import { useDeliveryCycles } from '../../hooks/useDeliveryCycles';
 import { formatDateShort } from '../../utils/formatters';
 import { istDateStr, addDaysToISODate } from '../../utils/istDate';
+import { trackSkipDay, trackSubscriptionPaused } from '../../utils/analytics';
 import type { UserSubscription, CancelledSubscriptionDay } from '../../types';
 
 type SubTab = 'food' | 'essentials';
@@ -172,6 +173,7 @@ export function SubscriptionsScreen({ navigation }: any) {
         cycle_id: cycleId,
         reason: 'Skipped by customer',
       });
+      trackSkipDay(sub.id);
     }
     refetchCancelled();
   }, [cycles, skipDay, undoSkip, refetchCancelled]);
@@ -200,7 +202,12 @@ export function SubscriptionsScreen({ navigation }: any) {
         {item.is_active && (
           <Switch
             value={isRunning}
-            onValueChange={() => { togglePause({ id: item.id, pause: isRunning }); }}
+            onValueChange={() => {
+              const pausing = isRunning;
+              togglePause({ id: item.id, pause: pausing })
+                .then(() => { if (pausing) trackSubscriptionPaused(item.id); })
+                .catch(() => {});
+            }}
             trackColor={{
               false: Theme.colors.background.input,
               true: Theme.colors.text.mint,
