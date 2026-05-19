@@ -33,24 +33,8 @@ import {
 } from '../../hooks/useNotificationTemplates';
 import type { AdminNavProp } from '../../navigation/types';
 
-// Known variables per event_key — shown as a helper hint below the body field.
-const EVENT_VARS: Record<string, string[]> = {
-  'order.confirmed':                 ['order_id'],
-  'order.razorpay_confirmed':        ['order_id'],
-  'order.ready':                     ['order_id'],
-  'order.dispatched':                ['order_id'],
-  'order.received_at_hub':           ['order_id'],
-  'order.delivered':                 ['order_id'],
-  'order.cancelled':                 ['order_id'],
-  'order.payment_failed':            ['order_id'],
-  'wallet.topped_up':                ['amount'],
-  'wallet.low_balance':              ['shortfall', 'plan_name'],
-  'subscription.activated':          ['plan_name', 'start_date'],
-  'subscription.starting_tomorrow':  ['plan_name'],
-  'subscription.ending_1d':          ['plan_name'],
-  'subscription.ending_2d':          ['plan_name'],
-  'winback.dormant':                 [],
-};
+// The variable list per event now lives on the notification_templates row
+// (column `variables`, audit D21) — no hardcoded client map.
 
 // Sample values used by the Preview button so admins can see what the push
 // will actually look like before saving.
@@ -101,7 +85,7 @@ function TemplateCard({ template }: { template: NotificationTemplate }) {
     }
   };
 
-  const vars = EVENT_VARS[template.event_key] ?? [];
+  const vars = template.variables ?? [];
 
   return (
     <View style={styles.card}>

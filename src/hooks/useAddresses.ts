@@ -75,25 +75,12 @@ export function useUpdateAddress() {
 }
 
 export function useSetDefaultAddress() {
-  const { session } = useAuth();
-
   return useSupabaseMutation<number>(
-    async (addressId) => {
-      const userId = session?.user.id;
-      if (!userId) throw new Error('Not authenticated');
-      // Clear all existing defaults first
-      await supabase
-        .from('customer_addresses')
-        .update({ is_default: false })
-        .eq('user_id', userId);
-      // Set the new default
-      return supabase
-        .from('customer_addresses')
-        .update({ is_default: true })
-        .eq('id', addressId)
-        .eq('user_id', userId);
-    },
-    [QUERY_KEYS.ADDRESSES as unknown as string[]]
+    // Atomic clear-then-set in one transaction (audit D35) — the prior
+    // two-UPDATE client flow could leave the user with zero defaults.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (addressId) => (supabase as any).rpc('set_default_address', { p_address_id: addressId }),
+    [QUERY_KEYS.ADDRESSES as unknown as string[]],
   );
 }
 

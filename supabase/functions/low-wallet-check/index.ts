@@ -44,13 +44,19 @@ Deno.serve(async (req: Request) => {
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Admin-configurable threshold; fallback ₹200.
+    // Admin-configurable threshold. low_wallet_threshold is NOT NULL with a
+    // DB default (audit D34) — no client-side fallback. Skip the run if the
+    // singleton store_config row is somehow unreadable.
     const { data: config } = await supabase
       .from('store_config')
       .select('low_wallet_threshold')
       .limit(1)
       .maybeSingle();
-    const threshold: number = (config as any)?.low_wallet_threshold ?? 200;
+    const threshold: number | undefined = (config as any)?.low_wallet_threshold;
+    if (threshold == null) {
+      console.error('[low-wallet-check] store_config unavailable — skipping run');
+      return json({ checked: 0, notified: 0, skipped: 'no_config' });
+    }
 
     // Active, non-paused subs with their plan price + user wallet balance.
     const { data: subs, error: subsErr } = await supabase

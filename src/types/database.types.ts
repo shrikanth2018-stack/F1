@@ -957,6 +957,7 @@ export type Database = {
           title_template: string
           trigger_source: string | null
           updated_at: string
+          variables: string[]
         }
         Insert: {
           body_template: string
@@ -966,6 +967,7 @@ export type Database = {
           title_template: string
           trigger_source?: string | null
           updated_at?: string
+          variables?: string[]
         }
         Update: {
           body_template?: string
@@ -975,6 +977,7 @@ export type Database = {
           title_template?: string
           trigger_source?: string | null
           updated_at?: string
+          variables?: string[]
         }
         Relationships: []
       }
