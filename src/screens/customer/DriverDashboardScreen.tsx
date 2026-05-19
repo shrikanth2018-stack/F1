@@ -19,6 +19,7 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
+import { getErrorMessage } from '../../utils/formatters';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { Theme } from '../../theme';
@@ -114,8 +115,8 @@ export function DriverDashboardScreen({ navigation }: CustomerScreenProps<'Drive
   ) => {
     try {
       await updateStatus({ orderId, status: next, userId: customerUserId ?? undefined });
-    } catch (e: any) {
-      Alert.alert('Could not update status', e?.message ?? 'Please try again.');
+    } catch (e) {
+      Alert.alert('Could not update status', getErrorMessage(e));
     }
   };
 

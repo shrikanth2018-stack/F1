@@ -21,6 +21,7 @@ import {
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
+import { getErrorMessage } from '../../utils/formatters';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
 import { Theme } from '../../theme';
@@ -299,8 +300,8 @@ export function ImportItemsScreen({ navigation, route }: AdminScreenProps<'Impor
         `${records.length} item${records.length !== 1 ? 's' : ''} imported.`,
         [{ text: 'OK', onPress: () => navigation.goBack() }]
       );
-    } catch (err: any) {
-      Alert.alert('Import failed', err?.message ?? 'Unknown error');
+    } catch (err) {
+      Alert.alert('Import failed', getErrorMessage(err));
     } finally {
       setImporting(false);
     }

@@ -24,7 +24,7 @@ import { EmptyState } from '../../components/EmptyState';
 import { ErrorRetry } from '../../components/ErrorRetry';
 import { useAdminSubscriptions, useAdminCancelSubscription } from '../../hooks/useSubscriptions';
 import { useStoreConfig } from '../../hooks/useStoreConfig';
-import { formatDateShort } from '../../utils/formatters';
+import { formatDateShort, getErrorMessage } from '../../utils/formatters';
 import {
   subscriptionDaysRemaining,
   proratedSubscriptionRefund,
@@ -96,8 +96,8 @@ export function AdminSubscriptionsScreen({ navigation }: any) {
           ? `${target.customer}'s subscription cancelled.\n₹${refundAmount} credited to wallet.`
           : `${target.customer}'s subscription cancelled.`
       );
-    } catch (e: any) {
-      Alert.alert('Error', e?.message ?? 'Failed to cancel subscription');
+    } catch (e) {
+      Alert.alert('Error', getErrorMessage(e));
     } finally {
       setIsSaving(false);
     }

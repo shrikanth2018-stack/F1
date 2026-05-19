@@ -11,6 +11,7 @@ import {
   Polygon,
   Marker,
 } from '@react-google-maps/api';
+import { getErrorMessage } from '../utils/formatters';
 type Region = {
   latitude: number;
   longitude: number;
@@ -84,8 +85,8 @@ export function ZoneMap({ vertices, onChange, initialRegion }: ZoneMapProps) {
       if (status === 'ZERO_RESULTS') setSearchError('No location found');
       else if (status === 'REQUEST_DENIED') setSearchError(`REQUEST_DENIED — enable Geocoding API on this key. ${json?.error_message ?? ''}`);
       else setSearchError(`${status}${json?.error_message ? ': ' + json.error_message : ''}`);
-    } catch (err: any) {
-      setSearchError(err?.message ?? 'Search failed');
+    } catch (err) {
+      setSearchError(getErrorMessage(err));
     } finally {
       setSearching(false);
     }

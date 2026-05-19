@@ -9,6 +9,7 @@ import React, { useRef, useState } from 'react';
 import { View, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator, Alert, Keyboard } from 'react-native';
 import MapView, { Marker, MapPressEvent, Region } from 'react-native-maps';
 import { Theme } from '../theme';
+import { getErrorMessage } from '../utils/formatters';
 import { ThemedText } from './ThemedText';
 
 export interface PinMapProps {
@@ -68,8 +69,8 @@ export function PinMap({ latitude, longitude, onLocationChange }: PinMapProps) {
       } else {
         Alert.alert(`Search failed — ${status}`, googleMsg || 'Please try a different query.');
       }
-    } catch (err: any) {
-      Alert.alert('Search failed', err?.message ?? 'Could not reach location service.');
+    } catch (err) {
+      Alert.alert('Search failed', getErrorMessage(err));
     } finally {
       setSearching(false);
     }

@@ -17,6 +17,7 @@ import {
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
+import { getErrorMessage } from '../../../utils/formatters';
 import { Theme } from '../../../theme';
 import { ThemedText } from '../../../components/ThemedText';
 import { useAddDeliveryCycle } from '../../../hooks/useMenuManagement';
@@ -63,8 +64,8 @@ export function AddCycleModal({
         essentials_label: isEss ? (essLabel.trim() || null) : null,
       });
       onClose();
-    } catch (e: any) {
-      Alert.alert('Failed', e?.message ?? 'Could not create cycle');
+    } catch (e) {
+      Alert.alert('Failed', getErrorMessage(e));
     }
   };
 

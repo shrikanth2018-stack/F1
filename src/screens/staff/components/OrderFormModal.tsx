@@ -21,6 +21,7 @@ import {
   Platform,
   StyleSheet,
 } from 'react-native';
+import { getErrorMessage } from '../../../utils/formatters';
 import { Theme } from '../../../theme';
 import { ThemedText } from '../../../components/ThemedText';
 import { useAuth } from '../../../hooks/useAuth';
@@ -130,8 +131,8 @@ export function OrderFormModal({
       if (insertErr) throw insertErr;
       Alert.alert('Submitted', `${type} order sent to admin for approval.`);
       onClose();
-    } catch (e: any) {
-      Alert.alert('Submit failed', e?.message ?? 'Could not submit the order. Try again.');
+    } catch (e) {
+      Alert.alert('Submit failed', getErrorMessage(e));
     } finally {
       setSubmitting(false);
     }

@@ -25,7 +25,7 @@ import { ErrorRetry } from '../../components/ErrorRetry';
 import { useOrderGroup, useCancelOrder, type OrderWithItems } from '../../hooks/useOrders';
 import { useDeliveryCycles } from '../../hooks/useDeliveryCycles';
 import { useStoreConfig } from '../../hooks/useStoreConfig';
-import { formatPriceShort, formatDateLong } from '../../utils/formatters';
+import { formatPriceShort, formatDateLong, getErrorMessage } from '../../utils/formatters';
 import { formatTime12h } from '../../utils/timeEngine';
 import { istDateStr, istDateWithOffset } from '../../utils/istDate';
 
@@ -130,8 +130,8 @@ export function OrderDetailScreen({ route, navigation }: any) {
                 msg = `Your order has been cancelled. ${formatPriceShort(serverRzp)} Razorpay refund will be processed within 5–7 business days.`;
               }
               Alert.alert('Order Cancelled', msg);
-            } catch (err: any) {
-              Alert.alert('Cannot Cancel', err?.message ?? 'Something went wrong.');
+            } catch (err) {
+              Alert.alert('Cannot Cancel', getErrorMessage(err));
             } finally {
               setIsCancelling(false);
             }

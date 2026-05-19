@@ -18,6 +18,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
+import { getErrorMessage } from '../../utils/formatters';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
@@ -106,8 +107,8 @@ export function NoteToStaffScreen({ navigation }: { navigation: AdminNavProp }) 
       }
 
       Alert.alert('Done', 'Notes updated for staff dashboard.');
-    } catch (e: any) {
-      Alert.alert('Error', e?.message ?? 'Could not save notes.');
+    } catch (e) {
+      Alert.alert('Error', getErrorMessage(e));
     }
   };
 

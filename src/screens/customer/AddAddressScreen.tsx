@@ -20,6 +20,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
 } from 'react-native';
+import { getErrorMessage } from '../../utils/formatters';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import { Theme } from '../../theme';
@@ -224,8 +225,8 @@ export function AddAddressScreen({ navigation, route, onComplete }: Props) {
       } else {
         navigation?.goBack();
       }
-    } catch (err: any) {
-      Alert.alert('Error', err.message || 'Failed to save address');
+    } catch (err) {
+      Alert.alert('Error', getErrorMessage(err));
     }
   };
 

@@ -18,6 +18,7 @@ import {
   Alert,
   StyleSheet,
 } from 'react-native';
+import { getErrorMessage } from '../../utils/formatters';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
@@ -128,8 +129,8 @@ export function BranchesManageScreen({ navigation }: AdminScreenProps<'BranchesM
         phone: form.phone || null,
       });
       closeModals();
-    } catch (err: any) {
-      Alert.alert('Could not save', err.message || 'Failed to create branch.');
+    } catch (err) {
+      Alert.alert('Could not save', getErrorMessage(err));
     } finally {
       setSaving(false);
     }
@@ -187,8 +188,8 @@ export function BranchesManageScreen({ navigation }: AdminScreenProps<'BranchesM
       }
       await Promise.all(updates);
       closeModals();
-    } catch (err: any) {
-      Alert.alert('Could not save', err.message || 'Failed to update branch.');
+    } catch (err) {
+      Alert.alert('Could not save', getErrorMessage(err));
     } finally {
       setSaving(false);
     }

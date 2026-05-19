@@ -25,6 +25,7 @@ import {
   Alert,
   StyleSheet,
 } from 'react-native';
+import { getErrorMessage } from '../../utils/formatters';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import { Theme } from '../../theme';
@@ -245,8 +246,8 @@ export function HubDetailScreen({ route, navigation }: AdminScreenProps<'HubDeta
       }
 
       navigation.goBack();
-    } catch (err: any) {
-      Alert.alert('Error', err.message || 'Failed to save hub.');
+    } catch (err) {
+      Alert.alert('Error', getErrorMessage(err));
     }
   };
 

@@ -39,7 +39,7 @@ import { DispatchBadge } from '../../components/DispatchBadge';
 import { supabase } from '../../api/supabaseClient';
 import { useAdminCancelOrder } from '../../hooks/useAdminOrders';
 import { useUpdateOrderStatus } from '../../hooks/useStaffOrders';
-import { formatPriceShort, formatDateLong } from '../../utils/formatters';
+import { formatPriceShort, formatDateLong, getErrorMessage } from '../../utils/formatters';
 import { nextDeliveryStatus } from '../../utils/deliveryStatus';
 import { orderStatusVariant } from '../../utils/orderStatus';
 import { isUnsuccessfulDelivery } from '../../utils/orderFilters';
@@ -127,8 +127,8 @@ export function AdminOrderDetailScreen({
                 userId: o.user_id ?? undefined,
               });
               refetch();
-            } catch (e: any) {
-              Alert.alert('Error', e?.message ?? 'Failed to update status');
+            } catch (e) {
+              Alert.alert('Error', getErrorMessage(e));
             }
           },
         },
@@ -162,8 +162,8 @@ export function AdminOrderDetailScreen({
               : `Order #${o.id} cancelled.`,
         );
         refetch();
-      } catch (e: any) {
-        Alert.alert('Error', e?.message ?? 'Failed to cancel order');
+      } catch (e) {
+        Alert.alert('Error', getErrorMessage(e));
       }
     };
 

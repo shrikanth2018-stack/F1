@@ -22,6 +22,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { getErrorMessage } from '../../utils/formatters';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import { Theme } from '../../theme';
@@ -206,8 +207,8 @@ export function OnboardingScreen({ phone, onComplete, onBack }: OnboardingScreen
       });
 
       onComplete();
-    } catch (err: any) {
-      Alert.alert('Could not complete sign-up', err?.message ?? 'Please try again.');
+    } catch (err) {
+      Alert.alert('Could not complete sign-up', getErrorMessage(err));
     } finally {
       setSubmitting(false);
     }

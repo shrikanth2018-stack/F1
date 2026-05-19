@@ -21,6 +21,7 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
+import { getErrorMessage } from '../../utils/formatters';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
@@ -69,8 +70,8 @@ function TemplateCard({ template }: { template: NotificationTemplate }) {
         body_template: body,
         is_enabled: enabled,
       });
-    } catch (e: any) {
-      Alert.alert('Save Failed', e?.message ?? 'Could not update template');
+    } catch (e) {
+      Alert.alert('Save Failed', getErrorMessage(e));
     }
   };
 
@@ -79,9 +80,9 @@ function TemplateCard({ template }: { template: NotificationTemplate }) {
     setEnabled(next);
     try {
       await update.mutateAsync({ event_key: template.event_key, is_enabled: next });
-    } catch (e: any) {
+    } catch (e) {
       setEnabled(!next);
-      Alert.alert('Save Failed', e?.message ?? 'Could not update toggle');
+      Alert.alert('Save Failed', getErrorMessage(e));
     }
   };
 

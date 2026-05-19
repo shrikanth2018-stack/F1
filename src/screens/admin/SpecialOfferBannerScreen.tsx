@@ -21,6 +21,7 @@ import {
   ActivityIndicator,
   Switch,
 } from 'react-native';
+import { getErrorMessage } from '../../utils/formatters';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { decode } from 'base64-arraybuffer';
@@ -214,8 +215,8 @@ export function SpecialOfferBannerScreen({ navigation }: { navigation: AdminNavP
       setPreviewUri(null);
       setPreviewBase64(null);
       Alert.alert('Live!', 'Banner updated and now live on the customer home screen.');
-    } catch (e: any) {
-      Alert.alert('Upload failed', e?.message ?? 'Unknown error');
+    } catch (e) {
+      Alert.alert('Upload failed', getErrorMessage(e));
     } finally {
       setUploading(false);
     }
@@ -246,8 +247,8 @@ export function SpecialOfferBannerScreen({ navigation }: { navigation: AdminNavP
       Alert.alert('Live!', 'Custom banner is now live on the customer home screen.', [
         { text: 'OK', onPress: () => navigation.goBack() },
       ]);
-    } catch (e: any) {
-      Alert.alert('Error', e?.message ?? 'Could not save banner.');
+    } catch (e) {
+      Alert.alert('Error', getErrorMessage(e));
     }
   };
 

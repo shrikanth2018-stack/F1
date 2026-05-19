@@ -39,7 +39,7 @@ import { useStaffOrders, useUpdateOrderStatus } from '../../hooks/useStaffOrders
 import { useHubOrderHistory } from '../../hooks/useHubOrderHistory';
 import { useRealtimeOrders } from '../../hooks/useRealtimeOrders';
 import { useStaffNoteForTab } from '../../hooks/useAdminNotes';
-import { formatDateShort, formatPriceShort } from '../../utils/formatters';
+import { formatDateShort, formatPriceShort, getErrorMessage } from '../../utils/formatters';
 import type { CustomerScreenProps } from '../../navigation/types';
 import type { OrderStatus } from '../../types';
 
@@ -69,8 +69,8 @@ export function HubDashboardScreen({ navigation }: CustomerScreenProps<'HubDashb
   ) => {
     try {
       await updateStatus({ orderId, status: next, userId: customerUserId ?? undefined });
-    } catch (e: any) {
-      Alert.alert('Could not update status', e?.message ?? 'Please try again.');
+    } catch (e) {
+      Alert.alert('Could not update status', getErrorMessage(e));
     }
   };
 

@@ -17,6 +17,7 @@ import {
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
+import { getErrorMessage } from '../../../utils/formatters';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import { ZoneMap } from '../../../components/ZoneMap';
@@ -158,8 +159,8 @@ export function ZoneEditorModal({ visible, editingZone, onClose }: ZoneEditorMod
         });
       }
       onClose();
-    } catch (err: any) {
-      Alert.alert('Error', err.message || 'Failed to save zone.');
+    } catch (err) {
+      Alert.alert('Error', getErrorMessage(err));
     }
   };
 

@@ -8,6 +8,7 @@ import React, { useRef, useState } from 'react';
 import { View, TouchableOpacity, StyleSheet, TextInput, ActivityIndicator, Alert } from 'react-native';
 import MapView, { Polygon, Marker, MapPressEvent, Region } from 'react-native-maps';
 import { Theme } from '../theme';
+import { getErrorMessage } from '../utils/formatters';
 import { ThemedText } from './ThemedText';
 
 export interface ZoneMapProps {
@@ -65,8 +66,8 @@ export function ZoneMap({ vertices, onChange, initialRegion }: ZoneMapProps) {
       } else {
         Alert.alert(`Search failed — ${status}`, googleMsg || 'Unexpected response from Google.');
       }
-    } catch (err: any) {
-      Alert.alert('Search failed', err?.message ?? 'Could not reach location service. Check connection.');
+    } catch (err) {
+      Alert.alert('Search failed', getErrorMessage(err));
     } finally {
       setSearching(false);
     }

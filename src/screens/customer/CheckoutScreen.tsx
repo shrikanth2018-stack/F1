@@ -41,7 +41,7 @@ import { useWalletBalance } from '../../hooks/useWallet';
 import { useSmartCart } from '../../hooks/useSmartCart';
 import { useOrderQuote, type QuoteItemInput } from '../../hooks/useOrderQuote';
 import { useAuth } from '../../hooks/useAuth';
-import { formatPriceShort, formatDateLong } from '../../utils/formatters';
+import { formatPriceShort, formatDateLong, getErrorMessage } from '../../utils/formatters';
 import { supabase } from '../../api/supabaseClient';
 import { RAZORPAY_KEY_ID } from '../../utils/env';
 import { trackOrderPlaced, trackOrderFailed } from '../../utils/analytics';
@@ -286,12 +286,12 @@ export function CheckoutScreen({ navigation, route }: any) {
             setTimeout(() => RazorpayCheckout.open(options).then(resolve).catch(reject), 500);
           });
           razorpayOpenRef.current = false;
-        } catch (e: any) {
+        } catch (e) {
           razorpayOpenRef.current = false;
           isPlacingRef.current = false;
           setIsPlacing(false);
           setGlobalLoading(false);
-          if (e?.code === 'PAYMENT_CANCELLED') {
+          if ((e as { code?: string })?.code === 'PAYMENT_CANCELLED') {
             Alert.alert('Payment Cancelled', 'Your order was not placed. Please try again.');
           } else {
             Alert.alert(
@@ -363,9 +363,10 @@ export function CheckoutScreen({ navigation, route }: any) {
       } else {
         navigation.popToTop();
       }
-    } catch (err: any) {
-      trackOrderFailed(err.message || 'unknown', cartType);
-      Alert.alert('Order Failed', err.message || 'Please try again');
+    } catch (err) {
+      const msg = getErrorMessage(err);
+      trackOrderFailed(msg, cartType);
+      Alert.alert('Order Failed', msg);
     } finally {
       isPlacingRef.current = false;
       setIsPlacing(false);
