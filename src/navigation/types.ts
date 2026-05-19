@@ -65,10 +65,8 @@ export type CustomerStackParamList = {
   Addresses: undefined;
   AddAddress: { addressId?: number } | undefined;
   PlanDetail: { planId: number };
-  SubscriptionDetail: { subscriptionId: number };
   Wallet: undefined;
   Referral: undefined;
-  Essentials: undefined;
   Feedback: { orderId: number };
   Plans: { initialTab?: 'food' | 'essentials' } | undefined;
   LoyaltyPoints: undefined;

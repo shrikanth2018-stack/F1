@@ -112,7 +112,7 @@ export function WalletScreen({ navigation }: { navigation: CustomerNavProp }) {
   const handleAdd = () => {
     const amt = parseFloat(customAmount);
     if (!amt || amt <= 0) {
-      Alert.alert('No amount mentioned!');
+      Alert.alert('Enter an amount', 'Please enter a top-up amount.');
       return;
     }
     handleTopup(amt);

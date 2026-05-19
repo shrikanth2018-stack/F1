@@ -71,10 +71,6 @@ type PackingSubTab = 'Food' | 'Essentials';
 type OrderFormType = 'Vegetables' | 'Grocery' | 'Stationery' | null;
 
 const LOGO_URL = supabase.storage.from('assets').getPublicUrl('logo.png').data.publicUrl;
-// Direct URL string (matches Privacy/Terms PDF pattern) so Linking.openURL
-// opens it inline in the browser instead of triggering a download.
-// The Supabase SDK's getPublicUrl was appending params that signaled
-// attachment behavior to Android.
 
 // Text size offsets for this screen
 const BODY2 = Theme.typography.sizes.body + 2;
@@ -177,7 +173,7 @@ function aggregateKitchenItems(
     } else {
       map.set(key, {
         key,
-        item_name: unit ? `${name}${unit ? '' : ''}` : name,
+        item_name: name,
         unit,
         total_quantity: totalNumeric,
         status,

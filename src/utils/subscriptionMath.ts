@@ -2,7 +2,7 @@
  * 1stOne F1 — Subscription math helpers.
  *
  * Pure functions for end-of-life detection and proration. Used by
- * SubscriptionDetailScreen (customer "N meals left") and
+ * SubscriptionsScreen (customer "N meals left") and
  * AdminSubscriptionsScreen (refund preview on cancel).
  *
  * Post BF-33 / F2.1 option (a): the subscription end-of-life is driven

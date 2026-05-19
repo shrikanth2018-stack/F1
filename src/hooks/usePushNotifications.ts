@@ -9,7 +9,6 @@
  * Notification data payload convention (sent from backend/Edge Function):
  *   { screen: 'OrderDetail', params: { orderId: '...' } }
  *   { screen: 'Subscriptions' }
- *   { screen: 'SubscriptionDetail', params: { subscriptionId: '...' } }
  *   { screen: 'Wallet' }
  *
  * Platform: Firebase FCM (Android), APNs (iOS)

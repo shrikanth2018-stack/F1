@@ -52,10 +52,6 @@ interface PlanSection {
   data: SubscriptionPlan[];
 }
 
-/**
- * Build "Dispatched every {morning|afternoon|evening} at H:MM AM/PM" from a
- * cycle.delivery_start string ("HH:MM:SS" or "HH:MM"). Returns null on bad input.
- */
 /** Faded mint gradient hairline between rows. Mirrors HomeScreen's GradientSep. */
 function GradientSep() {
   return (

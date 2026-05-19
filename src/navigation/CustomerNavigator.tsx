@@ -19,10 +19,8 @@ import { OrderDetailScreen } from '../screens/customer/OrderDetailScreen';
 import { AddressesScreen } from '../screens/customer/AddressesScreen';
 import { AddAddressScreen } from '../screens/customer/AddAddressScreen';
 import { PlanDetailScreen } from '../screens/customer/PlanDetailScreen';
-import { SubscriptionDetailScreen } from '../screens/customer/SubscriptionDetailScreen';
 import { WalletScreen } from '../screens/customer/WalletScreen';
 import { ReferralScreen } from '../screens/customer/ReferralScreen';
-import { EssentialsScreen } from '../screens/customer/EssentialsScreen';
 import { FeedbackScreen } from '../screens/customer/FeedbackScreen';
 import { PlansScreen } from '../screens/customer/PlansScreen';
 import { LoyaltyPointsScreen } from '../screens/customer/LoyaltyPointsScreen';
@@ -52,14 +50,12 @@ export function CustomerNavigator() {
       <Stack.Screen name="Addresses" component={AddressesScreen} />
       <Stack.Screen name="AddAddress" component={AddAddressScreen} />
       <Stack.Screen name="PlanDetail" component={PlanDetailScreen} />
-      <Stack.Screen name="SubscriptionDetail" component={SubscriptionDetailScreen} />
       <Stack.Screen
         name="Wallet"
         component={WalletScreen}
         options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
       />
       <Stack.Screen name="Referral" component={ReferralScreen} />
-      <Stack.Screen name="Essentials" component={EssentialsScreen} />
       <Stack.Screen name="Feedback" component={FeedbackScreen} />
       <Stack.Screen
         name="Plans"
