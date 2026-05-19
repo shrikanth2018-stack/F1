@@ -175,7 +175,23 @@ export function AdminOrderDetailScreen({
       }
     };
 
-    if (isRazorpay && rowTotal > 0) {
+    if (isUnsuccessfulDelivery(o)) {
+      // D2: a failed / late delivery. The order was prepared and dispatched,
+      // so NO REFUND is the default — the admin can still refund to wallet
+      // if they judge the failure was on our side.
+      Alert.alert(
+        `Cancel Order #${o.id}?`,
+        'Unsuccessful delivery — cancelling with no refund (the order was prepared '
+          + 'and dispatched). Use the refund option only if the failure was on us.',
+        [
+          { text: 'Keep', style: 'cancel' },
+          { text: 'Cancel — no refund', style: 'destructive', onPress: () => doCancel(0, false) },
+          ...(rowTotal > 0
+            ? [{ text: `Cancel + refund ₹${rowTotal} to wallet`, onPress: () => doCancel(rowTotal, false) }]
+            : []),
+        ],
+      );
+    } else if (isRazorpay && rowTotal > 0) {
       // Online payment — admin picks the refund destination. Wallet credit is
       // the default (instant); a manual Razorpay refund is the override.
       Alert.alert(
