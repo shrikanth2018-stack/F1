@@ -52,6 +52,7 @@ import { ErrorRetry } from '../../components/ErrorRetry';
 import {
   useStaffOrders,
   useUpdateOrderStatus,
+  useBulkAdvanceStatus,
 } from '../../hooks/useStaffOrders';
 import { nextPackingStatus } from '../../utils/packingFlow';
 import { isUnsuccessfulDelivery } from '../../utils/orderFilters';
@@ -518,6 +519,7 @@ export function StaffDashboard() {
   const { data: profile } = useWalletBalance();
   const { data: orders, isLoading, isError, refetch } = useStaffOrders();
   const updateStatus = useUpdateOrderStatus();
+  const bulkAdvance = useBulkAdvanceStatus();
   const { pendingCount } = useOfflineSync();
   // Deprecated: single staff_message from store_config (kept as last-resort fallback)
   const { data: legacyStaffMessage } = useStaffMessage();
@@ -601,14 +603,11 @@ export function StaffDashboard() {
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Mark Ready',
-        onPress: () => {
-          for (const o of toMark) {
-            updateStatus.mutate({ orderId: o.id, status: 'Ready', userId: o.user_id });
-          }
-        },
+        onPress: () =>
+          bulkAdvance.mutate({ orderIds: toMark.map((o) => o.id), status: 'Ready' }),
       },
     ]);
-  }, [orders, updateStatus]);
+  }, [orders, bulkAdvance]);
 
   const handleMarkAllPacked = useCallback(() => {
     // BF-34b (F3.2): include 'Confirmed' essentials — they have no
@@ -621,14 +620,11 @@ export function StaffDashboard() {
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Mark Packed',
-        onPress: () => {
-          for (const o of toMark) {
-            updateStatus.mutate({ orderId: o.id, status: 'Packed', userId: o.user_id });
-          }
-        },
+        onPress: () =>
+          bulkAdvance.mutate({ orderIds: toMark.map((o) => o.id), status: 'Packed' }),
       },
     ]);
-  }, [packingOrders, updateStatus]);
+  }, [packingOrders, bulkAdvance]);
 
   const handleCall = (phone?: string) => {
     if (!phone) return;
@@ -798,16 +794,8 @@ export function StaffDashboard() {
         </ThemedText>
         <TouchableOpacity
           style={[styles.statusToggle, { borderColor: statusColor(item.status) }]}
-          disabled={!canAct || updateStatus.isPending}
-          onPress={() => {
-            for (let i = 0; i < item.order_ids.length; i++) {
-              updateStatus.mutate({
-                orderId: item.order_ids[i],
-                status: 'Ready',
-                userId: item.user_ids[i],
-              });
-            }
-          }}
+          disabled={!canAct || bulkAdvance.isPending}
+          onPress={() => bulkAdvance.mutate({ orderIds: item.order_ids, status: 'Ready' })}
         >
           <Text style={[styles.statusToggleText, { color: statusColor(item.status) }]}>
             {item.status}

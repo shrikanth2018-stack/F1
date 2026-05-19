@@ -152,3 +152,29 @@ export function useUpdateOrderStatus() {
     },
   });
 }
+
+/**
+ * Bulk-advance many orders to one status in a single transaction via the
+ * advance_orders_status RPC (audit D6) — replaces a loop of N single
+ * mutations. The RPC fans out the customer 'Ready' push server-side.
+ */
+export function useBulkAdvanceStatus() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ orderIds, status }: { orderIds: number[]; status: OrderStatus }) => {
+      if (orderIds.length === 0) return 0;
+      // RPC post-dates the generated types — cast (MF-08 pattern).
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase as any).rpc('advance_orders_status', {
+        p_order_ids: orderIds,
+        p_status: status,
+      });
+      if (error) throw new Error(error.message);
+      return (data as number) ?? 0;
+    },
+    onSuccess: () => {
+      invalidateOrderQueries(queryClient);
+    },
+  });
+}
