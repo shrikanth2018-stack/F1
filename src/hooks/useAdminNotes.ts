@@ -65,7 +65,11 @@ export function useUpsertNote() {
 
 /**
  * Staff-side read — returns active notes for the given tab.
- * Includes 'all' (broadcasts) plus the tab-specific one if any.
+ *
+ * Kitchen / Packing / Delivery see the 'all' broadcast plus their own
+ * tab-specific note. The Hub is deliberately excluded from 'all':
+ * "All Staff" is a kitchen-floor / driver message, so the Hub dashboard
+ * shows ONLY 'hub'-targeted notes — never the All-Staff broadcast.
  * Branch-filtered through useBranchFilter.
  *
  * Short stale time so toggling a note on/off in admin reflects within ~5s.
@@ -76,11 +80,16 @@ export function useStaffNoteForTab(tab: NoteTarget | null) {
     ['staff_notes', tab ?? 'none', bf.isActive ? bf.branchId ?? 'all' : 'off'],
     () => {
       // `enabled` below gates this to a non-null tab.
+      // Hub is scoped to 'hub' only; the 'all' broadcast skips it.
+      const targets =
+        tab === 'hub' ? ['hub']
+        : tab === 'all' ? ['all']
+        : ['all', tab as string];
       let q = supabase
         .from('admin_notes')
         .select('*')
         .eq('is_active', true)
-        .in('target_tab', tab === 'all' ? ['all'] : ['all', tab as string])
+        .in('target_tab', targets)
         .order('created_at', { ascending: false });
       if (bf.isActive && bf.branchId != null) q = q.eq('branch_id', bf.branchId);
       return q;
