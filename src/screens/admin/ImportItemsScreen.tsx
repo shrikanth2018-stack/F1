@@ -110,7 +110,9 @@ export function ImportItemsScreen({ navigation, route }: AdminScreenProps<'Impor
   // ── Download template ──────────────────────────────────
   const handleDownloadTemplate = async () => {
     try {
-      const FileSystem = require('expo-file-system');
+      // SDK 54: the classic documentDirectory / read/writeAsStringAsync API
+      // moved to the /legacy entry; the default export is the new File API.
+      const FileSystem = require('expo-file-system/legacy');
       const Sharing = require('expo-sharing');
       const csv = isMenu
         ? buildMenuTemplate(cycles as AnyCycle[])
@@ -136,7 +138,9 @@ export function ImportItemsScreen({ navigation, route }: AdminScreenProps<'Impor
   const handleUpload = async () => {
     try {
       const DocumentPicker = require('expo-document-picker');
-      const FileSystem = require('expo-file-system');
+      // SDK 54: the classic documentDirectory / read/writeAsStringAsync API
+      // moved to the /legacy entry; the default export is the new File API.
+      const FileSystem = require('expo-file-system/legacy');
 
       const result = await DocumentPicker.getDocumentAsync({
         type: ['text/csv', 'text/comma-separated-values', 'public.comma-separated-values-text', '*/*'],

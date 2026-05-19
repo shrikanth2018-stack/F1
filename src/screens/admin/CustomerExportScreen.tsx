@@ -138,7 +138,8 @@ export function CustomerExportScreen({ navigation }: AdminScreenProps<'CustomerE
     }
     setDownloading(true);
     try {
-      const FileSystem = require('expo-file-system');
+      // SDK 54: classic documentDirectory / writeAsStringAsync moved to /legacy.
+      const FileSystem = require('expo-file-system/legacy');
       const Sharing = require('expo-sharing');
 
       const headers = activeCols.map((c) => c.header);
