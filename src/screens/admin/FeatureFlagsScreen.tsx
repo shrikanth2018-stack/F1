@@ -41,6 +41,21 @@ export function FeatureFlagsScreen({ navigation }: { navigation: AdminNavProp })
   const updateStoreConfig = useUpdateStoreConfig();
   const stormActive = storeConfig?.storm_mode_active === true;
 
+  // D4: storm mode is dual-control — flip BOTH store_config.storm_mode_active
+  // (the operator toggle) and feature_flags.storm_mode_active (the SQL-level
+  // override) together. The server pauses orders when EITHER is true; writing
+  // both keeps them in sync so neither can be left silently stuck on.
+  const stormFlagRow = flags.find((f: any) => f.flag_key === 'storm_mode_active');
+  const setStorm = (next: boolean) => {
+    updateStoreConfig.mutate({ storm_mode_active: next });
+    if (stormFlagRow) {
+      updateFlag.mutate(
+        { id: stormFlagRow.id, flag_value: next },
+        { onError: (e: any) => Alert.alert('Partial update', e?.message ?? 'Storm flag sync failed.') },
+      );
+    }
+  };
+
   const handleStormToggle = (next: boolean) => {
     if (next) {
       Alert.alert(
@@ -48,15 +63,11 @@ export function FeatureFlagsScreen({ navigation }: { navigation: AdminNavProp })
         'This will pause all new orders immediately. Existing orders continue processing.',
         [
           { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Enable',
-            style: 'destructive',
-            onPress: () => updateStoreConfig.mutate({ storm_mode_active: true }),
-          },
+          { text: 'Enable', style: 'destructive', onPress: () => setStorm(true) },
         ],
       );
     } else {
-      updateStoreConfig.mutate({ storm_mode_active: false });
+      setStorm(false);
     }
   };
 

@@ -74,6 +74,16 @@ Deno.serve(async (req) => {
     const token = auth.replace('Bearer ', '').trim();
     let authorized = token === SUPABASE_SERVICE_ROLE_KEY;
 
+    // D5: pg_net callers (daily manifest, cron-failure alert) send the
+    // service-role key stored in app_config. Accept that value too — so a
+    // key drifting between the function env and app_config (which happened
+    // across the API-key migration) can't silently 401 internal pushes.
+    if (!authorized && token) {
+      const { data: cfg } = await supabase
+        .from('app_config').select('value').eq('key', 'service_role_key').maybeSingle();
+      if (cfg?.value && token === cfg.value) authorized = true;
+    }
+
     if (!authorized && token) {
       const caller = await getUserFromJwt(token);
       if (caller) {

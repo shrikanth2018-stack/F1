@@ -65,6 +65,23 @@ export async function loadStoreConfig(supabase: SupabaseClient): Promise<StoreCo
     }
   }
 
+  // D4: storm mode is dual-control. store_config.storm_mode_active is the
+  // operator's UI toggle; feature_flags.storm_mode_active is the SQL-level
+  // override (works even if the admin UI is unreachable). EITHER being true
+  // pauses orders — so read both and OR-combine. A feature_flags read failure
+  // must not weaken the store_config value, so it only ever adds to it.
+  let stormFlag = false;
+  try {
+    const { data: ff } = await supabase
+      .from('feature_flags')
+      .select('flag_value')
+      .eq('flag_key', 'storm_mode_active')
+      .maybeSingle();
+    stormFlag = ff?.flag_value === true;
+  } catch (_e) {
+    /* feature_flags unreadable — the store_config value below still applies */
+  }
+
   // Postgres numeric can arrive as a string — normalise to number once, here.
   return {
     tax_rate_percentage: Number(data.tax_rate_percentage),
@@ -72,6 +89,6 @@ export async function loadStoreConfig(supabase: SupabaseClient): Promise<StoreCo
     cancellation_window_hours: Number(data.cancellation_window_hours),
     min_wallet_topup: Number(data.min_wallet_topup),
     max_wallet_topup: Number(data.max_wallet_topup),
-    storm_mode_active: data.storm_mode_active === true,
+    storm_mode_active: data.storm_mode_active === true || stormFlag,
   };
 }
