@@ -213,27 +213,45 @@ BEGIN
     -- non-blocking — generation proceeds even if send-push is down.
     -- Uses event_key so admin's notification_templates override applies;
     -- fallback title/body provided in case the template row is missing.
+    --
+    -- AUDIT-FIX (2026-05-19): this push call took the whole subscription
+    -- dispatch pipeline DOWN in production. Two corrections:
+    --   1. `body` is passed as JSONB, not ::text. Current pg_net has no
+    --      net.http_post(..., body => text) overload, so the ::text cast
+    --      raised "function does not exist" on every dispatch — and the
+    --      manifest's outer handler re-RAISEs, rolling back the order,
+    --      its items, days_consumed AND the kitchen_push_log row.
+    --   2. The call is wrapped in its own BEGIN/EXCEPTION block. A push
+    --      enqueue failure must NEVER abort the dispatch — the order is
+    --      already inserted above; a notification problem cannot be
+    --      allowed to roll back a paid customer's meal.
     IF v_supa_url IS NOT NULL AND v_svc_key IS NOT NULL THEN
-      PERFORM net.http_post(
-        url     := v_supa_url || '/functions/v1/send-push',
-        headers := jsonb_build_object(
-          'Content-Type',  'application/json',
-          'Authorization', 'Bearer ' || v_svc_key
-        ),
-        body    := jsonb_build_object(
-          'user_ids',       jsonb_build_array(v_sub.user_id::text),
-          'event_key',      'order.confirmed',
-          'vars',           jsonb_build_object('order_id', v_new_order_id),
-          'title',          'Order Confirmed!',
-          'body',           'Your order #' || v_new_order_id || ' is confirmed. We''re getting it ready!',
-          'data',           jsonb_build_object(
-                              'screen', 'OrderDetail',
-                              'params', jsonb_build_object('orderId', v_new_order_id)
-                            ),
-          'trigger_source', 'subscription_dispatch',
-          'reference_id',   v_new_order_id::text
-        )::text
-      );
+      BEGIN
+        PERFORM net.http_post(
+          url     := v_supa_url || '/functions/v1/send-push',
+          headers := jsonb_build_object(
+            'Content-Type',  'application/json',
+            'Authorization', 'Bearer ' || v_svc_key
+          ),
+          body    := jsonb_build_object(
+            'user_ids',       jsonb_build_array(v_sub.user_id::text),
+            'event_key',      'order.confirmed',
+            'vars',           jsonb_build_object('order_id', v_new_order_id),
+            'title',          'Order Confirmed!',
+            'body',           'Your order #' || v_new_order_id || ' is confirmed. We''re getting it ready!',
+            'data',           jsonb_build_object(
+                                'screen', 'OrderDetail',
+                                'params', jsonb_build_object('orderId', v_new_order_id)
+                              ),
+            'trigger_source', 'subscription_dispatch',
+            'reference_id',   v_new_order_id::text
+          )
+        );
+      EXCEPTION WHEN OTHERS THEN
+        -- Push is best-effort. Swallow ANY failure so the dispatch commits.
+        RAISE WARNING '[generate_daily_manifest] push enqueue failed for order %: %',
+          v_new_order_id, SQLERRM;
+      END;
     END IF;
 
     v_orders_created := v_orders_created + 1;
