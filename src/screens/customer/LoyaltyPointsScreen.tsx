@@ -21,8 +21,8 @@ import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { Divider } from '../../components/Divider';
 import { EmptyState } from '../../components/EmptyState';
-import { useWalletBalance, useRefreshWallet } from '../../hooks/useWallet';
-import { formatPriceShort } from '../../utils/formatters';
+import { useWalletBalance, useRefreshWallet, useLoyaltyHistory } from '../../hooks/useWallet';
+import { formatPriceShort, formatDateShort } from '../../utils/formatters';
 import { supabase } from '../../api/supabaseClient';
 import { useSupabaseMutation } from '../../api/useSupabaseQuery';
 import type { CustomerNavProp } from '../../navigation/types';
@@ -33,6 +33,7 @@ export function LoyaltyPointsScreen({ navigation }: { navigation: CustomerNavPro
   const refreshWallet = useRefreshWallet();
 
   const points = wallet?.loyaltyPoints ?? 0;
+  const { data: history = [], isLoading: historyLoading } = useLoyaltyHistory();
   const [redeemInput, setRedeemInput] = useState('');
 
   const redeem = useSupabaseMutation<number, { wallet_credited: number; loyalty_points_remaining: number }>(
@@ -141,16 +142,43 @@ export function LoyaltyPointsScreen({ navigation }: { navigation: CustomerNavPro
 
       <Divider />
 
-      {/* Transactions */}
+      {/* Points history — earns + redemptions from loyalty_redemptions */}
       <ThemedText variant="subtitle" color="primary" style={styles.txTitle}>
         Points History
       </ThemedText>
 
       <ScrollView style={styles.txList} showsVerticalScrollIndicator={false}>
-        <EmptyState
-          title="No points history yet"
-          subtitle="Earn points by placing orders"
-        />
+        {history.length === 0 ? (
+          <EmptyState
+            title={historyLoading ? 'Loading…' : 'No points history yet'}
+            subtitle={historyLoading ? '' : 'Your earns and redemptions will show here'}
+          />
+        ) : (
+          history.map((tx) => {
+            const earned = tx.type === 'earned';
+            return (
+              <View key={tx.id} style={styles.txRow}>
+                <View style={styles.txInfo}>
+                  <ThemedText variant="body" color="primary" style={styles.txDesc}>
+                    {tx.description ?? (earned ? 'Points earned' : 'Points redeemed')}
+                  </ThemedText>
+                  <ThemedText variant="small" color="muted">
+                    {tx.created_at ? formatDateShort(tx.created_at) : ''}
+                  </ThemedText>
+                </View>
+                <ThemedText
+                  variant="body"
+                  style={[
+                    styles.txPoints,
+                    { color: earned ? Theme.colors.status.success : Theme.colors.text.muted },
+                  ]}
+                >
+                  {earned ? '+' : '−'}{tx.points}
+                </ThemedText>
+              </View>
+            );
+          })
+        )}
       </ScrollView>
     </View>
   );
@@ -231,4 +259,15 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: Theme.spacing.md,
   },
+  txRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: Theme.spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Theme.colors.layout.divider,
+  },
+  txInfo: { flex: 1, marginRight: Theme.spacing.sm },
+  txDesc: { marginBottom: 2 },
+  txPoints: { fontFamily: Theme.typography.fontFamily },
 });

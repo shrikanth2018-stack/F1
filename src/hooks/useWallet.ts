@@ -72,6 +72,33 @@ export function useWalletTransactions() {
   );
 }
 
+/** One row of the loyalty points ledger (earned + redeemed). */
+export interface LoyaltyRedemption {
+  id: number;
+  points: number;
+  type: string | null;
+  description: string | null;
+  reference_order_id: number | null;
+  created_at: string | null;
+}
+
+/** Fetch the loyalty points history — earns + redemptions (audit D4). */
+export function useLoyaltyHistory() {
+  const { session } = useAuth();
+
+  return useSupabaseQuery<LoyaltyRedemption>(
+    [...QUERY_KEYS.WALLET, 'loyalty-history', session?.user.id],
+    () =>
+      supabase
+        .from('loyalty_redemptions')
+        .select('id, points, type, description, reference_order_id, created_at')
+        .eq('user_id', session?.user.id ?? '')
+        .order('created_at', { ascending: false })
+        .limit(50),
+    { enabled: !!session, staleTime: QUERY_STALE_TIME },
+  );
+}
+
 /** Initiate wallet top-up (creates Razorpay order via Edge Function).
  *
  *  BF-38a (F1.3): each invoke sends an Idempotency-Key header so a

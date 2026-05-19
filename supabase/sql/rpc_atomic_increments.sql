@@ -80,6 +80,11 @@ BEGIN
   UPDATE profiles
   SET loyalty_points = loyalty_points + p_points
   WHERE id = p_user_id;
+
+  -- Ledger the earn so it appears in the customer's points history (audit
+  -- D4). Loyalty points are earned only as referral rewards today.
+  INSERT INTO loyalty_redemptions (user_id, points, type, description)
+  VALUES (p_user_id, p_points, 'earned', 'Referral reward');
 END;
 $$;
 

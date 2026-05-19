@@ -50,8 +50,11 @@ BEGIN
   WHERE id = v_user_id;
 
   -- Audit trail — loyalty ledger + wallet ledger.
+  -- type must satisfy loyalty_redemptions_type_check ('earned' | 'redeemed').
+  -- Previously inserted 'redeem' — a constraint violation that rolled back
+  -- the whole redemption (audit D4 fix).
   INSERT INTO loyalty_redemptions (user_id, points, type, description)
-  VALUES (v_user_id, p_points, 'redeem',
+  VALUES (v_user_id, p_points, 'redeemed',
           'Redeemed ' || p_points || ' points for wallet credit');
 
   INSERT INTO wallet_transactions (user_id, amount, transaction_type, description, reference_type)
