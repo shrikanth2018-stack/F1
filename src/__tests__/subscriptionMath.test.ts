@@ -49,68 +49,68 @@ describe('subscriptionDaysRemaining', () => {
 // ── proratedSubscriptionRefund ───────────────────────────
 
 describe('proratedSubscriptionRefund', () => {
-  it('regression BF-21: refund covers tax + delivery slice, not just plan price', () => {
-    // Customer paid: 3000 + 150 (5% tax) + 50 (delivery) = 3200 all-inclusive
-    // Half consumed (15/30 days) → half refund = 1600
+  it('regression BF-21: refund covers the delivery slice, not just plan price', () => {
+    // Pricing is GST-inclusive: customer paid 3000 (tax already inside) + 50
+    // delivery = 3050 all-inclusive. Half consumed (15/30 days) → half = 1525.
     expect(
       proratedSubscriptionRefund(
         { duration_days: 30, price: 3000 },
         { days_consumed: 15 },
-        5,    // taxRate %
         50,   // deliveryFee
       ),
-    ).toBe(1600);
+    ).toBe(1525);
   });
 
   it('full refund when nothing consumed', () => {
+    // 3000 (incl. GST) + 50 delivery = 3050
     expect(
-      proratedSubscriptionRefund({ duration_days: 30, price: 3000 }, { days_consumed: 0 }, 5, 50),
-    ).toBe(3200);
+      proratedSubscriptionRefund({ duration_days: 30, price: 3000 }, { days_consumed: 0 }, 50),
+    ).toBe(3050);
   });
 
   it('zero refund when sub is fully consumed', () => {
     expect(
-      proratedSubscriptionRefund({ duration_days: 30, price: 3000 }, { days_consumed: 30 }, 5, 50),
+      proratedSubscriptionRefund({ duration_days: 30, price: 3000 }, { days_consumed: 30 }, 50),
     ).toBe(0);
   });
 
   it('zero refund when daysRemaining clips to 0 (over-consumed defensive)', () => {
     expect(
-      proratedSubscriptionRefund({ duration_days: 30, price: 3000 }, { days_consumed: 50 }, 5, 50),
+      proratedSubscriptionRefund({ duration_days: 30, price: 3000 }, { days_consumed: 50 }, 50),
     ).toBe(0);
   });
 
   it('zero refund when duration_days is 0 or null (avoid divide-by-zero)', () => {
     expect(
-      proratedSubscriptionRefund({ duration_days: 0, price: 3000 }, { days_consumed: 0 }, 5, 50),
+      proratedSubscriptionRefund({ duration_days: 0, price: 3000 }, { days_consumed: 0 }, 50),
     ).toBe(0);
     expect(
-      proratedSubscriptionRefund({ duration_days: null, price: 3000 }, { days_consumed: 0 }, 5, 50),
+      proratedSubscriptionRefund({ duration_days: null, price: 3000 }, { days_consumed: 0 }, 50),
     ).toBe(0);
   });
 
-  it('handles zero tax / zero delivery fee', () => {
-    // Plain proration on plan price only
+  it('handles zero delivery fee', () => {
+    // Plain proration on the (tax-inclusive) plan price only
     expect(
-      proratedSubscriptionRefund({ duration_days: 10, price: 1000 }, { days_consumed: 3 }, 0, 0),
+      proratedSubscriptionRefund({ duration_days: 10, price: 1000 }, { days_consumed: 3 }, 0),
     ).toBe(700);
   });
 
   it('rounds to nearest rupee (admin can override before confirm)', () => {
     // 100 / 3 = 33.33... → expect rounded
     expect(
-      proratedSubscriptionRefund({ duration_days: 3, price: 100 }, { days_consumed: 0 }, 0, 0),
+      proratedSubscriptionRefund({ duration_days: 3, price: 100 }, { days_consumed: 0 }, 0),
     ).toBe(100); // 3/3 of 100 = 100
     expect(
-      proratedSubscriptionRefund({ duration_days: 3, price: 100 }, { days_consumed: 1 }, 0, 0),
+      proratedSubscriptionRefund({ duration_days: 3, price: 100 }, { days_consumed: 1 }, 0),
     ).toBe(67); // 2/3 of 100 = 66.67 → 67
   });
 
   it('handles null plan.price defensively (defaults to 0, refunds delivery slice only)', () => {
-    // price=null → defaults to 0. allInclusive = 0 * 1.05 + 50 = 50.
+    // price=null → defaults to 0. allInclusive = 0 + 50 = 50.
     // 25/30 remaining → (50/30)*25 = 41.67 → rounds to 42.
     expect(
-      proratedSubscriptionRefund({ duration_days: 30, price: null }, { days_consumed: 5 }, 5, 50),
+      proratedSubscriptionRefund({ duration_days: 30, price: null }, { days_consumed: 5 }, 50),
     ).toBe(42);
   });
 });

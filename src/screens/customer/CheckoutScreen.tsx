@@ -525,10 +525,6 @@ export function CheckoutScreen({ navigation, route }: any) {
                 <ThemedText variant="small" color="subtitle">{formatPriceShort(quote.subtotal_total)}</ThemedText>
               </View>
               <View style={styles.priceRow}>
-                <ThemedText variant="small" color="subtitle">Tax</ThemedText>
-                <ThemedText variant="small" color="subtitle">{formatPriceShort(quote.tax_total)}</ThemedText>
-              </View>
-              <View style={styles.priceRow}>
                 <ThemedText variant="small" color="subtitle">Delivery</ThemedText>
                 <ThemedText variant="small" color="subtitle">
                   {quote.fee_pending ? 'At checkout' : quote.delivery_fee === 0 ? 'Free' : formatPriceShort(quote.delivery_fee)}
@@ -538,6 +534,11 @@ export function CheckoutScreen({ navigation, route }: any) {
                 <ThemedText variant="subtitle" color="primary">Total</ThemedText>
                 <ThemedText variant="subtitle" color="accent">{formatPriceShort(quote.grand_total)}</ThemedText>
               </View>
+              {quote.tax_total > 0 && (
+                <ThemedText variant="micro" color="muted" style={styles.gstNote}>
+                  Incl. GST {formatPriceShort(quote.tax_total)}
+                </ThemedText>
+              )}
             </>
           ) : null}
         </View>
@@ -640,6 +641,7 @@ const styles = StyleSheet.create({
   },
   summaryLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
   priceRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
+  gstNote: { textAlign: 'right', marginTop: 4 },
   totalRow: {
     marginTop: Theme.spacing.xs,
     paddingTop: Theme.spacing.xs,

@@ -35,10 +35,13 @@ export function subscriptionDaysRemaining(
 
 /**
  * BF-21 lock: prorated wallet refund on admin cancel. Refund is on the
- * all-inclusive amount the customer originally paid (plan price + tax +
- * delivery slice), scaled by the unconsumed portion.
+ * all-inclusive amount the customer originally paid, scaled by the unconsumed
+ * portion.
  *
- *   allInclusive = price * (1 + taxRate%) + deliveryFee
+ * Pricing is GST-inclusive (T1): the plan price already contains the tax, so
+ * the customer paid exactly `price + deliveryFee` — tax is NOT added again.
+ *
+ *   allInclusive = price + deliveryFee
  *   refund       = round((allInclusive / duration_days) × daysRemaining)
  *
  * Returns a rupee-rounded integer; matches AdminSubscriptionsScreen's
@@ -47,7 +50,6 @@ export function subscriptionDaysRemaining(
 export function proratedSubscriptionRefund(
   plan: PlanForMath,
   sub: SubForMath,
-  taxRatePercent: number,
   deliveryFee: number,
 ): number {
   const total = plan.duration_days ?? 0;
@@ -57,6 +59,6 @@ export function proratedSubscriptionRefund(
   const daysRemaining = subscriptionDaysRemaining(plan, sub);
   if (daysRemaining === 0) return 0;
 
-  const allInclusive = price * (1 + taxRatePercent / 100) + deliveryFee;
+  const allInclusive = price + deliveryFee;
   return Math.round((allInclusive / total) * daysRemaining);
 }

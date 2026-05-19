@@ -119,8 +119,9 @@ export function CartScreen({ navigation, route }: any) {
     enabled: subscriptionPlanId == null && (essItems.length > 0 || essPlans.length > 0),
   });
 
-  // Float-button amount = the server-quoted grand total (subtotal + tax),
-  // falling back to the display subtotal only while the quote is in flight.
+  // Float-button amount = the server-quoted grand total (items + delivery;
+  // GST is already inside the item prices), falling back to the display
+  // subtotal only while the quote is in flight.
   const foodGrandTotal = foodQuote?.grand_total ?? foodTotal;
   const essGrandTotal = essQuote?.grand_total ?? essTotal;
 
@@ -412,19 +413,25 @@ export function CartScreen({ navigation, route }: any) {
                 <ThemedText variant="small" color="primary">{formatPriceShort(foodTotal)}</ThemedText>
               </View>
               <View style={styles.totalRow}>
-                <ThemedText variant="small" color="subtitle">Tax</ThemedText>
+                <ThemedText variant="small" color="subtitle">Delivery</ThemedText>
                 <ThemedText variant="small" color="primary">
-                  {foodQuote ? formatPriceShort(foodQuote.tax_total) : '—'}
+                  {!foodQuote
+                    ? '—'
+                    : foodQuote.fee_pending
+                      ? 'At checkout'
+                      : foodQuote.delivery_fee === 0
+                        ? 'Free'
+                        : formatPriceShort(foodQuote.delivery_fee)}
                 </ThemedText>
               </View>
               <View style={styles.totalRow}>
                 <ThemedText variant="small" color="subtitle">Total</ThemedText>
-                <ThemedText variant="small" color="accent">
-                  {foodQuote ? formatPriceShort(foodQuote.grand_total) : '—'}
-                </ThemedText>
+                <ThemedText variant="small" color="accent">{formatPriceShort(foodGrandTotal)}</ThemedText>
               </View>
-              {foodQuote?.fee_pending && (
-                <ThemedText variant="micro" color="muted">+ delivery fee added at checkout</ThemedText>
+              {!!foodQuote && foodQuote.tax_total > 0 && (
+                <ThemedText variant="micro" color="muted">
+                  Incl. GST {formatPriceShort(foodQuote.tax_total)}
+                </ThemedText>
               )}
             </View>
           </View>
@@ -492,19 +499,25 @@ export function CartScreen({ navigation, route }: any) {
                 <ThemedText variant="small" color="primary">{formatPriceShort(essTotal)}</ThemedText>
               </View>
               <View style={styles.totalRow}>
-                <ThemedText variant="small" color="subtitle">Tax</ThemedText>
+                <ThemedText variant="small" color="subtitle">Delivery</ThemedText>
                 <ThemedText variant="small" color="primary">
-                  {essQuote ? formatPriceShort(essQuote.tax_total) : '—'}
+                  {!essQuote
+                    ? '—'
+                    : essQuote.fee_pending
+                      ? 'At checkout'
+                      : essQuote.delivery_fee === 0
+                        ? 'Free'
+                        : formatPriceShort(essQuote.delivery_fee)}
                 </ThemedText>
               </View>
               <View style={styles.totalRow}>
                 <ThemedText variant="small" color="subtitle">Total</ThemedText>
-                <ThemedText variant="small" color="accent">
-                  {essQuote ? formatPriceShort(essQuote.grand_total) : '—'}
-                </ThemedText>
+                <ThemedText variant="small" color="accent">{formatPriceShort(essGrandTotal)}</ThemedText>
               </View>
-              {essQuote?.fee_pending && (
-                <ThemedText variant="micro" color="muted">+ delivery fee added at checkout</ThemedText>
+              {!!essQuote && essQuote.tax_total > 0 && (
+                <ThemedText variant="micro" color="muted">
+                  Incl. GST {formatPriceShort(essQuote.tax_total)}
+                </ThemedText>
               )}
             </View>
           </View>

@@ -62,14 +62,12 @@ export function AdminSubscriptionsScreen({ navigation }: any) {
     const plan = sub.subscription_plans ?? {};
     const daysRemaining = subscriptionDaysRemaining(plan, sub);
 
-    // BF-21 (D-03a): proration is on the all-inclusive figure customer paid
-    // (food + tax + delivery fee). Math lives in src/utils/subscriptionMath.
-    // store_config defaults — drift between purchase-time and cancel-time
-    // config is rare; if it matters, future enhancement could fetch the
-    // original purchase order's total_amount instead.
-    const taxRate = storeConfig?.tax_rate_percentage ?? 5;
+    // BF-21 (D-03a): proration is on the all-inclusive figure the customer
+    // paid — the GST-inclusive plan price plus the delivery fee (T1: tax is
+    // already inside the price, never added on). Math lives in
+    // src/utils/subscriptionMath. The admin can override before confirming.
     const deliveryFee = storeConfig?.delivery_fee ?? 0;
-    const prorated = proratedSubscriptionRefund(plan, sub, taxRate, deliveryFee);
+    const prorated = proratedSubscriptionRefund(plan, sub, deliveryFee);
 
     setTarget({
       id: sub.id,

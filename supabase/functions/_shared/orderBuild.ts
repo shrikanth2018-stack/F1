@@ -7,8 +7,13 @@
  *
  * Given a flat cart it: re-prices every item from the DB, derives each cycle's
  * dispatch date from server time + cutoff (see dispatch.ts), groups by cycle,
- * computes per-group tax + the single delivery fee, and runs storm /
- * serviceability / subscription-conflict checks.
+ * back-calculates the GST already inside each price, adds the single delivery
+ * fee, and runs storm / serviceability / subscription-conflict checks.
+ *
+ * PRICING MODEL (T1): catalog prices are GST-INCLUSIVE. The price the customer
+ * sees is the price they pay; `tax_amount` is the slice carved OUT of that
+ * price for the invoice, never added on top. A group's total is therefore
+ * items-gross + delivery fee — tax does not appear in the sum.
  *
  * Pure read — NO writes, NO payment. The clock is passed in (read once by the
  * caller). The client supplies item ids + quantities only; cycle and price are
@@ -51,9 +56,12 @@ export interface QuoteGroup {
   dispatch_date: string;          // YYYY-MM-DD, IST
   scenario: DispatchScenario | null; // null = subscription-purchase group
   items: OrderItemRow[];
+  /** Sum of (GST-inclusive) catalog prices × qty for this group. */
   subtotal: number;
+  /** GST already contained within `subtotal` (back-calculated, informational). */
   tax_amount: number;
   delivery_fee: number;
+  /** What the customer pays for this group = subtotal + delivery_fee. */
   total_amount: number;
   group_total_paise: number;
 }
@@ -114,6 +122,9 @@ export async function buildAuthoritativeOrder(args: BuildArgs): Promise<BuildRes
     return { ok: false, status: 503, error: 'Store configuration is unavailable. Please try again shortly.' };
   }
   const taxRate = config.tax_rate_percentage;
+  // Catalog prices are GST-inclusive (T1): the tax is the slice already inside
+  // the price, back-calculated as gross × rate / (100 + rate) — never added on.
+  const inclusiveTax = (gross: number) => round2((gross * taxRate) / (100 + taxRate));
 
   const { data: stormFlag } = await supabase
     .from('feature_flags').select('flag_value').eq('flag_key', 'storm_mode_active').maybeSingle();
@@ -239,7 +250,7 @@ export async function buildAuthoritativeOrder(args: BuildArgs): Promise<BuildRes
     }
     const scenario = getDispatchScenario(timing, clock.nowMinutes);
     if (scenario === 'C') hasScenarioC = true;
-    const tax = round2(accum.subtotal * (taxRate / 100));
+    const tax = inclusiveTax(accum.subtotal);
     groups.push({
       cycle_id: cycleId,
       dispatch_date: scenarioToDate(scenario, clock),
@@ -330,7 +341,7 @@ export async function buildAuthoritativeOrder(args: BuildArgs): Promise<BuildRes
         quantity: 1, price_at_time: plan.price,
       });
     }
-    const subTax = round2(subSubtotal * (taxRate / 100));
+    const subTax = inclusiveTax(subSubtotal);
     groups.push({
       cycle_id: null,
       dispatch_date: clock.todayStr,
@@ -358,7 +369,9 @@ export async function buildAuthoritativeOrder(args: BuildArgs): Promise<BuildRes
   for (let i = 0; i < groups.length; i++) {
     const g = groups[i];
     g.delivery_fee = i === earliestIdx ? deliveryFee : 0;
-    g.total_amount = round2(g.subtotal + g.tax_amount + g.delivery_fee);
+    // GST is already inside g.subtotal (inclusive pricing) — the customer
+    // total is items-gross + delivery fee; tax_amount is informational only.
+    g.total_amount = round2(g.subtotal + g.delivery_fee);
     g.group_total_paise = toPaise(g.total_amount);
     subtotalTotal += g.subtotal;
     taxTotal += g.tax_amount;

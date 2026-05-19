@@ -145,13 +145,18 @@ export function HubOrderHistoryDetailScreen({ route, navigation }: CustomerScree
 
         <Divider />
 
-        {/* Totals */}
+        {/* Totals — GST-inclusive pricing (T1): tax sits inside the item
+            prices, so Subtotal = Paid − delivery; GST is informational. */}
         <SectionLabel title="Total" />
         <View style={styles.group}>
-          <Row label="Subtotal" value={formatPriceShort(Number(order.total_amount) - Number(order.delivery_fee ?? 0) - Number(order.tax_amount ?? 0))} />
+          <Row label="Subtotal" value={formatPriceShort(Number(order.total_amount) - Number(order.delivery_fee ?? 0))} />
           <Row label="Delivery fee" value={formatPriceShort(Number(order.delivery_fee ?? 0))} />
-          <Row label="Tax" value={formatPriceShort(Number(order.tax_amount ?? 0))} />
           <Row label="Paid" value={formatPriceShort(order.total_amount)} last />
+          {Number(order.tax_amount ?? 0) > 0 && (
+            <ThemedText variant="small" color="muted" style={{ fontSize: S, paddingTop: Theme.spacing.xs, textAlign: 'right' }}>
+              Incl. GST {formatPriceShort(Number(order.tax_amount ?? 0))}
+            </ThemedText>
+          )}
         </View>
 
       </ScrollView>

@@ -215,11 +215,13 @@ export function OrderDetailScreen({ route, navigation }: any) {
           const rowCancelled = row.status === 'Cancelled';
 
           // Per-schedule invoice figures — per-row money model: each row is
-          // self-describing.
+          // self-describing. Pricing is GST-inclusive (T1): tax sits INSIDE
+          // the item prices, so subtotal = total − delivery, and rowTax is
+          // shown only as an informational "incl. GST" note.
           const rowTax      = Number(row.tax_amount) || 0;
           const rowDelivery = Number(row.delivery_fee) || 0;
           const rowTotal    = Number(row.total_amount) || 0;
-          const rowSubtotal = rowTotal - rowTax - rowDelivery;
+          const rowSubtotal = rowTotal - rowDelivery;
 
           // Hide the dispatch line once the dispatch window has passed.
           const dispatchPassed = (() => {
@@ -325,10 +327,6 @@ export function OrderDetailScreen({ route, navigation }: any) {
                   <ThemedText variant="small" color="subtitle">{formatPriceShort(rowSubtotal)}</ThemedText>
                 </View>
                 <View style={styles.itemRow}>
-                  <ThemedText variant="small" color="muted">Tax</ThemedText>
-                  <ThemedText variant="small" color="subtitle">{formatPriceShort(rowTax)}</ThemedText>
-                </View>
-                <View style={styles.itemRow}>
                   <ThemedText variant="small" color="muted">Delivery</ThemedText>
                   <ThemedText variant="small" color="subtitle">
                     {rowDelivery === 0 ? 'Free' : formatPriceShort(rowDelivery)}
@@ -338,6 +336,11 @@ export function OrderDetailScreen({ route, navigation }: any) {
                   <ThemedText variant="body" color="primary">Total</ThemedText>
                   <ThemedText variant="body" color="mint">{formatPriceShort(rowTotal)}</ThemedText>
                 </View>
+                {rowTax > 0 && (
+                  <ThemedText variant="micro" color="muted" style={styles.gstNote}>
+                    Incl. GST {formatPriceShort(rowTax)}
+                  </ThemedText>
+                )}
               </View>
 
               <Divider />
@@ -495,4 +498,5 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: Theme.colors.layout.divider,
   },
+  gstNote: { textAlign: 'right', marginTop: 4 },
 });
