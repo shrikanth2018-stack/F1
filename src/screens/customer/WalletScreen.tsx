@@ -49,6 +49,7 @@ export function WalletScreen({ navigation }: { navigation: CustomerNavProp }) {
   const refreshWallet = useRefreshWallet();
 
   const minTopup = config?.min_wallet_topup ?? 100;
+  const maxTopup = config?.max_wallet_topup ?? 50000;
 
   const handleTopup = (amount: number) => {
     if (Platform.OS === 'web') {
@@ -60,6 +61,10 @@ export function WalletScreen({ navigation }: { navigation: CustomerNavProp }) {
     }
     if (amount < minTopup) {
       Alert.alert('Minimum', `Minimum top-up is \u20B9${minTopup}`);
+      return;
+    }
+    if (amount > maxTopup) {
+      Alert.alert('Maximum', `Maximum top-up is \u20B9${maxTopup.toLocaleString('en-IN')}`);
       return;
     }
     topup.mutate(amount, {
@@ -77,7 +82,7 @@ export function WalletScreen({ navigation }: { navigation: CustomerNavProp }) {
             amount: Math.round(data.amount * 100),
             order_id: data.razorpay_order_id,
             name: '1stOne',
-            prefill: { email: 'customer@1stone.in', contact },
+            prefill: { contact },
             theme: { color: Theme.colors.action.primary },
           });
         } catch {

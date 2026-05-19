@@ -31,6 +31,7 @@ import { useWalletBalance } from '../hooks/useWallet';
 import { useFeatureFlag } from '../hooks/useFeatureFlag';
 import { useUIStore } from '../store/uiStore';
 import { formatPhone, formatCurrency } from '../utils/formatters';
+import { assetUrl } from '../utils/assets';
 import { openWhatsApp } from '../utils/links';
 import { confirmDialog } from '../utils/confirmDialog';
 
@@ -176,16 +177,12 @@ export function ProfilePopup() {
 
   const handlePrivacy = () => {
     close();
-    Linking.openURL(
-      'https://wcvqxzqqwcxlcgrjyunf.supabase.co/storage/v1/object/public/assets/Privacy-Policy.pdf'
-    ).catch(() => {});
+    Linking.openURL(assetUrl('Privacy-Policy.pdf')).catch(() => {});
   };
 
   const handleTerms = () => {
     close();
-    Linking.openURL(
-      'https://wcvqxzqqwcxlcgrjyunf.supabase.co/storage/v1/object/public/assets/Terms.pdf'
-    ).catch(() => {});
+    Linking.openURL(assetUrl('Terms.pdf')).catch(() => {});
   };
 
   const handleSignOut = async () => {

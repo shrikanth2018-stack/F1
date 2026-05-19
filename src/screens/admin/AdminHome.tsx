@@ -34,10 +34,11 @@ import { useBranchFilter } from '../../hooks/useBranchFilter';
 import { useBranches } from '../../hooks/useBranches';
 import { useBranchStore } from '../../store/branchStore';
 import { confirmDialog } from '../../utils/confirmDialog';
+import { assetUrl } from '../../utils/assets';
 
 type AdminTab = 'Reports' | 'Manage';
 
-const LOGO_URL = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/public/assets/logo.png`;
+const LOGO_URL = assetUrl('logo.png');
 
 // Font size constants — all Manage content is +2pt over base
 const MR = Theme.typography.sizes.body + 2;   // manage row label

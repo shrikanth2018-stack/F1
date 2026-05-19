@@ -63,6 +63,7 @@ import { useWalletBalance } from '../../hooks/useWallet';
 import { useStaffNoteForTab, type NoteTarget } from '../../hooks/useAdminNotes';
 import { supabase } from '../../api/supabaseClient';
 import { useSupabaseQuery } from '../../api/useSupabaseQuery';
+import { assetUrl } from '../../utils/assets';
 import type { OrderStatus } from '../../types';
 import { confirmDialog } from '../../utils/confirmDialog';
 
@@ -70,7 +71,7 @@ type StaffTab = 'Kitchen' | 'Packing';
 type PackingSubTab = 'Food' | 'Essentials';
 type OrderFormType = 'Vegetables' | 'Grocery' | 'Stationery' | null;
 
-const LOGO_URL = supabase.storage.from('assets').getPublicUrl('logo.png').data.publicUrl;
+const LOGO_URL = assetUrl('logo.png');
 
 // Text size offsets for this screen
 const BODY2 = Theme.typography.sizes.body + 2;

@@ -21,7 +21,7 @@ import { fireOrderStatusPush } from '../utils/orderStatusPush';
  * advanced. (BF — audit G3: the doc claimed this guard; it did not exist.)
  */
 const STATUS_PIPELINE = [
-  'Pending', 'Confirmed', 'Paid', 'Preparing', 'Ready',
+  'Pending', 'Confirmed', 'Preparing', 'Ready',
   'Packed', 'Dispatched', 'Received at Hub', 'On the Way', 'Delivered',
 ];
 

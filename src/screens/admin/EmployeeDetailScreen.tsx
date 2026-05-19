@@ -39,7 +39,7 @@ import {
 import { useBranchFilter } from '../../hooks/useBranchFilter';
 import { useBranches } from '../../hooks/useBranches';
 import { useAllStaff } from '../../hooks/useStaffManagement';
-import { todayIST } from '../../utils/istDate';
+import { todayIST, addDaysToISODate } from '../../utils/istDate';
 import type { Profile, StaffAttendance, StaffLeave } from '../../types';
 import type { AdminScreenProps, AdminNavProp } from '../../navigation/types';
 
@@ -382,10 +382,9 @@ function AttendanceTab({
     leaves
       .filter((l) => l.status === 'Approved')
       .forEach((l) => {
-        const start = new Date(l.start_date);
-        const end   = new Date(l.end_date);
-        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-          s.add(d.toISOString().split('T')[0]);
+        // Enumerate YYYY-MM-DD strings inclusively — string-safe, no toISOString.
+        for (let ds = l.start_date; ds <= l.end_date; ds = addDaysToISODate(ds, 1)) {
+          s.add(ds);
         }
       });
     return s;

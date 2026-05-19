@@ -13,7 +13,6 @@ import {
   RefreshControl,
   Modal,
   TouchableWithoutFeedback,
-  Animated,
   Dimensions,
   Text,
 } from 'react-native';
@@ -26,6 +25,8 @@ import ReAnimated, {
   useAnimatedStyle,
   withSpring,
   withTiming,
+  withRepeat,
+  withSequence,
 } from 'react-native-reanimated';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
@@ -42,8 +43,9 @@ import { useEssentialsCartStore } from '../../store/essentialsCartStore';
 import { useCartStore } from '../../store/cartStore';
 import { useUIStore } from '../../store/uiStore';
 import { formatTime12h } from '../../utils/timeEngine';
+import { istMinutesNow } from '../../utils/istDate';
 import { formatPriceShort } from '../../utils/formatters';
-import { supabase } from '../../api/supabaseClient';
+import { assetUrl } from '../../utils/assets';
 import { useLiveBanner, type CustomBannerContent } from '../../hooks/useBanner';
 import { useWalletNudge } from '../../hooks/useWalletNudge';
 import { useAddresses } from '../../hooks/useAddresses';
@@ -53,8 +55,8 @@ import { usePendingRazorpayOrder, useCancelOrder } from '../../hooks/useOrders';
 import { PendingPaymentBanner } from '../../components/PendingPaymentBanner';
 import type { MenuItem, EssentialItem, DeliveryCycle } from '../../types';
 
-const LOGO_URL = supabase.storage.from('assets').getPublicUrl('logo.png').data.publicUrl;
-const BANNER_URL = supabase.storage.from('assets').getPublicUrl('banner.png').data.publicUrl;
+const LOGO_URL = assetUrl('logo.png');
+const BANNER_URL = assetUrl('banner.png');
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const HERO_H = Math.round(SCREEN_H * 0.32);
@@ -72,8 +74,7 @@ function timeToMinutes(t: string | null | undefined): number {
 }
 
 function sortByCutoff(cycles: DeliveryCycle[]): DeliveryCycle[] {
-  const now = new Date();
-  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const nowMin = istMinutesNow();
   return [...cycles].sort((a, b) => {
     const aMin = timeToMinutes(a.cutoff_time);
     const bMin = timeToMinutes(b.cutoff_time);
@@ -379,19 +380,21 @@ export function HomeScreen() {
     ? liveBanner.image_url
     : BANNER_URL;
 
-  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const pulse = useSharedValue(1);
   useEffect(() => {
     if (textContent?.pulse) {
-      const anim = Animated.loop(Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 0.7, duration: 800, useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 1,   duration: 800, useNativeDriver: true }),
-      ]));
-      anim.start();
-      return () => { anim.stop(); pulseAnim.setValue(1); };
+      pulse.value = withRepeat(
+        withSequence(
+          withTiming(0.7, { duration: 800 }),
+          withTiming(1, { duration: 800 }),
+        ),
+        -1,
+      );
     } else {
-      pulseAnim.setValue(1);
+      pulse.value = 1;
     }
   }, [textContent?.pulse]);
+  const pulseStyle = useAnimatedStyle(() => ({ opacity: pulse.value }));
 
   // Toggle pill sliding indicator
   const tabPos = useSharedValue(0);
@@ -481,10 +484,11 @@ export function HomeScreen() {
         />
 
         {textContent && (
-          <Animated.View
+          <ReAnimated.View
             style={[
               styles.textBanner,
-              { backgroundColor: textContent.bg_color, opacity: pulseAnim },
+              { backgroundColor: textContent.bg_color },
+              pulseStyle,
             ]}
           >
             {!!textContent.emoji && <Text style={styles.bannerEmoji}>{textContent.emoji}</Text>}
@@ -496,7 +500,7 @@ export function HomeScreen() {
                 {textContent.subtitle}
               </Text>
             )}
-          </Animated.View>
+          </ReAnimated.View>
         )}
 
         <View style={[styles.header, { paddingTop: insets.top + 4 }]}>

@@ -15,6 +15,7 @@
 import { useMemo } from 'react';
 import { useMySubscriptions } from './useSubscriptions';
 import { useWalletBalance } from './useWallet';
+import { todayIST, istDateWithOffset, addDaysToISODate } from '../utils/istDate';
 
 const NUDGE_DAYS_AHEAD = 3;
 
@@ -25,10 +26,9 @@ export function useWalletNudge() {
   const result = useMemo(() => {
     if (!subs || !wallet) return { showNudge: false, shortfall: 0 };
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const cutoff = new Date(today);
-    cutoff.setDate(cutoff.getDate() + NUDGE_DAYS_AHEAD);
+    // IST calendar dates (YYYY-MM-DD) — DST-safe string comparison.
+    const todayStr = todayIST();
+    const cutoffStr = istDateWithOffset(NUDGE_DAYS_AHEAD);
 
     // Find any wallet-payment sub that ends within NUDGE_DAYS_AHEAD
     const urgentSub = (subs as any[]).find((s) => {
@@ -38,11 +38,8 @@ export function useWalletNudge() {
       const plan = s.subscription_plans;
       if (!plan) return false;
 
-      const endDate = new Date(s.start_date);
-      endDate.setDate(endDate.getDate() + (plan.duration_days ?? 0));
-      endDate.setHours(0, 0, 0, 0);
-
-      return endDate >= today && endDate <= cutoff;
+      const endStr = addDaysToISODate(s.start_date, plan.duration_days ?? 0);
+      return endStr >= todayStr && endStr <= cutoffStr;
     });
 
     if (!urgentSub) return { showNudge: false, shortfall: 0 };

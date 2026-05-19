@@ -9,7 +9,7 @@
  * rolled-up status; the per-cycle breakdown lives in OrderDetail.
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   FlatList,
@@ -30,6 +30,7 @@ import { formatPriceShort, formatDateShort, formatRelativeTime } from '../../uti
 import type { Order } from '../../types';
 
 const statusVariant: Record<string, 'success' | 'warning' | 'info' | 'error'> = {
+  Pending: 'warning',
   Confirmed: 'info',
   Preparing: 'info',
   Ready: 'info',
@@ -39,6 +40,7 @@ const statusVariant: Record<string, 'success' | 'warning' | 'info' | 'error'> = 
   Delivered: 'success',
   'Received at Hub': 'info',
   Cancelled: 'error',
+  Failed: 'error',
 };
 
 type OrderTab = 'food' | 'essentials';
@@ -115,15 +117,20 @@ export function OrdersScreen({ navigation }: any) {
 
   useFocusEffect(useCallback(() => { refetch(); }, [refetch]));
 
+  // Memoised so groupOrders() only re-runs when the fetched data or the tab
+  // changes — not on every render. Placed before the early return below to
+  // keep hook order stable (Rules of Hooks).
+  const groups = useMemo(() => {
+    const allOrders: Order[] = data?.pages.flat() ?? [];
+    const filtered = allOrders.filter((o) =>
+      activeTab === 'food' ? o.order_type === 'food' : o.order_type === 'essential',
+    );
+    return groupOrders(filtered);
+  }, [data, activeTab]);
+
   if (error) {
     return <ErrorRetry message="Could not load orders" onRetry={refetch} />;
   }
-
-  const allOrders: Order[] = data?.pages.flat() ?? [];
-  const filtered = allOrders.filter((o) =>
-    activeTab === 'food' ? o.order_type === 'food' : o.order_type === 'essential'
-  );
-  const groups = groupOrders(filtered);
 
   const renderGroup = ({ item }: { item: OrderGroup }) => {
     const isMulti = item.rows.length > 1;

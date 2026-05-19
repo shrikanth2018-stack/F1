@@ -118,7 +118,12 @@ export function usePendingRazorpayOrder() {
         .limit(1),
     {
       enabled: !!session?.user.id,
-      refetchInterval: 15_000,
+      // Poll every 15s ONLY while a pending order actually exists; idle
+      // otherwise. Checkout invalidates MY_ORDERS after placing an order,
+      // which refetches this query and restarts the poll when one appears.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      refetchInterval: (query: any) =>
+        ((query?.state?.data?.length ?? 0) > 0 ? 15_000 : false),
     }
   );
 }

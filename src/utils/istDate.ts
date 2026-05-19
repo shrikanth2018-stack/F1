@@ -42,3 +42,15 @@ export function addDaysToISODate(dateStr: string, days: number): string {
   const [y, m, d] = dateStr.split('-').map(Number);
   return IST_DATE.format(new Date(Date.UTC(y, m - 1, d + days, 12)));
 }
+
+/** Minutes since IST midnight (0–1439) for right now — for time-of-day logic. */
+export function istMinutesNow(): number {
+  const hhmm = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Kolkata',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).format(new Date());
+  const [h, m] = hhmm.split(':').map(Number);
+  return h * 60 + m;
+}

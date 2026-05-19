@@ -273,7 +273,7 @@ export function CheckoutScreen({ navigation, route }: any) {
           amount: Math.round(order.total_amount * 100),
           order_id: order.razorpay_order_id,
           name: '1stOne',
-          prefill: { email: 'customer@1stone.in', contact },
+          prefill: { contact },
           theme: { color: Theme.colors.action.primary },
         };
 
