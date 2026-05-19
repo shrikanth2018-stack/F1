@@ -41,6 +41,7 @@ import { useAdminCancelOrder } from '../../hooks/useAdminOrders';
 import { useUpdateOrderStatus } from '../../hooks/useStaffOrders';
 import { formatPriceShort, formatDateLong } from '../../utils/formatters';
 import { nextDeliveryStatus } from '../../utils/deliveryStatus';
+import { isUnsuccessfulDelivery } from '../../utils/orderFilters';
 import type { AdminScreenProps } from '../../navigation/types';
 import type { OrderStatus } from '../../types';
 
@@ -236,7 +237,9 @@ export function AdminOrderDetailScreen({
   // though 'admin' is the default — documents the persona choice here.
   const next = nextDeliveryStatus(o.status, o.delivery_method ?? null, 'admin');
   const canAdvance = next != null;
-  const canCancel = CANCELLABLE.has(o.status);
+  // D2: an unsuccessful-delivery order (Dispatched / On the Way, past its
+  // dispatch date) is also admin-cancellable — the delivery won't complete.
+  const canCancel = CANCELLABLE.has(o.status) || isUnsuccessfulDelivery(o);
 
   const items: any[] = o.order_items ?? [];
   const customerName = o.profiles?.full_name ?? addr?.full_name ?? '—';
@@ -266,6 +269,11 @@ export function AdminOrderDetailScreen({
             />
             <ThemedText variant="small" color="subtitle">{routingLabel}</ThemedText>
           </View>
+          {isUnsuccessfulDelivery(o) && (
+            <ThemedText variant="small" color="muted" style={styles.unsuccessfulText}>
+              ⚠ UNSUCCESSFUL DELIVERY — past dispatch date, not delivered
+            </ThemedText>
+          )}
           {driverCode && (
             <ThemedText variant="small" color="muted" style={styles.metaLine}>
               Driver: {driverCode}
@@ -458,6 +466,11 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   metaLine: { marginTop: 2 },
+  unsuccessfulText: {
+    color: Theme.colors.status.warning,
+    letterSpacing: 0.5,
+    marginTop: 4,
+  },
   bodyLine: { fontSize: B },
   linkBtn: { paddingVertical: 4, alignSelf: 'flex-start' },
   itemRow: {

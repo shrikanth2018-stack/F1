@@ -54,6 +54,7 @@ import {
   useUpdateOrderStatus,
 } from '../../hooks/useStaffOrders';
 import { nextPackingStatus } from '../../utils/packingFlow';
+import { isUnsuccessfulDelivery } from '../../utils/orderFilters';
 import { useAllMenuItems } from '../../hooks/useMenuManagement';
 import { useRealtimeOrders } from '../../hooks/useRealtimeOrders';
 import { useOfflineSync } from '../../hooks/useOfflineSync';
@@ -537,14 +538,19 @@ export function StaffDashboard() {
   const staffInitial = (profile?.fullName?.[0] ?? 'S').toUpperCase();
 
   // ── Order filters ────────────────────────────
+  // D2: an unsuccessful-delivery order is at the delivery stage (Dispatched
+  // / On the Way) — it belongs to Hub + Driver, never Kitchen or Packing.
   const kitchenOrders = useMemo(
-    () => (orders ?? []).filter((o) => o.order_type === 'food' && o.status !== 'Cancelled'),
+    () => (orders ?? []).filter(
+      (o) => o.order_type === 'food' && o.status !== 'Cancelled' && !isUnsuccessfulDelivery(o)
+    ),
     [orders]
   );
 
   const packingOrders = useMemo(
     () => (orders ?? []).filter((o) => {
       if (o.status === 'Cancelled') return false;
+      if (isUnsuccessfulDelivery(o)) return false;
       return packingSubTab === 'Food'
         ? o.order_type === 'food'
         : o.order_type === 'essential';

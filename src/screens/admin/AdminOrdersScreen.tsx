@@ -30,6 +30,7 @@ import { ErrorRetry } from '../../components/ErrorRetry';
 import { DispatchBadge } from '../../components/DispatchBadge';
 import { supabase } from '../../api/supabaseClient';
 import { formatDateShort } from '../../utils/formatters';
+import { isUnsuccessfulDelivery } from '../../utils/orderFilters';
 import type { AdminNavProp } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
@@ -54,22 +55,30 @@ function getDateStr(offset = 0) {
 }
 
 function useOrdersForDate(date: string) {
+  // IST today — basis for the D2 "unsuccessful delivery" cut-off.
+  const todayIST = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
   return useQuery({
-    queryKey: ['admin_orders_manage', date],
+    queryKey: ['admin_orders_manage', date, todayIST],
     queryFn: async () => {
-      // Row-level data only: id, status, routing label. Customer name,
-      // items, payment, and full address load in AdminOrderDetailScreen
-      // when admin taps a row.
+      // Row-level data only: id, status, dispatch_date, routing label.
+      // Customer name, items, payment, full address load in
+      // AdminOrderDetailScreen when admin taps a row.
+      //
+      // D2: also pull "unsuccessful delivery" orders — past-dated and still
+      // not Delivered/Cancelled/Failed — regardless of the selected date.
+      // They're an alert that must follow the admin until resolved.
+      const unsuccessful =
+        `and(dispatch_date.lt.${todayIST},status.not.in.(Delivered,Cancelled,Failed))`;
       const { data, error } = await supabase
         .from('orders')
         .select(`
-          id, status, delivery_method,
+          id, status, delivery_method, dispatch_date,
           customer_addresses(
             delivery_hubs(hub_name),
             delivery_zones(zone_name)
           )
         `)
-        .eq('dispatch_date', date)
+        .or(`dispatch_date.eq.${date},${unsuccessful}`)
         .order('created_at', { ascending: false });
       if (error) throw error;
       return data ?? [];
@@ -88,11 +97,16 @@ export function AdminOrdersScreen({ navigation }: { navigation: AdminNavProp }) 
   const filteredOrders = useMemo(() => {
     const all = orders ?? [];
     const term = searchTerm.trim();
-    return all.filter((o) => {
+    const filtered = all.filter((o) => {
       if (statusFilter !== 'All' && o.status !== statusFilter) return false;
       if (term && !String(o.id).includes(term)) return false;
       return true;
     });
+    // D2: pin unsuccessful-delivery orders to the top — they need action.
+    return [...filtered].sort(
+      (a, b) =>
+        (isUnsuccessfulDelivery(a) ? 0 : 1) - (isUnsuccessfulDelivery(b) ? 0 : 1)
+    );
   }, [orders, statusFilter, searchTerm]);
 
   if (error) return <ErrorRetry message="Could not load orders" onRetry={refetch} />;
@@ -186,27 +200,35 @@ export function AdminOrdersScreen({ navigation }: { navigation: AdminNavProp }) 
             || addr?.delivery_zones?.zone_name
             || 'Unassigned';
           const status = item.status ?? '';
+          const unsuccessful = isUnsuccessfulDelivery(item);
           return (
             <TouchableOpacity
               style={styles.row}
               activeOpacity={0.6}
               onPress={() => navigation.navigate('AdminOrderDetail', { orderId: item.id })}
             >
-              <ThemedText variant="body" color="primary" style={styles.rowId}>
-                #{item.id}
-              </ThemedText>
-              <ThemedText
-                variant="body"
-                color="subtitle"
-                numberOfLines={1}
-                style={styles.rowRouting}
-              >
-                {routingLabel}
-              </ThemedText>
-              <DispatchBadge
-                label={status}
-                variant={STATUS_VARIANT[status] ?? 'info'}
-              />
+              <View style={styles.rowTop}>
+                <ThemedText variant="body" color="primary" style={styles.rowId}>
+                  #{item.id}
+                </ThemedText>
+                <ThemedText
+                  variant="body"
+                  color="subtitle"
+                  numberOfLines={1}
+                  style={styles.rowRouting}
+                >
+                  {routingLabel}
+                </ThemedText>
+                <DispatchBadge
+                  label={status}
+                  variant={STATUS_VARIANT[status] ?? 'info'}
+                />
+              </View>
+              {unsuccessful && (
+                <ThemedText variant="small" color="muted" style={styles.unsuccessfulText}>
+                  ⚠ UNSUCCESSFUL DELIVERY
+                </ThemedText>
+              )}
             </TouchableOpacity>
           );
         }}
@@ -247,11 +269,19 @@ const styles = StyleSheet.create({
   },
   list: { paddingBottom: Theme.spacing.xl },
   row: {
-    flexDirection: 'row',
-    alignItems: 'center',
     paddingHorizontal: Theme.spacing.md,
     paddingVertical: Theme.spacing.sm + 4,
+  },
+  rowTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: Theme.spacing.sm,
+  },
+  unsuccessfulText: {
+    fontSize: S,
+    color: Theme.colors.status.warning,
+    letterSpacing: 0.5,
+    marginTop: 4,
   },
   rowId: { fontSize: B, minWidth: 56 },
   rowRouting: { fontSize: S, flex: 1 },
