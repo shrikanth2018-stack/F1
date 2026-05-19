@@ -73,7 +73,7 @@ serve(async (req) => {
     const authHeader = req.headers.get('Authorization') ?? '';
     const idempotencyKey = req.headers.get('Idempotency-Key') ?? '';
 
-    const user = getUserFromJwt(authHeader.replace('Bearer ', ''));
+    const user = await getUserFromJwt(authHeader.replace('Bearer ', ''));
     if (!user) return json({ error: 'Unauthorized' }, 401);
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);

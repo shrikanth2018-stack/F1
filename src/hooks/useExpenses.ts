@@ -7,9 +7,10 @@
  * - Offline-aware submission
  */
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import NetInfo from '@react-native-community/netinfo';
 import { supabase } from '../api/supabaseClient';
+import { useSupabaseQuery } from '../api/useSupabaseQuery';
 import { useAuth } from './useAuth';
 import { useStaffQueueStore } from '../store/staffQueueStore';
 import { QUERY_KEYS, QUERY_STALE_TIME } from '../utils/constants';
@@ -21,23 +22,16 @@ export type ExpenseCategory = 'Grocery' | 'Vegetable' | 'Stationery' | 'Fuel' | 
 export function useMyExpenses() {
   const { session } = useAuth();
 
-  return useQuery({
-    queryKey: [...QUERY_KEYS.EXPENSE_CLAIMS, session?.user.id],
-    queryFn: async () => {
-      if (!session) return [];
-
-      const { data, error } = await supabase
+  return useSupabaseQuery<ExpenseClaim>(
+    [...QUERY_KEYS.EXPENSE_CLAIMS, session?.user.id],
+    () =>
+      supabase
         .from('expense_claims')
         .select('*')
-        .eq('staff_id', session.user.id)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      return (data ?? []) as ExpenseClaim[];
-    },
-    enabled: !!session,
-    staleTime: QUERY_STALE_TIME,
-  });
+        .eq('staff_id', session?.user.id ?? '')
+        .order('created_at', { ascending: false }),
+    { enabled: !!session, staleTime: QUERY_STALE_TIME },
+  );
 }
 
 /** Submit a new expense claim (offline-aware) */

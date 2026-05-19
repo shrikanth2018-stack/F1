@@ -29,6 +29,7 @@ import { ErrorRetry } from '../../components/ErrorRetry';
 import { DeliveryOrderRow } from '../../components/DeliveryOrderRow';
 import { useAuth } from '../../hooks/useAuth';
 import { useUpdateOrderStatus } from '../../hooks/useStaffOrders';
+import { useActiveStaffBatch } from '../../hooks/useActiveStaffBatch';
 import { useRealtimeOrders } from '../../hooks/useRealtimeOrders';
 import { isOperationalOrder } from '../../utils/orderFilters';
 import { supabase } from '../../api/supabaseClient';
@@ -38,16 +39,20 @@ import type { OrderStatus } from '../../types';
 export function DriverDashboardScreen({ navigation }: CustomerScreenProps<'DriverDashboard'>) {
   const { session } = useAuth();
   const userId = session?.user.id ?? '';
-  const today = new Date().toISOString().split('T')[0];
+  // The driver board shows exactly one cycle's batch — the active batch
+  // released by the most recent kitchen push (same as Kitchen/Packing/Hub).
+  const { data: batch } = useActiveStaffBatch();
 
   const { mutateAsync: updateStatus, isPending: isUpdating } = useUpdateOrderStatus();
   // Realtime: refresh when an order is dispatched / advances through hub handoff.
   useRealtimeOrders(true);
 
   const { data: orders = [], isLoading, isRefetching, error, refetch } = useQuery({
-    queryKey: ['driver_orders', userId, today],
+    queryKey: ['driver_orders', userId, batch ? `${batch.cycle_id}:${batch.push_date}` : 'none'],
     queryFn: async () => {
       if (!userId) return [];
+      // No cycle pushed yet → nothing on the board (orders arrive only via push).
+      if (!batch) return [];
 
       // Find which hubs and zones this driver is assigned to.
       const [hubsRes, zonesRes] = await Promise.all([
@@ -59,10 +64,10 @@ export function DriverDashboardScreen({ navigation }: CustomerScreenProps<'Drive
 
       if (myHubIds.length === 0 && myZoneIds.length === 0) return [];
 
-      // Fetch all of today's orders, filtered client-side by hub/zone
+      // Fetch the active batch's orders, filtered client-side by hub/zone
       // membership — keeps the query simple, fine at trial scale.
       // All statuses are returned: a driver sees every order routed to them
-      // from creation; the row's status pill stays non-tappable until Packing
+      // from the push; the row's status pill stays non-tappable until Packing
       // dispatches it (see nextDeliveryStatus). Cancelled excluded — dead order.
       const { data, error: ordersErr } = await supabase
         .from('orders')
@@ -72,7 +77,8 @@ export function DriverDashboardScreen({ navigation }: CustomerScreenProps<'Drive
           customer_addresses(*),
           profiles(phone_number)
         `)
-        .eq('dispatch_date', today)
+        .eq('cycle_id', batch.cycle_id)
+        .eq('dispatch_date', batch.push_date)
         .neq('status', 'Cancelled')
         .order('created_at', { ascending: false });
 
@@ -90,7 +96,7 @@ export function DriverDashboardScreen({ navigation }: CustomerScreenProps<'Drive
         return false;
       });
     },
-    enabled: !!userId,
+    enabled: !!userId && batch !== undefined,
     refetchOnMount: 'always',
   });
 

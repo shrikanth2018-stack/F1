@@ -19,8 +19,9 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation } from '@tanstack/react-query';
 import { supabase } from '../../api/supabaseClient';
+import { useSupabaseQuery } from '../../api/useSupabaseQuery';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { useAuth } from '../../hooks/useAuth';
@@ -63,20 +64,18 @@ export function FeedbackScreen({ navigation, route }: CustomerScreenProps<'Feedb
   const [itemRatings, setItemRatings] = useState<Record<number, number>>({});
 
   // Load order items only when we have an orderId (per-item mode)
-  const { data: items = [] } = useQuery({
-    queryKey: ['feedback_items', orderId],
-    queryFn: async (): Promise<OrderItemLite[]> => {
-      if (orderId == null) return [];
-      const { data, error } = await supabase
-        .from('order_items')
-        .select('id, item_name, quantity')
-        .eq('order_id', orderId);
-      if (error) throw error;
-      return (data ?? []).filter((i) => i.item_name);
+  // No explicit generic — T / TResult infer from the transform, which selects
+  // the raw-fn + transform overload.
+  const { data: items = [] } = useSupabaseQuery(
+    ['feedback_items', orderId],
+    // `enabled` gates this to a non-null orderId; `?? 0` only satisfies the type.
+    () => supabase.from('order_items').select('id, item_name, quantity').eq('order_id', orderId ?? 0),
+    {
+      enabled: orderId != null,
+      staleTime: 60_000,
+      transform: (rows: OrderItemLite[]) => rows.filter((i) => i.item_name),
     },
-    enabled: orderId != null,
-    staleTime: 60_000,
-  });
+  );
 
   const hasItemContext = orderId != null && items.length > 0;
 

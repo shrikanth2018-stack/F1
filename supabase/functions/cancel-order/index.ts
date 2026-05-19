@@ -28,6 +28,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 import { getUserFromJwt } from '../_shared/auth.ts';
 import { resolveAndSendPush } from '../_shared/notifications.ts';
+import { loadStoreConfig } from '../_shared/storeConfig.ts';
 
 // 'Paid' = Razorpay webhook confirmed but kitchen hasn't started yet — still cancellable
 const CANCELLABLE_STATUSES = new Set(['Pending', 'Confirmed', 'Paid', 'Preparing']);
@@ -91,7 +92,7 @@ Deno.serve(async (req: Request) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    const user = getUserFromJwt(authHeader.replace('Bearer ', ''));
+    const user = await getUserFromJwt(authHeader.replace('Bearer ', ''));
     if (!user) return json({ error: 'Unauthorized' }, 401);
 
     const { order_id } = await req.json();
@@ -143,9 +144,12 @@ Deno.serve(async (req: Request) => {
     }
 
     // ── Guard 1: cancellation window from creation ─────────────
-    const { data: configRow } = await supabase
-      .from('store_config').select('cancellation_window_hours').limit(1).maybeSingle();
-    const windowHours: number = configRow?.cancellation_window_hours ?? 2;
+    let windowHours: number;
+    try {
+      windowHours = (await loadStoreConfig(supabase)).cancellation_window_hours;
+    } catch (_e) {
+      return json({ error: 'Store configuration is unavailable. Please try again shortly.' }, 503);
+    }
     const earliestCreated = Math.min(...groupRows.map((r) => new Date(r.created_at).getTime()));
     const ageHours = (Date.now() - earliestCreated) / (1000 * 60 * 60);
 

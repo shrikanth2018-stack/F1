@@ -19,7 +19,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../api/supabaseClient';
 import { useAuth } from './useAuth';
 import { QUERY_STALE_TIME } from '../utils/constants';
-import { useBranchFilter } from './useBranchFilter';
+import { useBranchFilter, requireWriteBranch } from './useBranchFilter';
 import type { SupplyOrderItem, SupplyBatch } from '../types';
 
 // ── Staff supply requests ────────────────────────────────
@@ -113,7 +113,7 @@ export function useAdminAddOrderItem() {
         p_category: payload.category,
         p_request_id: null,
         p_added_by: session?.user.id ?? null,
-        p_branch_id: bf.branchIdForWrite,
+        p_branch_id: requireWriteBranch(bf),
       } as never);
       if (error) throw new Error(error.message);
     },
@@ -173,7 +173,7 @@ export function usePrintBatch() {
           printed_by: session?.user.id ?? null,
           items_snapshot: snapshot,
           note: null,
-          branch_id: bf.branchIdForWrite,
+          branch_id: requireWriteBranch(bf),
         })
         .select('id')
         .single();

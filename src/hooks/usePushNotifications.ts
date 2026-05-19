@@ -83,7 +83,7 @@ export function usePushNotifications() {
       // Register THIS device's current token. is_active:true also reactivates
       // a row that an earlier cleanup pass had retired (user returns to a
       // device they'd opened before).
-      await supabase.from('push_notification_tokens').upsert(
+      const { error: upsertErr } = await supabase.from('push_notification_tokens').upsert(
         {
           user_id: session.user.id,
           token,
@@ -92,6 +92,11 @@ export function usePushNotifications() {
         },
         { onConflict: 'user_id,token' }
       );
+      // Best-effort registration — a failure must not break app startup, but
+      // surface it so a silently-broken push setup is at least visible.
+      if (upsertErr) {
+        console.warn('[usePushNotifications] token upsert failed:', upsertErr.message);
+      }
 
       // Retire this user's OTHER token rows — stale tokens from old installs
       // or builds whose Expo token has since changed. Without this they pile

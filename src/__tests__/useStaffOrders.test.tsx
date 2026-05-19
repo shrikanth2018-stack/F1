@@ -1,7 +1,8 @@
 /**
  * Tests for useStaffOrders — the staff dashboard data hook (also reused
  * by HubDashboardScreen). Locks in BF-31 (sub-purchase exclusion at
- * hook level) + branch filter + hub filter behaviors end-to-end.
+ * hook level) + branch filter + hub filter behaviors, plus the active-
+ * batch scoping (orders shown only for the most recent kitchen push).
  */
 
 jest.mock('@react-native-async-storage/async-storage', () => ({
@@ -59,6 +60,13 @@ jest.mock('@/hooks/useAuth', () => ({
   useAuth: () => mockAuth(),
 }));
 
+// Active staff batch controlled per-test — the cycle released by the
+// most recent kitchen push. useStaffOrders scopes its query to it.
+const mockActiveStaffBatch = jest.fn();
+jest.mock('@/hooks/useActiveStaffBatch', () => ({
+  useActiveStaffBatch: () => mockActiveStaffBatch(),
+}));
+
 import { useStaffOrders } from '@/hooks/useStaffOrders';
 
 beforeEach(() => {
@@ -66,6 +74,9 @@ beforeEach(() => {
   mockBranchFilter.mockReset();
   mockFeatureFlag.mockReset();
   mockAuth.mockReset();
+  mockActiveStaffBatch.mockReset();
+  // Default: a cycle has been pushed — the staff board has a live batch.
+  mockActiveStaffBatch.mockReturnValue({ data: { cycle_id: 4, push_date: '2026-05-17' } });
 });
 
 const baseSession = {
@@ -201,5 +212,55 @@ describe('useStaffOrders — hub-operator filtering', () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data).toHaveLength(2);
+  });
+});
+
+// ── Active-batch scoping ─────────────────────────────────
+
+describe('useStaffOrders — active-batch scoping', () => {
+  it('scopes the query to the active batch cycle_id + push_date', async () => {
+    const builder = makeBuilder({ data: [], error: null });
+    mockFromImpl.mockReturnValueOnce(builder);
+    mockBranchFilter.mockReturnValue({ isActive: false, branchId: null });
+    mockFeatureFlag.mockReturnValue(false);
+    mockAuth.mockReturnValue({ session: baseSession });
+    mockActiveStaffBatch.mockReturnValue({ data: { cycle_id: 7, push_date: '2026-06-01' } });
+
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(() => useStaffOrders(), { wrapper: Wrapper });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(builder.eq).toHaveBeenCalledWith('cycle_id', 7);
+    expect(builder.eq).toHaveBeenCalledWith('dispatch_date', '2026-06-01');
+  });
+
+  it('returns nothing and runs no query when no cycle has been pushed', async () => {
+    mockBranchFilter.mockReturnValue({ isActive: false, branchId: null });
+    mockFeatureFlag.mockReturnValue(false);
+    mockAuth.mockReturnValue({ session: baseSession });
+    mockActiveStaffBatch.mockReturnValue({ data: null });
+
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(() => useStaffOrders(), { wrapper: Wrapper });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(result.current.data).toEqual([]);
+    expect(mockFromImpl).not.toHaveBeenCalled();
+  });
+
+  it('stays pending until the active-batch lookup resolves', async () => {
+    mockBranchFilter.mockReturnValue({ isActive: false, branchId: null });
+    mockFeatureFlag.mockReturnValue(false);
+    mockAuth.mockReturnValue({ session: baseSession });
+    mockActiveStaffBatch.mockReturnValue({ data: undefined });
+
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(() => useStaffOrders(), { wrapper: Wrapper });
+
+    // enabled:false while the batch is unknown — never fetches.
+    expect(result.current.fetchStatus).toBe('idle');
+    expect(mockFromImpl).not.toHaveBeenCalled();
   });
 });

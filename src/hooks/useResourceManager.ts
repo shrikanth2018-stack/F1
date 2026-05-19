@@ -9,9 +9,11 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../api/supabaseClient';
+import { useSupabaseQuery, useSupabaseMutation } from '../api/useSupabaseQuery';
+import { invokeFunction } from '../api/invokeFunction';
 import { QUERY_STALE_TIME } from '../utils/constants';
 import { useAuth } from './useAuth';
-import { useBranchFilter } from './useBranchFilter';
+import { useBranchFilter, requireWriteBranch } from './useBranchFilter';
 import type { Profile, StaffAttendance, StaffLeave, StaffSalary } from '../types';
 
 // FT-02b: designation + benefit lookup arrays now live in
@@ -21,28 +23,26 @@ import type { Profile, StaffAttendance, StaffLeave, StaffSalary } from '../types
 
 /** Designation + benefit option lists, sourced from app_settings (FT-02b). */
 export function useStaffLookups() {
-  return useQuery({
-    queryKey: ['staff_lookups'],
-    queryFn: async () => {
-      // Columns added by FT-02b migration; not yet reflected in generated
-      // Supabase types (MF-08 pattern). Cast through `any` for the row read.
-      const { data, error } = await supabase
-        .from('app_settings')
-        .select('staff_designations, staff_benefits' as any)
-        .eq('id', 1)
-        .maybeSingle();
-      if (error) throw error;
-      const row = (data ?? {}) as { staff_designations?: unknown; staff_benefits?: unknown };
-      const designations: string[] = Array.isArray(row.staff_designations)
-        ? (row.staff_designations as string[])
-        : [];
-      const benefits: string[] = Array.isArray(row.staff_benefits)
-        ? (row.staff_benefits as string[])
-        : [];
-      return { designations, benefits };
+  return useSupabaseQuery(
+    ['staff_lookups'],
+    // Columns added by FT-02b migration; not yet in the generated Supabase
+    // types (MF-08 pattern). Cast through `any` for the row read.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    () => supabase.from('app_settings').select('staff_designations, staff_benefits' as any).eq('id', 1).maybeSingle(),
+    {
+      staleTime: QUERY_STALE_TIME,
+      transform: (rows: Array<{ staff_designations?: unknown; staff_benefits?: unknown }>) => {
+        const row = rows[0] ?? {};
+        const designations: string[] = Array.isArray(row.staff_designations)
+          ? (row.staff_designations as string[])
+          : [];
+        const benefits: string[] = Array.isArray(row.staff_benefits)
+          ? (row.staff_benefits as string[])
+          : [];
+        return { designations, benefits };
+      },
     },
-    staleTime: QUERY_STALE_TIME,
-  });
+  );
 }
 
 // ── Roster ───────────────────────────────────────────────────
@@ -138,31 +138,16 @@ export function useOnboardEmployee() {
   const bf = useBranchFilter();
   return useMutation({
     mutationFn: async (payload: OnboardPayload): Promise<{ employee_id: string; user_id: string }> => {
-      const { data: { session } } = await supabase.auth.getSession();
       // MF-02: form-supplied branch_id (super-admin's pick from the
-      // OnboardEmployeeScreen branch picker) takes precedence over the
-      // caller's JWT branch_id. Falls back to bf.branchId ?? 1 in
-      // single-branch mode (BF-06 default).
-      const resolvedBranchId =
-        payload.branch_id ?? bf.branchId ?? 1;
-      const { data, error } = await supabase.functions.invoke('elevate-employee', {
-        headers: { Authorization: `Bearer ${session?.access_token}` },
-        body: { ...payload, branch_id: resolvedBranchId },
-      });
-
-      if (error || data?.error) {
-        let message = data?.error ?? 'Failed to onboard employee';
-        try {
-          const ctx = (error as any)?.context;
-          if (ctx) {
-            const txt = await (ctx.clone ? ctx.clone() : ctx).text();
-            const parsed = JSON.parse(txt);
-            if (parsed?.error) message = parsed.error;
-          }
-        } catch {}
-        throw new Error(message);
-      }
-      return data as { employee_id: string; user_id: string };
+      // OnboardEmployeeScreen branch picker) takes precedence. requireWriteBranch
+      // throws if the branch is unresolved (super-admin on "All Branches") —
+      // no silent default to a literal branch id.
+      const resolvedBranchId = payload.branch_id ?? requireWriteBranch(bf);
+      return invokeFunction<{ employee_id: string; user_id: string }>(
+        'elevate-employee',
+        { ...payload, branch_id: resolvedBranchId },
+        { fallbackMessage: 'Failed to onboard employee' },
+      );
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['resource_roster'] }),
   });
@@ -229,64 +214,44 @@ export function useEmployeeMonthAttendance(
   const lastDay = new Date(year, month, 0).getDate();
   const to   = `${year}-${String(month).padStart(2, '0')}-${lastDay}`;
 
-  return useQuery({
-    queryKey: ['emp_attendance', staffId, year, month],
-    queryFn: async () => {
-      const { data, error } = await supabase
+  return useSupabaseQuery<StaffAttendance>(
+    ['emp_attendance', staffId, year, month],
+    () =>
+      supabase
         .from('staff_attendance')
         .select('*')
         .eq('staff_id', staffId)
         .gte('date', from)
         .lte('date', to)
-        .order('date', { ascending: true });
-      if (error) throw error;
-      return (data ?? []) as StaffAttendance[];
-    },
-    enabled: !!staffId,
-    staleTime: QUERY_STALE_TIME,
-  });
+        .order('date', { ascending: true }),
+    { enabled: !!staffId, staleTime: QUERY_STALE_TIME },
+  );
 }
 
 // ── Leaves ───────────────────────────────────────────────────
 
 export function useEmployeeLeaves(staffId: string) {
   const { session } = useAuth();
-  const queryClient = useQueryClient();
 
-  const query = useQuery({
-    queryKey: ['emp_leaves', staffId],
-    queryFn: async () => {
-      const { data, error } = await supabase
+  const query = useSupabaseQuery<StaffLeave>(
+    ['emp_leaves', staffId],
+    () =>
+      supabase
         .from('staff_leaves')
         .select('*')
         .eq('staff_id', staffId)
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      return (data ?? []) as StaffLeave[];
-    },
-    enabled: !!staffId,
-    staleTime: QUERY_STALE_TIME,
-  });
+        .order('created_at', { ascending: false }),
+    { enabled: !!staffId, staleTime: QUERY_STALE_TIME },
+  );
 
-  const review = useMutation({
-    mutationFn: async ({
-      leaveId,
-      status,
-    }: {
-      leaveId: number;
-      status: 'Approved' | 'Rejected';
-    }) => {
-      const { error } = await supabase
+  const review = useSupabaseMutation<{ leaveId: number; status: 'Approved' | 'Rejected' }>(
+    ({ leaveId, status }) =>
+      supabase
         .from('staff_leaves')
         .update({ status, approved_by: session?.user.id ?? null })
-        .eq('id', leaveId);
-      if (error) throw new Error(error.message);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['emp_leaves', staffId] });
-      queryClient.invalidateQueries({ queryKey: ['resource_roster'] });
-    },
-  });
+        .eq('id', leaveId),
+    [['emp_leaves', staffId], ['resource_roster']],
+  );
 
   return { ...query, review };
 }
@@ -294,56 +259,48 @@ export function useEmployeeLeaves(staffId: string) {
 // ── Salary ───────────────────────────────────────────────────
 
 export function useEmployeeSalary(staffId: string) {
-  const queryClient = useQueryClient();
   const bf = useBranchFilter();
 
-  const query = useQuery({
-    queryKey: ['emp_salary', staffId],
-    queryFn: async () => {
-      const { data, error } = await supabase
+  const query = useSupabaseQuery<StaffSalary>(
+    ['emp_salary', staffId],
+    () =>
+      supabase
         .from('staff_salary')
         .select('*')
         .eq('staff_id', staffId)
         .order('year', { ascending: false })
-        .order('month', { ascending: false });
-      if (error) throw error;
-      return (data ?? []) as StaffSalary[];
-    },
-    enabled: !!staffId,
-    staleTime: QUERY_STALE_TIME,
-  });
+        .order('month', { ascending: false }),
+    { enabled: !!staffId, staleTime: QUERY_STALE_TIME },
+  );
 
-  const markPaid = useMutation({
-    mutationFn: async (salaryId: number) => {
-      const { error } = await supabase
+  const markPaid = useSupabaseMutation<number>(
+    (salaryId) =>
+      supabase
         .from('staff_salary')
         .update({ is_paid: true, paid_at: new Date().toISOString() })
-        .eq('id', salaryId);
-      if (error) throw new Error(error.message);
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['emp_salary', staffId] }),
-  });
+        .eq('id', salaryId),
+    [['emp_salary', staffId]],
+  );
 
-  const addRecord = useMutation({
-    mutationFn: async (record: {
-      month: number;
-      year: number;
-      base_salary: number;
-      deductions: number;
-      bonus: number;
-    }) => {
+  const addRecord = useSupabaseMutation<{
+    month: number;
+    year: number;
+    base_salary: number;
+    deductions: number;
+    bonus: number;
+  }>(
+    (record) => {
       const net = record.base_salary - record.deductions + record.bonus;
-      const { error } = await supabase.from('staff_salary').insert({
+      return supabase.from('staff_salary').insert({
         staff_id: staffId,
         ...record,
         net_salary: net,
         is_paid: false,
-        branch_id: bf.branchIdForWrite,
+        branch_id: requireWriteBranch(bf),
       });
-      if (error) throw new Error(error.message);
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['emp_salary', staffId] }),
-  });
+    [['emp_salary', staffId]],
+  );
 
   return { ...query, markPaid, addRecord };
 }
@@ -351,44 +308,35 @@ export function useEmployeeSalary(staffId: string) {
 // ── Pending leave approvals (for ResourceManager home) ───────
 
 export function usePendingLeaves() {
-  const queryClient = useQueryClient();
   const { session } = useAuth();
   const bf = useBranchFilter();
 
-  const query = useQuery({
-    queryKey: ['resource_pending_leaves', bf.isActive ? bf.branchId ?? 'all' : 'off'],
-    queryFn: async () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const query = useSupabaseQuery<any>(
+    ['resource_pending_leaves', bf.isActive ? bf.branchId ?? 'all' : 'off'],
+    () => {
       let q = supabase
         .from('staff_leaves')
         .select('*, profiles!staff_leaves_staff_id_fkey(full_name, phone_number, employee_id)')
         .eq('status', 'Pending')
         .order('created_at', { ascending: true });
-
       if (bf.isActive && bf.branchId != null) {
         // filter by branch via joined profile
         q = q.eq('profiles.branch_id', bf.branchId);
       }
-
-      const { data, error } = await q;
-      if (error) throw error;
-      return (data ?? []) as any[];
+      return q;
     },
-    staleTime: QUERY_STALE_TIME,
-  });
+    { staleTime: QUERY_STALE_TIME },
+  );
 
-  const review = useMutation({
-    mutationFn: async ({ leaveId, status }: { leaveId: number; status: 'Approved' | 'Rejected' }) => {
-      const { error } = await supabase
+  const review = useSupabaseMutation<{ leaveId: number; status: 'Approved' | 'Rejected' }>(
+    ({ leaveId, status }) =>
+      supabase
         .from('staff_leaves')
         .update({ status, approved_by: session?.user.id ?? null })
-        .eq('id', leaveId);
-      if (error) throw new Error(error.message);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['resource_pending_leaves'] });
-      queryClient.invalidateQueries({ queryKey: ['resource_roster'] });
-    },
-  });
+        .eq('id', leaveId),
+    [['resource_pending_leaves'], ['resource_roster']],
+  );
 
   return { ...query, review };
 }
@@ -408,15 +356,15 @@ export function usePendingLeaves() {
  */
 export function useDemoteEmployee() {
   const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (staffId: string) => {
-      const { error } = await supabase.rpc('demote_employee', { target_id: staffId });
-      if (error) throw new Error(error.message);
+  return useSupabaseMutation<string>(
+    (staffId) => supabase.rpc('demote_employee', { target_id: staffId }),
+    [['resource_roster'], ['all_staff']],
+    {
+      // ['employee_detail', staffId] depends on the mutation payload, so it
+      // is invalidated here rather than via the static invalidateKeys list.
+      onSuccess: (_data, staffId) => {
+        queryClient.invalidateQueries({ queryKey: ['employee_detail', staffId] });
+      },
     },
-    onSuccess: (_d, staffId) => {
-      queryClient.invalidateQueries({ queryKey: ['resource_roster'] });
-      queryClient.invalidateQueries({ queryKey: ['employee_detail', staffId] });
-      queryClient.invalidateQueries({ queryKey: ['all_staff'] });
-    },
-  });
+  );
 }

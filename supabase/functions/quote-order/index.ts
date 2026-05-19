@@ -50,7 +50,7 @@ Deno.serve(async (req) => {
 
   try {
     const authHeader = req.headers.get('Authorization') ?? '';
-    const user = getUserFromJwt(authHeader.replace('Bearer ', ''));
+    const user = await getUserFromJwt(authHeader.replace('Bearer ', ''));
     if (!user) return json({ error: 'Unauthorized' }, 401);
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);

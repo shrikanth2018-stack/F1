@@ -10,7 +10,7 @@
 import { supabase } from '../api/supabaseClient';
 import { useSupabaseQuery, useSupabaseMutation } from '../api/useSupabaseQuery';
 import { QUERY_KEYS } from '../utils/constants';
-import { useBranchFilter } from './useBranchFilter';
+import { useBranchFilter, requireWriteBranch } from './useBranchFilter';
 import type { DeliveryZone } from '../types';
 
 export function useDeliveryZones() {
@@ -49,7 +49,7 @@ export function useAddZone() {
       supabase.from('delivery_zones').insert({
         ...payload,
         is_active: true,
-        branch_id: payload.branch_id ?? bf.branchIdForWrite,
+        branch_id: payload.branch_id ?? requireWriteBranch(bf),
       }),
     [QUERY_KEYS.ZONES as unknown as string[]]
   );

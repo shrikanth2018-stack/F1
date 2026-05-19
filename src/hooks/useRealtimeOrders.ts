@@ -1,10 +1,14 @@
 /**
  * 1stOne F1 — useRealtimeOrders
  *
- * Subscribes to Supabase Realtime on the orders table.
- * When any INSERT or UPDATE arrives for today's orders,
- * invalidates the staff_orders React Query cache so the
- * kitchen / packing / delivery views refresh instantly.
+ * Subscribes to Supabase Realtime on two tables:
+ *  - orders          — any INSERT/UPDATE refreshes every order-reading
+ *                      cache so kitchen / packing / hub / driver views
+ *                      update instantly.
+ *  - kitchen_push_log — an INSERT means a new cycle was pushed: the
+ *                      active staff batch flips, so the batch lookup is
+ *                      invalidated and the staff screens swing to the
+ *                      new cycle (the previous cycle's orders drop off).
  *
  * Mounted by StaffDashboard, AdminHome, HubDashboardScreen,
  * DriverDashboardScreen. Zero new queries — piggybacks on
@@ -65,27 +69,35 @@ export function useRealtimeOrders(enabled = true) {
         .channel(`orders-realtime-${today}-${instanceId}`)
         .on(
           'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'orders',
-            filter: `dispatch_date=eq.${today}`,
-          },
+          { event: '*', schema: 'public', table: 'orders' },
           () => {
             // Invalidate every order-reading cache key so Staff / Hub /
             // Driver / Admin views all refetch off the same realtime tick.
+            // No dispatch_date filter: the active batch's push_date can be
+            // tomorrow (cross-midnight cycles); the staff queries scope to
+            // the batch themselves, so catching every order change is right.
+            invalidateOrderQueries(queryClient);
+          },
+        )
+        .on(
+          'postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'kitchen_push_log' },
+          () => {
+            // A new cycle was pushed — the active staff batch flips.
+            // Refetch the batch lookup so Kitchen / Packing / Hub / Driver
+            // swing to the new cycle, then refetch the order lists for it.
+            queryClient.invalidateQueries({ queryKey: ['active_staff_batch'] });
             invalidateOrderQueries(queryClient);
           },
         )
         .subscribe();
 
-      // Re-subscribe at next IST midnight (+ 5s margin) so a dashboard
-      // left open across midnight starts receiving the new day's orders.
-      // Critical for cross-midnight cycles (cutoff_time > delivery_start
-      // in delivery_cycles) — those create orders with dispatch_date=tomorrow,
-      // which today's channel filter wouldn't surface.
+      // Re-subscribe at next IST midnight (+ 5s margin): a daily refresh of
+      // the channel for a dashboard left open for days, plus an invalidation
+      // so it recovers cleanly if the socket silently dropped overnight.
       rolloverTimer = setTimeout(() => {
         if (channel) supabase.removeChannel(channel);
+        queryClient.invalidateQueries({ queryKey: ['active_staff_batch'] });
         invalidateOrderQueries(queryClient);
         subscribe();
       }, msUntilNextIstMidnight(new Date()));

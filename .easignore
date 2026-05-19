@@ -1,0 +1,90 @@
+# Mirrors .gitignore so `eas build --local` archives the same files,
+# EXCEPT google-services.json: that file is git-ignored but the Android
+# prebuild (android.googleServicesFile) needs it inside the build archive.
+# .env and play-store-service-account.json stay excluded — no secrets leak.
+
+# Dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+
+# Native builds
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# iOS
+ios/
+*.xcodeproj/
+*.xcworkspace/
+Pods/
+
+# Android
+android/
+*.apk
+*.aab
+
+# Environment
+.env
+.env.local
+.env.production
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# EAS
+GoogleService-Info.plist
+play-store-service-account.json
+
+# TypeScript
+*.tsbuildinfo
+
+# Metro
+.metro-health-check*
+
+# Supabase CLI working state
+supabase/.temp/
+
+# Coverage
+coverage/
+
+# One-off document generator scripts & outputs
+generate_*.js
+APP_REVIEW.*
+TECHNICAL_AUDIT.*
+Old Audits/
+
+# Local-only docs / scratchpads
+PHASE1_*.md
+Dcos/
+
+# Claude Code local config
+.claude/
+# Local scratch scripts
+scripts/
+
+# Husky auto-generated stubs
+.husky/_/
+
+# Files marked for deletion
+_marked_for_deletion/
+
+# Master document
+docs/master/
+
+# Operational playbooks
+docs/playbooks/

@@ -17,27 +17,37 @@ import { QUERY_KEYS, QUERY_STALE_TIME } from '../utils/constants';
 import { useBranchFilter } from './useBranchFilter';
 import { useFeatureFlag } from './useFeatureFlag';
 import { useAuth } from './useAuth';
+import { useActiveStaffBatch } from './useActiveStaffBatch';
 import { isOperationalOrder } from '../utils/orderFilters';
 import { fireOrderStatusPush } from '../utils/orderStatusPush';
 import type { Order, OrderStatus } from '../types';
 
-/** Fetch today's orders for staff dashboard */
-export function useStaffOrders(cycleId?: number) {
-  const today = new Date().toISOString().split('T')[0];
+/**
+ * Orders for the staff operational screens (Kitchen / Packing / Hub).
+ *
+ * Scoped to the ACTIVE BATCH — the single cycle released by the most recent
+ * kitchen push (useActiveStaffBatch). Orders reach the staff screens ONLY
+ * via the push; the board shows exactly one cycle's batch and flips to the
+ * next cycle when that cycle pushes. Returns [] until the first push.
+ */
+export function useStaffOrders() {
   const bf = useBranchFilter();
   const hubDeliveryActive = useFeatureFlag('hub_delivery_active');
   const { session } = useAuth();
   const assignedHubId = session?.assignedHubId ?? null;
+  const { data: batch } = useActiveStaffBatch();
 
   return useQuery({
     queryKey: [
       ...QUERY_KEYS.STAFF_ORDERS,
-      today,
-      cycleId ?? 'all',
+      batch ? `${batch.cycle_id}:${batch.push_date}` : 'none',
       bf.isActive ? bf.branchId ?? 'all' : 'off',
       hubDeliveryActive && assignedHubId != null ? assignedHubId : 'no-hub',
     ],
     queryFn: async () => {
+      // No cycle pushed yet → staff see nothing (orders arrive only via push).
+      if (!batch) return [] as (Order & { order_items: any[]; customer_addresses: any })[];
+
       // Also pull the zone's + hub's driver_code so the Delivery tab can label each row.
       let query = supabase
         .from('orders')
@@ -47,16 +57,13 @@ export function useStaffOrders(cycleId?: number) {
           customer_addresses(*, delivery_zones(driver_code, zone_name), delivery_hubs(driver_code, hub_name)),
           profiles(phone_number)
         `)
-        // Cancelled orders never belong on operational staff/hub screens —
-        // they live only in order history (customer profile + admin). Excluded
-        // at the query so Kitchen, Packing and Hub Today are all clean by default.
-        .eq('dispatch_date', today)
+        // Scoped to the active batch: exactly one cycle + its push_date.
+        // Cancelled orders never belong on operational staff/hub screens.
+        .eq('cycle_id', batch.cycle_id)
+        .eq('dispatch_date', batch.push_date)
         .neq('status', 'Cancelled')
         .order('created_at', { ascending: false });
 
-      if (cycleId) {
-        query = query.eq('cycle_id', cycleId);
-      }
       if (bf.isActive && bf.branchId != null) {
         query = query.eq('branch_id', bf.branchId);
       }
@@ -78,6 +85,8 @@ export function useStaffOrders(cycleId?: number) {
 
       return operational;
     },
+    // Wait until the active-batch lookup resolves (to a cycle or to null).
+    enabled: batch !== undefined,
     staleTime: QUERY_STALE_TIME,
   });
 }

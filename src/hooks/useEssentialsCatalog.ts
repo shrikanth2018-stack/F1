@@ -13,7 +13,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../api/supabaseClient';
 import { QUERY_STALE_TIME } from '../utils/constants';
-import { useBranchFilter } from './useBranchFilter';
+import { useBranchFilter, requireWriteBranch } from './useBranchFilter';
 
 /** Friendly display labels for meal cycles when shown in Essentials context */
 export const CYCLE_DISPLAY: Record<string, string> = {
@@ -64,7 +64,7 @@ export function useAddEssential() {
         .insert({
           ...item,
           is_active: true,
-          branch_id: bf.branchIdForWrite,
+          branch_id: requireWriteBranch(bf),
         });
       if (error) throw new Error(error.message);
     },

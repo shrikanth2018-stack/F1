@@ -61,7 +61,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useWalletBalance } from '../../hooks/useWallet';
 import { useStaffNoteForTab, type NoteTarget } from '../../hooks/useAdminNotes';
 import { supabase } from '../../api/supabaseClient';
-import { useQuery } from '@tanstack/react-query';
+import { useSupabaseQuery } from '../../api/useSupabaseQuery';
 import type { OrderStatus } from '../../types';
 import { confirmDialog } from '../../utils/confirmDialog';
 
@@ -216,18 +216,15 @@ function aggregateKitchenItems(
 
 // ── Staff message bar ────────────────────────────────────
 function useStaffMessage() {
-  return useQuery({
-    queryKey: ['staff_message'],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from('store_config')
-        .select('staff_message')
-        .limit(1)
-        .single();
-      return (data as any)?.staff_message as string | null ?? null;
+  return useSupabaseQuery(
+    ['staff_message'],
+    () => supabase.from('store_config').select('staff_message').limit(1).single(),
+    {
+      staleTime: 60_000,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      transform: (rows: any[]): string | null => rows[0]?.staff_message ?? null,
     },
-    staleTime: 60_000,
-  });
+  );
 }
 
 // ── Order Form Modal ─────────────────────────────────────
@@ -238,24 +235,24 @@ interface LineItem {
 }
 
 function useSupplyCatalog(type: OrderFormType) {
-  return useQuery({
-    queryKey: ['supply_catalog', type],
-    queryFn: async () => {
-      if (!type) return [];
-      const { data } = await supabase
+  return useSupabaseQuery<{ id: string; name: string }>(
+    ['supply_catalog', type],
+    // `enabled` gates this to a non-null type; `?? ''` only satisfies the type.
+    () =>
+      supabase
         .from('supply_catalog')
         .select('id, name')
-        .eq('category', type)
+        .eq('category', type ?? '')
         .eq('is_active', true)
-        .order('name');
-      return (data ?? []) as { id: string; name: string }[];
+        .order('name'),
+    {
+      enabled: !!type,
+      staleTime: 5 * 60_000,
+      // Refetch when the modal opens — protects against stale empty cache
+      // (e.g., from a previous session or pre-auth state).
+      refetchOnMount: 'always',
     },
-    enabled: !!type,
-    staleTime: 5 * 60_000,
-    // Refetch when the modal opens — protects against stale empty cache
-    // (e.g., from a previous session or pre-auth state).
-    refetchOnMount: 'always',
-  });
+  );
 }
 
 function OrderFormModal({
@@ -522,7 +519,7 @@ export function StaffDashboard() {
 
   const { session } = useAuth();
   const { data: profile } = useWalletBalance();
-  const { data: orders, isLoading, isError, refetch } = useStaffOrders(undefined);
+  const { data: orders, isLoading, isError, refetch } = useStaffOrders();
   const updateStatus = useUpdateOrderStatus();
   const { pendingCount } = useOfflineSync();
   // Deprecated: single staff_message from store_config (kept as last-resort fallback)

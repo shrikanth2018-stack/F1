@@ -11,12 +11,13 @@ import { createWrapper } from './_helpers/queryClient';
 
 const mockInvoke = jest.fn();
 const mockFrom = jest.fn();
+const mockGetSession = jest.fn();
 
 jest.mock('@/api/supabaseClient', () => ({
   supabase: {
     functions: { invoke: (...args: unknown[]) => mockInvoke(...args) },
     from: (...args: unknown[]) => mockFrom(...args),
-    auth: { getSession: jest.fn() },
+    auth: { getSession: (...args: unknown[]) => mockGetSession(...args) },
   },
 }));
 
@@ -39,6 +40,8 @@ import { useWalletTopup } from '@/hooks/useWallet';
 beforeEach(() => {
   mockInvoke.mockReset();
   mockFrom.mockReset();
+  mockGetSession.mockReset();
+  mockGetSession.mockResolvedValue({ data: { session: { access_token: 'tok' } } });
 });
 
 describe('useWalletTopup — BF-38a (F1.3)', () => {
@@ -90,7 +93,7 @@ describe('useWalletTopup — BF-38a (F1.3)', () => {
   it('propagates supabase error as a throw', async () => {
     mockInvoke.mockResolvedValueOnce({
       data: null,
-      error: new Error('Minimum top-up is ₹100'),
+      error: { context: { text: async () => JSON.stringify({ error: 'Minimum top-up is ₹100' }) } },
     });
 
     const { Wrapper } = createWrapper();

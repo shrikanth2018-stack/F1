@@ -12,6 +12,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../api/supabaseClient';
+import { invokeFunction } from '../api/invokeFunction';
 import { useAuth } from './useAuth';
 import { QUERY_KEYS, QUERY_STALE_TIME } from '../utils/constants';
 import type { Referral, ReferralSettings, Profile } from '../types';
@@ -114,30 +115,9 @@ export function useApplyReferralCode() {
   return useMutation({
     mutationFn: async (code: string) => {
       if (!session) throw new Error('Not authenticated');
-
-      const { data: { session: rawSession } } = await supabase.auth.getSession();
-      const { data, error } = await supabase.functions.invoke('apply-referral', {
-        headers: { Authorization: `Bearer ${rawSession?.access_token}` },
-        body: { code },
+      await invokeFunction('apply-referral', { code }, {
+        fallbackMessage: 'Failed to apply referral code',
       });
-
-      if (error || data?.error) {
-        // Extract the server-side error message
-        let message = 'Failed to apply referral code';
-        try {
-          if (data?.error) {
-            message = data.error;
-          } else {
-            const ctx = (error as any)?.context;
-            if (ctx) {
-              const text = await (ctx.clone ? ctx.clone() : ctx).text();
-              const parsed = JSON.parse(text);
-              if (parsed?.error) message = parsed.error;
-            }
-          }
-        } catch {}
-        throw new Error(message);
-      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.REFERRALS });

@@ -5,7 +5,6 @@
  * and cancelled/skipped days management.
  */
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../api/supabaseClient';
 import { useSupabaseQuery, useSupabaseMutation } from '../api/useSupabaseQuery';
 import { QUERY_KEYS } from '../utils/constants';
@@ -45,25 +44,24 @@ export function useSubscriptionPlans(cycleId?: number | null) {
 }
 
 export function usePlanItems(planId: number) {
-  return useQuery<SubscriptionPlanItem[]>({
-    queryKey: ['plan_items', planId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('subscription_plans')
-        .select('plan_items')
-        .eq('id', planId)
-        .single();
-      if (error) throw new Error(error.message);
-      if (!data?.plan_items) return [];
-      try {
-        return JSON.parse(data.plan_items) as SubscriptionPlanItem[];
-      } catch {
-        return [];
-      }
+  return useSupabaseQuery(
+    ['plan_items', planId],
+    () =>
+      supabase.from('subscription_plans').select('plan_items').eq('id', planId).single(),
+    {
+      enabled: !!planId,
+      staleTime: 1000 * 60 * 2,
+      transform: (rows: Array<{ plan_items?: string | null }>): SubscriptionPlanItem[] => {
+        const raw = rows[0]?.plan_items;
+        if (!raw) return [];
+        try {
+          return JSON.parse(raw) as SubscriptionPlanItem[];
+        } catch {
+          return [];
+        }
+      },
     },
-    enabled: !!planId,
-    staleTime: 1000 * 60 * 2,
-  });
+  );
 }
 
 // ── User's Active Subscriptions ──
@@ -147,23 +145,20 @@ export function useUndoSkip() {
 // ── Admin: all subscriptions ──
 
 export function useAdminSubscriptions() {
-  return useQuery({
-    queryKey: ['admin_subscriptions'],
-    queryFn: async () => {
-      const { data, error } = await supabase
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return useSupabaseQuery<any>(
+    ['admin_subscriptions'],
+    () =>
+      supabase
         .from('user_subscriptions')
         // BF-21 (2026-05-04): include price in the subscription_plans join.
         // Without it, plan.price was undefined and the proration formula
-        // computed ₹0 for every cancellation. Pre-existing query gap that
-        // shipped silently from before BF-21 — the new all-inclusive
-        // proration formula needs price to produce a non-zero refund.
+        // computed ₹0 for every cancellation. The all-inclusive proration
+        // formula needs price to produce a non-zero refund.
         .select('*, subscription_plans(plan_name, duration_days, plan_type, price), profiles!user_subscriptions_user_id_fkey(full_name, phone_number)')
         .eq('is_active', true)
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      return (data ?? []) as any[];
-    },
-  });
+        .order('created_at', { ascending: false }),
+  );
 }
 
 /**
@@ -179,31 +174,16 @@ export function useAdminSubscriptions() {
  * wallet credit step is a no-op inside the RPC).
  */
 export function useAdminCancelSubscription() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async ({
-      subscriptionId,
-      refundAmount,
-    }: {
-      subscriptionId: number;
-      refundAmount: number;
-    }) => {
-      // RPC name cast: database.types.ts is auto-generated and won't
-      // know about this RPC until regenerated (task #15, post-launch FT).
-      // Same pattern as useStockManager.useAdminAddOrderItem and
-      // useCompleteOnboarding.
-      const { error } = await supabase.rpc('admin_cancel_subscription_atomic' as never, {
-        p_subscription_id: subscriptionId,
-        p_refund_amount:   refundAmount,
-      } as never);
-      if (error) throw new Error(error.message);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin_subscriptions'] });
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.SUBSCRIPTIONS });
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.WALLET });
-    },
-  });
+  return useSupabaseMutation<{ subscriptionId: number; refundAmount: number }>(
+    (payload) =>
+      // RPC not in the generated types — cast (same pattern as useStockManager).
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (supabase as any).rpc('admin_cancel_subscription_atomic', {
+        p_subscription_id: payload.subscriptionId,
+        p_refund_amount: payload.refundAmount,
+      }),
+    [['admin_subscriptions'], QUERY_KEYS.SUBSCRIPTIONS, QUERY_KEYS.WALLET],
+  );
 }
 
 // ── Pause/Resume Subscription ──

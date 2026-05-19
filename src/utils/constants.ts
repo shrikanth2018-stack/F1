@@ -38,7 +38,6 @@ export const QUERY_KEYS = {
   ZONES: ['delivery_zones'] as const,
   REFERRALS: ['referrals'] as const,
   EXPENSE_CLAIMS: ['expense_claims'] as const,
-  SERVER_TIME: ['server_time'] as const,
 } as const;
 
 /** Supabase Storage bucket names */
@@ -57,9 +56,6 @@ export const ORDER_STATUSES = [
   'delivered',
   'cancelled',
 ] as const;
-
-/** Fallback WhatsApp support number (overridden by store_config.whatsapp_support_number) */
-export const DEFAULT_WHATSAPP_SUPPORT = '9448364017';
 
 /** Max retry for offline queue before flagging */
 export const MAX_QUEUE_RETRIES = 5;

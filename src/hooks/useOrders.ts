@@ -5,9 +5,10 @@
  * useMyOrders uses infinite-scroll pagination (20 orders per page).
  */
 
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../api/supabaseClient';
-import { useSupabaseQuery, useSupabaseMutation } from '../api/useSupabaseQuery';
+import { invokeFunction } from '../api/invokeFunction';
+import { useSupabaseQuery, useSupabaseMutation, useSupabaseInfiniteQuery } from '../api/useSupabaseQuery';
 import { invalidateOrderQueries } from '../api/invalidateOrderQueries';
 import { QUERY_KEYS } from '../utils/constants';
 import { useAuth } from './useAuth';
@@ -19,25 +20,17 @@ export function useMyOrders() {
   const { session } = useAuth();
   const userId = session?.user.id ?? '';
 
-  return useInfiniteQuery({
-    queryKey: [...QUERY_KEYS.MY_ORDERS],
-    queryFn: async ({ pageParam }: { pageParam: number }) => {
-      const { data, error } = await supabase
+  return useSupabaseInfiniteQuery<Order>(
+    [...QUERY_KEYS.MY_ORDERS],
+    (offset) =>
+      supabase
         .from('orders')
         .select('*')
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
-        .range(pageParam, pageParam + PAGE_SIZE - 1);
-      if (error) throw error;
-      return (data ?? []) as Order[];
-    },
-    initialPageParam: 0,
-    getNextPageParam: (lastPage: Order[], allPages: Order[][]) => {
-      if (lastPage.length < PAGE_SIZE) return undefined;
-      return allPages.reduce((sum, page) => sum + page.length, 0);
-    },
-    enabled: !!userId,
-  });
+        .range(offset, offset + PAGE_SIZE - 1),
+    { pageSize: PAGE_SIZE, enabled: !!userId },
+  );
 }
 
 export function useOrderDetail(orderId: number) {
@@ -89,24 +82,10 @@ export function useCancelOrder() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (payload: { order_id: number }) => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('Not authenticated');
-
-      const { data, error } = await supabase.functions.invoke('cancel-order', {
-        headers: { Authorization: `Bearer ${session.access_token}` },
-        body: { order_id: payload.order_id },
-      });
-
-      if (error) {
-        let message = 'Cancellation failed';
-        const ctx = (error as any)?.context;
-        if (ctx && typeof ctx === 'object' && ctx.error) message = ctx.error;
-        throw new Error(message);
-      }
-
-      return data;
-    },
+    mutationFn: (payload: { order_id: number }) =>
+      invokeFunction('cancel-order', { order_id: payload.order_id }, {
+        fallbackMessage: 'Cancellation failed',
+      }),
     onSuccess: () => {
       invalidateOrderQueries(queryClient);
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.WALLET });
@@ -122,15 +101,9 @@ export function useConfirmOrder() {
     razorpay_signature: string;
   }>(
     async (payload) => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('Not authenticated');
-
-      const { data, error } = await supabase.functions.invoke('confirm-order', {
-        headers: { Authorization: `Bearer ${session.access_token}` },
-        body: payload,
+      const data = await invokeFunction('confirm-order', payload, {
+        fallbackMessage: 'Payment confirmation failed',
       });
-
-      if (error) throw new Error('Payment confirmation failed');
       return { data, error: null, count: null, status: 200, statusText: 'OK' } as any;
     },
     [QUERY_KEYS.MY_ORDERS as unknown as string[], QUERY_KEYS.ORDERS as unknown as string[]]

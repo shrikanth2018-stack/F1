@@ -38,7 +38,7 @@ Deno.serve(async (req: Request) => {
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) return json({ error: 'Missing authorization' }, 401);
 
-    const user = getUserFromJwt(authHeader.replace('Bearer ', ''));
+    const user = await getUserFromJwt(authHeader.replace('Bearer ', ''));
     if (!user) return json({ error: 'Unauthorized' }, 401);
 
     const { code } = await req.json();

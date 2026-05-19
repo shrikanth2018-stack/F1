@@ -22,6 +22,7 @@ import {
   toPaise,
   type DispatchScenario,
 } from './dispatch.ts';
+import { loadStoreConfig, type StoreConfig } from './storeConfig.ts';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type SupabaseClient = any;
@@ -105,17 +106,21 @@ export async function buildAuthoritativeOrder(args: BuildArgs): Promise<BuildRes
     return { ok: false, status: 400, error: 'No items or plans provided' };
   }
 
-  // ── Store config + storm mode ──────────────────────────────
-  const { data: config } = await supabase
-    .from('store_config').select('*').limit(1).maybeSingle();
-  const taxRate: number = config?.tax_rate_percentage ?? 5;
+  // ── Store config (hard-fail if missing/incomplete) + storm mode ──
+  let config: StoreConfig;
+  try {
+    config = await loadStoreConfig(supabase);
+  } catch (_e) {
+    return { ok: false, status: 503, error: 'Store configuration is unavailable. Please try again shortly.' };
+  }
+  const taxRate = config.tax_rate_percentage;
 
   const { data: stormFlag } = await supabase
     .from('feature_flags').select('flag_value').eq('flag_key', 'storm_mode_active').maybeSingle();
-  const stormMode = stormFlag?.flag_value === true || config?.storm_mode_active === true;
+  const stormMode = stormFlag?.flag_value === true || config.storm_mode_active === true;
 
   // ── Address → delivery method, hub, branch, fee ────────────
-  let deliveryFee: number = config?.delivery_fee ?? 0;
+  let deliveryFee: number = config.delivery_fee;
   let feePending = false;
   let deliveryMethod: 'direct' | 'hub' | null = null;
   let hubId: number | null = null;

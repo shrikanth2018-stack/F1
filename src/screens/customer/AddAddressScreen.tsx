@@ -30,7 +30,7 @@ import { useAddAddress, useUpdateAddress, useAddresses } from '../../hooks/useAd
 import { useAuth } from '../../hooks/useAuth';
 import { useFeatureFlag } from '../../hooks/useFeatureFlag';
 import { isNonEmpty, isValidIndianPhone, normalizePhone } from '../../utils/validators';
-import { checkZone, pointInPolygon, ZoneCheckResult } from '../../utils/serviceability';
+import { checkZone, ZoneCheckResult } from '../../utils/serviceability';
 import { supabase } from '../../api/supabaseClient';
 
 const LABELS = ['Home', 'Office', 'Other'] as const;
@@ -181,23 +181,9 @@ export function AddAddressScreen({ navigation, route, onComplete }: Props) {
 
   const saveAddress = async () => {
     try {
-      // Hub assignment — find which hub polygon this address falls in
-      let hubId: number | null = null;
-      if (hubDeliveryActive && latitude != null && longitude != null) {
-        const { data: hubs } = await supabase
-          .from('delivery_hubs')
-          .select('id, polygon_geojson')
-          .eq('is_active', true);
-
-        const matchingHub = (hubs ?? []).find(
-          (h: any) =>
-            Array.isArray(h.polygon_geojson) &&
-            h.polygon_geojson.length >= 3 &&
-            pointInPolygon(latitude!, longitude!, h.polygon_geojson)
-        );
-        hubId = matchingHub?.id ?? null;
-      }
-
+      // Zone, routing hub and serviceability come from the server
+      // (resolve_address_serviceability). hub_id is stored only when hub
+      // delivery is enabled.
       const basePayload = {
         label,
         full_name: fullName.trim(),
@@ -208,8 +194,8 @@ export function AddAddressScreen({ navigation, route, onComplete }: Props) {
         latitude,
         longitude,
         zone_id: zoneResult?.zoneId ?? null,
-        hub_id: hubId,
-        is_serviceable: zoneResult?.result === 'serviceable',
+        hub_id: hubDeliveryActive ? (zoneResult?.hubId ?? null) : null,
+        is_serviceable: zoneResult?.isServiceable ?? false,
       };
 
       if (isEditMode && editingId != null) {

@@ -14,7 +14,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../api/supabaseClient';
 import { QUERY_STALE_TIME } from '../utils/constants';
-import { useBranchFilter } from './useBranchFilter';
+import { useBranchFilter, requireWriteBranch } from './useBranchFilter';
 
 export type PlanType = 'food' | 'essentials';
 
@@ -86,7 +86,7 @@ export function useAddPlan() {
           price: plan.price,
           plan_items: plan.plan_items,
           is_active: true,
-          branch_id: bf.branchIdForWrite,
+          branch_id: requireWriteBranch(bf),
         });
       if (error) throw new Error(error.message);
     },

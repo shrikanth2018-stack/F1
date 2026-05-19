@@ -27,11 +27,11 @@ import { ThemedText } from '../../components/ThemedText';
 import { Divider } from '../../components/Divider';
 import { useSubscriptionPlans, usePlanItems, useMySubscriptions } from '../../hooks/useSubscriptions';
 import { useDeliveryCycles } from '../../hooks/useDeliveryCycles';
-import { useServerTime } from '../../hooks/useServerTime';
+import { useCycleDispatch } from '../../hooks/useCycleDispatch';
 import { useCartStore } from '../../store/cartStore';
 import { useEssentialsCartStore } from '../../store/essentialsCartStore';
 import { formatPriceShort, formatDateShort } from '../../utils/formatters';
-import { formatTime12h, getDispatchScenario } from '../../utils/timeEngine';
+import { formatTime12h } from '../../utils/timeEngine';
 import { essentialsCycleLabel } from '../../utils/cycleLabels';
 import { trackPlanViewed } from '../../utils/analytics';
 import {
@@ -75,7 +75,7 @@ export function PlanDetailScreen({ route, navigation }: any) {
   const { data: cycles } = useDeliveryCycles();
   const cycle = cycles?.find((c) => c.id === plan?.cycle_id);
   const { data: mySubs } = useMySubscriptions();
-  const { data: serverTime } = useServerTime();
+  const { data: cycleDispatch } = useCycleDispatch();
 
   const setFoodPlan = useCartStore((s) => s.setSinglePlan);
   const setEssPlan = useEssentialsCartStore((s) => s.setSinglePlan);
@@ -88,12 +88,12 @@ export function PlanDetailScreen({ route, navigation }: any) {
   // tomorrow (C — cross-midnight cycle after its cutoff). Defaults to
   // tomorrow while cycle/serverTime are still loading.
   const earliestOffset = useMemo(() => {
-    if (!cycle || !serverTime) return 1;
-    const scenario = getDispatchScenario(cycle, serverTime);
+    if (!cycle || !cycleDispatch) return 1;
+    const scenario = cycleDispatch.get(cycle.id)?.scenario;
     if (scenario === 'A') return 0;
-    if (scenario === 'B') return 1;
-    return 2; // 'C'
-  }, [cycle, serverTime]);
+    if (scenario === 'C') return 2;
+    return 1; // 'B' or unresolved → tomorrow
+  }, [cycle, cycleDispatch]);
 
   const selectableDates = useMemo(() => getSelectableDates(14, earliestOffset), [earliestOffset]);
 

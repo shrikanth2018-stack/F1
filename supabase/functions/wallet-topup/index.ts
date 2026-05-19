@@ -18,6 +18,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 import { getUserFromJwt } from '../_shared/auth.ts';
+import { loadStoreConfig } from '../_shared/storeConfig.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -51,7 +52,7 @@ serve(async (req) => {
     const authHeader = req.headers.get('Authorization') ?? '';
     const idempotencyKey = req.headers.get('Idempotency-Key') ?? '';
 
-    const user = getUserFromJwt(authHeader.replace('Bearer ', ''));
+    const user = await getUserFromJwt(authHeader.replace('Bearer ', ''));
     if (!user) return json({ error: 'Unauthorized' }, 401);
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
@@ -85,18 +86,18 @@ serve(async (req) => {
       return json({ error: 'Amount must be a positive number' }, 400);
     }
 
-    // Enforce store-config min/max. BF-32b: column name is `min_wallet_topup`
-    // (the earlier `wallet_min_topup` select silently failed and fell through
-    // to the hardcoded 100 fallback, bypassing admin's configured value).
-    // No `max_wallet_topup` column exists yet — keep a hardcoded ceiling
-    // until admin UI grows one.
-    const { data: config } = await supabase
-      .from('store_config')
-      .select('min_wallet_topup')
-      .limit(1)
-      .maybeSingle();
-    const minTopup = config?.min_wallet_topup ?? 100;
-    const maxTopup = 50000;
+    // Enforce store-config min/max top-up bounds. Both come from store_config
+    // — max_wallet_topup added in the Task 2 config-hardening migration, so the
+    // ceiling is admin-configurable and no longer hardcoded here.
+    let minTopup: number;
+    let maxTopup: number;
+    try {
+      const config = await loadStoreConfig(supabase);
+      minTopup = config.min_wallet_topup;
+      maxTopup = config.max_wallet_topup;
+    } catch (_e) {
+      return json({ error: 'Store configuration is unavailable. Please try again shortly.' }, 503);
+    }
     if (amt < minTopup) return json({ error: `Minimum top-up is ₹${minTopup}` }, 400);
     if (amt > maxTopup) return json({ error: `Maximum top-up is ₹${maxTopup}` }, 400);
 

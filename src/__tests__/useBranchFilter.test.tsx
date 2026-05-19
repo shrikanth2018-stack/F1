@@ -94,7 +94,7 @@ describe('useBranchFilter — customer path (MF-09)', () => {
     const { result } = renderHook(() => useBranchFilter(), { wrapper: Wrapper });
 
     expect(result.current.branchId).toBeNull();
-    expect(result.current.branchIdForWrite).toBe(1); // single-branch default
+    expect(result.current.branchIdForWrite).toBeNull(); // unresolved — callers guard via requireWriteBranch()
   });
 
   it('JWT branch_id wins over address-derived branch for a customer-with-claim', () => {

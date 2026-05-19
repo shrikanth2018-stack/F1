@@ -1,39 +1,17 @@
+/**
+ * Tests for the time display/parsing helpers.
+ *
+ * The dispatch DECISION logic moved server-side (Task 3A) — it now lives in
+ * supabase/functions/_shared/dispatch.ts and is covered by dispatch.test.ts.
+ * This file only covers the surviving pure presentation helpers.
+ */
+
 import {
   parseTime,
   timeToMinutes,
-  getDispatchScenario,
   formatTime12h,
   getDispatchLabel,
-  isCycleOrderable,
 } from '@/utils/timeEngine';
-import type { DeliveryCycle } from '@/types';
-
-// Minimal cycle factory — only fields used by the functions under test
-function makeCycle(cutoff: string, deliveryStart: string): DeliveryCycle {
-  return {
-    id: 1,
-    cycle_name: 'Test Cycle',
-    cutoff_time: cutoff,
-    kitchen_push_time: '06:00:00',
-    delivery_start: deliveryStart,
-    delivery_end: '12:00:00',
-    is_active: true,
-    is_essentials: false,
-    essentials_label: null,
-    branch_id: null,
-    sort_order: 1,
-    created_at: '',
-    updated_at: '',
-  };
-}
-
-// Build a fake ISO timestamp with a given "HH:MM" local time
-// (getDispatchScenario uses getHours/getMinutes which respect local TZ)
-function tsAt(hours: number, minutes: number): string {
-  const d = new Date();
-  d.setHours(hours, minutes, 0, 0);
-  return d.toISOString();
-}
 
 describe('parseTime', () => {
   it('parses HH:MM', () => {
@@ -67,47 +45,6 @@ describe('timeToMinutes', () => {
   });
 });
 
-describe('getDispatchScenario — normal cycle (cutoff < delivery_start)', () => {
-  // cutoff 14:00, delivery_start 07:30 → NOT cross-midnight (cutoff > delivery_start IS cross-midnight)
-  // For normal: cutoff=14:00 (840 min), delivery_start=07:30 (450 min) → 840 > 450 → IS cross-midnight
-  // Let's use cutoff=10:00, delivery_start=12:00 → 600 < 720 → normal (cutoff < delivery_start)
-  const cycle = makeCycle('10:00:00', '12:00:00');
-
-  it('returns A when order placed before cutoff', () => {
-    expect(getDispatchScenario(cycle, tsAt(8, 0))).toBe('A');
-    expect(getDispatchScenario(cycle, tsAt(9, 59))).toBe('A');
-  });
-
-  it('returns B when order placed after cutoff', () => {
-    expect(getDispatchScenario(cycle, tsAt(10, 0))).toBe('B');
-    expect(getDispatchScenario(cycle, tsAt(14, 0))).toBe('B');
-  });
-});
-
-describe('getDispatchScenario — cross-midnight cycle (cutoff > delivery_start)', () => {
-  // cutoff=22:00 (1320), delivery_start=07:30 (450) → 1320 > 450 → cross-midnight.
-  // BF-41 / F3.X: today's delivery is locked at yesterday's cutoff, so
-  // cross-midnight cycles never produce scenario 'A'. Only 'B' (today's
-  // cutoff still ahead → tomorrow's morning delivery) or 'C' (today's
-  // cutoff already passed → day after tomorrow's delivery).
-  const cycle = makeCycle('22:00:00', '07:30:00');
-
-  it('returns B early morning (before today\'s cutoff)', () => {
-    // 06:00 < 22:00 cutoff → today's cutoff still ahead → tomorrow's delivery.
-    expect(getDispatchScenario(cycle, tsAt(6, 0))).toBe('B');
-  });
-
-  it('returns B during the day (after delivery_start, before cutoff)', () => {
-    expect(getDispatchScenario(cycle, tsAt(9, 0))).toBe('B');
-    expect(getDispatchScenario(cycle, tsAt(21, 59))).toBe('B');
-  });
-
-  it('regression BF-41: returns C after cutoff (today\'s cutoff passed, next available is day after tomorrow)', () => {
-    expect(getDispatchScenario(cycle, tsAt(22, 0))).toBe('C');
-    expect(getDispatchScenario(cycle, tsAt(23, 30))).toBe('C');
-  });
-});
-
 describe('getDispatchLabel', () => {
   it('maps A to Today', () => {
     expect(getDispatchLabel('A')).toBe('Today');
@@ -119,54 +56,6 @@ describe('getDispatchLabel', () => {
 
   it('maps C to Day after tomorrow (BF-41 — cross-midnight after-cutoff)', () => {
     expect(getDispatchLabel('C')).toBe('Day after tomorrow');
-  });
-});
-
-describe('isCycleOrderable', () => {
-  it('returns true when cycle is active', () => {
-    expect(isCycleOrderable({ ...makeCycle('10:00:00', '12:00:00'), is_active: true })).toBe(true);
-  });
-
-  it('returns false when cycle is inactive', () => {
-    expect(isCycleOrderable({ ...makeCycle('10:00:00', '12:00:00'), is_active: false })).toBe(false);
-  });
-});
-
-describe('getDispatchScenario — edge cases', () => {
-  it('cutoff exactly equal to delivery_start is treated as a normal (not cross-midnight) cycle', () => {
-    // Both 12:00. isCrossMidnight check is strict ` > `, so degenerate equal → normal path.
-    const cycle = makeCycle('12:00:00', '12:00:00');
-    expect(getDispatchScenario(cycle, tsAt(11, 59))).toBe('A');
-    expect(getDispatchScenario(cycle, tsAt(12, 0))).toBe('B');
-  });
-
-  it('order placed at exact cutoff minute is Scenario B (cutoff is exclusive)', () => {
-    const cycle = makeCycle('10:00:00', '12:00:00');
-    expect(getDispatchScenario(cycle, tsAt(10, 0))).toBe('B');
-  });
-
-  it('cross-midnight cycle with delivery_start at exactly 00:00 — order placed at 00:00 is BTW boundary', () => {
-    // cutoff 23:00 (1380), delivery_start 00:00 (0). Cross-midnight (1380 > 0).
-    // nowMinutes 0 → not < 0, so falls into B branch (>= delivery_start && < cutoff)
-    const cycle = makeCycle('23:00:00', '00:00:00');
-    expect(getDispatchScenario(cycle, tsAt(0, 0))).toBe('B');
-  });
-
-  it('cross-midnight cycle: order at exact cutoff minute is Scenario C (cutoff inclusive of "missed")', () => {
-    // 22:00 = cutoff. nowMinutes < cutoffMinutes is false, so we're past
-    // today's cutoff → next available is day after tomorrow.
-    const cycle = makeCycle('22:00:00', '07:30:00');
-    expect(getDispatchScenario(cycle, tsAt(22, 0))).toBe('C');
-  });
-
-  it('order placed at midnight 00:00 in a normal cycle is Scenario A', () => {
-    const cycle = makeCycle('10:00:00', '12:00:00');
-    expect(getDispatchScenario(cycle, tsAt(0, 0))).toBe('A');
-  });
-
-  it('order at 23:59 in a normal cycle (well past cutoff) is Scenario B', () => {
-    const cycle = makeCycle('10:00:00', '12:00:00');
-    expect(getDispatchScenario(cycle, tsAt(23, 59))).toBe('B');
   });
 });
 

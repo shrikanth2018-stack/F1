@@ -79,12 +79,15 @@ describe('useCancelOrder', () => {
 
   it('surfaces server error message from the Edge fn context body', async () => {
     // cancel-order returns 409 with JSON {error: "..."} in the response body
-    // when the cancellation window has passed. The hook reads ctx.error.
+    // when the cancellation window has passed. invokeFunction reads it from
+    // the FunctionsHttpError context Response via .text().
     mockInvoke.mockResolvedValueOnce({
       data: null,
       error: {
         context: {
-          error: 'Cancellation window of 2h has passed. Contact support for help.',
+          text: async () => JSON.stringify({
+            error: 'Cancellation window of 2h has passed. Contact support for help.',
+          }),
         },
       },
     });

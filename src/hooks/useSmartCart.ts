@@ -1,53 +1,47 @@
 /**
  * 1stOne F1 — useSmartCart
  *
- * Smart Cart Engine: evaluates dispatch scenario per cart item.
- * Uses server time + delivery cycle cutoffs to determine
- * whether each item dispatches today (A) or tomorrow (B).
+ * Per-item dispatch evaluation for the food cart. The dispatch scenario is
+ * server-derived (see useCycleDispatch / the cycle-dispatch Edge Function) —
+ * the device only maps each cart item to its cycle's dispatch info and
+ * applies the display label.
  */
 
 import { useMemo } from 'react';
-import { useServerTime } from './useServerTime';
+import { useCycleDispatch } from './useCycleDispatch';
 import { useDeliveryCycles } from './useDeliveryCycles';
 import { useCartStore } from '../store/cartStore';
-import { getDispatchScenario, getDispatchLabel } from '../utils/timeEngine';
+import { getDispatchLabel } from '../utils/timeEngine';
 import type { DispatchEvaluation } from '../types';
 
 export function useSmartCart(): {
   evaluations: DispatchEvaluation[];
   isLoading: boolean;
 } {
-  const { data: serverTime, isLoading: timeLoading } = useServerTime();
+  const { data: dispatch, isLoading: dispatchLoading } = useCycleDispatch();
   const { data: cycles, isLoading: cyclesLoading } = useDeliveryCycles();
   const items = useCartStore((s) => s.items);
 
-  const isLoading = timeLoading || cyclesLoading;
+  const isLoading = dispatchLoading || cyclesLoading;
 
   const evaluations = useMemo<DispatchEvaluation[]>(() => {
-    if (!serverTime || !cycles) return [];
+    if (!dispatch || !cycles) return [];
 
     return items.map((item) => {
+      const cycleDispatch = dispatch.get(item.cycle_id);
       const cycle = cycles.find((c) => c.id === item.cycle_id);
-      if (!cycle) {
-        return {
-          menu_item_id: item.menu_item_id,
-          cycle_id: item.cycle_id,
-          scenario: 'B' as const,
-          dispatch_label: 'Tomorrow',
-          cycle_name: 'Unknown',
-        };
-      }
-
-      const scenario = getDispatchScenario(cycle, serverTime);
+      // Unknown cycle → conservative 'B' (tomorrow) so the badge never
+      // over-promises a same-day delivery.
+      const scenario = cycleDispatch?.scenario ?? 'B';
       return {
         menu_item_id: item.menu_item_id,
         cycle_id: item.cycle_id,
         scenario,
         dispatch_label: getDispatchLabel(scenario),
-        cycle_name: cycle.cycle_name,
+        cycle_name: cycle?.cycle_name ?? 'Unknown',
       };
     });
-  }, [items, serverTime, cycles]);
+  }, [items, dispatch, cycles]);
 
   return { evaluations, isLoading };
 }

@@ -15,6 +15,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../api/supabaseClient';
+import { invokeFunction } from '../api/invokeFunction';
 import { useAuth } from './useAuth';
 import { QUERY_KEYS, QUERY_STALE_TIME } from '../utils/constants';
 import { newIdempotencyKey } from '../utils/idempotency';
@@ -84,13 +85,11 @@ export function useWalletTopup() {
     mutationFn: async (amount: number) => {
       if (!session) throw new Error('Not authenticated');
 
-      const { data, error } = await supabase.functions.invoke('wallet-topup', {
-        headers: { 'Idempotency-Key': newIdempotencyKey() },
-        body: { amount },
-      });
-
-      if (error) throw error;
-      return data as { razorpay_order_id: string; amount: number };
+      return invokeFunction<{ razorpay_order_id: string; amount: number }>(
+        'wallet-topup',
+        { amount },
+        { headers: { 'Idempotency-Key': newIdempotencyKey() } },
+      );
     },
     onSuccess: () => {
       // Invalidate after successful Razorpay payment is confirmed via webhook

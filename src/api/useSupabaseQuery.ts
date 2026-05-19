@@ -1,28 +1,37 @@
 /**
- * 1stOne F1 — THE Shared Hook for ALL Supabase Calls
+ * 1stOne F1 — THE Shared Hooks for ALL Supabase Calls
  *
- * MANDATE: No screen ever writes its own try-catch for Supabase.
- * Wraps TanStack Query with stale-while-revalidate, retry, error handling.
+ * MANDATE: no screen or hook writes its own try-catch for Supabase. Every
+ * read/write goes through one of these primitives, so error handling, retry,
+ * and stale-time live in ONE place — the single chokepoint for query
+ * behaviour (telemetry, offline policy, error normalisation all land here).
  *
- * Two usage patterns:
+ *   useSupabaseQuery         — list reads. Optional `transform` post-processes
+ *                              the rows (aggregations) without leaving the
+ *                              layer; it runs once per fetch (result cached).
+ *   useSupabaseSingle        — single-row reads (returns the row or null).
+ *   useSupabaseInfiniteQuery — offset-paginated / infinite-scroll reads.
+ *   useSupabaseMutation      — writes. Invalidates keys + optional
+ *                              onSuccess / onError callbacks.
  *
- * 1. Raw function:
- *   useSupabaseQuery(['key'], () => supabase.from('t').select('*'))
- *
- * 2. Table shorthand:
- *   useSupabaseQuery(['key'], 'table_name', {
- *     select: '*',
- *     filter: (query) => query.eq('active', true).order('sort_order')
- *   })
+ * Usage:
+ *   useSupabaseQuery(['k'], () => supabase.from('t').select('*'))
+ *   useSupabaseQuery(['k'], 't', { select: '*', filter: q => q.eq('a', 1) })
+ *   useSupabaseQuery(['k'], () => supabase.from('t').select('*'),
+ *                    { transform: rows => aggregate(rows) })
  */
 
 import {
   useQuery,
+  useInfiniteQuery,
   useMutation,
   useQueryClient,
   type UseQueryOptions,
 } from '@tanstack/react-query';
 import { supabase } from './supabaseClient';
+
+const DEFAULT_STALE_TIME = 1000 * 60 * 2;
+const DEFAULT_RETRY = 2;
 
 // The internal fn accepts any Promise-like response — type safety comes from
 // the generic T on the hook's return value, not the fn's response type.
@@ -31,17 +40,29 @@ type SupabaseQueryFn<_T> = () => PromiseLike<{ data: any; error: { message: stri
 
 interface TableQueryOptions {
   select?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   filter?: (query: any) => any;
 }
 
-// Overload: raw function
+// ── useSupabaseQuery ─────────────────────────────────────────
+
+// Overload: raw function → T[]
 export function useSupabaseQuery<T>(
   queryKey: readonly unknown[],
   queryFn: SupabaseQueryFn<T>,
   options?: Omit<UseQueryOptions<T[], Error>, 'queryKey' | 'queryFn'>
 ): ReturnType<typeof useQuery<T[], Error>>;
 
-// Overload: table shorthand
+// Overload: raw function + transform → TResult
+export function useSupabaseQuery<T, TResult>(
+  queryKey: readonly unknown[],
+  queryFn: SupabaseQueryFn<T>,
+  options: Omit<UseQueryOptions<TResult, Error>, 'queryKey' | 'queryFn'> & {
+    transform: (rows: T[]) => TResult;
+  }
+): ReturnType<typeof useQuery<TResult, Error>>;
+
+// Overload: table shorthand → T[]
 export function useSupabaseQuery<T>(
   queryKey: readonly unknown[],
   tableName: string,
@@ -49,15 +70,34 @@ export function useSupabaseQuery<T>(
   options?: Omit<UseQueryOptions<T[], Error>, 'queryKey' | 'queryFn'>
 ): ReturnType<typeof useQuery<T[], Error>>;
 
-// Implementation
-export function useSupabaseQuery<T>(
+// Overload: table shorthand + transform → TResult
+export function useSupabaseQuery<T, TResult>(
   queryKey: readonly unknown[],
-  fnOrTable: SupabaseQueryFn<T> | string,
+  tableName: string,
+  tableOptions: TableQueryOptions,
+  options: Omit<UseQueryOptions<TResult, Error>, 'queryKey' | 'queryFn'> & {
+    transform: (rows: T[]) => TResult;
+  }
+): ReturnType<typeof useQuery<TResult, Error>>;
+
+// Implementation — deliberately loose; the overloads above are the contract.
+export function useSupabaseQuery(
+  queryKey: readonly unknown[],
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  fnOrTable: (() => PromiseLike<any>) | string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   optionsOrTableOptions?: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   maybeOptions?: any,
-) {
-  let resolvedFn: SupabaseQueryFn<T>;
-  let resolvedOptions: Omit<UseQueryOptions<T[], Error>, 'queryKey' | 'queryFn'> | undefined;
+  // Return type is `any` ONLY on this implementation signature — the four
+  // typed overloads above are the contract callers actually see. The
+  // overloads diverge (T[] vs TResult), so the impl must be the loose union.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+): any {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let resolvedFn: () => PromiseLike<any>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let resolvedOptions: any;
 
   if (typeof fnOrTable === 'string') {
     // Table shorthand
@@ -78,7 +118,10 @@ export function useSupabaseQuery<T>(
     resolvedOptions = optionsOrTableOptions;
   }
 
-  return useQuery<T[], Error>({
+  // `transform` is consumed here, not forwarded to react-query.
+  const { transform, ...rqOptions } = resolvedOptions ?? {};
+
+  return useQuery({
     queryKey: queryKey as unknown[],
     queryFn: async () => {
       const response = await resolvedFn();
@@ -86,13 +129,16 @@ export function useSupabaseQuery<T>(
         throw new Error(response.error.message);
       }
       const data = response.data;
-      return Array.isArray(data) ? data : [data as T];
+      const rows = Array.isArray(data) ? data : [data];
+      return transform ? transform(rows) : rows;
     },
-    staleTime: 1000 * 60 * 2,
-    retry: 2,
-    ...resolvedOptions,
+    staleTime: DEFAULT_STALE_TIME,
+    retry: DEFAULT_RETRY,
+    ...rqOptions,
   });
 }
+
+// ── useSupabaseSingle ────────────────────────────────────────
 
 export function useSupabaseSingle<T>(
   queryKey: readonly unknown[],
@@ -109,20 +155,64 @@ export function useSupabaseSingle<T>(
       const data = response.data;
       return Array.isArray(data) ? data[0] ?? null : data;
     },
-    staleTime: 1000 * 60 * 2,
-    retry: 2,
+    staleTime: DEFAULT_STALE_TIME,
+    retry: DEFAULT_RETRY,
     ...options,
   });
 }
 
+// ── useSupabaseInfiniteQuery ─────────────────────────────────
+
 /**
- * Generic mutation hook for Supabase write operations.
- * Automatically invalidates related queries on success.
+ * Offset-paginated read. `queryFn` receives the running row offset and returns
+ * one page of rows; the next page is requested while the last page came back
+ * full (length === pageSize).
+ */
+export function useSupabaseInfiniteQuery<T>(
+  queryKey: readonly unknown[],
+  // `data` is `any` for the same reason as SupabaseQueryFn — type safety comes
+  // from the caller's T generic, which types each page; a Supabase builder's
+  // generated row type need not match T exactly.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  queryFn: (offset: number) => PromiseLike<{ data: any; error: { message: string } | null }>,
+  options: { pageSize: number; enabled?: boolean },
+) {
+  return useInfiniteQuery<T[], Error>({
+    queryKey: queryKey as unknown[],
+    queryFn: async ({ pageParam }) => {
+      const response = await queryFn(pageParam as number);
+      if (response.error) {
+        throw new Error(response.error.message);
+      }
+      return (response.data ?? []) as T[];
+    },
+    initialPageParam: 0,
+    getNextPageParam: (lastPage: T[], allPages: T[][]) =>
+      lastPage.length < options.pageSize
+        ? undefined
+        : allPages.reduce((sum, page) => sum + page.length, 0),
+    enabled: options.enabled,
+    staleTime: DEFAULT_STALE_TIME,
+    retry: DEFAULT_RETRY,
+  });
+}
+
+// ── useSupabaseMutation ──────────────────────────────────────
+
+/**
+ * Generic mutation hook for Supabase writes. Invalidates `invalidateKeys` on
+ * success; `options.onSuccess` / `options.onError` add custom post-logic
+ * (optimistic cache writes, extra invalidations, alerts) while error handling
+ * still lives in this one place.
  */
 export function useSupabaseMutation<TPayload, TResult = unknown>(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   mutationFn: (payload: TPayload) => PromiseLike<{ data: any; error: { message: string } | null }>,
-  invalidateKeys?: ReadonlyArray<readonly unknown[]>
+  invalidateKeys?: ReadonlyArray<readonly unknown[]>,
+  options?: {
+    onSuccess?: (data: TResult | TResult[] | null, payload: TPayload) => void;
+    onError?: (error: Error, payload: TPayload) => void;
+  },
 ) {
   const queryClient = useQueryClient();
 
@@ -134,12 +224,14 @@ export function useSupabaseMutation<TPayload, TResult = unknown>(
       }
       return response.data;
     },
-    onSuccess: () => {
+    onSuccess: (data, payload) => {
       if (invalidateKeys) {
         invalidateKeys.forEach((key) => {
           queryClient.invalidateQueries({ queryKey: key as unknown[] });
         });
       }
+      options?.onSuccess?.(data, payload);
     },
+    onError: options?.onError,
   });
 }

@@ -13,7 +13,7 @@
  */
 
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '../api/supabaseClient';
+import { invokeFunction } from '../api/invokeFunction';
 
 export interface QuoteItemInput {
   item_id: number;
@@ -71,28 +71,16 @@ export function useOrderQuote({
   return useQuery({
     queryKey: ['order_quote', items, subscriptionPlans, deliveryAddressId],
     queryFn: async (): Promise<OrderQuote> => {
-      const { data: { session } } = await supabase.auth.getSession();
-      const { data, error } = await supabase.functions.invoke('quote-order', {
-        headers: { Authorization: `Bearer ${session?.access_token}` },
-        body: {
+      const data = await invokeFunction<{ quote: OrderQuote }>(
+        'quote-order',
+        {
           items,
           subscription_plans: subscriptionPlans,
           delivery_address_id: deliveryAddressId,
         },
-      });
-      if (error) {
-        let message = 'Could not price your cart. Please try again.';
-        try {
-          const ctx = (error as any).context;
-          if (ctx) {
-            const text = await (ctx.clone ? ctx.clone() : ctx).text();
-            const parsed = JSON.parse(text);
-            if (parsed?.error) message = parsed.error;
-          }
-        } catch {}
-        throw new Error(message);
-      }
-      return data.quote as OrderQuote;
+        { fallbackMessage: 'Could not price your cart. Please try again.' },
+      );
+      return data.quote;
     },
     enabled: enabled && (items.length > 0 || subscriptionPlans.length > 0),
     staleTime: 30_000,

@@ -8,12 +8,11 @@
  * Filtered by branch when branch_management_active is on.
  */
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../api/supabaseClient';
 import { useSupabaseQuery, useSupabaseMutation } from '../api/useSupabaseQuery';
 import { QUERY_KEYS } from '../utils/constants';
-import { useBranchFilter } from './useBranchFilter';
-import { pointInPolygon } from '../utils/serviceability';
+import { useBranchFilter, requireWriteBranch } from './useBranchFilter';
 import type { DeliveryHub } from '../types';
 
 /** All hubs (full fields) — branch-filtered */
@@ -73,7 +72,7 @@ export function useAddHub() {
       supabase.from('delivery_hubs').insert({
         ...payload,
         is_active: true,
-        branch_id: payload.branch_id ?? bf.branchIdForWrite,
+        branch_id: payload.branch_id ?? requireWriteBranch(bf),
       }).select().single(),
     [QUERY_KEYS.HUBS]
   );
@@ -96,25 +95,18 @@ export function useUpdateHub() {
  * Pass p_new_user_id = null to unassign.
  */
 export function useAssignHubOperator() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (payload: {
-      hubId: number;
-      newUserId: string | null;
-      oldUserId: string | null;
-    }) => {
-      // RPC param types are string-only; nulls are valid at runtime
-      // (used for unassign) — types don't reflect the SECURITY DEFINER overload.
+  return useSupabaseMutation<{ hubId: number; newUserId: string | null; oldUserId: string | null }>(
+    (payload) =>
+      // RPC param types are string-only; nulls are valid at runtime (unassign)
+      // — types don't reflect the SECURITY DEFINER overload.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error } = await (supabase as any).rpc('assign_hub_operator', {
-        p_hub_id:       payload.hubId,
-        p_new_user_id:  payload.newUserId,
-        p_old_user_id:  payload.oldUserId,
-      });
-      if (error) throw new Error(error.message);
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: QUERY_KEYS.HUBS }),
-  });
+      (supabase as any).rpc('assign_hub_operator', {
+        p_hub_id: payload.hubId,
+        p_new_user_id: payload.newUserId,
+        p_old_user_id: payload.oldUserId,
+      }),
+    [QUERY_KEYS.HUBS],
+  );
 }
 
 export function useToggleHub() {
@@ -130,23 +122,18 @@ export function useToggleHub() {
  * Only addresses assigned to this hub with no base zone (zone_id IS NULL).
  */
 export function useHubImpactAddresses(hubId: number | null) {
-  return useQuery({
-    queryKey: ['hub_impact', hubId],
-    queryFn: async () => {
-      if (hubId == null) return [] as { id: number; user_id: string; label: string }[];
-      const { data, error } = await supabase.rpc('get_hub_impact_addresses', { p_hub_id: hubId });
-      if (error) throw new Error(error.message);
-      return (data ?? []) as { id: number; user_id: string; label: string }[];
-    },
-    enabled: hubId != null,
-    staleTime: 0,
-  });
+  return useSupabaseQuery<{ id: number; user_id: string; label: string }>(
+    ['hub_impact', hubId],
+    // `enabled` gates this to hubId != null; the `?? 0` only satisfies the type.
+    () => supabase.rpc('get_hub_impact_addresses', { p_hub_id: hubId ?? 0 }),
+    { enabled: hubId != null, staleTime: 0 },
+  );
 }
 
 /**
- * Assigns a hub to all addresses whose coordinates fall within the hub polygon.
- * Flow: fetch candidates via RPC → client-side ray-cast → batch update via RPC.
- * Returns the count of addresses assigned.
+ * Assigns a hub to all addresses whose coordinates fall within the hub
+ * polygon. The point-in-polygon match runs entirely server-side
+ * (assign_addresses_to_hub RPC). Returns the count of addresses assigned.
  */
 export function useAssignHubAddresses() {
   const queryClient = useQueryClient();
@@ -155,25 +142,14 @@ export function useAssignHubAddresses() {
     mutationFn: async (hub: DeliveryHub): Promise<number> => {
       if (!hub.polygon_geojson || hub.polygon_geojson.length < 3) return 0;
 
-      const { data, error } = await supabase.rpc('get_addresses_for_hub_assignment', {
+      // RPC not yet in the generated database types — cast until regenerated.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase as any).rpc('assign_addresses_to_hub', {
         p_hub_id: hub.id,
       });
       if (error) throw new Error(error.message);
 
-      const matchingIds: number[] = (data ?? [])
-        .filter((a: any) => a.latitude != null && a.longitude != null)
-        .filter((a: any) => pointInPolygon(a.latitude, a.longitude, hub.polygon_geojson!))
-        .map((a: any) => a.id as number);
-
-      if (matchingIds.length === 0) return 0;
-
-      const { error: updateError } = await supabase.rpc('assign_hub_to_address_ids', {
-        p_hub_id: hub.id,
-        p_address_ids: matchingIds,
-      });
-      if (updateError) throw new Error(updateError.message);
-
-      return matchingIds.length;
+      return (data as number) ?? 0;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.HUBS });

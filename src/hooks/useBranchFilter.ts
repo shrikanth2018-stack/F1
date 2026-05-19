@@ -19,21 +19,17 @@
  *     queryKey: [...QUERY_KEYS.FOO, bf.isActive ? bf.branchId ?? 'all' : 'off']
  *     if (bf.isActive && bf.branchId != null) query = query.eq('branch_id', bf.branchId)
  *
- *   WRITES — tag new rows (MF-03 / BF-06 pattern):
+ *   WRITES — tag new rows:
  *     const bf = useBranchFilter();
- *     await supabase.from('foo').insert({ ..., branch_id: bf.branchIdForWrite });
+ *     await supabase.from('foo').insert({ ..., branch_id: requireWriteBranch(bf) });
  *
- *     branchIdForWrite returns:
- *       - JWT branch_id if set (typical staff / branch-admin write)
- *       - super-admin's selected branch when one is picked
- *       - 1 as the single-branch default — never null
- *
- *     Writing 1-as-default rather than null preserves correctness when
- *     branch_management_active flips on later: existing rows already have
- *     a usable branch_id, no backfill of NULL → 1 needed for rows written
- *     after this helper landed. (Pre-existing NULL rows from before the
- *     fix still need the one-time backfill — see MF-03 audit punch list
- *     item #14.)
+ *     branchIdForWrite is the resolved branch for a write, or null when it
+ *     cannot be determined — a super-admin viewing "All Branches" with no
+ *     branch selected. NEVER write branchIdForWrite directly: pass it through
+ *     requireWriteBranch(), which throws a clear error when the branch is
+ *     unresolved. A throw surfaces as a mutation error the admin can act on
+ *     ("pick a branch"); silently defaulting to a literal branch id would
+ *     misroute the row the day a second branch goes live.
  */
 
 import { useAuth } from './useAuth';
@@ -52,12 +48,12 @@ export interface BranchFilter {
    */
   isSuperAdmin: boolean;
   /**
-   * Non-null branch_id for INSERT/UPDATE statements. Falls back to 1 in
-   * single-branch mode (BF-06 pattern). Never null — use this anywhere a
-   * new row needs a `branch_id` value. See MF-03 punch list class B
-   * (writes-default-to-NULL anti-pattern across 9 hooks, 2026-05-04).
+   * Resolved branch_id for INSERT/UPDATE statements, or null when it cannot
+   * be determined (a super-admin on "All Branches"). Do NOT write this value
+   * directly — pass it through requireWriteBranch() so an unresolved branch
+   * fails loud instead of silently misrouting the row to a default branch.
    */
-  branchIdForWrite: number;
+  branchIdForWrite: number | null;
 }
 
 export function useBranchFilter(): BranchFilter {
@@ -89,8 +85,23 @@ export function useBranchFilter(): BranchFilter {
   const branchId = jwtBranchId
     ?? (isSuperAdmin ? selectedBranchId : null)
     ?? customerBranchId;
-  // For writes: branchId or fall through to 1 (single-branch default).
-  const branchIdForWrite = branchId ?? 1;
+  // Writes use the same resolved branch — null when it cannot be determined.
+  // Callers must guard via requireWriteBranch().
+  const branchIdForWrite = branchId;
 
   return { branchId, isActive, isSuperAdmin, branchIdForWrite };
+}
+
+/**
+ * Resolve the branch_id for a write, or throw. Use at every INSERT/UPDATE
+ * site that tags a row with branch_id. Throws when the branch cannot be
+ * resolved — a super-admin on "All Branches" must select a specific branch
+ * before creating branch-scoped data. The throw surfaces as a mutation error
+ * rather than silently writing the row to the wrong branch.
+ */
+export function requireWriteBranch(bf: BranchFilter): number {
+  if (bf.branchIdForWrite == null) {
+    throw new Error('No branch selected. Pick a specific branch before creating or editing branch data.');
+  }
+  return bf.branchIdForWrite;
 }

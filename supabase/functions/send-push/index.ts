@@ -75,7 +75,7 @@ Deno.serve(async (req) => {
     let authorized = token === SUPABASE_SERVICE_ROLE_KEY;
 
     if (!authorized && token) {
-      const caller = getUserFromJwt(token);
+      const caller = await getUserFromJwt(token);
       if (caller) {
         const { data: profile } = await supabase
           .from('profiles').select('role, assigned_hub_id').eq('id', caller.id).maybeSingle();

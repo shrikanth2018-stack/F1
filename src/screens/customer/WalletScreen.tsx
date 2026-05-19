@@ -30,7 +30,7 @@ import {
 } from '../../hooks/useWallet';
 import { useStoreConfig } from '../../hooks/useStoreConfig';
 import { useAuth } from '../../hooks/useAuth';
-import { supabase } from '../../api/supabaseClient';
+import { invokeFunction } from '../../api/invokeFunction';
 import { RAZORPAY_KEY_ID } from '../../utils/env';
 import { infoDialog } from '../../utils/confirmDialog';
 import type { CustomerNavProp } from '../../navigation/types';
@@ -88,16 +88,15 @@ export function WalletScreen({ navigation }: { navigation: CustomerNavProp }) {
         // Confirm payment server-side (HMAC verify + credit wallet via service role).
         // verify-payment webhook is the fallback; whichever fires first wins.
         try {
-          const { data: { session: freshSession } } = await supabase.auth.getSession();
-          const { data: confirmData, error: confirmErr } = await supabase.functions.invoke('confirm-topup', {
-            headers: { Authorization: `Bearer ${freshSession?.access_token}` },
-            body: {
+          const confirmData = await invokeFunction<{ status?: string; amount?: number }>(
+            'confirm-topup',
+            {
               razorpay_order_id: data.razorpay_order_id,
               razorpay_payment_id: rzpResult?.razorpay_payment_id,
               razorpay_signature: rzpResult?.razorpay_signature,
             },
-          });
-          if (!confirmErr && confirmData?.status === 'credited') {
+          );
+          if (confirmData?.status === 'credited') {
             Alert.alert('Wallet Topped Up!', `₹${confirmData.amount} has been added to your wallet.`);
           }
         } catch {

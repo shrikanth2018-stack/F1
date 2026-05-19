@@ -1,15 +1,16 @@
 /**
  * 1stOne F1 — useSmartEssentialsCart
  *
- * Evaluates dispatch scenario (A=today / B=tomorrow) for each
- * item in the essentials cart. Same engine as useSmartCart.
+ * Per-item dispatch evaluation for the essentials cart. Same server-derived
+ * dispatch info as useSmartCart (see useCycleDispatch) — the device only maps
+ * each cart item to its cycle and applies the display label.
  */
 
 import { useMemo } from 'react';
-import { useServerTime } from './useServerTime';
+import { useCycleDispatch } from './useCycleDispatch';
 import { useDeliveryCycles } from './useDeliveryCycles';
 import { useEssentialsCartStore } from '../store/essentialsCartStore';
-import { getDispatchScenario, getDispatchLabel } from '../utils/timeEngine';
+import { getDispatchLabel } from '../utils/timeEngine';
 
 export interface EssentialsDispatchEvaluation {
   essential_item_id: number;
@@ -23,37 +24,28 @@ export function useSmartEssentialsCart(): {
   evaluations: EssentialsDispatchEvaluation[];
   isLoading: boolean;
 } {
-  const { data: serverTime, isLoading: timeLoading } = useServerTime();
+  const { data: dispatch, isLoading: dispatchLoading } = useCycleDispatch();
   const { data: cycles, isLoading: cyclesLoading } = useDeliveryCycles();
   const items = useEssentialsCartStore((s) => s.items);
 
-  const isLoading = timeLoading || cyclesLoading;
+  const isLoading = dispatchLoading || cyclesLoading;
 
   const evaluations = useMemo<EssentialsDispatchEvaluation[]>(() => {
-    if (!serverTime || !cycles) return [];
+    if (!dispatch || !cycles) return [];
 
     return items.map((item) => {
+      const cycleDispatch = dispatch.get(item.cycle_id);
       const cycle = cycles.find((c) => c.id === item.cycle_id);
-      if (!cycle) {
-        return {
-          essential_item_id: item.essential_item_id,
-          cycle_id: item.cycle_id ?? 0,
-          scenario: 'B' as const,
-          dispatch_label: 'Tomorrow',
-          cycle_name: 'Unknown',
-        };
-      }
-
-      const scenario = getDispatchScenario(cycle, serverTime);
+      const scenario = cycleDispatch?.scenario ?? 'B';
       return {
         essential_item_id: item.essential_item_id,
-        cycle_id: item.cycle_id,
+        cycle_id: item.cycle_id ?? 0,
         scenario,
         dispatch_label: getDispatchLabel(scenario),
-        cycle_name: cycle.cycle_name,
+        cycle_name: cycle?.cycle_name ?? 'Unknown',
       };
     });
-  }, [items, serverTime, cycles]);
+  }, [items, dispatch, cycles]);
 
   return { evaluations, isLoading };
 }

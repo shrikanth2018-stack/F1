@@ -28,7 +28,7 @@ import { ThemedText } from '../../components/ThemedText';
 import { supabase } from '../../api/supabaseClient';
 import { useAllDeliveryCycles, useAllMenuItems } from '../../hooks/useMenuManagement';
 import { useEssentialsCatalog } from '../../hooks/useEssentials';
-import { useBranchFilter } from '../../hooks/useBranchFilter';
+import { useBranchFilter, requireWriteBranch } from '../../hooks/useBranchFilter';
 import {
   parseMenuCsv,
   parseEssentialsCsv,
@@ -177,7 +177,7 @@ export function ImportItemsScreen({ navigation, route }: AdminScreenProps<'Impor
     for (const c of cycles) {
       cycleMap[(c as any).cycle_name?.toLowerCase()] = (c as any).id;
     }
-    const writeBranchId = branchFilter.branchIdForWrite;
+    const writeBranchId = requireWriteBranch(branchFilter);
     const skipped: Skip[] = [];
 
     if (isMenu) {
@@ -308,6 +308,10 @@ export function ImportItemsScreen({ navigation, route }: AdminScreenProps<'Impor
 
   const handleImport = async () => {
     if (!parsedRows?.length) return;
+    if (branchFilter.branchIdForWrite == null) {
+      Alert.alert('Select a branch', 'Pick a specific branch before importing items.');
+      return;
+    }
     setImporting(true);
 
     const { records, skipped, table, queryKeys } = buildRecords();
