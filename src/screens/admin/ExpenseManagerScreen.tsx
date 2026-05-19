@@ -516,6 +516,7 @@ export function ExpenseManagerScreen({ navigation }: { navigation: AdminNavProp 
   const [showForm, setShowForm] = useState(false);
 
   const { data: claims = [] } = useAllExpenseClaimsAdmin();
+  const { data: businessExpenses = [] } = useBusinessExpenses();
   const pendingCount = useMemo(
     () => claims.filter((c) => c.status === 'Pending').length,
     [claims]
@@ -526,28 +527,49 @@ export function ExpenseManagerScreen({ navigation }: { navigation: AdminNavProp 
     setShowForm(false);
   };
 
-  // Export every staff expense claim as a CSV summary.
-  const handleExportClaims = async () => {
-    if (claims.length === 0) {
-      Alert.alert('Nothing to export', 'No expense claims yet.');
-      return;
-    }
+  // Export the active tab as a CSV — staff claims, or business expenses.
+  const handleExport = async () => {
     try {
-      const rows = claims.map((c) => [
-        formatDate(c.created_at),
-        c.profiles?.full_name || c.profiles?.phone_number || 'Staff',
-        c.profiles?.employee_id ?? '',
-        c.category,
-        c.description ?? '',
-        c.amount,
-        c.status,
-        c.status === 'Paid' ? formatDate(c.paid_at) : '',
-      ]);
-      await exportCsv(
-        `expense_claims_${todayIST()}.csv`,
-        ['Date', 'Staff', 'Employee ID', 'Category', 'Description', 'Amount', 'Status', 'Paid On'],
-        rows,
-      );
+      if (tab === 'Claims') {
+        if (claims.length === 0) {
+          Alert.alert('Nothing to export', 'No expense claims yet.');
+          return;
+        }
+        const rows = claims.map((c) => [
+          formatDate(c.created_at),
+          c.profiles?.full_name || c.profiles?.phone_number || 'Staff',
+          c.profiles?.employee_id ?? '',
+          c.category,
+          c.description ?? '',
+          c.amount,
+          c.status,
+          c.status === 'Paid' ? formatDate(c.paid_at) : '',
+        ]);
+        await exportCsv(
+          `expense_claims_${todayIST()}.csv`,
+          ['Date', 'Staff', 'Employee ID', 'Category', 'Description', 'Amount', 'Status', 'Paid On'],
+          rows,
+        );
+      } else {
+        if (businessExpenses.length === 0) {
+          Alert.alert('Nothing to export', 'No business expenses yet.');
+          return;
+        }
+        const rows = businessExpenses.map((e) => [
+          formatDate(e.expense_date),
+          e.category,
+          e.description,
+          e.vendor ?? '',
+          e.amount,
+          e.is_paid ? 'Paid' : 'Unpaid',
+          e.is_paid ? formatDate(e.paid_at) : '',
+        ]);
+        await exportCsv(
+          `business_expenses_${todayIST()}.csv`,
+          ['Date', 'Category', 'Description', 'Vendor', 'Amount', 'Paid', 'Paid On'],
+          rows,
+        );
+      }
     } catch (e) {
       Alert.alert('Download failed', getErrorMessage(e));
     }
@@ -563,7 +585,7 @@ export function ExpenseManagerScreen({ navigation }: { navigation: AdminNavProp 
         <ThemedText variant="header" color="primary" style={styles.title}>
           Expense Manager
         </ThemedText>
-        <TouchableOpacity onPress={handleExportClaims} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+        <TouchableOpacity onPress={handleExport} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
           <ThemedText variant="body" color="mint" style={styles.export}>⬇ CSV</ThemedText>
         </TouchableOpacity>
       </View>
