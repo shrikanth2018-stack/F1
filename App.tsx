@@ -27,6 +27,7 @@ import { OfflineBanner } from './src/components/OfflineBanner';
 import { LoadingOverlay } from './src/components/LoadingOverlay';
 import { DialogHost } from './src/components/DialogHost';
 import { useUIStore } from './src/store/uiStore';
+import { useOTAUpdates } from './src/hooks/useOTAUpdates';
 import { QUERY_STALE_TIME } from './src/utils/constants';
 import { initSentry } from './src/utils/sentry';
 
@@ -58,6 +59,9 @@ function AppContent() {
   const { isLoading } = useAuth();
   const isGlobalLoading = useUIStore((s) => s.isGlobalLoading);
   const globalLoadingMessage = useUIStore((s) => s.globalLoadingMessage);
+
+  // OTA: check for + apply published updates without a manual relaunch (D9).
+  useOTAUpdates();
 
   // Hide splash once auth resolves, or after a 5s watchdog so users never
   // see a frozen splash if getSession() hangs (network stalls, etc.).
