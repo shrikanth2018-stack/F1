@@ -36,6 +36,7 @@ import {
   useBusinessExpenses,
   EXPENSE_CATEGORIES,
 } from '../../hooks/useExpenseManager';
+import { todayIST } from '../../utils/istDate';
 import type { ExpenseClaim, BusinessExpense } from '../../types';
 import type { AdminNavProp } from '../../navigation/types';
 
@@ -249,7 +250,7 @@ function ClaimsTab() {
 
 function ExpensesTab({ showForm, onCloseForm }: { showForm: boolean; onCloseForm: () => void }) {
   const { data: expenses = [], isLoading, add, markPaid } = useBusinessExpenses();
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayIST();
 
   // Form state
   const [category,    setCategory]  = useState('');

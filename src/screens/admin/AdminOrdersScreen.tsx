@@ -31,6 +31,7 @@ import { DispatchBadge } from '../../components/DispatchBadge';
 import { supabase } from '../../api/supabaseClient';
 import { formatDateShort } from '../../utils/formatters';
 import { isUnsuccessfulDelivery } from '../../utils/orderFilters';
+import { todayIST, istDateWithOffset } from '../../utils/istDate';
 import type { AdminNavProp } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
@@ -48,17 +49,11 @@ const STATUS_OPTIONS = [
 ] as const;
 type StatusFilter = typeof STATUS_OPTIONS[number];
 
-function getDateStr(offset = 0) {
-  const d = new Date();
-  d.setDate(d.getDate() + offset);
-  return d.toISOString().split('T')[0];
-}
-
 function useOrdersForDate(date: string) {
   // IST today — basis for the D2 "unsuccessful delivery" cut-off.
-  const todayIST = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
+  const today = todayIST();
   return useQuery({
-    queryKey: ['admin_orders_manage', date, todayIST],
+    queryKey: ['admin_orders_manage', date, today],
     queryFn: async () => {
       // Row-level data only: id, status, dispatch_date, routing label.
       // Customer name, items, payment, full address load in
@@ -68,7 +63,7 @@ function useOrdersForDate(date: string) {
       // not Delivered/Cancelled/Failed — regardless of the selected date.
       // They're an alert that must follow the admin until resolved.
       const unsuccessful =
-        `and(dispatch_date.lt.${todayIST},status.not.in.(Delivered,Cancelled,Failed))`;
+        `and(dispatch_date.lt.${today},status.not.in.(Delivered,Cancelled,Failed))`;
       const { data, error } = await supabase
         .from('orders')
         .select(`
@@ -90,7 +85,7 @@ export function AdminOrdersScreen({ navigation }: { navigation: AdminNavProp }) 
   const [dateOffset, setDateOffset] = useState(0);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('All');
   const [searchTerm, setSearchTerm] = useState('');
-  const date = getDateStr(dateOffset);
+  const date = istDateWithOffset(dateOffset);
 
   const { data: orders, isLoading, error, refetch } = useOrdersForDate(date);
 

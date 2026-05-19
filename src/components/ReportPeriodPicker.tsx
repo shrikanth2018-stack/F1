@@ -12,6 +12,7 @@ import React from 'react';
 import { View, TouchableOpacity, TextInput, StyleSheet } from 'react-native';
 import { Theme } from '../theme';
 import { ThemedText } from './ThemedText';
+import { todayIST, istDateWithOffset } from '../utils/istDate';
 
 export type Period = 'Weekly' | 'Monthly' | 'Quarterly' | 'Custom';
 export type DateRange = { start: string; end: string };
@@ -21,28 +22,18 @@ const PERIODS: Period[] = ['Weekly', 'Monthly', 'Quarterly', 'Custom'];
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
 
-function daysAgo(n: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  return d.toISOString().split('T')[0];
-}
-
-function today(): string {
-  return new Date().toISOString().split('T')[0];
-}
-
 /** Sensible default for Custom range — last 7 days. */
 export function defaultCustomRange(): DateRange {
-  return { start: daysAgo(7), end: today() };
+  return { start: istDateWithOffset(-7), end: todayIST() };
 }
 
 /** Resolve start/end ISO date strings for the given period selection. */
 export function getPeriodRange(period: Period, custom: DateRange): DateRange {
   if (period === 'Custom') return custom;
-  const end = today();
-  if (period === 'Weekly') return { start: daysAgo(7), end };
-  if (period === 'Monthly') return { start: daysAgo(30), end };
-  return { start: daysAgo(90), end };
+  const end = todayIST();
+  if (period === 'Weekly') return { start: istDateWithOffset(-7), end };
+  if (period === 'Monthly') return { start: istDateWithOffset(-30), end };
+  return { start: istDateWithOffset(-90), end };
 }
 
 /** Human-readable label used in PDF titles. */

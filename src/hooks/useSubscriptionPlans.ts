@@ -74,6 +74,7 @@ export function useAddPlan() {
       plan_type: PlanType;
       duration_days: number;
       price: number;
+      savings_amount: number;
       plan_items: string;
     }) => {
       const { error } = await supabase
@@ -84,6 +85,7 @@ export function useAddPlan() {
           cycle_id: plan.cycle_id,
           duration_days: plan.duration_days,
           price: plan.price,
+          savings_amount: plan.savings_amount,
           plan_items: plan.plan_items,
           is_active: true,
           branch_id: requireWriteBranch(bf),

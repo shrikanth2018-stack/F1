@@ -190,6 +190,7 @@ export function StaffProfileScreen() {
         {/* Quick links */}
         <ThemedText variant="small" color="muted" style={styles.sectionLabel}>MY REQUESTS</ThemedText>
         <NavRow label="My Leaves" onPress={() => navigation.navigate('StaffLeave')} />
+        <NavRow label="My Expenses" onPress={() => navigation.navigate('StaffExpenses')} />
 
         <Divider />
 

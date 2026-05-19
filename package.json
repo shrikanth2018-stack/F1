@@ -83,11 +83,17 @@
     "zustand": "^5.0.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.4",
     "@testing-library/jest-native": "^5.4.3",
     "@testing-library/react-native": "^13.3.3",
     "@types/jest": "^30.0.0",
     "@types/react": "~19.1.10",
+    "@typescript-eslint/eslint-plugin": "^8.59.3",
+    "@typescript-eslint/parser": "^8.59.3",
     "babel-preset-expo": "~54.0.10",
+    "eslint": "^9.39.4",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "globals": "^14.0.0",
     "husky": "^9.1.7",
     "jest": "^30.3.0",
     "jest-expo": "~54.0.0",

@@ -22,6 +22,7 @@ import { ThemedText } from '../../../components/ThemedText';
 import { EmptyState } from '../../../components/EmptyState';
 import { useHubReport, type HubStat } from '../../../hooks/useHubReport';
 import { formatPriceShort } from '../../../utils/formatters';
+import { todayIST, istDateWithOffset } from '../../../utils/istDate';
 
 type Period = 'Today' | 'Weekly' | 'Monthly' | 'Quarterly' | 'Custom';
 type DateRange = { start: string; end: string };
@@ -31,10 +32,7 @@ const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
 
 function defaultCustomRange(): DateRange {
-  const end = new Date().toISOString().split('T')[0];
-  const start = new Date();
-  start.setDate(start.getDate() - 7);
-  return { start: start.toISOString().split('T')[0], end };
+  return { start: istDateWithOffset(-7), end: todayIST() };
 }
 
 function periodLabel(period: Period, custom: DateRange): string {
@@ -44,21 +42,11 @@ function periodLabel(period: Period, custom: DateRange): string {
 
 function getPeriodRange(period: Period, custom: DateRange): DateRange {
   if (period === 'Custom') return custom;
-  const end = new Date();
-  const start = new Date();
-  if (period === 'Today') {
-    // same start and end
-  } else if (period === 'Weekly') {
-    start.setDate(start.getDate() - 7);
-  } else if (period === 'Monthly') {
-    start.setDate(start.getDate() - 30);
-  } else {
-    start.setDate(start.getDate() - 90);
-  }
-  return {
-    start: start.toISOString().split('T')[0],
-    end: end.toISOString().split('T')[0],
-  };
+  const end = todayIST();
+  if (period === 'Today')   return { start: end, end };
+  if (period === 'Weekly')  return { start: istDateWithOffset(-7), end };
+  if (period === 'Monthly') return { start: istDateWithOffset(-30), end };
+  return { start: istDateWithOffset(-90), end };
 }
 
 function buildHtml(periodTitle: string, hubs: HubStat[], totals: any): string {

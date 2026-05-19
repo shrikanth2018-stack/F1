@@ -48,15 +48,13 @@ function parseComponents(raw?: string | null): { name: string; qty: string }[] {
   return [];
 }
 
-const MEAL_CYCLES = ['Breakfast', 'Lunch', 'Snacks', 'Dinner'];
-
 export function MenuManageScreen({ navigation }: { navigation: AdminNavProp }) {
   const { data: rawCycles = [] } = useAllDeliveryCycles();
-  // Only the 4 meal cycles — essentials has its own screen
+  // Active delivery cycles (already branch-scoped & sort_order-ordered by
+  // useAllDeliveryCycles). Filter on is_active, not a cycle-name substring —
+  // renaming a cycle must never drop it from the picker.
   const cycleOptions = useMemo(
-    () => rawCycles.filter((c: any) =>
-      MEAL_CYCLES.some((m) => c.cycle_name?.toLowerCase().includes(m.toLowerCase()))
-    ),
+    () => rawCycles.filter((c: any) => c.is_active),
     [rawCycles]
   );
   const [cycleIdx, setCycleIdx] = useState(0);

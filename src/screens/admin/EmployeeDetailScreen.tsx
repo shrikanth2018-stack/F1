@@ -39,6 +39,7 @@ import {
 import { useBranchFilter } from '../../hooks/useBranchFilter';
 import { useBranches } from '../../hooks/useBranches';
 import { useAllStaff } from '../../hooks/useStaffManagement';
+import { todayIST } from '../../utils/istDate';
 import type { Profile, StaffAttendance, StaffLeave } from '../../types';
 import type { AdminScreenProps, AdminNavProp } from '../../navigation/types';
 
@@ -117,7 +118,6 @@ function ProfileTab({ staff, navigation }: { staff: Profile; navigation: AdminNa
     );
     // staff identity changes after every save (refetch) and when the
     // employee id changes via navigation. Re-sync drafts both times.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [staff.id, staff.full_name, staff.designation, staff.shift_timing, staff.monthly_salary, staff.benefits]);
 
   const save = (
@@ -400,7 +400,7 @@ function AttendanceTab({
     ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
   ];
 
-  const todayStr = now.toISOString().split('T')[0];
+  const todayStr = todayIST();
 
   const changeMonth = (delta: number) => {
     let m = month + delta;
@@ -416,7 +416,13 @@ function AttendanceTab({
     const d = `${year}-${String(month).padStart(2, '0')}-${String(i + 1).padStart(2, '0')}`;
     return approvedLeaveSet.has(d);
   }).length;
-  const absentCount  = daysInMonth - presentCount - leaveCount;
+  // Absent = elapsed days only — a day that hasn't happened yet (this month
+  // or a future month) isn't an absence. Mirrors the 'A' cells in the grid
+  // below, which already exclude future days.
+  const absentCount  = [...Array(daysInMonth)].filter((_, i) => {
+    const d = `${year}-${String(month).padStart(2, '0')}-${String(i + 1).padStart(2, '0')}`;
+    return d <= todayStr && !attendanceMap.has(d) && !approvedLeaveSet.has(d);
+  }).length;
 
   return (
     <ScrollView contentContainerStyle={tab.scroll} showsVerticalScrollIndicator={false}>

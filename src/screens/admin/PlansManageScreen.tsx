@@ -35,7 +35,6 @@ const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
 const P = Theme.typography.sizes.body + 4;
 
-const MEAL_CYCLES = ['Breakfast', 'Lunch', 'Snacks', 'Dinner'];
 type PlanTab = 'Food' | 'Essentials';
 
 function parsePlanItems(raw: string): { item_name: string; quantity: number }[] {
@@ -44,10 +43,11 @@ function parsePlanItems(raw: string): { item_name: string; quantity: number }[] 
 
 export function PlansManageScreen({ navigation }: { navigation: AdminNavProp }) {
   const { data: rawCycles = [] } = useAllDeliveryCycles();
+  // Active delivery cycles (already branch-scoped & sort_order-ordered by
+  // useAllDeliveryCycles). Filter on is_active, not a cycle-name substring —
+  // renaming a cycle must never drop it from the picker.
   const cycles = useMemo(
-    () => rawCycles.filter((c: any) =>
-      MEAL_CYCLES.some((m) => c.cycle_name?.toLowerCase().includes(m.toLowerCase()))
-    ),
+    () => rawCycles.filter((c: any) => c.is_active),
     [rawCycles]
   );
 

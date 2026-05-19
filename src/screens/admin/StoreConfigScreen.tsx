@@ -24,7 +24,10 @@ import { Divider } from '../../components/Divider';
 import { useStoreConfig } from '../../hooks/useStoreConfig';
 import { useUpdateStoreConfig } from '../../hooks/useStaffManagement';
 import { useBranchFilter } from '../../hooks/useBranchFilter';
+import { useDispatchBackfill } from '../../hooks/useDispatchBackfill';
 import type { AdminNavProp } from '../../navigation/types';
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
@@ -117,6 +120,7 @@ export function StoreConfigScreen({ navigation }: { navigation: AdminNavProp }) 
   const [deliveryFee, setDeliveryFee] = useState('');
   const [cancelWindow, setCancelWindow] = useState('');
   const [minTopup, setMinTopup] = useState('');
+  const [maxTopup, setMaxTopup] = useState('');
   const [loyaltyRate, setLoyaltyRate] = useState('');
   const [whatsappNum, setWhatsappNum] = useState('');
 
@@ -126,10 +130,40 @@ export function StoreConfigScreen({ navigation }: { navigation: AdminNavProp }) 
       setDeliveryFee(String(config.delivery_fee));
       setCancelWindow(String(config.cancellation_window_hours));
       setMinTopup(String(config.min_wallet_topup));
+      setMaxTopup(String(config.max_wallet_topup));
       setLoyaltyRate(String(config.loyalty_points_per_rupee));
       setWhatsappNum(config.whatsapp_support_number ?? '');
     }
   }, [config]);
+
+  // ── Dispatch backfill (audit O2) ──────────────────────────
+  const backfill = useDispatchBackfill();
+  const [bfStart, setBfStart] = useState('');
+  const [bfEnd, setBfEnd] = useState('');
+
+  const handleBackfill = () => {
+    if (!ISO_DATE.test(bfStart) || !ISO_DATE.test(bfEnd)) {
+      Alert.alert('Invalid dates', 'Enter both dates as YYYY-MM-DD.');
+      return;
+    }
+    if (bfEnd < bfStart) {
+      Alert.alert('Invalid range', 'End date cannot be before start date.');
+      return;
+    }
+    backfill.mutate(
+      { start: bfStart, end: bfEnd },
+      {
+        onSuccess: (data) => {
+          const r = Array.isArray(data) ? data[0] : data;
+          Alert.alert(
+            'Backfill complete',
+            `${r?.total_orders_created ?? 0} order(s) created across ${r?.days_processed ?? 0} day(s).`,
+          );
+        },
+        onError: (e) => Alert.alert('Backfill failed', e.message),
+      },
+    );
+  };
 
   const handleSave = () => {
     updateConfig.mutate(
@@ -138,6 +172,7 @@ export function StoreConfigScreen({ navigation }: { navigation: AdminNavProp }) 
         delivery_fee: parseFloat(deliveryFee) || 0,
         cancellation_window_hours: parseFloat(cancelWindow) || 2,
         min_wallet_topup: parseFloat(minTopup) || 100,
+        max_wallet_topup: parseFloat(maxTopup) || 50000,
         loyalty_points_per_rupee: parseFloat(loyaltyRate) || 0.1,
         whatsapp_support_number: whatsappNum || null,
       },
@@ -179,6 +214,7 @@ export function StoreConfigScreen({ navigation }: { navigation: AdminNavProp }) 
           <Field label="Tax Rate (%)" value={taxRate} onChangeText={setTaxRate} keyboardType="numeric" />
           <Field label="Delivery Fee (₹)" value={deliveryFee} onChangeText={setDeliveryFee} keyboardType="numeric" />
           <Field label="Min Wallet Top-up (₹)" value={minTopup} onChangeText={setMinTopup} keyboardType="numeric" />
+          <Field label="Max Wallet Top-up (₹)" value={maxTopup} onChangeText={setMaxTopup} keyboardType="numeric" />
           <Field label="Loyalty pts / ₹" value={loyaltyRate} onChangeText={setLoyaltyRate} keyboardType="numeric" last />
         </View>
 
@@ -195,6 +231,34 @@ export function StoreConfigScreen({ navigation }: { navigation: AdminNavProp }) 
             keyboardType="numeric"
             last
           />
+        </View>
+
+        <Divider />
+
+        {/* DISPATCH — O2 backfill tool */}
+        <SectionLabel title="Dispatch" />
+        <View style={styles.group}>
+          <Field
+            label="Backfill From"
+            hint="Re-run subscription dispatch for a past date range — idempotent, max 31 days"
+            value={bfStart}
+            onChangeText={setBfStart}
+          />
+          <Field label="Backfill To" value={bfEnd} onChangeText={setBfEnd} />
+          <TouchableOpacity
+            style={styles.fieldRow}
+            onPress={handleBackfill}
+            disabled={backfill.isPending}
+            activeOpacity={0.6}
+          >
+            <ThemedText variant="body" color="primary" style={{ flex: 1, fontSize: B }}>
+              Run Backfill
+            </ThemedText>
+            {backfill.isPending
+              ? <ActivityIndicator size="small" color={Theme.colors.text.mint} />
+              : <ThemedText variant="body" color="mint" style={{ fontSize: B }}>Run ›</ThemedText>
+            }
+          </TouchableOpacity>
         </View>
 
         <Divider />

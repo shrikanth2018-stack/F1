@@ -12,6 +12,7 @@ import { supabase } from '../api/supabaseClient';
 import { useSupabaseQuery, useSupabaseMutation } from '../api/useSupabaseQuery';
 import { invokeFunction } from '../api/invokeFunction';
 import { QUERY_STALE_TIME } from '../utils/constants';
+import { todayIST } from '../utils/istDate';
 import { useAuth } from './useAuth';
 import { useBranchFilter, requireWriteBranch } from './useBranchFilter';
 import type { Profile, StaffAttendance, StaffLeave, StaffSalary } from '../types';
@@ -49,7 +50,7 @@ export function useStaffLookups() {
 
 /** All staff with today attendance + leave status joined */
 export function useStaffRoster() {
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayIST();
   const bf = useBranchFilter();
 
   return useQuery({

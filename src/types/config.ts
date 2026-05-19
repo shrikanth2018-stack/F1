@@ -8,6 +8,7 @@ export interface StoreConfig {
   hub_delivery_active: boolean;
   loyalty_points_per_rupee: number;
   min_wallet_topup: number;
+  max_wallet_topup: number;
   whatsapp_support_number: string | null;
   created_at: string;
   updated_at: string;

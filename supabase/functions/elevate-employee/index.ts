@@ -116,10 +116,15 @@ Deno.serve(async (req: Request) => {
     // 4. Atomic elevate — sets profiles.role = 'staff'.
     // The custom_access_token_hook will inject user_role='staff' into the
     // JWT on the staff member's next login, so no app_metadata update needed.
+    // p_phone_number is the canonical stored form '91XXXXXXXXXX' — the same
+    // shape handle_new_user writes from auth.users.phone, and the form every
+    // profiles.phone_number lookup ('91' + 10 digits) expects. Passing the
+    // bare 10-digit `ten` here would store a divergent value on the rare
+    // INSERT path (no pre-existing stub profile).
     const { data: employeeId, error: rpcErr } = await adminClient.rpc('elevate_to_staff', {
       p_user_id:         authUserId,
       p_full_name:       full_name.trim(),
-      p_phone_number:    ten,
+      p_phone_number:    phoneStored,
       p_designation:     designation,
       p_joining_date:    joining_date,
       p_shift_timing:    shift_timing,

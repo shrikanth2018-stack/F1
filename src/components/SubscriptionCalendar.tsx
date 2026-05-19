@@ -56,10 +56,13 @@ export function SubscriptionCalendar({
       days.push({ date: null, key: `pad-${i}` });
     }
 
-    // Actual days
+    // Actual days. The key is the day's IST calendar date — built from the
+    // loop components, NOT date.toISOString() (which yields the UTC date and
+    // shifts a local-midnight date back a day, breaking skip-day matching).
     for (let d = 1; d <= lastDay.getDate(); d++) {
       const date = new Date(viewMonth.year, viewMonth.month, d);
-      days.push({ date, key: date.toISOString().split('T')[0] });
+      const key = `${viewMonth.year}-${String(viewMonth.month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      days.push({ date, key });
     }
 
     return days;

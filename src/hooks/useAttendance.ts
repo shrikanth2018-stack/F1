@@ -20,6 +20,7 @@ import { useAuth } from './useAuth';
 import { useStaffQueueStore } from '../store/staffQueueStore';
 import { useBranchFilter, requireWriteBranch } from './useBranchFilter';
 import { QUERY_KEYS, QUERY_STALE_TIME } from '../utils/constants';
+import { todayIST } from '../utils/istDate';
 import type { StaffAttendance, StaffLeave } from '../types';
 
 // Shape returned by useClockIn mutationFn so onSuccess can optimistically update the cache
@@ -30,7 +31,7 @@ type ClockInPayload = Pick<StaffAttendance,
 /** Today's attendance record for current staff */
 export function useTodayAttendance() {
   const { session } = useAuth();
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayIST();
 
   return useSupabaseSingle<StaffAttendance>(
     [...QUERY_KEYS.STAFF_ATTENDANCE, 'today', session?.user.id],
@@ -98,7 +99,7 @@ export function useClockIn() {
     mutationFn: async () => {
       if (!session) throw new Error('Not authenticated');
 
-      const today = new Date().toISOString().split('T')[0];
+      const today = todayIST();
       const now = new Date().toISOString();
       const coords = await getCurrentCoords();
 
@@ -161,7 +162,7 @@ export function useClockOut() {
     mutationFn: async () => {
       if (!session) throw new Error('Not authenticated');
 
-      const today = new Date().toISOString().split('T')[0];
+      const today = todayIST();
       const now = new Date().toISOString();
       const coords = await getCurrentCoords();
 

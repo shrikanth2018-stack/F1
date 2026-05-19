@@ -1773,6 +1773,7 @@ export type Database = {
           id: number
           low_wallet_threshold: number | null
           loyalty_points_per_rupee: number | null
+          max_wallet_topup: number | null
           min_wallet_topup: number | null
           storm_mode_active: boolean | null
           tax_rate_percentage: number | null
@@ -1789,6 +1790,7 @@ export type Database = {
           id?: number
           low_wallet_threshold?: number | null
           loyalty_points_per_rupee?: number | null
+          max_wallet_topup?: number | null
           min_wallet_topup?: number | null
           storm_mode_active?: boolean | null
           tax_rate_percentage?: number | null
@@ -1805,6 +1807,7 @@ export type Database = {
           id?: number
           low_wallet_threshold?: number | null
           loyalty_points_per_rupee?: number | null
+          max_wallet_topup?: number | null
           min_wallet_topup?: number | null
           storm_mode_active?: boolean | null
           tax_rate_percentage?: number | null

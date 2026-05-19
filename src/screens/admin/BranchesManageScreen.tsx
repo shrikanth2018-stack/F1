@@ -54,7 +54,27 @@ export function BranchesManageScreen({ navigation }: AdminScreenProps<'BranchesM
   const insets = useSafeAreaInsets();
   const { isSuperAdmin } = useBranchFilter();
 
-  // Defense-in-depth — RLS is the real gate.
+  const { data: branches, isLoading } = useBranches({ includeInactive: true });
+  const createMut = useCreateBranch();
+  const updateMut = useUpdateBranch();
+  const toggleMut = useToggleBranchActive();
+
+  const [editing, setEditing] = useState<Branch | null>(null);
+  const [showAdd, setShowAdd] = useState(false);
+  const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const [saving, setSaving] = useState(false);
+
+  const { activeBranches, inactiveBranches } = useMemo(() => {
+    const list = branches ?? [];
+    return {
+      activeBranches: list.filter((b) => b.is_active),
+      inactiveBranches: list.filter((b) => !b.is_active),
+    };
+  }, [branches]);
+
+  // Defense-in-depth — RLS is the real gate. This early return is placed
+  // AFTER every hook above so hook order stays stable across renders even
+  // if isSuperAdmin resolves asynchronously (Rules of Hooks).
   if (!isSuperAdmin) {
     return (
       <SafeAreaView style={styles.container}>
@@ -73,24 +93,6 @@ export function BranchesManageScreen({ navigation }: AdminScreenProps<'BranchesM
       </SafeAreaView>
     );
   }
-
-  const { data: branches, isLoading } = useBranches({ includeInactive: true });
-  const createMut = useCreateBranch();
-  const updateMut = useUpdateBranch();
-  const toggleMut = useToggleBranchActive();
-
-  const [editing, setEditing] = useState<Branch | null>(null);
-  const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState<FormState>(EMPTY_FORM);
-  const [saving, setSaving] = useState(false);
-
-  const { activeBranches, inactiveBranches } = useMemo(() => {
-    const list = branches ?? [];
-    return {
-      activeBranches: list.filter((b) => b.is_active),
-      inactiveBranches: list.filter((b) => !b.is_active),
-    };
-  }, [branches]);
 
   const openAdd = () => {
     setForm(EMPTY_FORM);

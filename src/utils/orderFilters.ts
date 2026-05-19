@@ -7,6 +7,7 @@
  */
 
 import type { Order, OrderItem } from '../types';
+import { todayIST } from './istDate';
 
 /**
  * BF-31: a subscription PURCHASE order has every order_item.item_type
@@ -47,6 +48,5 @@ export function isUnsuccessfulDelivery(
   if (!order.dispatch_date) return false;
   if (TERMINAL_STATUSES.has(order.status ?? '')) return false;
   // IST calendar date — same basis as dispatch_date (a 'YYYY-MM-DD' string).
-  const todayIST = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
-  return order.dispatch_date < todayIST;
+  return order.dispatch_date < todayIST();
 }

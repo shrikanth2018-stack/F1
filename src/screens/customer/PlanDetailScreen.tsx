@@ -32,6 +32,7 @@ import { useCartStore } from '../../store/cartStore';
 import { useEssentialsCartStore } from '../../store/essentialsCartStore';
 import { formatPriceShort, formatDateShort } from '../../utils/formatters';
 import { formatTime12h } from '../../utils/timeEngine';
+import { istDateStr } from '../../utils/istDate';
 import { essentialsCycleLabel } from '../../utils/cycleLabels';
 import { trackPlanViewed } from '../../utils/analytics';
 import {
@@ -59,13 +60,6 @@ function isSameDay(a: Date, b: Date) {
     a.getMonth() === b.getMonth() &&
     a.getDate() === b.getDate()
   );
-}
-
-function toISODate(d: Date): string {
-  // IST calendar date. NOT d.toISOString() — between 00:00–05:30 IST that
-  // converts to the previous day in UTC, so a start date picked in the early
-  // morning would be stored one day early (audit G8).
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d);
 }
 
 export function PlanDetailScreen({ route, navigation }: any) {
@@ -126,7 +120,7 @@ export function PlanDetailScreen({ route, navigation }: any) {
       duration_days: plan.duration_days,
       cycle_id: plan.cycle_id,
       plan_type: planType,
-      start_date: toISODate(start),
+      start_date: istDateStr(start),
       plan_item_ids: Array.from(newItemIds),
     };
     if (planType === 'food') setFoodPlan(cartPlan);

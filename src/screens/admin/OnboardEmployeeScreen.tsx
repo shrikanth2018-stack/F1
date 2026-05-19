@@ -43,6 +43,7 @@ import { useOnboardEmployee, useStaffLookups } from '../../hooks/useResourceMana
 import { useBranches } from '../../hooks/useBranches';
 import { useBranchFilter } from '../../hooks/useBranchFilter';
 import { openWhatsApp } from '../../utils/links';
+import { todayIST } from '../../utils/istDate';
 import type { AdminNavProp } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
@@ -116,9 +117,7 @@ export function OnboardEmployeeScreen({ navigation }: { navigation: AdminNavProp
   const [name, setName]               = useState('');
   const [lookupStatus, setLookup]     = useState<LookupStatus>('idle');
   const [designation, setDesig]       = useState('');
-  const [joiningDate, setJoining]     = useState(
-    new Date().toISOString().split('T')[0]
-  );
+  const [joiningDate, setJoining]     = useState(todayIST());
   const [shift, setShift]             = useState('');
   const [baseSalary, setBaseSalary]   = useState('');
   const [benefits, setBenefits]       = useState<string[]>([]);

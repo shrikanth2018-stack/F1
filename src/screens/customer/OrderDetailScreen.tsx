@@ -27,6 +27,7 @@ import { useDeliveryCycles } from '../../hooks/useDeliveryCycles';
 import { useStoreConfig } from '../../hooks/useStoreConfig';
 import { formatPriceShort, formatDateLong } from '../../utils/formatters';
 import { formatTime12h } from '../../utils/timeEngine';
+import { istDateStr, istDateWithOffset } from '../../utils/istDate';
 
 // 'Paid' = Razorpay webhook confirmed but kitchen hasn't started yet — still cancellable
 const CANCELLABLE_STATUSES = new Set(['Pending', 'Confirmed', 'Paid', 'Preparing']);
@@ -77,10 +78,12 @@ export function OrderDetailScreen({ route, navigation }: any) {
   const earliestCycle = (cycles ?? []).find((c) => c.id === earliestRow?.cycle_id);
   let earliestCutoffPassed = false;
   if (earliestRow && earliestCycle) {
+    // nowIST is UTC-shifted by +5:30 so its getUTC* fields read as IST
+    // wall-clock — used only for the minutes-of-day cutoff comparison below.
     const istOffsetMs = 5.5 * 60 * 60 * 1000;
     const nowIST = new Date(Date.now() + istOffsetMs);
-    const todayISTStr    = nowIST.toISOString().split('T')[0];
-    const tomorrowISTStr = new Date(Date.now() + istOffsetMs + 86_400_000).toISOString().split('T')[0];
+    const todayISTStr    = istDateStr();
+    const tomorrowISTStr = istDateWithOffset(1);
     const [cutH, cutM] = earliestCycle.cutoff_time.split(':').map(Number);
     const cutoffMins = cutH * 60 + cutM;
     const nowMins = nowIST.getUTCHours() * 60 + nowIST.getUTCMinutes();

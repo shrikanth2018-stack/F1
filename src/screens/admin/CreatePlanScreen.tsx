@@ -26,16 +26,15 @@ import type { AdminScreenProps } from '../../navigation/types';
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
 
-const MEAL_CYCLES = ['Breakfast', 'Lunch', 'Snacks', 'Dinner'];
-
 export function CreatePlanScreen({ navigation, route }: AdminScreenProps<'CreatePlan'>) {
   const planType: PlanType = route.params?.planType ?? 'food';
 
   const { data: rawCycles = [] } = useAllDeliveryCycles();
+  // Active delivery cycles (already branch-scoped & sort_order-ordered by
+  // useAllDeliveryCycles). Filter on is_active, not a cycle-name substring —
+  // renaming a cycle must never drop it from the picker.
   const cycles = useMemo(
-    () => rawCycles.filter((c: any) =>
-      MEAL_CYCLES.some((m) => c.cycle_name?.toLowerCase().includes(m.toLowerCase()))
-    ),
+    () => rawCycles.filter((c: any) => c.is_active),
     [rawCycles]
   );
 
@@ -43,6 +42,7 @@ export function CreatePlanScreen({ navigation, route }: AdminScreenProps<'Create
   const [planName, setPlanName] = useState('');
   const [daysInput, setDaysInput] = useState('');
   const [priceInput, setPriceInput] = useState('');
+  const [savingsInput, setSavingsInput] = useState('');
   const [selectedItems, setSelectedItems] = useState<PlanItem[]>([]);
 
   const selectedCycle = cycles[cycleIdx] as any;
@@ -101,6 +101,10 @@ export function CreatePlanScreen({ navigation, route }: AdminScreenProps<'Create
       finalPrice = p;
     }
 
+    // Savings is the admin-stated discount vs buying à la carte — optional,
+    // shown as "You Save" on PlanDetail. Blank → 0 (row hidden there).
+    const savings = parseFloat(savingsInput);
+
     addPlan.mutate(
       {
         plan_name: planName.trim(),
@@ -108,6 +112,7 @@ export function CreatePlanScreen({ navigation, route }: AdminScreenProps<'Create
         plan_type: planType,
         duration_days: days,
         price: finalPrice,
+        savings_amount: isNaN(savings) || savings < 0 ? 0 : savings,
         plan_items: JSON.stringify(selectedItems),
       },
       {
@@ -180,6 +185,16 @@ export function CreatePlanScreen({ navigation, route }: AdminScreenProps<'Create
             keyboardType="decimal-pad"
           />
         )}
+
+        {/* Savings vs à la carte — optional, shown as "You Save" on PlanDetail */}
+        <TextInput
+          style={styles.input}
+          placeholder="Savings amount  ₹  (optional)"
+          placeholderTextColor={Theme.colors.text.muted}
+          value={savingsInput}
+          onChangeText={setSavingsInput}
+          keyboardType="decimal-pad"
+        />
 
         {/* Item picker — food only */}
         {planType === 'food' && (

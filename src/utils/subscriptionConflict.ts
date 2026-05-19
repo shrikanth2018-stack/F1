@@ -11,6 +11,7 @@
  */
 
 import type { SubscriptionPlanItem } from '../types';
+import { addDaysToISODate } from './istDate';
 
 export interface ActiveSubForConflict {
   id: number;
@@ -61,7 +62,5 @@ export function findCoreItemConflict(
  * i.e. the earliest allowed start for a queued replacement.
  */
 export function startAfterDate(sub: ActiveSubForConflict): string {
-  const start = new Date(sub.start_date);
-  start.setDate(start.getDate() + sub.duration_days);
-  return start.toISOString().split('T')[0];
+  return addDaysToISODate(sub.start_date, sub.duration_days);
 }

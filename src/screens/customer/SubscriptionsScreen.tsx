@@ -33,6 +33,7 @@ import {
 } from '../../hooks/useSubscriptions';
 import { useDeliveryCycles } from '../../hooks/useDeliveryCycles';
 import { formatDateShort } from '../../utils/formatters';
+import { istDateStr, addDaysToISODate } from '../../utils/istDate';
 import type { UserSubscription, CancelledSubscriptionDay } from '../../types';
 
 type SubTab = 'food' | 'essentials';
@@ -65,18 +66,6 @@ function getCalendarDates(): Date[] {
   });
 }
 
-function toDateStr(d: Date): string {
-  // IST calendar date. NOT d.toISOString() — between 00:00–05:30 IST that
-  // rolls the date back a day, which would skip/resume the wrong calendar
-  // day in the delivery calendar (audit G8).
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d);
-}
-
-function addDays(dateStr: string, days: number): string {
-  const d = new Date(dateStr);
-  d.setDate(d.getDate() + days);
-  return toDateStr(d);
-}
 
 /**
  * Returns whether a sub has a scheduled delivery on a given date.
@@ -92,7 +81,7 @@ function subDeliversOn(
   const duration = sub.subscription_plans?.duration_days ?? 0;
   const subCancelled = cancelledDays.filter((c) => c.subscription_id === sub.id);
   // Each skipped day pushes the end date out by 1
-  const endDate = addDays(sub.start_date, duration - 1 + subCancelled.length);
+  const endDate = addDaysToISODate(sub.start_date, duration - 1 + subCancelled.length);
   // The date must be in range but not itself a cancelled day
   const isSkipped = subCancelled.some((c) => c.cancelled_date === dateStr);
   return dateStr >= sub.start_date && dateStr <= endDate && !isSkipped;
@@ -140,7 +129,7 @@ export function SubscriptionsScreen({ navigation }: any) {
   /** All subs delivering on a given date — across ALL types (food + essentials) */
   const getDeliveryInfos = useCallback(
     (date: Date): { sub: EnrichedSub; cancelled: CancelledSubscriptionDay | undefined; color: string }[] => {
-      const dateStr = toDateStr(date);
+      const dateStr = istDateStr(date);
       const cancelled = allCancelledDays ?? [];
       return subs
         .map((sub, i) => ({
@@ -303,7 +292,7 @@ export function SubscriptionsScreen({ navigation }: any) {
                 const dayName = date.toLocaleDateString('en-IN', { weekday: 'short' });
                 const dayNum = date.getDate();
                 const month = date.toLocaleDateString('en-IN', { month: 'short' });
-                const isToday = toDateStr(date) === toDateStr(new Date());
+                const isToday = istDateStr(date) === istDateStr(new Date());
 
                 return (
                   <TouchableOpacity
@@ -349,7 +338,7 @@ export function SubscriptionsScreen({ navigation }: any) {
 
       {/* Day detail modal */}
       {modalDate && (() => {
-        const dateStr = toDateStr(modalDate);
+        const dateStr = istDateStr(modalDate);
         const infos = getDeliveryInfos(modalDate);
         return (
           <Modal transparent animationType="fade" onRequestClose={() => setModalDate(null)}>

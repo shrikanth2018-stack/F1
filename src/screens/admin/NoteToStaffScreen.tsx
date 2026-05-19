@@ -88,14 +88,22 @@ export function NoteToStaffScreen({ navigation }: { navigation: AdminNavProp }) 
       if (activeTargets.length > 0) {
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.access_token) {
-          // Send one combined push covering the first active note's message
-          const first = activeTargets[0];
+          // send-push targets a whole role, not staff sub-groups — one push
+          // reaches every staff member. With a single active note, send its
+          // text as-is; with several, label each group so no group's message
+          // is dropped or misattributed (the per-tab banner still shows the
+          // group-specific note on the dashboard).
+          const pushBody = activeTargets.length === 1
+            ? state[activeTargets[0].key].text.trim()
+            : activeTargets
+                .map((t) => `${t.label}: ${state[t.key].text.trim()}`)
+                .join('\n');
           supabase.functions.invoke('send-push', {
             headers: { Authorization: `Bearer ${session.access_token}` },
             body: {
               role: 'staff',
               title: 'Note from Admin',
-              body: state[first.key].text.trim(),
+              body: pushBody,
               data: { screen: 'StaffDashboard' },
               trigger_source: 'admin_push',
             },

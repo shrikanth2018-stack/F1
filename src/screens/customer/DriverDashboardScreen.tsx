@@ -32,6 +32,7 @@ import { useUpdateOrderStatus } from '../../hooks/useStaffOrders';
 import { useActiveStaffBatch } from '../../hooks/useActiveStaffBatch';
 import { useRealtimeOrders } from '../../hooks/useRealtimeOrders';
 import { isOperationalOrder } from '../../utils/orderFilters';
+import { todayIST } from '../../utils/istDate';
 import { supabase } from '../../api/supabaseClient';
 import type { CustomerScreenProps } from '../../navigation/types';
 import type { OrderStatus } from '../../types';
@@ -43,14 +44,14 @@ export function DriverDashboardScreen({ navigation }: CustomerScreenProps<'Drive
   // released by the most recent kitchen push (same as Kitchen/Packing/Hub).
   const { data: batch } = useActiveStaffBatch();
   // IST calendar date — basis for the D2 "unsuccessful delivery" cut-off.
-  const todayIST = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
+  const today = todayIST();
 
   const { mutateAsync: updateStatus, isPending: isUpdating } = useUpdateOrderStatus();
   // Realtime: refresh when an order is dispatched / advances through hub handoff.
   useRealtimeOrders(true);
 
   const { data: orders = [], isLoading, isRefetching, error, refetch } = useQuery({
-    queryKey: ['driver_orders', userId, batch ? `${batch.cycle_id}:${batch.push_date}` : 'none', todayIST],
+    queryKey: ['driver_orders', userId, batch ? `${batch.cycle_id}:${batch.push_date}` : 'none', today],
     queryFn: async () => {
       if (!userId) return [];
 
@@ -69,7 +70,7 @@ export function DriverDashboardScreen({ navigation }: CustomerScreenProps<'Drive
       // Failed — so an undelivered perishable order never vanishes when the
       // batch flips. Filtered client-side by hub/zone membership below.
       const unsuccessful =
-        `and(dispatch_date.lt.${todayIST},status.not.in.(Delivered,Cancelled,Failed))`;
+        `and(dispatch_date.lt.${today},status.not.in.(Delivered,Cancelled,Failed))`;
       let ordersQuery = supabase
         .from('orders')
         .select(`

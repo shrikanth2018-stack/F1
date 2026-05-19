@@ -23,11 +23,7 @@ import { useEffect, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../api/supabaseClient';
 import { invalidateOrderQueries } from '../api/invalidateOrderQueries';
-
-/** Returns today's IST date as YYYY-MM-DD. DST-safe; never mid-day-rolls. */
-function todayIST(): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
-}
+import { todayIST } from '../utils/istDate';
 
 /**
  * Milliseconds from `now` until the next IST midnight, plus a 5s margin.

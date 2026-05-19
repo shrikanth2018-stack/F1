@@ -119,6 +119,11 @@ export function CartScreen({ navigation, route }: any) {
     enabled: subscriptionPlanId == null && (essItems.length > 0 || essPlans.length > 0),
   });
 
+  // Float-button amount = the server-quoted grand total (subtotal + tax),
+  // falling back to the display subtotal only while the quote is in flight.
+  const foodGrandTotal = foodQuote?.grand_total ?? foodTotal;
+  const essGrandTotal = essQuote?.grand_total ?? essTotal;
+
   const getDeliveryTime = useCallback(
     (cycleId: number) => formatTime12h((cycles ?? []).find((c) => c.id === cycleId)?.delivery_start),
     [cycles],
@@ -514,7 +519,7 @@ export function CartScreen({ navigation, route }: any) {
           onPress={() => confirmCheckout('food')}
         >
           <ThemedText variant="body" style={styles.floatBtnText}>
-            Checkout Food · {formatPriceShort(foodTotal)}
+            Checkout Food · {formatPriceShort(foodGrandTotal)}
           </ThemedText>
           <ThemedText variant="body" style={styles.floatBtnText}>›</ThemedText>
         </TouchableOpacity>
@@ -526,7 +531,7 @@ export function CartScreen({ navigation, route }: any) {
           onPress={() => confirmCheckout('essentials')}
         >
           <ThemedText variant="body" style={styles.floatBtnText}>
-            Checkout Essentials · {formatPriceShort(essTotal)}
+            Checkout Essentials · {formatPriceShort(essGrandTotal)}
           </ThemedText>
           <ThemedText variant="body" style={styles.floatBtnText}>›</ThemedText>
         </TouchableOpacity>

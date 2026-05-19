@@ -12,6 +12,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../api/supabaseClient';
 import { QUERY_STALE_TIME } from '../utils/constants';
+import { todayIST } from '../utils/istDate';
 
 export interface DashboardStats {
   todayOrders: number;
@@ -25,7 +26,7 @@ export interface DashboardStats {
 }
 
 export function useAdminStats() {
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayIST();
 
   return useQuery({
     queryKey: ['admin_stats', today],

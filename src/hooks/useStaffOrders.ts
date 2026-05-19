@@ -19,6 +19,7 @@ import { useFeatureFlag } from './useFeatureFlag';
 import { useAuth } from './useAuth';
 import { useActiveStaffBatch } from './useActiveStaffBatch';
 import { isOperationalOrder } from '../utils/orderFilters';
+import { todayIST } from '../utils/istDate';
 import { fireOrderStatusPush } from '../utils/orderStatusPush';
 import type { Order, OrderStatus } from '../types';
 
@@ -37,7 +38,7 @@ export function useStaffOrders() {
   const assignedHubId = session?.assignedHubId ?? null;
   const { data: batch } = useActiveStaffBatch();
   // IST calendar date — the basis for the D2 "unsuccessful delivery" cut-off.
-  const todayIST = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
+  const today = todayIST();
 
   return useQuery({
     queryKey: [
@@ -45,14 +46,14 @@ export function useStaffOrders() {
       batch ? `${batch.cycle_id}:${batch.push_date}` : 'none',
       bf.isActive ? bf.branchId ?? 'all' : 'off',
       hubDeliveryActive && assignedHubId != null ? assignedHubId : 'no-hub',
-      todayIST,
+      today,
     ],
     queryFn: async () => {
       // The list = the active batch's cycle, PLUS any "unsuccessful delivery"
       // — a past-dated order still not Delivered/Cancelled/Failed. D2: the
       // batch flip must not hide an undelivered perishable order.
       const unsuccessful =
-        `and(dispatch_date.lt.${todayIST},status.not.in.(Delivered,Cancelled,Failed))`;
+        `and(dispatch_date.lt.${today},status.not.in.(Delivered,Cancelled,Failed))`;
 
       // Pull the zone's + hub's driver_code so the Delivery tab can label each row.
       let query = supabase

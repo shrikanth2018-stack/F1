@@ -27,6 +27,7 @@ import { ThemedText } from '../../components/ThemedText';
 import { Divider } from '../../components/Divider';
 import { EmptyState } from '../../components/EmptyState';
 import { useMyLeaves, useApplyLeave } from '../../hooks/useStaffLeave';
+import { todayIST } from '../../utils/istDate';
 import type { StaffLeave } from '../../types';
 import type { StaffNavProp } from '../../navigation/types';
 
@@ -52,7 +53,7 @@ function leaveDays(start: string, end: string): number {
 
 // ── Apply form ────────────────────────────────────────────────
 function ApplyForm({ onCancel }: { onCancel: () => void }) {
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayIST();
   const [startDate, setStart] = useState(today);
   const [endDate,   setEnd]   = useState(today);
   const [reason,    setReason] = useState('');
