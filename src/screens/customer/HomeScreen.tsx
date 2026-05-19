@@ -11,8 +11,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   RefreshControl,
-  Modal,
-  TouchableWithoutFeedback,
   Dimensions,
   Text,
 } from 'react-native';
@@ -23,7 +21,6 @@ import { Ionicons } from '@expo/vector-icons';
 import ReAnimated, {
   useSharedValue,
   useAnimatedStyle,
-  withSpring,
   withTiming,
   withRepeat,
   withSequence,
@@ -42,10 +39,7 @@ import { useEssentialsCatalog } from '../../hooks/useEssentials';
 import { useEssentialsCartStore } from '../../store/essentialsCartStore';
 import { useCartStore } from '../../store/cartStore';
 import { useUIStore } from '../../store/uiStore';
-import { formatTime12h, timeToMinutes } from '../../utils/timeEngine';
 import { SegmentedControl } from '../../components/SegmentedControl';
-import { istMinutesNow } from '../../utils/istDate';
-import { formatPriceShort } from '../../utils/formatters';
 import { assetUrl } from '../../utils/assets';
 import { useLiveBanner, type CustomBannerContent } from '../../hooks/useBanner';
 import { useWalletNudge } from '../../hooks/useWalletNudge';
@@ -54,7 +48,10 @@ import { essentialsCycleLabel } from '../../utils/cycleLabels';
 import { useStoreConfig } from '../../hooks/useStoreConfig';
 import { usePendingRazorpayOrder, useCancelOrder } from '../../hooks/useOrders';
 import { PendingPaymentBanner } from '../../components/PendingPaymentBanner';
-import type { MenuItem, EssentialItem, DeliveryCycle } from '../../types';
+import { CycleGroup } from './components/CycleGroup';
+import { CyclePopup } from './components/CyclePopup';
+import { FoodRow, EssentialRow } from './components/ItemRows';
+import { sortByCutoff, buildSections, type SectionMeta } from './components/homeShared';
 
 const LOGO_URL = assetUrl('logo.png');
 const BANNER_URL = assetUrl('banner.png');
@@ -62,255 +59,6 @@ const BANNER_URL = assetUrl('banner.png');
 const { height: SCREEN_H } = Dimensions.get('window');
 const HERO_H = Math.round(SCREEN_H * 0.32);
 const PILL_MX = 16;
-
-// ── Helpers ──────────────────────────────────────────────────
-
-function sortByCutoff(cycles: DeliveryCycle[]): DeliveryCycle[] {
-  const nowMin = istMinutesNow();
-  return [...cycles].sort((a, b) => {
-    const aMin = timeToMinutes(a.cutoff_time);
-    const bMin = timeToMinutes(b.cutoff_time);
-    const aFuture = aMin > nowMin;
-    const bFuture = bMin > nowMin;
-    if (aFuture && !bFuture) return -1;
-    if (!aFuture && bFuture) return 1;
-    return aMin - bMin;
-  });
-}
-
-interface SectionMeta {
-  title: string;
-  deliveryBy: string;
-  cutoffTime: string;
-  cycleId: number;
-}
-
-function buildSections<T extends { cycle_id: number }>(
-  items: T[],
-  cycles: DeliveryCycle[]
-): Array<SectionMeta & { data: T[] }> {
-  const grouped = new Map<number, T[]>();
-  for (const item of items) {
-    const list = grouped.get(item.cycle_id) ?? [];
-    list.push(item);
-    grouped.set(item.cycle_id, list);
-  }
-  return cycles
-    .filter((c) => grouped.has(c.id))
-    .map((cycle) => ({
-      title: cycle.cycle_name,
-      deliveryBy: formatTime12h(cycle.delivery_start),
-      cutoffTime: formatTime12h(cycle.cutoff_time),
-      cycleId: cycle.id,
-      data: grouped.get(cycle.id) ?? [],
-    }));
-}
-
-// ── Faded gradient separator ──────────────────────────────────
-
-function GradientSep() {
-  return (
-    <LinearGradient
-      colors={['transparent', Theme.colors.layout.divider, 'transparent']}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 0 }}
-      style={sep.line}
-    />
-  );
-}
-
-const sep = StyleSheet.create({
-  line: { height: StyleSheet.hairlineWidth, width: '100%' },
-});
-
-// ── Cycle detail popup ────────────────────────────────────────
-
-function CyclePopup({ cycle, onClose }: { cycle: SectionMeta; onClose: () => void }) {
-  return (
-    <Modal transparent animationType="fade" onRequestClose={onClose}>
-      <TouchableWithoutFeedback onPress={onClose}>
-        <View style={popup.backdrop} />
-      </TouchableWithoutFeedback>
-      <View style={popup.box}>
-        <ThemedText variant="subtitle" color="mint" style={popup.title}>
-          {cycle.title}
-        </ThemedText>
-        <View style={popup.row}>
-          <ThemedText variant="small" color="muted">Order cutoff</ThemedText>
-          <ThemedText variant="small" color="primary">{cycle.cutoffTime}</ThemedText>
-        </View>
-        <View style={popup.row}>
-          <ThemedText variant="small" color="muted">Dispatch by</ThemedText>
-          <ThemedText variant="small" color="primary">{cycle.deliveryBy}</ThemedText>
-        </View>
-        <TouchableOpacity onPress={onClose} style={popup.closeBtn}>
-          <ThemedText variant="small" color="muted">Close</ThemedText>
-        </TouchableOpacity>
-      </View>
-    </Modal>
-  );
-}
-
-const popup = StyleSheet.create({
-  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: Theme.colors.layout.overlay },
-  box: {
-    position: 'absolute',
-    alignSelf: 'center',
-    top: '40%',
-    width: 260,
-    backgroundColor: Theme.colors.background.secondary,
-    borderRadius: Theme.components.inputRadius,
-    padding: Theme.spacing.md,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.5,
-    shadowRadius: 16,
-    elevation: 10,
-    borderWidth: 0.5,
-    borderColor: Theme.colors.layout.divider,
-  },
-  title: { marginBottom: Theme.spacing.sm },
-  row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: Theme.spacing.xs },
-  closeBtn: { marginTop: Theme.spacing.sm, alignItems: 'center' },
-});
-
-// ── Cycle Group — entrance bounce ────────────────────────────
-
-interface CycleGroupProps {
-  section: SectionMeta;
-  index: number;
-  onOpenPopup: (s: SectionMeta) => void;
-  children: React.ReactNode;
-}
-
-function CycleGroup({ section, index, onOpenPopup, children }: CycleGroupProps) {
-  // Reanimated worklets — runs on UI thread, no JS-thread contention
-  // (mixing classic Animated with multiple staggered setTimeouts caused
-  // visible stutter on real Android devices, while iOS sim hid it.)
-  const opacity = useSharedValue(0);
-  const translateY = useSharedValue(20);
-
-  useEffect(() => {
-    const t = setTimeout(() => {
-      opacity.value = withTiming(1, { duration: 280 });
-      translateY.value = withSpring(0, { damping: 13, stiffness: 170, mass: 0.8 });
-    }, index * 80 + 40);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    opacity: opacity.value,
-    transform: [{ translateY: translateY.value }],
-  }));
-
-  return (
-    <ReAnimated.View style={[styles.cycleGroup, animatedStyle]}>
-      <View style={styles.groupLabelRow}>
-        <ThemedText variant="subtitle" color="mint" style={styles.sectionTitle}>
-          {section.title}
-        </ThemedText>
-        <TouchableOpacity
-          onPress={() => onOpenPopup(section)}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <ThemedText variant="small" color="muted" style={styles.dispatchLink}>
-            Dispatch by {section.deliveryBy} ›
-          </ThemedText>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.groupContainer}>
-        {children}
-      </View>
-    </ReAnimated.View>
-  );
-}
-
-// ── Compact food row ──────────────────────────────────────────
-
-interface FoodRowProps {
-  item: MenuItem;
-  qty: number;
-  dispatchLabel?: string;
-  isLast: boolean;
-  onAdd: () => void;
-  onIncrement: () => void;
-  onDecrement: () => void;
-}
-
-function FoodRow({ item, qty, dispatchLabel, isLast, onAdd, onIncrement, onDecrement }: FoodRowProps) {
-  return (
-    <>
-      <View style={styles.itemRow}>
-        <Ionicons name="restaurant-outline" size={17} color={Theme.colors.text.mint} style={styles.rowIcon} />
-        <View style={styles.itemMeta}>
-          <Text style={styles.itemName}>{item.name}</Text>
-          {dispatchLabel ? <Text style={styles.itemSub}>{dispatchLabel}</Text> : null}
-        </View>
-        <Text style={styles.itemPrice}>{formatPriceShort(item.price)}</Text>
-        {qty === 0 ? (
-          <TouchableOpacity style={styles.addCircle} onPress={onAdd} activeOpacity={0.6}>
-            <Text style={styles.addPlus}>+</Text>
-          </TouchableOpacity>
-        ) : (
-          <View style={styles.stepper}>
-            <TouchableOpacity onPress={onDecrement} activeOpacity={0.5} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Text style={styles.stepperBtn}>−</Text>
-            </TouchableOpacity>
-            <Text style={styles.qtyText}>{qty}</Text>
-            <TouchableOpacity onPress={onIncrement} activeOpacity={0.5} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Text style={styles.stepperBtn}>+</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-      </View>
-      {!isLast && <GradientSep />}
-    </>
-  );
-}
-
-// ── Compact essential row ─────────────────────────────────────
-
-interface EssentialRowProps {
-  item: EssentialItem;
-  qty: number;
-  isLast: boolean;
-  onAdd: () => void;
-  onIncrement: () => void;
-  onDecrement: () => void;
-}
-
-function EssentialRow({ item, qty, isLast, onAdd, onIncrement, onDecrement }: EssentialRowProps) {
-  return (
-    <>
-      <View style={styles.itemRow}>
-        <Ionicons name="basket-outline" size={17} color={Theme.colors.text.mint} style={styles.rowIcon} />
-        <View style={styles.itemMeta}>
-          <Text style={styles.itemName}>{item.name}</Text>
-          {item.description ? <Text style={styles.itemSub}>{item.description}</Text> : null}
-        </View>
-        <Text style={styles.itemPrice}>{formatPriceShort(item.price)}</Text>
-        {qty === 0 ? (
-          <TouchableOpacity style={styles.addCircle} onPress={onAdd} activeOpacity={0.6}>
-            <Text style={styles.addPlus}>+</Text>
-          </TouchableOpacity>
-        ) : (
-          <View style={styles.stepper}>
-            <TouchableOpacity onPress={onDecrement} activeOpacity={0.5} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Text style={styles.stepperBtn}>−</Text>
-            </TouchableOpacity>
-            <Text style={styles.qtyText}>{qty}</Text>
-            <TouchableOpacity onPress={onIncrement} activeOpacity={0.5} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Text style={styles.stepperBtn}>+</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-      </View>
-      {!isLast && <GradientSep />}
-    </>
-  );
-}
 
 // ── Main screen ───────────────────────────────────────────────
 
@@ -736,91 +484,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: Theme.spacing.md,
     paddingTop: Theme.spacing.sm,
     paddingBottom: Theme.spacing.xl * 3,
-  },
-
-  // ── Cycle group ──
-  cycleGroup: { marginBottom: Theme.spacing.lg },
-  groupLabelRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: Theme.spacing.xs,
-    paddingBottom: Theme.spacing.xs,
-  },
-  sectionTitle: { fontSize: Theme.typography.sizes.subtitle + 4 },
-  dispatchLink: { fontSize: Theme.typography.sizes.small + 2 },
-
-  // No card border — items flow directly on the primary background
-  groupContainer: {},
-
-  // ── Compact item row ──
-  itemRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Theme.spacing.xs,
-    paddingVertical: 11,
-  },
-  rowIcon: {
-    marginRight: Theme.spacing.sm,
-    flexShrink: 0,
-  },
-  itemMeta: { flex: 1, marginRight: Theme.spacing.sm },
-  itemName: {
-    fontFamily: Theme.typography.fontFamily,
-    fontSize: Theme.typography.sizes.body + 2,
-    color: Theme.colors.text.primary,
-    fontWeight: '400',
-  },
-  itemSub: {
-    fontFamily: Theme.typography.fontFamily,
-    fontSize: Theme.typography.sizes.small + 2,
-    color: Theme.colors.text.muted,
-    marginTop: 2,
-  },
-  itemPrice: {
-    fontFamily: Theme.typography.fontFamily,
-    fontSize: Theme.typography.sizes.body + 2,
-    color: Theme.colors.text.mint,
-    marginRight: Theme.spacing.md,
-    flexShrink: 0,
-  },
-
-  // ── Outlined circle ADD button ──
-  addCircle: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    borderWidth: 1.5,
-    borderColor: Theme.colors.text.mint,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  addPlus: {
-    fontFamily: Theme.typography.fontFamily,
-    fontSize: Theme.typography.sizes.body + 4,
-    color: Theme.colors.text.mint,
-    fontWeight: '300',
-    marginTop: -1,
-  },
-
-  // ── Borderless stepper ──
-  stepper: { flexDirection: 'row', alignItems: 'center', gap: Theme.spacing.xs },
-  stepperBtn: {
-    fontFamily: Theme.typography.fontFamily,
-    fontSize: Theme.typography.sizes.subtitle + 2,
-    color: Theme.colors.text.mint,
-    fontWeight: '300',
-    lineHeight: Theme.typography.sizes.subtitle + 4,
-    minWidth: 18,
-    textAlign: 'center',
-  },
-  qtyText: {
-    fontFamily: Theme.typography.fontFamily,
-    fontSize: Theme.typography.sizes.body + 2,
-    color: Theme.colors.text.primary,
-    minWidth: 20,
-    textAlign: 'center',
-    fontWeight: '400',
   },
 
   // ── Misc banners ──
