@@ -37,6 +37,8 @@ import {
   EXPENSE_CATEGORIES,
 } from '../../hooks/useExpenseManager';
 import { todayIST } from '../../utils/istDate';
+import { exportCsv } from '../../utils/exportCsv';
+import { getErrorMessage } from '../../utils/formatters';
 import type { ExpenseClaim, BusinessExpense } from '../../types';
 import type { AdminNavProp } from '../../navigation/types';
 
@@ -524,6 +526,33 @@ export function ExpenseManagerScreen({ navigation }: { navigation: AdminNavProp 
     setShowForm(false);
   };
 
+  // Export every staff expense claim as a CSV summary.
+  const handleExportClaims = async () => {
+    if (claims.length === 0) {
+      Alert.alert('Nothing to export', 'No expense claims yet.');
+      return;
+    }
+    try {
+      const rows = claims.map((c) => [
+        formatDate(c.created_at),
+        c.profiles?.full_name || c.profiles?.phone_number || 'Staff',
+        c.profiles?.employee_id ?? '',
+        c.category,
+        c.description ?? '',
+        c.amount,
+        c.status,
+        c.status === 'Paid' ? formatDate(c.paid_at) : '',
+      ]);
+      await exportCsv(
+        `expense_claims_${todayIST()}.csv`,
+        ['Date', 'Staff', 'Employee ID', 'Category', 'Description', 'Amount', 'Status', 'Paid On'],
+        rows,
+      );
+    } catch (e) {
+      Alert.alert('Download failed', getErrorMessage(e));
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
@@ -534,7 +563,9 @@ export function ExpenseManagerScreen({ navigation }: { navigation: AdminNavProp 
         <ThemedText variant="header" color="primary" style={styles.title}>
           Expense Manager
         </ThemedText>
-        <View style={styles.spacer} />
+        <TouchableOpacity onPress={handleExportClaims} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <ThemedText variant="body" color="mint" style={styles.export}>⬇ CSV</ThemedText>
+        </TouchableOpacity>
       </View>
 
       {/* Tabs */}
@@ -591,6 +622,7 @@ const styles = StyleSheet.create({
   back:   { fontSize: B, minWidth: 60 },
   title:  { flex: 1, textAlign: 'center' },
   spacer: { minWidth: 60 },
+  export: { minWidth: 60, textAlign: 'right' },
 
   tabRow: {
     flexDirection: 'row',

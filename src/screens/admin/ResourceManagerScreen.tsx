@@ -23,6 +23,10 @@ import { ThemedText } from '../../components/ThemedText';
 import { Divider } from '../../components/Divider';
 import { EmptyState } from '../../components/EmptyState';
 import { useStaffRoster, usePendingLeaves, type RosterEntry } from '../../hooks/useResourceManager';
+import { useStaffAttendanceReport } from '../../hooks/useReports';
+import { exportCsv } from '../../utils/exportCsv';
+import { getErrorMessage } from '../../utils/formatters';
+import { todayIST, addDaysToISODate } from '../../utils/istDate';
 import type { AdminNavProp } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
@@ -198,6 +202,34 @@ export function ResourceManagerScreen({ navigation }: { navigation: AdminNavProp
   const presentCount = roster.filter((e) => e.todayStatus === 'present').length;
   const leaveCount   = roster.filter((e) => e.todayStatus === 'leave').length;
 
+  // Monthly attendance summary — last 30 days, matching the Reports
+  // "Monthly" period. Downloaded as a CSV from the footer.
+  const monthEnd = todayIST();
+  const monthStart = addDaysToISODate(monthEnd, -30);
+  const { data: attendance } = useStaffAttendanceReport(monthStart, monthEnd);
+  const [exporting, setExporting] = useState(false);
+
+  const handleExportAttendance = async () => {
+    const summary = attendance?.staffSummary ?? [];
+    if (summary.length === 0) {
+      Alert.alert('No data', 'No attendance records in the last 30 days.');
+      return;
+    }
+    setExporting(true);
+    try {
+      const rows = summary.map((s) => [s.name, s.daysPresent, s.totalHours.toFixed(1)]);
+      await exportCsv(
+        `attendance_${monthStart}_to_${monthEnd}.csv`,
+        ['Staff', 'Days Present', 'Total Hours'],
+        rows,
+      );
+    } catch (e) {
+      Alert.alert('Download failed', getErrorMessage(e));
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const handleReview = (leaveId: number, status: 'Approved' | 'Rejected') => {
     Alert.alert(status, `${status === 'Approved' ? 'Approve' : 'Reject'} this leave request?`, [
       { text: 'Cancel', style: 'cancel' },
@@ -321,6 +353,18 @@ export function ResourceManagerScreen({ navigation }: { navigation: AdminNavProp
           refreshing={false}
         />
       )}
+
+      {/* Monthly attendance CSV — all staff, last 30 days */}
+      <TouchableOpacity
+        style={styles.exportBar}
+        onPress={handleExportAttendance}
+        disabled={exporting}
+        activeOpacity={0.7}
+      >
+        <ThemedText variant="body" color="mint" style={styles.exportText}>
+          {exporting ? 'Preparing…' : '⬇  Monthly Attendance (CSV)'}
+        </ThemedText>
+      </TouchableOpacity>
     </SafeAreaView>
   );
 }
@@ -379,4 +423,12 @@ const styles = StyleSheet.create({
   filterActive: {  },
 
   list: { paddingBottom: Theme.spacing.xl },
+
+  exportBar: {
+    paddingVertical: Theme.spacing.sm + 2,
+    alignItems: 'center',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Theme.colors.text.mint,
+  },
+  exportText: { fontSize: B },
 });
