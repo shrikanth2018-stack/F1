@@ -8,7 +8,7 @@
  * payment block. Cancellation acts on the whole group.
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   ScrollView,
@@ -58,7 +58,7 @@ export function OrderDetailScreen({ route, navigation }: any) {
   const [isCancelling, setIsCancelling] = useState(false);
 
   // ── Group-level derived values (safe on empty — guarded before use) ──
-  const groupRows: OrderWithItems[] = rows ?? [];
+  const groupRows: OrderWithItems[] = useMemo(() => rows ?? [], [rows]);
   const primaryId = groupRows.length > 0 ? Math.min(...groupRows.map((r) => r.id)) : orderId;
   const allCancelled = groupRows.length > 0 && groupRows.every((r) => r.status === 'Cancelled');
 

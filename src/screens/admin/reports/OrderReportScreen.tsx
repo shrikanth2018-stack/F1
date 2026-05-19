@@ -91,8 +91,8 @@ export function OrderReportScreen({ navigation }: { navigation: AdminNavProp }) 
   const { start, end } = useMemo(() => getPeriodRange(period, customRange), [period, customRange]);
   const { data, isLoading } = useOrdersDetailReport(start, end);
 
-  const cycleRows = data?.cycleRows ?? [];
-  const menuRows = data?.menuRows ?? [];
+  const cycleRows = useMemo(() => data?.cycleRows ?? [], [data]);
+  const menuRows = useMemo(() => data?.menuRows ?? [], [data]);
   const total = data?.totalOrders ?? 0;
   const displayRows = viewMode === 'Cycle wise' ? cycleRows : menuRows;
 

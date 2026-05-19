@@ -99,7 +99,7 @@ export function SubscriptionsScreen({ navigation }: any) {
   const { mutateAsync: undoSkip } = useUndoSkip();
   const { data: cycles } = useDeliveryCycles();
 
-  const subs = (rawSubs ?? []) as EnrichedSub[];
+  const subs = useMemo(() => (rawSubs ?? []) as EnrichedSub[], [rawSubs]);
 
   const foodSubs = useMemo(
     () => subs.filter((s) => s.subscription_plans?.plan_type === 'food'),

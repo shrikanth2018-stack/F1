@@ -79,6 +79,7 @@ export function PlanDetailScreen({ route, navigation }: any) {
 
   React.useEffect(() => {
     if (plan) trackPlanViewed(plan.id, plan.plan_name, plan.price);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fire once per distinct plan id; plan object identity is unstable
   }, [plan?.id]);
 
   // Earliest selectable start: today (A), tomorrow (B), or day-after-

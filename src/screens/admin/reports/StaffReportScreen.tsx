@@ -78,7 +78,7 @@ export function StaffReportScreen({ navigation }: { navigation: AdminNavProp }) 
   const { start, end } = useMemo(() => getPeriodRange(period, customRange), [period, customRange]);
   const { data, isLoading } = useStaffAttendanceReport(start, end);
 
-  const staffSummary = data?.staffSummary ?? [];
+  const staffSummary = useMemo(() => data?.staffSummary ?? [], [data]);
   const hasData = staffSummary.length > 0;
 
   const html = useMemo(

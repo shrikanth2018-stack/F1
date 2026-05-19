@@ -133,7 +133,7 @@ export function HomeScreen() {
     } else {
       pulse.value = 1;
     }
-  }, [textContent?.pulse]);
+  }, [textContent?.pulse, pulse]);
   const pulseStyle = useAnimatedStyle(() => ({ opacity: pulse.value }));
 
 

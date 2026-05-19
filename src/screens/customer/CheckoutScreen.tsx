@@ -74,9 +74,13 @@ export function CheckoutScreen({ navigation, route }: any) {
     : null;
 
   const activeItems = isSubscriptionOnly ? [] : (cartType === 'food' ? foodItems : essItems);
-  const activePlans = isSubscriptionOnly
-    ? (subPlan ? [subPlan] : [])
-    : (cartType === 'food' ? foodPlans : essPlans);
+  const activePlans = useMemo(
+    () =>
+      isSubscriptionOnly
+        ? (subPlan ? [subPlan] : [])
+        : (cartType === 'food' ? foodPlans : essPlans),
+    [isSubscriptionOnly, subPlan, cartType, foodPlans, essPlans],
+  );
   const totalCartCount = activeItems.length + activePlans.length;
 
   const setGlobalLoading = useUIStore((s) => s.setGlobalLoading);
@@ -376,7 +380,7 @@ export function CheckoutScreen({ navigation, route }: any) {
       setGlobalLoading(false);
     }
   }, [
-    quote, quoteItems, quotePlans, activePlans, isSubscriptionOnly,
+    quote, quoteItems, quotePlans, activePlans, subPlan, isSubscriptionOnly,
     selectedAddressId, paymentMethod, session, refetchQuote,
     clearFood, clearEss, clearFoodPlans, clearEssPlans,
     navigation, setGlobalLoading, queryClient, cartType, totalCartCount, grandTotal,

@@ -146,6 +146,7 @@ export function OnboardingScreen({ phone, onComplete, onBack }: OnboardingScreen
       }
     })();
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only: one-shot GPS prefill
   }, []);
 
   const handleSubmit = () => {

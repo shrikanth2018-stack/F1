@@ -49,7 +49,7 @@ export function SegmentedControl<T extends string>({ options, value, onChange, s
   const pos = useSharedValue(activeIndex);
   React.useEffect(() => {
     pos.value = withSpring(activeIndex, { damping: 20, stiffness: 280, mass: 0.7 });
-  }, [activeIndex]);
+  }, [activeIndex, pos]);
   const indicatorStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: pos.value * tabWidth }],
   }));
@@ -60,7 +60,7 @@ export function SegmentedControl<T extends string>({ options, value, onChange, s
   React.useEffect(() => {
     entryY.value = withSpring(0, { damping: 16, stiffness: 220, mass: 0.6 });
     entryOpacity.value = withTiming(1, { duration: 380 });
-  }, []);
+  }, [entryY, entryOpacity]);
   const entranceStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: entryY.value }],
     opacity: entryOpacity.value,

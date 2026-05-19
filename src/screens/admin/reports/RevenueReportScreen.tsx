@@ -84,8 +84,8 @@ export function RevenueReportScreen({ navigation }: { navigation: AdminNavProp }
   const { start, end } = useMemo(() => getPeriodRange(period, customRange), [period, customRange]);
   const { data, isLoading } = useRevenueDetailReport(start, end);
 
-  const rows = data?.rows ?? [];
-  const totals = data?.totals ?? { orders: 0, revenue: 0, tax: 0 };
+  const rows = useMemo(() => data?.rows ?? [], [data]);
+  const totals = useMemo(() => data?.totals ?? { orders: 0, revenue: 0, tax: 0 }, [data]);
   const hasData = rows.length > 0;
 
   const html = useMemo(

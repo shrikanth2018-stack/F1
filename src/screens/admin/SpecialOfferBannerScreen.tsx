@@ -63,7 +63,7 @@ function BannerPreview({ content, pulse }: { content: CustomBannerContent; pulse
       anim.stopAnimation();
       anim.setValue(1);
     }
-  }, [pulse]);
+  }, [pulse, anim]);
 
   return (
     <Animated.View style={[preview.wrap, { backgroundColor: content.bg_color, opacity: anim }]}>

@@ -52,6 +52,7 @@ export function DialogHost() {
       return true;
     });
     return () => sub.remove();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-bind on `state` only; handleCancel always reflects current state
   }, [state]);
 
   const handleConfirm = () => {

@@ -150,6 +150,7 @@ export function HubDetailScreen({ route, navigation }: AdminScreenProps<'HubDeta
     if (!isEditing) {
       centreOnDeviceLocation();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only: initial device-location centering
   }, []);
 
   const computeCenter = (verts: { lat: number; lng: number }[]) => {

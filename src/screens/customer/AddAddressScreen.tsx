@@ -118,6 +118,7 @@ export function AddAddressScreen({ navigation, route, onComplete }: Props) {
     } else if (!isEditMode && !phone && session?.user.phone) {
       setPhone(session.user.phone);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- populate-on-open keyed by editing target; phone must not re-trigger on keystroke
   }, [isEditMode, editingAddress?.id, session?.user.phone]);
 
   // Auto-fetch GPS on mount so the map opens centered on user's current spot.

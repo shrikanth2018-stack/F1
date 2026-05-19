@@ -147,7 +147,7 @@ export function ProfilePopup() {
         if (finished) runOnJS(setModalMounted)(false);
       });
     }
-  }, [isVisible]);
+  }, [isVisible, opacity, translateY]);
 
   const panelStyle = useAnimatedStyle(() => ({
     opacity: opacity.value,
