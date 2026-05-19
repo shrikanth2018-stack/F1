@@ -87,7 +87,6 @@ export type StaffStackParamList = {
   Attendance: undefined;
   StaffExpenses: undefined;
   StaffProfile: undefined;
-  StaffLeave: undefined;
 };
 
 export type StaffScreenProps<T extends keyof StaffStackParamList> =

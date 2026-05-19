@@ -17,7 +17,6 @@ import { StaffDashboard } from '../screens/staff/StaffDashboard';
 import { StaffAttendanceScreen } from '../screens/staff/StaffAttendanceScreen';
 import { StaffExpensesScreen } from '../screens/staff/StaffExpensesScreen';
 import { StaffProfileScreen } from '../screens/staff/StaffProfileScreen';
-import { StaffLeaveScreen } from '../screens/staff/StaffLeaveScreen';
 import { Theme } from '../theme';
 
 const Stack = createNativeStackNavigator();
@@ -35,7 +34,6 @@ export function StaffNavigator() {
       <Stack.Screen name="Attendance" component={StaffAttendanceScreen} />
       <Stack.Screen name="StaffExpenses" component={StaffExpensesScreen} />
       <Stack.Screen name="StaffProfile" component={StaffProfileScreen} />
-      <Stack.Screen name="StaffLeave"   component={StaffLeaveScreen} />
     </Stack.Navigator>
   );
 }

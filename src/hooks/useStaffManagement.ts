@@ -3,7 +3,7 @@
  *
  * Admin hooks for staff profiles, store config and feature flags.
  * (Expense/leave/attendance review live in useExpenseManager,
- * useStaffLeave and useAttendance.)
+ * useResourceManager and useAttendance.)
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
