@@ -270,6 +270,7 @@ serve(async (req) => {
     const primaryOrderId = orderIds[0];
 
     // ── Create user_subscriptions rows for any plans in this order ──
+    const subInsertFailures: Array<{ plan_id: number; error: string }> = [];
     for (const plan of order.loaded_plans) {
       const start = order.plan_start_by_id[plan.id];
       const { error: subErr } = await supabase.from('user_subscriptions').insert({
@@ -288,6 +289,41 @@ serve(async (req) => {
         console.error('[place-order] user_subscriptions insert failed:', {
           plan_id: plan.id, order_id: primaryOrderId, error: subErr.message,
         });
+        subInsertFailures.push({ plan_id: plan.id, error: subErr.message });
+      }
+    }
+
+    // ── G2: a paid order whose subscription row(s) failed to create is a
+    // silent money gap — customer charged, no subscription. Alert branch
+    // admins so it can be reconciled (mirrors the wallet-refund-failure
+    // alert in cancel-order). Best-effort — never fails the placed order.
+    if (subInsertFailures.length > 0) {
+      const ref = new Date().toISOString();
+      console.error('[place-order] [SUBSCRIPTION-CREATE-FAILURE] manual reconciliation needed', {
+        user_id: user.id, order_id: primaryOrderId, failures: subInsertFailures, reference: ref,
+      });
+      try {
+        const { data: adminRows } = await supabase
+          .from('profiles').select('id').eq('role', 'admin');
+        const adminIds = (adminRows ?? []).map((r: any) => r.id);
+        if (adminIds.length > 0) {
+          resolveAndSendPush({
+            supabase,
+            supabaseUrl: SUPABASE_URL,
+            serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY,
+            eventKey: 'admin.subscription_create_failed',
+            userIds: adminIds,
+            vars: { order_id: primaryOrderId, count: subInsertFailures.length, reference: ref },
+            fallback: {
+              title: 'Subscription not created',
+              body: `Order #${primaryOrderId} was paid but ${subInsertFailures.length} subscription(s) failed to create. Manual reconciliation needed (ref ${ref}).`,
+            },
+            data: { screen: 'AdminOrderDetail', params: { orderId: primaryOrderId } },
+            referenceId: String(primaryOrderId),
+          }).catch(() => {});
+        }
+      } catch (_e) {
+        /* alert is best-effort — never fail the order over a notification */
       }
     }
 

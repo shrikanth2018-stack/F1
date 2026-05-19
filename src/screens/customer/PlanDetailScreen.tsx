@@ -62,7 +62,10 @@ function isSameDay(a: Date, b: Date) {
 }
 
 function toISODate(d: Date): string {
-  return d.toISOString().split('T')[0];
+  // IST calendar date. NOT d.toISOString() — between 00:00–05:30 IST that
+  // converts to the previous day in UTC, so a start date picked in the early
+  // morning would be stored one day early (audit G8).
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d);
 }
 
 export function PlanDetailScreen({ route, navigation }: any) {

@@ -119,6 +119,27 @@ Deno.serve(async (req: Request) => {
     if (groupErr) throw groupErr;
     if (!groupRows || groupRows.length === 0) return json({ error: 'Order not found' }, 404);
 
+    // ── G7: subscription-purchase orders are NOT customer-cancellable here ──
+    // This endpoint cancels orders + refunds the wallet, but never touches
+    // user_subscriptions — so cancelling a subscription-purchase order would
+    // refund the customer yet leave the subscription active and dispatching.
+    // Subscription cancellation is an admin action (admin_cancel_subscription
+    // deactivates the sub AND issues a prorated refund, atomically).
+    {
+      const groupIds = groupRows.map((r) => r.id);
+      const { data: subLines } = await supabase
+        .from('order_items')
+        .select('id')
+        .in('order_id', groupIds)
+        .eq('item_type', 'subscription')
+        .limit(1);
+      if (subLines && subLines.length > 0) {
+        return json({
+          error: 'This is a subscription purchase. To cancel a subscription, please contact support.',
+        }, 409);
+      }
+    }
+
     const sumWallet = (rows: any[]) => rows.reduce((s, r) => s + (Number(r.wallet_amount_used) || 0), 0);
     const sumTotal  = (rows: any[]) => rows.reduce((s, r) => s + (Number(r.total_amount) || 0), 0);
 

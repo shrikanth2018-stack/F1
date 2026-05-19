@@ -13,6 +13,18 @@ import { useStaffQueueStore } from '../store/staffQueueStore';
 import { MAX_QUEUE_RETRIES } from '../utils/constants';
 import { fireOrderStatusPush } from '../utils/orderStatusPush';
 
+/**
+ * Order status pipeline, earliest → latest. Used to guard offline replay:
+ * a queued status update only applies while the order is still at a status
+ * logically EARLIER than the queued target — so a mutation that sat in the
+ * offline queue can never REGRESS an order another staffer/driver already
+ * advanced. (BF — audit G3: the doc claimed this guard; it did not exist.)
+ */
+const STATUS_PIPELINE = [
+  'Pending', 'Confirmed', 'Paid', 'Preparing', 'Ready',
+  'Packed', 'Dispatched', 'Received at Hub', 'On the Way', 'Delivered',
+];
+
 export function useOfflineSync() {
   // queue + isSyncing kept as reactive subscriptions for the return value
   const queue = useStaffQueueStore((s) => s.queue);
@@ -59,6 +71,16 @@ export function useOfflineSync() {
             .from(mutation.table)
             .update(mutation.payload)
             .eq(mutation.matchColumn, mutation.matchValue);
+          // G3: an offline order-status update must never regress an order
+          // another staffer/driver advanced while this sat queued. Apply it
+          // only while the row is still at a status earlier than the target;
+          // otherwise it lands as a harmless 0-row no-op.
+          if (mutation.table === 'orders' && typeof mutation.payload.status === 'string') {
+            const targetIdx = STATUS_PIPELINE.indexOf(mutation.payload.status as string);
+            if (targetIdx > 0) {
+              query = query.in('status', STATUS_PIPELINE.slice(0, targetIdx));
+            }
+          }
         } else if (mutation.operation === 'upsert') {
           query = db.from(mutation.table).upsert(mutation.payload);
         } else {
@@ -66,16 +88,18 @@ export function useOfflineSync() {
           continue;
         }
 
-        const { error } = await query;
+        const { data: affected, error } = await query.select('id');
         if (error) {
           incrementRetry(mutation.id);
         } else {
           dequeue(mutation.id);
           // An order status change made offline still owes the customer their
-          // push — the online path fires its own, the offline path fires here
-          // once the queued update actually lands. Non-milestone statuses and
-          // missing customers are no-ops inside the helper.
+          // push — but ONLY if the queued update actually landed. A G3 status
+          // guard that matched 0 rows (the order had already advanced) must
+          // not fire a stale push for a status the order is already past.
+          const rowChanged = Array.isArray(affected) && affected.length > 0;
           if (
+            rowChanged &&
             mutation.table === 'orders' &&
             mutation.operation === 'update' &&
             mutation.notifyUserId &&

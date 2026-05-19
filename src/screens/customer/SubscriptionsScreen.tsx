@@ -66,7 +66,10 @@ function getCalendarDates(): Date[] {
 }
 
 function toDateStr(d: Date): string {
-  return d.toISOString().split('T')[0];
+  // IST calendar date. NOT d.toISOString() — between 00:00–05:30 IST that
+  // rolls the date back a day, which would skip/resume the wrong calendar
+  // day in the delivery calendar (audit G8).
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d);
 }
 
 function addDays(dateStr: string, days: number): string {
