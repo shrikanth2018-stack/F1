@@ -7,8 +7,8 @@
  * Filtered by branch when branch_management_active is on.
  */
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../api/supabaseClient';
+import { useSupabaseQuery, useSupabaseMutation } from '../api/useSupabaseQuery';
 import { QUERY_STALE_TIME } from '../utils/constants';
 import { useBranchFilter, requireWriteBranch } from './useBranchFilter';
 import type { AdminNote } from '../types';
@@ -26,58 +26,41 @@ export const NOTE_TARGETS: { key: NoteTarget; label: string }[] = [
 export function useAdminNotes() {
   const bf = useBranchFilter();
 
-  return useQuery({
-    queryKey: ['admin_notes', bf.isActive ? bf.branchId ?? 'all' : 'off'],
-    queryFn: async () => {
+  return useSupabaseQuery<AdminNote>(
+    ['admin_notes', bf.isActive ? bf.branchId ?? 'all' : 'off'],
+    () => {
       let query = supabase
         .from('admin_notes')
         .select('*')
         .order('created_at', { ascending: true });
-
       if (bf.isActive && bf.branchId != null) {
         query = query.eq('branch_id', bf.branchId);
       }
-
-      const { data, error } = await query;
-      if (error) throw new Error(error.message);
-      return (data ?? []) as AdminNote[];
+      return query;
     },
-    staleTime: QUERY_STALE_TIME,
-  });
+    { staleTime: QUERY_STALE_TIME },
+  );
 }
 
 /** Upsert a note for a target_tab. Creates if none exists, updates if one does. */
 export function useUpsertNote() {
-  const queryClient = useQueryClient();
   const bf = useBranchFilter();
-  return useMutation({
-    mutationFn: async ({
-      target_tab,
-      note_text,
-      is_active,
-    }: {
-      target_tab: NoteTarget;
-      note_text: string;
-      is_active: boolean;
-    }) => {
-      const { error } = await supabase
-        .from('admin_notes')
-        .upsert(
-          {
-            target_tab,
-            note_text,
-            is_active,
-            branch_id: requireWriteBranch(bf),
-          },
-          // Matches the composite UNIQUE (target_tab, branch_id) constraint.
-          // NULLS NOT DISTINCT keeps single-branch / super-admin setups happy
-          // — NULL branch_id collides with other NULL branch_ids.
-          { onConflict: 'target_tab,branch_id' }
-        );
-      if (error) throw new Error(error.message);
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin_notes'] }),
-  });
+  return useSupabaseMutation<{ target_tab: NoteTarget; note_text: string; is_active: boolean }>(
+    ({ target_tab, note_text, is_active }) =>
+      supabase.from('admin_notes').upsert(
+        {
+          target_tab,
+          note_text,
+          is_active,
+          branch_id: requireWriteBranch(bf),
+        },
+        // Matches the composite UNIQUE (target_tab, branch_id) constraint.
+        // NULLS NOT DISTINCT keeps single-branch / super-admin setups happy
+        // — NULL branch_id collides with other NULL branch_ids.
+        { onConflict: 'target_tab,branch_id' },
+      ),
+    [['admin_notes']],
+  );
 }
 
 /**
@@ -89,38 +72,28 @@ export function useUpsertNote() {
  */
 export function useStaffNoteForTab(tab: NoteTarget | null) {
   const bf = useBranchFilter();
-  return useQuery({
-    queryKey: ['staff_notes', tab ?? 'none', bf.isActive ? bf.branchId ?? 'all' : 'off'],
-    queryFn: async () => {
-      if (!tab) return [] as AdminNote[];
+  return useSupabaseQuery<AdminNote>(
+    ['staff_notes', tab ?? 'none', bf.isActive ? bf.branchId ?? 'all' : 'off'],
+    () => {
+      // `enabled` below gates this to a non-null tab.
       let q = supabase
         .from('admin_notes')
         .select('*')
         .eq('is_active', true)
-        .in('target_tab', tab === 'all' ? ['all'] : ['all', tab])
+        .in('target_tab', tab === 'all' ? ['all'] : ['all', tab as string])
         .order('created_at', { ascending: false });
       if (bf.isActive && bf.branchId != null) q = q.eq('branch_id', bf.branchId);
-      const { data, error } = await q;
-      if (error) throw new Error(error.message);
-      return (data ?? []) as AdminNote[];
+      return q;
     },
-    enabled: tab != null,
-    staleTime: 5_000,
-    refetchOnWindowFocus: true,
-  });
+    { enabled: tab != null, staleTime: 5_000, refetchOnWindowFocus: true },
+  );
 }
 
 /** Toggle a note on/off by id. */
 export function useToggleNote() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ id, is_active }: { id: number; is_active: boolean }) => {
-      const { error } = await supabase
-        .from('admin_notes')
-        .update({ is_active })
-        .eq('id', id);
-      if (error) throw new Error(error.message);
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin_notes'] }),
-  });
+  return useSupabaseMutation<{ id: number; is_active: boolean }>(
+    ({ id, is_active }) =>
+      supabase.from('admin_notes').update({ is_active }).eq('id', id),
+    [['admin_notes']],
+  );
 }

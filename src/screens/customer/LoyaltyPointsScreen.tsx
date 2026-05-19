@@ -17,7 +17,6 @@ import {
   StyleSheet,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useMutation } from '@tanstack/react-query';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { Divider } from '../../components/Divider';
@@ -25,6 +24,7 @@ import { EmptyState } from '../../components/EmptyState';
 import { useWalletBalance, useRefreshWallet } from '../../hooks/useWallet';
 import { formatPriceShort } from '../../utils/formatters';
 import { supabase } from '../../api/supabaseClient';
+import { useSupabaseMutation } from '../../api/useSupabaseQuery';
 import type { CustomerNavProp } from '../../navigation/types';
 
 export function LoyaltyPointsScreen({ navigation }: { navigation: CustomerNavProp }) {
@@ -35,24 +35,24 @@ export function LoyaltyPointsScreen({ navigation }: { navigation: CustomerNavPro
   const points = wallet?.loyaltyPoints ?? 0;
   const [redeemInput, setRedeemInput] = useState('');
 
-  const redeem = useMutation({
-    mutationFn: async (n: number) => {
-      // RPC not in generated types — cast (same pattern as the other RPCs).
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error } = await (supabase as any).rpc('redeem_loyalty_points', { p_points: n });
-      if (error) throw new Error(error.message);
-      return data as { wallet_credited: number; loyalty_points_remaining: number };
+  const redeem = useSupabaseMutation<number, { wallet_credited: number; loyalty_points_remaining: number }>(
+    // RPC not in the generated types — cast (same pattern as the other RPCs).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (n) => (supabase as any).rpc('redeem_loyalty_points', { p_points: n }),
+    undefined,
+    {
+      onSuccess: (data) => {
+        const res = Array.isArray(data) ? data[0] : data;
+        refreshWallet();
+        setRedeemInput('');
+        Alert.alert(
+          'Points Redeemed',
+          `${formatPriceShort(res?.wallet_credited ?? 0)} added to your wallet. ${res?.loyalty_points_remaining ?? 0} points left.`,
+        );
+      },
+      onError: (e) => Alert.alert('Could not redeem', e.message),
     },
-    onSuccess: (res) => {
-      refreshWallet();
-      setRedeemInput('');
-      Alert.alert(
-        'Points Redeemed',
-        `${formatPriceShort(res.wallet_credited)} added to your wallet. ${res.loyalty_points_remaining} points left.`,
-      );
-    },
-    onError: (e: Error) => Alert.alert('Could not redeem', e.message),
-  });
+  );
 
   const handleRedeem = () => {
     const n = parseInt(redeemInput, 10);
