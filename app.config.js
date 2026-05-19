@@ -34,7 +34,7 @@ export default ({ config }) => {
     ...config,
     name: '1stOne',
     slug: '1stOne-F1',
-    version: '1.3.0',
+    version: '1.3.1',
     orientation: 'portrait',
     icon: './assets/icon.png',
     userInterfaceStyle: 'dark',
