@@ -20,7 +20,7 @@ export const ORDER_STATUS_FLOW = [
 export type OrderStatusVariant = 'success' | 'warning' | 'info' | 'error';
 
 /** Status → badge variant — used by every order-list / order-detail surface. */
-export const ORDER_STATUS_VARIANT: Record<string, OrderStatusVariant> = {
+const ORDER_STATUS_VARIANT: Record<string, OrderStatusVariant> = {
   Pending: 'warning',
   Confirmed: 'info',
   Preparing: 'info',

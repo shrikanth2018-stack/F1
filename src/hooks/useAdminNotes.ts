@@ -88,12 +88,3 @@ export function useStaffNoteForTab(tab: NoteTarget | null) {
     { enabled: tab != null, staleTime: 5_000, refetchOnWindowFocus: true },
   );
 }
-
-/** Toggle a note on/off by id. */
-export function useToggleNote() {
-  return useSupabaseMutation<{ id: number; is_active: boolean }>(
-    ({ id, is_active }) =>
-      supabase.from('admin_notes').update({ is_active }).eq('id', id),
-    [['admin_notes']],
-  );
-}

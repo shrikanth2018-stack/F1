@@ -29,7 +29,7 @@ export const REFERRAL_DEFAULTS: Partial<ReferralSettings> = {
   milestone_ambassador_count: 5,
 };
 
-export function mergedSettings(raw: Partial<ReferralSettings> | null): ReferralSettings {
+function mergedSettings(raw: Partial<ReferralSettings> | null): ReferralSettings {
   return { ...REFERRAL_DEFAULTS, ...raw } as ReferralSettings;
 }
 
@@ -126,67 +126,6 @@ export function useApplyReferralCode() {
     },
   });
 }
-
-/**
- * Call after a customer places their first order.
- * Checks if they were referred; if so, credits the referrer's first-order bonus.
- * Safe to call on every order — checks reward_given flag.
- */
-export async function checkAndGrantFirstOrderBonus(userId: string): Promise<void> {
-  // Get user's referred_by
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('referred_by')
-    .eq('id', userId)
-    .single();
-  if (!profile?.referred_by) return;
-
-  // Find the referral record
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: referral } = await (supabase as any)
-    .from('referrals')
-    .select('id, status, first_order_reward_given')
-    .eq('referee_id', userId)
-    .eq('referrer_id', profile.referred_by)
-    .maybeSingle() as { data: { id: number; status: string | null; first_order_reward_given: boolean | null } | null };
-  if (!referral || referral.first_order_reward_given) return;
-
-  // Get settings
-  const { data: rawSettings } = await supabase
-    .from('referral_settings')
-    .select('*').limit(1).maybeSingle();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const settings = mergedSettings(rawSettings as any);
-  if (!settings.is_active) return;
-
-  // Count referee's orders
-  const { count } = await supabase
-    .from('orders')
-    .select('id', { count: 'exact', head: true })
-    .eq('user_id', userId)
-    .neq('status', 'Cancelled');
-  if ((count ?? 0) !== 1) return; // only trigger on first order
-
-  // Credit referrer
-  if (settings.referrer_first_order_credit > 0) {
-    await creditWallet(
-      profile.referred_by,
-      settings.referrer_first_order_credit,
-      `Referral bonus — your friend placed their first order`
-    );
-  }
-  if (settings.referrer_first_order_points > 0) {
-    await creditLoyaltyPoints(profile.referred_by, settings.referrer_first_order_points);
-  }
-
-  // Update referral record — first_order_reward_given column needs migration (see supabase/sql/referrals_reward_columns.sql)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await (supabase as any)
-    .from('referrals')
-    .update({ status: 'first_order_done', first_order_reward_given: true, reward_given: true })
-    .eq('id', referral.id);
-}
-
 // ── Admin hooks ──────────────────────────────────────────────
 
 export function useAllReferrals() {
@@ -278,12 +217,4 @@ async function creditWallet(userId: string, amount: number, description: string)
     p_description: description,
   });
   if (error) throw new Error(`increment_wallet_balance failed: ${error.message}`);
-}
-
-async function creditLoyaltyPoints(userId: string, points: number): Promise<void> {
-  const { error } = await supabase.rpc('increment_loyalty_points', {
-    p_user_id: userId,
-    p_points: points,
-  });
-  if (error) throw new Error(`increment_loyalty_points failed: ${error.message}`);
 }

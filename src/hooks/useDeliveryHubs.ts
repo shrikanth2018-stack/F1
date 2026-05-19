@@ -118,19 +118,6 @@ export function useToggleHub() {
 }
 
 /**
- * Returns addresses that will lose delivery coverage when a hub is disabled.
- * Only addresses assigned to this hub with no base zone (zone_id IS NULL).
- */
-export function useHubImpactAddresses(hubId: number | null) {
-  return useSupabaseQuery<{ id: number; user_id: string; label: string }>(
-    ['hub_impact', hubId],
-    // `enabled` gates this to hubId != null; the `?? 0` only satisfies the type.
-    () => supabase.rpc('get_hub_impact_addresses', { p_hub_id: hubId ?? 0 }),
-    { enabled: hubId != null, staleTime: 0 },
-  );
-}
-
-/**
  * Assigns a hub to all addresses whose coordinates fall within the hub
  * polygon. The point-in-polygon match runs entirely server-side
  * (assign_addresses_to_hub RPC). Returns the count of addresses assigned.

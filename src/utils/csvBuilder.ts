@@ -7,7 +7,7 @@
  * are coerced to string in a predictable way (null → empty).
  */
 
-export function escapeCsvCell(value: unknown): string {
+function escapeCsvCell(value: unknown): string {
   if (value == null) return '';
   const str = typeof value === 'string' ? value : String(value);
   if (str === '') return '';

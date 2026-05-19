@@ -11,14 +11,11 @@ import { useQuery } from '@tanstack/react-query';
 import { invokeFunction } from '../api/invokeFunction';
 import { useBranchFilter } from './useBranchFilter';
 import type {
-  RevenueReport,
-  OrderReport,
   SubscriptionReport,
   StaffAttendanceReport,
   OrdersDetailReport,
   RevenueDetailReport,
   SubscriptionPlanReport,
-  ExpenseReport,
 } from '../../supabase/functions/_shared/reportAggregations';
 
 const REPORT_STALE_TIME = 5 * 60 * 1000;
@@ -49,25 +46,6 @@ function useBranchId(): { branchId: number | null; keyPart: string | number } {
   };
 }
 
-/** Revenue report for a date range */
-export function useRevenueReport(startDate: string, endDate: string) {
-  const { branchId, keyPart } = useBranchId();
-  return useQuery({
-    queryKey: ['report_revenue', startDate, endDate, keyPart],
-    queryFn: () => fetchReport<RevenueReport>('revenue', { startDate, endDate, branchId }),
-    staleTime: REPORT_STALE_TIME,
-  });
-}
-
-/** Order breakdown by status for a date range */
-export function useOrderReport(startDate: string, endDate: string) {
-  const { branchId, keyPart } = useBranchId();
-  return useQuery({
-    queryKey: ['report_orders', startDate, endDate, keyPart],
-    queryFn: () => fetchReport<OrderReport>('orders', { startDate, endDate, branchId }),
-    staleTime: REPORT_STALE_TIME,
-  });
-}
 
 /** Subscription stats */
 export function useSubscriptionReport() {
@@ -115,16 +93,6 @@ export function useSubscriptionPlanReport() {
   return useQuery({
     queryKey: ['report_subscription_plans', keyPart],
     queryFn: () => fetchReport<SubscriptionPlanReport>('subscriptionPlan', { branchId }),
-    staleTime: REPORT_STALE_TIME,
-  });
-}
-
-/** Expense claims summary for a date range */
-export function useExpenseReport(startDate: string, endDate: string) {
-  const { branchId, keyPart } = useBranchId();
-  return useQuery({
-    queryKey: ['report_expenses', startDate, endDate, keyPart],
-    queryFn: () => fetchReport<ExpenseReport>('expense', { startDate, endDate, branchId }),
     staleTime: REPORT_STALE_TIME,
   });
 }

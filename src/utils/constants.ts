@@ -6,13 +6,6 @@
  * Only technical/display constants belong here.
  */
 
-/** AsyncStorage keys */
-export const STORAGE_KEYS = {
-  CART: '1stone-cart',
-  ESSENTIALS_CART: '1stone-essentials-cart',
-  STAFF_QUEUE: '1stone-staff-queue',
-  PUSH_TOKEN: '1stone-push-token',
-} as const;
 
 /** TanStack Query keys (centralized to avoid typo collisions) */
 export const QUERY_KEYS = {
@@ -40,12 +33,6 @@ export const QUERY_KEYS = {
   EXPENSE_CLAIMS: ['expense_claims'] as const,
 } as const;
 
-/** Supabase Storage bucket names */
-export const BUCKETS = {
-  BANNERS: 'banners',
-  LOGOS: 'logos',
-  ROUTE_MAPS: 'route-maps',
-} as const;
 
 /** Max retry for offline queue before flagging */
 export const MAX_QUEUE_RETRIES = 5;

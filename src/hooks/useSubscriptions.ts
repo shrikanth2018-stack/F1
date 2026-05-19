@@ -95,18 +95,6 @@ export function useAllCancelledDays(subscriptionIds: number[]) {
   );
 }
 
-export function useCancelledDays(subscriptionId: number) {
-  return useSupabaseQuery<CancelledSubscriptionDay>(
-    ['cancelled_days', subscriptionId],
-    () =>
-      supabase
-        .from('cancelled_subscription_days')
-        .select('*')
-        .eq('subscription_id', subscriptionId)
-        .order('cancelled_date'),
-  );
-}
-
 // ── Skip a Day ──
 
 export interface SkipDayPayload {
