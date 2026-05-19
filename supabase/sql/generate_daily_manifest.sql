@@ -49,6 +49,7 @@ DECLARE
   v_orders_created  INTEGER := 0;
   v_orders_skipped  INTEGER := 0;
   v_subs_skipped    INTEGER := 0;
+  v_subs_failed     INTEGER := 0;  -- O3: per-subscription failures, isolated
   v_sub             RECORD;
   v_plan            RECORD;
   v_address         RECORD;
@@ -151,6 +152,12 @@ BEGIN
     -- place-order. This row is an operational dispatch record only.
     -- BF-01: wallet_amount_used = 0. Plan was paid in full at purchase;
     -- this is a dispatch event, not a payment event.
+    --
+    -- O3 (audit): the order + items + days_consumed write for ONE
+    -- subscription is isolated in its own sub-block. A failure here is
+    -- logged + counted and the loop moves on — one bad subscription can
+    -- no longer abort the whole manifest run for everyone else.
+    BEGIN
     INSERT INTO orders (
       user_id, subscription_id, total_amount, tax_amount, delivery_fee,
       status, order_type, dispatch_date, cycle_id,
@@ -208,6 +215,15 @@ BEGIN
           ELSE TRUE
         END
     WHERE id = v_sub.sub_id;
+    EXCEPTION WHEN OTHERS THEN
+      -- O3: this one subscription failed — count it, log it, and move on.
+      -- The sub-block's savepoint rolls back just this subscription's
+      -- partial writes; the rest of the run is unaffected.
+      v_subs_failed := v_subs_failed + 1;
+      RAISE WARNING '[generate_daily_manifest] subscription % failed: %',
+        v_sub.sub_id, SQLERRM;
+      CONTINUE;
+    END;
 
     -- BF-35b: fire customer "Order Confirmed" push via pg_net. Async,
     -- non-blocking — generation proceeds even if send-push is down.
@@ -257,15 +273,19 @@ BEGIN
     v_orders_created := v_orders_created + 1;
   END LOOP;
 
-  -- Audit log
-  INSERT INTO manifest_run_log (run_date, orders_created, orders_skipped, subs_skipped)
-  VALUES (p_target_date, v_orders_created, v_orders_skipped, v_subs_skipped);
+  -- Audit log — error_detail notes any per-subscription failures (O3).
+  INSERT INTO manifest_run_log (run_date, orders_created, orders_skipped, subs_skipped, error_detail)
+  VALUES (p_target_date, v_orders_created, v_orders_skipped, v_subs_skipped,
+          CASE WHEN v_subs_failed > 0
+               THEN v_subs_failed || ' subscription(s) failed — see WARNING logs'
+               ELSE NULL END);
 
   RETURN jsonb_build_object(
     'target_date',     p_target_date,
     'orders_created',  v_orders_created,
     'orders_skipped',  v_orders_skipped,
-    'subs_skipped',    v_subs_skipped
+    'subs_skipped',    v_subs_skipped,
+    'subs_failed',     v_subs_failed
   );
 
 EXCEPTION WHEN OTHERS THEN
