@@ -11,6 +11,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import NetInfo from '@react-native-community/netinfo';
 import { supabase } from '../api/supabaseClient';
+import { useSupabaseQuery } from '../api/useSupabaseQuery';
 import { invalidateOrderQueries } from '../api/invalidateOrderQueries';
 import { useStaffQueueStore } from '../store/staffQueueStore';
 import { QUERY_KEYS, QUERY_STALE_TIME } from '../utils/constants';
@@ -151,6 +152,36 @@ export function useUpdateOrderStatus() {
       invalidateOrderQueries(queryClient);
     },
   });
+}
+
+export interface KitchenAggregateItem {
+  item_name: string;
+  /** Unit suffix ("g", "ml", "") — blank means an integer count. */
+  unit: string;
+  total_quantity: number;
+  status: OrderStatus;
+  order_ids: number[];
+}
+
+/**
+ * Kitchen prep aggregation — server-derived (audit D5). The
+ * get_kitchen_aggregate RPC breaks the active staff batch's food orders
+ * into ingredient components; the device only renders the result. Its
+ * query key sits under STAFF_ORDERS so realtime order changes invalidate it.
+ */
+export function useKitchenAggregate() {
+  const { data: batch } = useActiveStaffBatch();
+  return useSupabaseQuery<KitchenAggregateItem>(
+    [...QUERY_KEYS.STAFF_ORDERS, 'kitchen', batch ? `${batch.cycle_id}:${batch.push_date}` : 'none'],
+    () =>
+      // RPC post-dates the generated types — cast (MF-08 pattern).
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (supabase as any).rpc('get_kitchen_aggregate', {
+        p_cycle_id: batch?.cycle_id,
+        p_dispatch_date: batch?.push_date,
+      }),
+    { enabled: batch != null, staleTime: QUERY_STALE_TIME },
+  );
 }
 
 /**

@@ -53,11 +53,11 @@ import {
   useStaffOrders,
   useUpdateOrderStatus,
   useBulkAdvanceStatus,
+  useKitchenAggregate,
+  type KitchenAggregateItem,
 } from '../../hooks/useStaffOrders';
 import { nextPackingStatus } from '../../utils/packingFlow';
 import { isUnsuccessfulDelivery } from '../../utils/orderFilters';
-import { ORDER_STATUS_FLOW } from '../../utils/orderStatus';
-import { useAllMenuItems } from '../../hooks/useMenuManagement';
 import { useRealtimeOrders } from '../../hooks/useRealtimeOrders';
 import { useOfflineSync } from '../../hooks/useOfflineSync';
 import { useAuth } from '../../hooks/useAuth';
@@ -94,123 +94,8 @@ function statusColor(status: OrderStatus): string {
   }
 }
 
-// ── Aggregate kitchen items from orders ──────────────────
-interface AggregateItem {
-  key: string;
-  item_name: string;
-  /** Unit suffix ("g", "ml", "") — blank means integer count */
-  unit: string;
-  total_quantity: number;
-  status: OrderStatus;
-  order_ids: number[];
-  /** Parallel to order_ids: user_ids[i] is the customer who placed order_ids[i].
-   *  Needed so the Kitchen Mark-Ready tap fires per-customer order.ready pushes. */
-  user_ids: string[];
-}
-
-/**
- * Parse a menu item's `ingredients` text into a list of component x qty.
- *   Input  : "Rice:200g;Sambar:100ml;Chapati:2"
- *   Output : [{ name: "Rice", unit: "200g" }, ...]
- *
- * The trailing token can be a unit string (200g, 100ml) or an integer count (2).
- * For aggregation we treat integer tokens as a count multiplier; string units we
- * aggregate by distinct unit label so the kitchen sees "2 Chapati" vs "200g Rice".
- */
-function parseIngredientTokens(raw: string | null | undefined): Array<{ name: string; token: string }> {
-  if (!raw) return [];
-  return raw
-    .split(';')
-    .map((chunk) => chunk.trim())
-    .filter(Boolean)
-    .map((chunk) => {
-      const [name, token] = chunk.split(':').map((s) => s?.trim() ?? '');
-      return { name: name || '', token: token || '1' };
-    })
-    .filter((x) => x.name.length > 0);
-}
-
-/**
- * Kitchen aggregator — COMPONENT view.
- *
- * For every ordered meal, look up its menu_item.ingredients and aggregate by
- * component. 10 "Mini Lunch" orders with ingredients "Rice:200g;Sambar:100ml"
- * become "2000g Rice, 1000ml Sambar" for the kitchen to prep.
- *
- * Integer tokens are multiplied (e.g. Chapati:2 × 10 orders = 20 Chapati).
- * Suffixed tokens (200g, 100ml) extract the numeric prefix, multiply, reapply unit.
- *
- * Graceful fallback: if a menu_item has no ingredients defined, the meal name
- * itself becomes the component so the kitchen still sees something.
- */
-function aggregateKitchenItems(
-  orders: any[],
-  ingredientsByItemId: Record<number, string | null>,
-): AggregateItem[] {
-  const relevant = orders.filter((o) => o.status !== 'Cancelled');
-  const map = new Map<string, AggregateItem>();
-
-  const mergeInto = (
-    name: string,
-    rawToken: string,
-    qty: number,
-    status: OrderStatus,
-    orderId: number,
-    userId: string,
-  ) => {
-    // Extract optional numeric prefix and unit suffix from the token.
-    // "200g" → { num: 200, unit: "g" }, "2" → { num: 2, unit: "" }
-    const m = rawToken.match(/^(\d*\.?\d+)\s*(.*)$/);
-    const numeric = m ? parseFloat(m[1]) : 1;
-    const unit = (m ? m[2] : '').trim();
-    const totalNumeric = numeric * qty;
-
-    const key = `${name}__${unit}__${status}`;
-    const existing = map.get(key);
-    if (existing) {
-      existing.total_quantity += totalNumeric;
-      if (!existing.order_ids.includes(orderId)) {
-        existing.order_ids.push(orderId);
-        existing.user_ids.push(userId);
-      }
-    } else {
-      map.set(key, {
-        key,
-        item_name: name,
-        unit,
-        total_quantity: totalNumeric,
-        status,
-        order_ids: [orderId],
-        user_ids: [userId],
-      });
-    }
-  };
-
-  for (const order of relevant) {
-    for (const oi of order.order_items ?? []) {
-      // Only food item_types contribute to kitchen prep
-      if (oi.item_type && oi.item_type !== 'food') continue;
-
-      const ingredientsText = oi.item_id != null ? ingredientsByItemId[oi.item_id] : null;
-      const components = parseIngredientTokens(ingredientsText);
-
-      if (components.length === 0) {
-        // Fallback — no breakdown defined, show the meal itself
-        mergeInto(oi.item_name ?? `Item #${oi.item_id}`, String(oi.quantity), 1, order.status, order.id, order.user_id);
-      } else {
-        for (const c of components) {
-          mergeInto(c.name, c.token, oi.quantity, order.status, order.id, order.user_id);
-        }
-      }
-    }
-  }
-
-  const statusIdx = (s: string) =>
-    ORDER_STATUS_FLOW.indexOf(s as typeof ORDER_STATUS_FLOW[number]);
-  return Array.from(map.values()).sort(
-    (a, b) => statusIdx(a.status) - statusIdx(b.status)
-  );
-}
+// Kitchen prep aggregation is server-derived — see useKitchenAggregate /
+// the get_kitchen_aggregate RPC (audit D5).
 
 // ── Staff message bar ────────────────────────────────────
 function useStaffMessage() {
@@ -538,13 +423,6 @@ export function StaffDashboard() {
   // ── Order filters ────────────────────────────
   // D2: an unsuccessful-delivery order is at the delivery stage (Dispatched
   // / On the Way) — it belongs to Hub + Driver, never Kitchen or Packing.
-  const kitchenOrders = useMemo(
-    () => (orders ?? []).filter(
-      (o) => o.order_type === 'food' && o.status !== 'Cancelled' && !isUnsuccessfulDelivery(o)
-    ),
-    [orders]
-  );
-
   const packingOrders = useMemo(
     () => (orders ?? []).filter((o) => {
       if (o.status === 'Cancelled') return false;
@@ -572,21 +450,12 @@ export function StaffDashboard() {
     return { code, label: code ? `Driver ${code}` : 'Unassigned' };
   }, []);
 
-  // Build item_id → ingredients map from the full menu catalog.
-  // Used by the kitchen aggregator to break each meal into its components.
-  const { data: allMenu = [] } = useAllMenuItems();
-  const ingredientsByItemId = useMemo(() => {
-    const m: Record<number, string | null> = {};
-    for (const mi of allMenu as any[]) {
-      if (mi.id != null) m[mi.id] = mi.ingredients ?? null;
-    }
-    return m;
-  }, [allMenu]);
-
-  const kitchenItems = useMemo(
-    () => aggregateKitchenItems(kitchenOrders, ingredientsByItemId),
-    [kitchenOrders, ingredientsByItemId]
-  );
+  // Kitchen prep list — aggregated server-side from the active batch (D5).
+  const {
+    data: kitchenItems = [],
+    isLoading: kitchenLoading,
+    refetch: refetchKitchen,
+  } = useKitchenAggregate();
 
   // ── Handlers ─────────────────────────────────
   const handleStatusUpdate = useCallback((orderId: number, next: OrderStatus) => {
@@ -780,7 +649,7 @@ export function StaffDashboard() {
   };
 
   // ── Kitchen row ──────────────────────────────
-  const renderKitchenItem = ({ item }: { item: AggregateItem }) => {
+  const renderKitchenItem = ({ item }: { item: KitchenAggregateItem }) => {
     const canAct = item.status === 'Confirmed' || item.status === 'Preparing';
     return (
       <View style={styles.kitchenRow}>
@@ -943,10 +812,10 @@ export function StaffDashboard() {
       ) : activeTab === 'Kitchen' ? (
         <FlatList
           data={kitchenItems}
-          keyExtractor={(item) => item.key}
+          keyExtractor={(item) => `${item.item_name}__${item.unit}__${item.status}`}
           renderItem={renderKitchenItem}
-          refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} tintColor={Theme.colors.action.primary} />}
-          ListEmptyComponent={!isLoading ? <EmptyState title="No items for kitchen" /> : null}
+          refreshControl={<RefreshControl refreshing={kitchenLoading} onRefresh={() => { refetch(); refetchKitchen(); }} tintColor={Theme.colors.action.primary} />}
+          ListEmptyComponent={!kitchenLoading ? <EmptyState title="No items for kitchen" /> : null}
           contentContainerStyle={styles.list}
         />
       ) : (
