@@ -2,7 +2,11 @@
  * 1stOne F1 — Revenue Report Screen
  *
  * Period: Weekly | Monthly | Quarterly
- * Day-level rows: Date | Orders | Revenue | Tax
+ * Day-level rows: Date | Orders | Revenue | Incl. GST
+ *
+ * Pricing is GST-inclusive (T1): Revenue is the gross amount customers
+ * paid, and the GST column is the tax already CONTAINED within it — not
+ * an amount added on top. Revenue is the total billed.
  * Footer: Print | Download PDF
  * Requires: npx expo install expo-print expo-sharing
  */
@@ -47,7 +51,7 @@ function buildHtml(
   <h2>Revenue Report — ${periodTitle}</h2>
   <p>Generated: ${new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
   <table>
-    <thead><tr><th>Date</th><th>Orders</th><th>Revenue</th><th>Tax</th></tr></thead>
+    <thead><tr><th>Date</th><th>Orders</th><th>Revenue</th><th>Incl. GST</th></tr></thead>
     <tbody>${rowsHtml}</tbody>
     <tfoot><tr><td>Total</td><td>${totals.orders}</td><td>₹${totals.revenue.toLocaleString('en-IN')}</td><td>₹${totals.tax.toFixed(0)}</td></tr></tfoot>
   </table>
@@ -112,7 +116,7 @@ export function RevenueReportScreen({ navigation }: { navigation: AdminNavProp }
         <ThemedText variant="small" color="muted" style={[styles.sub, styles.colDate]}>Date</ThemedText>
         <ThemedText variant="small" color="muted" style={[styles.sub, styles.colOrders]}>Orders</ThemedText>
         <ThemedText variant="small" color="muted" style={[styles.sub, styles.colRevenue]}>Revenue</ThemedText>
-        <ThemedText variant="small" color="muted" style={[styles.sub, styles.colTax]}>Tax</ThemedText>
+        <ThemedText variant="small" color="muted" style={[styles.sub, styles.colTax]}>Incl. GST</ThemedText>
       </View>
 
       {/* Rows */}
@@ -204,7 +208,7 @@ const styles = StyleSheet.create({
   colDate: { width: 52 },
   colOrders: { width: 52, textAlign: 'right' },
   colRevenue: { flex: 1, textAlign: 'right' },
-  colTax: { width: 64, textAlign: 'right' },
+  colTax: { width: 84, textAlign: 'right' },
   list: { paddingBottom: Theme.spacing.xl },
   footer: {
     flexDirection: 'row',
