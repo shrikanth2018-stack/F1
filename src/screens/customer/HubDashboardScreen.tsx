@@ -34,6 +34,7 @@ import { Divider } from '../../components/Divider';
 import { EmptyState } from '../../components/EmptyState';
 import { ErrorRetry } from '../../components/ErrorRetry';
 import { DeliveryOrderRow } from '../../components/DeliveryOrderRow';
+import { SegmentedControl } from '../../components/SegmentedControl';
 import { useStaffOrders, useUpdateOrderStatus } from '../../hooks/useStaffOrders';
 import { useHubOrderHistory } from '../../hooks/useHubOrderHistory';
 import { useRealtimeOrders } from '../../hooks/useRealtimeOrders';
@@ -43,7 +44,6 @@ import type { CustomerScreenProps } from '../../navigation/types';
 import type { OrderStatus } from '../../types';
 
 type HubTab = 'Today' | 'History';
-const TABS: HubTab[] = ['Today', 'History'];
 
 export function HubDashboardScreen({ navigation }: CustomerScreenProps<'HubDashboard'>) {
   const [tab, setTab] = useState<HubTab>('Today');
@@ -91,25 +91,16 @@ export function HubDashboardScreen({ navigation }: CustomerScreenProps<'HubDashb
         <View style={styles.spacer} />
       </View>
 
-      {/* Tab strip — pipe-separated, matches StaffDashboard pattern */}
-      <View style={styles.tabRow}>
-        {TABS.map((t, i) => (
-          <React.Fragment key={t}>
-            <TouchableOpacity onPress={() => setTab(t)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <ThemedText
-                variant="body"
-                color={tab === t ? 'primary' : 'muted'}
-                style={tab === t ? styles.tabActive : styles.tabInactive}
-              >
-                {t}
-              </ThemedText>
-            </TouchableOpacity>
-            {i < TABS.length - 1 && (
-              <ThemedText variant="body" color="muted" style={styles.tabSep}>|</ThemedText>
-            )}
-          </React.Fragment>
-        ))}
-      </View>
+      {/* Today | History — shared glass pill (D24) */}
+      <SegmentedControl
+        style={styles.tabs}
+        value={tab}
+        onChange={setTab}
+        options={[
+          { key: 'Today', label: 'Today' },
+          { key: 'History', label: 'History' },
+        ]}
+      />
 
       {/* Admin notes — hub-specific + broadcasts. Single-line, centered, mild yellow. */}
       {isToday && notes.map((n) => (
@@ -191,23 +182,9 @@ const styles = StyleSheet.create({
   },
   spacer: { minWidth: 60 },
 
-  tabRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Theme.spacing.sm,
-    paddingVertical: Theme.spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.layout.divider,
-  },
-  tabActive: {
-    fontSize: Theme.typography.sizes.body + 4,
-  },
-  tabInactive: {
-    fontSize: Theme.typography.sizes.body + 4,
-  },
-  tabSep: {
-    fontSize: Theme.typography.sizes.body + 4,
+  tabs: {
+    marginHorizontal: Theme.spacing.md,
+    marginVertical: Theme.spacing.sm,
   },
 
   noteLine: {

@@ -12,37 +12,28 @@
  * My Subscriptions lives separately under ProfilePopup → Subscriptions.
  */
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   SectionList,
   TouchableOpacity,
   StyleSheet,
   RefreshControl,
-  Dimensions,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import ReAnimated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-  withTiming,
-} from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { EmptyState } from '../../components/EmptyState';
+import { SegmentedControl } from '../../components/SegmentedControl';
 import { useDeliveryCycles } from '../../hooks/useDeliveryCycles';
 import { useSubscriptionPlans } from '../../hooks/useSubscriptions';
 import { formatPriceShort } from '../../utils/formatters';
 import { essentialsCycleLabel } from '../../utils/cycleLabels';
 import type { SubscriptionPlan } from '../../types';
 
-const { width: SCREEN_W } = Dimensions.get('window');
 const PILL_MX = Theme.spacing.md;
-const PILL_W = SCREEN_W - PILL_MX * 2;
-const TAB_W = PILL_W / 2;
 
 type PlanTab = 'food' | 'essentials';
 
@@ -123,26 +114,6 @@ export function PlansScreen({ navigation, route }: any) {
 
   const activeSections = activeTab === 'food' ? foodSections : essentialsSections;
 
-  // Sliding pill indicator + spring-up entrance (mirrors HomeScreen toggle)
-  const tabPos = useSharedValue(initialTab === 'food' ? 0 : 1);
-  useEffect(() => {
-    tabPos.value = withSpring(activeTab === 'food' ? 0 : 1, { damping: 20, stiffness: 280, mass: 0.7 });
-  }, [activeTab]);
-  const indicatorStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: tabPos.value * TAB_W }],
-  }));
-
-  const toggleY = useSharedValue(-22);
-  const toggleOpacity = useSharedValue(0);
-  useEffect(() => {
-    toggleY.value = withSpring(0, { damping: 16, stiffness: 220, mass: 0.6 });
-    toggleOpacity.value = withTiming(1, { duration: 380 });
-  }, []);
-  const toggleEntranceStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: toggleY.value }],
-    opacity: toggleOpacity.value,
-  }));
-
   const renderSectionHeader = ({ section }: { section: PlanSection }) => (
     <View style={styles.sectionHeader}>
       <ThemedText variant="subtitle" color="mint" style={styles.sectionTitle}>
@@ -185,28 +156,16 @@ export function PlansScreen({ navigation, route }: any) {
         <ThemedText variant="header" color="primary" style={styles.headerTitle}>Subscription Plans</ThemedText>
       </View>
 
-      {/* Food | Essentials — glass pill toggle with spring entrance (mirrors HomeScreen) */}
-      <ReAnimated.View style={[styles.pillOuter, toggleEntranceStyle]}>
-        <ReAnimated.View style={[styles.pillIndicator, indicatorStyle]} />
-        <TouchableOpacity style={styles.pillTab} activeOpacity={0.7} onPress={() => setActiveTab('food')}>
-          <ThemedText
-            variant="subtitle"
-            color={activeTab === 'food' ? 'primary' : 'muted'}
-            style={activeTab === 'food' ? styles.pillTabActive : styles.pillTabInactive}
-          >
-            Food
-          </ThemedText>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.pillTab} activeOpacity={0.7} onPress={() => setActiveTab('essentials')}>
-          <ThemedText
-            variant="subtitle"
-            color={activeTab === 'essentials' ? 'primary' : 'muted'}
-            style={activeTab === 'essentials' ? styles.pillTabActive : styles.pillTabInactive}
-          >
-            Essentials
-          </ThemedText>
-        </TouchableOpacity>
-      </ReAnimated.View>
+      {/* Food | Essentials — shared glass pill (D24) */}
+      <SegmentedControl
+        style={styles.pill}
+        value={activeTab}
+        onChange={setActiveTab}
+        options={[
+          { key: 'food', label: 'Food' },
+          { key: 'essentials', label: 'Essentials' },
+        ]}
+      />
 
       {/* Plans list */}
       <View style={styles.listWrap}>
@@ -264,29 +223,11 @@ const styles = StyleSheet.create({
     paddingBottom: Theme.spacing.sm,
   },
   headerTitle: { flex: 1, textAlign: 'left' },
-  // ── Glass pill toggle (mirrors HomeScreen) ──
-  pillOuter: {
-    flexDirection: 'row',
+  // ── Food | Essentials pill (SegmentedControl) ──
+  pill: {
     marginHorizontal: PILL_MX,
     marginBottom: Theme.spacing.sm,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Theme.colors.background.secondary,
-    borderWidth: 1,
-    borderColor: `${Theme.colors.text.mint}4D`,
-    overflow: 'hidden',
   },
-  pillIndicator: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    width: TAB_W,
-    backgroundColor: `${Theme.colors.text.mint}22`,
-    borderRadius: 20,
-  },
-  pillTab: { flex: 1, alignItems: 'center', justifyContent: 'center', zIndex: 1 },
-  pillTabInactive: { fontSize: Theme.typography.sizes.subtitle + 2 },
-  pillTabActive: { fontSize: Theme.typography.sizes.subtitle + 4 },
 
   listWrap: { flex: 1 },
   // Bottom padding leaves room for the floating Back pill (40px) + breathing room.

@@ -14,9 +14,14 @@ export function parseTime(timeStr: string): { hours: number; minutes: number } {
   return { hours: h, minutes: m };
 }
 
-/** Convert "HH:MM" or "HH:MM:SS" to minutes since midnight. */
-export function timeToMinutes(timeStr: string): number {
+/**
+ * Convert "HH:MM" or "HH:MM:SS" to minutes since midnight. Returns 0 for a
+ * missing or unparseable value (callers sort/compare, so 0 is a safe floor).
+ */
+export function timeToMinutes(timeStr: string | null | undefined): number {
+  if (!timeStr) return 0;
   const { hours, minutes } = parseTime(timeStr);
+  if (isNaN(hours) || isNaN(minutes)) return 0;
   return hours * 60 + minutes;
 }
 

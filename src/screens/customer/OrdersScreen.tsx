@@ -25,6 +25,7 @@ import { ThemedText } from '../../components/ThemedText';
 import { DispatchBadge } from '../../components/DispatchBadge';
 import { EmptyState } from '../../components/EmptyState';
 import { ErrorRetry } from '../../components/ErrorRetry';
+import { SegmentedControl } from '../../components/SegmentedControl';
 import { useMyOrders } from '../../hooks/useOrders';
 import { formatPriceShort, formatDateShort, formatRelativeTime } from '../../utils/formatters';
 import { ORDER_STATUS_FLOW, orderStatusVariant } from '../../utils/orderStatus';
@@ -152,33 +153,16 @@ export function OrdersScreen({ navigation }: any) {
         </TouchableOpacity>
       </View>
 
-      {/* Tabs */}
-      <View style={styles.tabs}>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'food' && styles.tabActive]}
-          onPress={() => setActiveTab('food')}
-        >
-          <ThemedText
-            variant="body"
-            color={activeTab === 'food' ? 'primary' : 'muted'}
-            style={activeTab === 'food' ? styles.tabTextActive : undefined}
-          >
-            Food
-          </ThemedText>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'essentials' && styles.tabActive]}
-          onPress={() => setActiveTab('essentials')}
-        >
-          <ThemedText
-            variant="body"
-            color={activeTab === 'essentials' ? 'primary' : 'muted'}
-            style={activeTab === 'essentials' ? styles.tabTextActive : undefined}
-          >
-            Essentials
-          </ThemedText>
-        </TouchableOpacity>
-      </View>
+      {/* Food | Essentials — shared glass pill (D24) */}
+      <SegmentedControl
+        style={styles.tabs}
+        value={activeTab}
+        onChange={setActiveTab}
+        options={[
+          { key: 'food', label: 'Food' },
+          { key: 'essentials', label: 'Essentials' },
+        ]}
+      />
 
       <FlatList
         data={groups}
@@ -225,23 +209,9 @@ const styles = StyleSheet.create({
     paddingBottom: Theme.spacing.sm,
   },
   tabs: {
-    flexDirection: 'row',
     marginHorizontal: Theme.spacing.md,
     marginBottom: Theme.spacing.sm,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Theme.colors.background.secondary,
-    borderWidth: 1,
-    borderColor: `${Theme.colors.text.mint}4D`,
-    overflow: 'hidden',
   },
-  tab: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tabActive: {},
-  tabTextActive: {},
   list: {
     paddingTop: Theme.spacing.xs,
     paddingBottom: Theme.spacing.xl,

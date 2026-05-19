@@ -42,7 +42,8 @@ import { useEssentialsCatalog } from '../../hooks/useEssentials';
 import { useEssentialsCartStore } from '../../store/essentialsCartStore';
 import { useCartStore } from '../../store/cartStore';
 import { useUIStore } from '../../store/uiStore';
-import { formatTime12h } from '../../utils/timeEngine';
+import { formatTime12h, timeToMinutes } from '../../utils/timeEngine';
+import { SegmentedControl } from '../../components/SegmentedControl';
 import { istMinutesNow } from '../../utils/istDate';
 import { formatPriceShort } from '../../utils/formatters';
 import { assetUrl } from '../../utils/assets';
@@ -58,20 +59,11 @@ import type { MenuItem, EssentialItem, DeliveryCycle } from '../../types';
 const LOGO_URL = assetUrl('logo.png');
 const BANNER_URL = assetUrl('banner.png');
 
-const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
+const { height: SCREEN_H } = Dimensions.get('window');
 const HERO_H = Math.round(SCREEN_H * 0.32);
 const PILL_MX = 16;
-const PILL_W = SCREEN_W - PILL_MX * 2;
-const TAB_W = PILL_W / 2;
 
 // ── Helpers ──────────────────────────────────────────────────
-
-function timeToMinutes(t: string | null | undefined): number {
-  if (!t) return 0;
-  const [h, m] = t.split(':').map(Number);
-  if (isNaN(h) || isNaN(m)) return 0;
-  return h * 60 + m;
-}
 
 function sortByCutoff(cycles: DeliveryCycle[]): DeliveryCycle[] {
   const nowMin = istMinutesNow();
@@ -396,26 +388,6 @@ export function HomeScreen() {
   }, [textContent?.pulse]);
   const pulseStyle = useAnimatedStyle(() => ({ opacity: pulse.value }));
 
-  // Toggle pill sliding indicator
-  const tabPos = useSharedValue(0);
-  useEffect(() => {
-    tabPos.value = withSpring(activeHomeTab === 'food' ? 0 : 1, { damping: 20, stiffness: 280, mass: 0.7 });
-  }, [activeHomeTab]);
-  const indicatorStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: tabPos.value * TAB_W }],
-  }));
-
-  // Toggle pill entrance
-  const toggleY = useSharedValue(-22);
-  const toggleOpacity = useSharedValue(0);
-  useEffect(() => {
-    toggleY.value = withSpring(0, { damping: 16, stiffness: 220, mass: 0.6 });
-    toggleOpacity.value = withTiming(1, { duration: 380 });
-  }, []);
-  const toggleEntranceStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: toggleY.value }],
-    opacity: toggleOpacity.value,
-  }));
 
   // Food: all 4 cycles serve food.
   // Essentials: only cycles flagged is_essentials (Breakfast/Lunch/Dinner, not Snacks).
@@ -571,29 +543,17 @@ export function HomeScreen() {
         <ErrorRetry message="Failed to load menu" onRetry={handleRefresh} />
       )}
 
-      {/* ── Glass toggle pill with spring entrance ──────── */}
+      {/* ── Food | Essentials — shared glass pill (D24) ── */}
       {essentialsEnabled && (
-        <ReAnimated.View style={[styles.pillOuter, toggleEntranceStyle]}>
-          <ReAnimated.View style={[styles.pillIndicator, indicatorStyle]} />
-          <TouchableOpacity style={styles.pillTab} activeOpacity={0.7} onPress={() => setActiveHomeTab('food')}>
-            <ThemedText
-              variant="subtitle"
-              color={activeHomeTab === 'food' ? 'primary' : 'muted'}
-              style={activeHomeTab === 'food' ? styles.pillTabActive : styles.pillTabInactive}
-            >
-              Food
-            </ThemedText>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.pillTab} activeOpacity={0.7} onPress={() => setActiveHomeTab('essentials')}>
-            <ThemedText
-              variant="subtitle"
-              color={activeHomeTab === 'essentials' ? 'primary' : 'muted'}
-              style={activeHomeTab === 'essentials' ? styles.pillTabActive : styles.pillTabInactive}
-            >
-              Essentials
-            </ThemedText>
-          </TouchableOpacity>
-        </ReAnimated.View>
+        <SegmentedControl
+          style={styles.pill}
+          value={activeHomeTab}
+          onChange={setActiveHomeTab}
+          options={[
+            { key: 'food', label: 'Food' },
+            { key: 'essentials', label: 'Essentials' },
+          ]}
+        />
       )}
 
       {/* ── Food scroll — rendered only when food tab is active ── */}
@@ -764,29 +724,11 @@ const styles = StyleSheet.create({
     opacity: 0.85,
   },
 
-  // ── Glass pill toggle ──
-  pillOuter: {
-    flexDirection: 'row',
+  // ── Food | Essentials pill (SegmentedControl) ──
+  pill: {
     marginHorizontal: PILL_MX,
     marginVertical: Theme.spacing.sm,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Theme.colors.background.secondary,
-    borderWidth: 1,
-    borderColor: `${Theme.colors.text.mint}4D`,
-    overflow: 'hidden',
   },
-  pillIndicator: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    width: TAB_W,
-    backgroundColor: `${Theme.colors.text.mint}22`,
-    borderRadius: 20,
-  },
-  pillTab: { flex: 1, alignItems: 'center', justifyContent: 'center', zIndex: 1 },
-  pillTabInactive: { fontSize: Theme.typography.sizes.subtitle + 2 },
-  pillTabActive: { fontSize: Theme.typography.sizes.subtitle + 4 },
 
   // ── List ──
   list: { flex: 1 },
