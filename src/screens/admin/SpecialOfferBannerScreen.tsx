@@ -28,6 +28,7 @@ import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { Divider } from '../../components/Divider';
 import { supabase } from '../../api/supabaseClient';
+import { sendPush } from '../../api/sendPush';
 import { useLiveBanner, useUpsertBanner, type CustomBannerContent } from '../../hooks/useBanner';
 import type { AdminNavProp } from '../../navigation/types';
 
@@ -169,19 +170,14 @@ export function SpecialOfferBannerScreen({ navigation }: { navigation: AdminNavP
     }
   };
 
-  const firePushToCustomers = async (offerTitle: string, offerBody: string) => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.access_token) return;
-    supabase.functions.invoke('send-push', {
-      headers: { Authorization: `Bearer ${session.access_token}` },
-      body: {
-        role: 'customer',
-        title: offerTitle,
-        body: offerBody,
-        data: { screen: 'Home' },
-        trigger_source: 'admin_push',
-      },
-    }).catch((e: any) => console.error('[SpecialOfferBanner] push failed:', e));
+  const firePushToCustomers = (offerTitle: string, offerBody: string) => {
+    sendPush({
+      role: 'customer',
+      title: offerTitle,
+      body: offerBody,
+      data: { screen: 'Home' },
+      trigger_source: 'admin_push',
+    });
   };
 
   const handleUpload = async () => {

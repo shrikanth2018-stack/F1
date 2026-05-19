@@ -21,7 +21,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
-import { supabase } from '../../api/supabaseClient';
+import { sendPush } from '../../api/sendPush';
 import {
   useAdminNotes,
   useUpsertNote,
@@ -86,29 +86,23 @@ export function NoteToStaffScreen({ navigation }: { navigation: AdminNavProp }) 
       // Fire push to staff for active notes only
       const activeTargets = targets.filter((t) => state[t.key].active);
       if (activeTargets.length > 0) {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.access_token) {
-          // send-push targets a whole role, not staff sub-groups — one push
-          // reaches every staff member. With a single active note, send its
-          // text as-is; with several, label each group so no group's message
-          // is dropped or misattributed (the per-tab banner still shows the
-          // group-specific note on the dashboard).
-          const pushBody = activeTargets.length === 1
-            ? state[activeTargets[0].key].text.trim()
-            : activeTargets
-                .map((t) => `${t.label}: ${state[t.key].text.trim()}`)
-                .join('\n');
-          supabase.functions.invoke('send-push', {
-            headers: { Authorization: `Bearer ${session.access_token}` },
-            body: {
-              role: 'staff',
-              title: 'Note from Admin',
-              body: pushBody,
-              data: { screen: 'StaffDashboard' },
-              trigger_source: 'admin_push',
-            },
-          }).catch((e: any) => console.error('[NoteToStaff] push failed:', e));
-        }
+        // send-push targets a whole role, not staff sub-groups — one push
+        // reaches every staff member. With a single active note, send its
+        // text as-is; with several, label each group so no group's message
+        // is dropped or misattributed (the per-tab banner still shows the
+        // group-specific note on the dashboard).
+        const pushBody = activeTargets.length === 1
+          ? state[activeTargets[0].key].text.trim()
+          : activeTargets
+              .map((t) => `${t.label}: ${state[t.key].text.trim()}`)
+              .join('\n');
+        sendPush({
+          role: 'staff',
+          title: 'Note from Admin',
+          body: pushBody,
+          data: { screen: 'StaffDashboard' },
+          trigger_source: 'admin_push',
+        });
       }
 
       Alert.alert('Done', 'Notes updated for staff dashboard.');

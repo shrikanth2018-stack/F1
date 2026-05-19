@@ -43,6 +43,7 @@ export type AdminStackParamList = {
   AdminSubscriptions: undefined;
   StoreConfig: undefined;
   FeatureFlags: undefined;
+  JobHealth: undefined;
   BranchesManage: undefined;
   CustomerExport: undefined;
 };

@@ -13,7 +13,7 @@
  * hardcoded fallback title/body used when the template row is missing.
  */
 
-import { supabase } from '../api/supabaseClient';
+import { sendPush } from '../api/sendPush';
 
 const ORDER_STATUS_PUSH: Record<string, {
   event_key: string;
@@ -39,23 +39,14 @@ export async function fireOrderStatusPush(
 ): Promise<void> {
   const msg = ORDER_STATUS_PUSH[status];
   if (!msg || !customerUserId) return;
-  try {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.access_token) return;
-    await supabase.functions.invoke('send-push', {
-      headers: { Authorization: `Bearer ${session.access_token}` },
-      body: {
-        user_ids: [customerUserId],
-        event_key: msg.event_key,
-        vars: { order_id: orderId },
-        title: msg.title,
-        body: msg.body(orderId),
-        data: { screen: 'OrderDetail', params: { orderId } },
-        trigger_source: 'order_status',
-        reference_id: String(orderId),
-      },
-    });
-  } catch (e) {
-    console.error('[fireOrderStatusPush]', e);
-  }
+  await sendPush({
+    user_ids: [customerUserId],
+    event_key: msg.event_key,
+    vars: { order_id: orderId },
+    title: msg.title,
+    body: msg.body(orderId),
+    data: { screen: 'OrderDetail', params: { orderId } },
+    trigger_source: 'order_status',
+    reference_id: String(orderId),
+  });
 }

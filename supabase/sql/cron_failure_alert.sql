@@ -58,7 +58,9 @@ BEGIN
         'role',           'admin',
         'title',          'Background job failing',
         'body',           v_count || ' cron failure(s) in the last hour: ' || v_jobs,
-        'data',           jsonb_build_object('screen', 'AdminHome'),
+        -- Deep-links to the System Health surface (audit O1) so the admin
+        -- lands on the job-health screen, not the generic home tab.
+        'data',           jsonb_build_object('screen', 'JobHealth'),
         'trigger_source', 'cron_health'
       )
     );

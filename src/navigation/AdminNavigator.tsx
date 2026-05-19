@@ -19,6 +19,7 @@ import { EmployeeDetailScreen } from '../screens/admin/EmployeeDetailScreen';
 import { OnboardEmployeeScreen } from '../screens/admin/OnboardEmployeeScreen';
 import { StoreConfigScreen } from '../screens/admin/StoreConfigScreen';
 import { FeatureFlagsScreen } from '../screens/admin/FeatureFlagsScreen';
+import { JobHealthScreen } from '../screens/admin/JobHealthScreen';
 import { EssentialsCatalogManageScreen } from '../screens/admin/EssentialsCatalogManageScreen';
 import { CreateEssentialScreen } from '../screens/admin/CreateEssentialScreen';
 import { ImportItemsScreen } from '../screens/admin/ImportItemsScreen';
@@ -103,6 +104,7 @@ export function AdminNavigator() {
       <Stack.Screen name="AdminSubscriptions" component={AdminSubscriptionsScreen} />
       <Stack.Screen name="StoreConfig" component={StoreConfigScreen} />
       <Stack.Screen name="FeatureFlags" component={FeatureFlagsScreen} />
+      <Stack.Screen name="JobHealth" component={JobHealthScreen} />
 
       {/* Manage — Branches (super-admin only; gated inside the screen) */}
       <Stack.Screen name="BranchesManage" component={BranchesManageScreen} />

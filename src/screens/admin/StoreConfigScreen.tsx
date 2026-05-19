@@ -292,6 +292,9 @@ export function StoreConfigScreen({ navigation }: { navigation: AdminNavProp }) 
 
       {/* Footer */}
       <View style={styles.footer}>
+        <TouchableOpacity onPress={() => navigation.navigate('JobHealth')}>
+          <ThemedText variant="body" color="mint" style={{ fontSize: B }}>System Health ›</ThemedText>
+        </TouchableOpacity>
         <TouchableOpacity onPress={() => navigation.navigate('FeatureFlags')}>
           <ThemedText variant="body" color="mint" style={{ fontSize: B }}>Feature Flags ›</ThemedText>
         </TouchableOpacity>
@@ -337,10 +340,11 @@ const styles = StyleSheet.create({
   },
 
   footer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     paddingHorizontal: Theme.spacing.md,
     paddingVertical: Theme.spacing.sm,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: Theme.colors.text.mint,
-    alignItems: 'flex-end',
   },
 });
