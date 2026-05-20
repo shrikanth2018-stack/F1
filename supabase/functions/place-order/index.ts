@@ -244,6 +244,8 @@ serve(async (req) => {
             p_user_id: user.id,
             p_amount: walletAmountUsed,
             p_description: 'Order placement failed — refund',
+            p_reference_type: 'order_failed',
+            p_reference_id: null,
           });
           if (refundErr) { refundFailed = true; refundErrMessage = refundErr.message; }
         } catch (e: any) {
@@ -268,6 +270,21 @@ serve(async (req) => {
     const orderIds = rows.map((r) => r.new_order_id);
     const orderGroupId = rows[0].new_group_id;
     const primaryOrderId = orderIds[0];
+
+    // ── Tag the wallet debit with order ref + better description ──
+    // Debit happened before place_order_atomic (so we could fail fast on
+    // insufficient balance). Now that the order exists, point the
+    // transaction row at it. Idempotent — tag_wallet_debit_to_order
+    // filters on reference_id IS NULL.
+    if (payment_method === 'wallet' && walletAmountUsed > 0) {
+      const { error: tagErr } = await supabase.rpc('tag_wallet_debit_to_order', {
+        p_user_id: user.id,
+        p_order_id: primaryOrderId,
+      });
+      if (tagErr) {
+        console.warn('[place-order] tag_wallet_debit_to_order failed (non-fatal):', tagErr.message);
+      }
+    }
 
     // ── Create user_subscriptions rows for any plans in this order ──
     const subInsertFailures: Array<{ plan_id: number; error: string }> = [];

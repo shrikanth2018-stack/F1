@@ -76,15 +76,20 @@ Deno.serve(async (req: Request) => {
     if (!settings.is_active) return json({ error: 'Referral program is currently inactive' }, 400);
 
     // 4. Create referral record
-    const { error: refErr } = await admin.from('referrals').insert({
-      referrer_id: referrer.id,
-      referee_id: user.id,
-      status: 'pending',
-      reward_given: false,
-      first_order_reward_given: false,
-      month_reward_given: false,
-    });
-    if (refErr) return json({ error: 'Failed to create referral record' }, 500);
+    const { data: refRow, error: refErr } = await admin
+      .from('referrals')
+      .insert({
+        referrer_id: referrer.id,
+        referee_id: user.id,
+        status: 'pending',
+        reward_given: false,
+        first_order_reward_given: false,
+        month_reward_given: false,
+      })
+      .select('id')
+      .single();
+    if (refErr || !refRow) return json({ error: 'Failed to create referral record' }, 500);
+    const newReferralId = (refRow as { id: number }).id;
 
     // 5. Update referee profile
     await admin.from('profiles').update({ referred_by: referrer.id }).eq('id', user.id);
@@ -95,6 +100,8 @@ Deno.serve(async (req: Request) => {
         p_user_id: user.id,
         p_amount: settings.referee_signup_credit,
         p_description: `Referral signup bonus (code: ${code.toUpperCase().trim()})`,
+        p_reference_type: 'referral_signup',
+        p_reference_id: String(newReferralId),
       });
     }
 

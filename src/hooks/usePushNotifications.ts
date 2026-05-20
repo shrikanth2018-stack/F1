@@ -102,10 +102,13 @@ export function usePushNotifications() {
       // up as is_active=true forever, so one status push fans out to a stack
       // of dead tokens (and a returning device gets the push more than once).
       // One active token per user: the most recently registered device wins.
+      // The .eq('is_active', true) filter keeps already-retired rows
+      // untouched so their updated_at doesn't bump on every login.
       await supabase
         .from('push_notification_tokens')
         .update({ is_active: false })
         .eq('user_id', session.user.id)
+        .eq('is_active', true)
         .neq('token', token);
     },
     [session?.user.id]

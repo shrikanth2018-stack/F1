@@ -243,6 +243,8 @@ Deno.serve(async (req: Request) => {
         p_user_id: user.id,
         p_amount: walletRefund,
         p_description: `Refund for cancelled order #${anchor.id}`,
+        p_reference_type: 'order_refund',
+        p_reference_id: String(anchor.id),
       });
       if (refundErr) {
         // BF-39 (F1.5): the order(s) are already Cancelled (atomic from the

@@ -200,6 +200,7 @@ export function EditProfileScreen({ navigation }: any) {
             value={name}
             onChangeText={(t) => { setName(t); setNameDirty(true); }}
             placeholder="Your full name"
+            style={styles.nameInput}
           />
           {nameDirty && (
             <TouchableOpacity
@@ -214,26 +215,6 @@ export function EditProfileScreen({ navigation }: any) {
             </TouchableOpacity>
           )}
         </View>
-
-        <View style={styles.hairline} />
-
-        {/* Login Phone */}
-        <View style={styles.section}>
-          <ThemedText variant="small" color="subtitle" style={styles.sectionLabel}>Login phone</ThemedText>
-          <View style={styles.rowBetween}>
-            <ThemedText variant="body" color="primary">
-              {currentPhone ? formatPhone(currentPhone) : '—'}
-            </ThemedText>
-            <TouchableOpacity
-              onPress={() => setPhoneModalVisible(true)}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <ThemedText variant="body" color="mint">Change number  ›</ThemedText>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        <View style={styles.hairline} />
 
         {/* Addresses */}
         <View style={styles.section}>
@@ -258,6 +239,24 @@ export function EditProfileScreen({ navigation }: any) {
             + Add Address
           </ThemedText>
         </TouchableOpacity>
+
+        <View style={styles.hairline} />
+
+        {/* Login Phone — last, after the address list + Add button */}
+        <View style={styles.section}>
+          <ThemedText variant="small" color="subtitle" style={styles.sectionLabel}>Login phone</ThemedText>
+          <View style={styles.rowBetween}>
+            <ThemedText variant="body" color="primary">
+              {currentPhone ? formatPhone(currentPhone) : '—'}
+            </ThemedText>
+            <TouchableOpacity
+              onPress={() => setPhoneModalVisible(true)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <ThemedText variant="body" color="mint">Change number  ›</ThemedText>
+            </TouchableOpacity>
+          </View>
+        </View>
       </ScrollView>
 
       {/* Phone change modal */}
@@ -360,6 +359,9 @@ const styles = StyleSheet.create({
   },
   sectionLabel: {
     marginBottom: Theme.spacing.xs,
+  },
+  nameInput: {
+    color: Theme.colors.text.mint,
   },
   rowBetween: {
     flexDirection: 'row',
