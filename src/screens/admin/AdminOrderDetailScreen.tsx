@@ -170,11 +170,25 @@ export function AdminOrderDetailScreen({
     if (isUnsuccessfulDelivery(o)) {
       // D2: a failed / late delivery. The order was prepared and dispatched,
       // so NO REFUND is the default — the admin can still refund to wallet
-      // if they judge the failure was on our side.
+      // if they judge the failure was on our side. Sub-dispatch rows have
+      // total_amount=0 because the customer paid via the parent
+      // subscription, not at this row — so there's nothing to refund at
+      // this level and the row-level refund button is suppressed; if a
+      // missed day truly needs refunding, the admin cancels the
+      // subscription with proration from Manage Running Subscriptions.
+      const isSubDispatch = o.subscription_id != null && rowTotal === 0;
+      const message = isSubDispatch
+        ? 'Unsuccessful delivery on a subscription dispatch. No row-level '
+          + 'refund applies — the customer paid via the subscription. To '
+          + 'refund a missed day, cancel the subscription with proration '
+          + 'from Manage Running Subscriptions.'
+        : 'Unsuccessful delivery — cancelling with no refund (the order was '
+          + 'prepared and dispatched). Use the refund option only if the '
+          + 'failure was on us.';
+
       Alert.alert(
         `Cancel Order #${o.id}?`,
-        'Unsuccessful delivery — cancelling with no refund (the order was prepared '
-          + 'and dispatched). Use the refund option only if the failure was on us.',
+        message,
         [
           { text: 'Keep', style: 'cancel' },
           { text: 'Cancel — no refund', style: 'destructive', onPress: () => doCancel(0, false) },
