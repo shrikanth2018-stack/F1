@@ -34,9 +34,14 @@ import { isOperationalOrder } from '../../utils/orderFilters';
 const CANCELLABLE_STATUSES = new Set(['Pending', 'Confirmed', 'Paid', 'Preparing']);
 
 // Progress bar flows — per blueprint Sec 5.1.
-// Food includes kitchen prep states; Essentials skips them (no cooking).
+// Food shows the kitchen Ready step; Essentials skips it (no cooking).
+// 'Preparing' is allowed by the DB constraint and the kitchen UI's
+// "can act" check, but no code path actually writes it — the kitchen
+// flips Confirmed → Ready in one tap (StaffDashboard.tsx:8). Dropping
+// it from the customer timeline so the progress bar doesn't display
+// a step the order never passes through.
 // "Received at Hub" only appears when the order is going via a hub.
-const FOOD_FLOW       = ['Confirmed', 'Preparing', 'Ready', 'Packed', 'Dispatched', 'On the Way', 'Delivered'];
+const FOOD_FLOW       = ['Confirmed', 'Ready', 'Packed', 'Dispatched', 'On the Way', 'Delivered'];
 const ESSENTIALS_FLOW = ['Confirmed', 'Packed', 'Dispatched', 'On the Way', 'Delivered'];
 
 function buildStatusFlow(orderType: string | null | undefined, deliveryMethod: string | null | undefined): string[] {
