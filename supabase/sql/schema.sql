@@ -5392,3 +5392,381 @@ CREATE TRIGGER trg_shifts_updated BEFORE UPDATE ON public.staff_shifts FOR EACH 
 CREATE TRIGGER trg_store_config_updated BEFORE UPDATE ON public.store_config FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_sub_plans_updated BEFORE UPDATE ON public.subscription_plans FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_user_subs_updated BEFORE UPDATE ON public.user_subscriptions FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+
+-- ============================================================
+-- POST-2026-05-18 ADDITIONS (device-test session 2026-05-20)
+-- Appended after the initial regen (Task 5 of hardening). The
+-- individual migration files in supabase/sql/ remain canonical;
+-- this block exists so schema.sql stays a single-file picture
+-- of the live state without needing Docker to re-dump.
+-- ============================================================
+
+-- New column: branches.essentials_enabled (per-branch essentials gating)
+ALTER TABLE public.branches
+  ADD COLUMN IF NOT EXISTS essentials_enabled BOOLEAN NOT NULL DEFAULT TRUE;
+
+-- Function: sync_profile_phone_on_auth_update
+CREATE OR REPLACE FUNCTION public.sync_profile_phone_on_auth_update()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF NEW.phone IS DISTINCT FROM OLD.phone AND NEW.phone IS NOT NULL THEN
+    UPDATE public.profiles
+      SET phone_number = NEW.phone,
+          updated_at   = NOW()
+      WHERE id = NEW.id;
+  END IF;
+  RETURN NEW;
+END;
+$function$;
+
+-- Function: set_cancelled_day_branch_id
+CREATE OR REPLACE FUNCTION public.set_cancelled_day_branch_id()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF NEW.branch_id IS NULL THEN
+    SELECT branch_id INTO NEW.branch_id
+    FROM user_subscriptions
+    WHERE id = NEW.subscription_id;
+  END IF;
+  RETURN NEW;
+END;
+$function$;
+
+-- Function: set_expense_claim_branch_id
+CREATE OR REPLACE FUNCTION public.set_expense_claim_branch_id()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF NEW.branch_id IS NULL THEN
+    SELECT branch_id INTO NEW.branch_id
+    FROM profiles
+    WHERE id = NEW.staff_id;
+  END IF;
+  RETURN NEW;
+END;
+$function$;
+
+-- Function: set_staff_order_request_branch_id
+CREATE OR REPLACE FUNCTION public.set_staff_order_request_branch_id()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF NEW.branch_id IS NULL THEN
+    SELECT branch_id INTO NEW.branch_id
+    FROM profiles
+    WHERE id = NEW.submitted_by;
+  END IF;
+  RETURN NEW;
+END;
+$function$;
+
+-- Function: tag_wallet_debit_to_order
+CREATE OR REPLACE FUNCTION public.tag_wallet_debit_to_order(p_user_id uuid, p_order_id bigint)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  -- Tag the most recent untagged 'Order payment' debit for this user that
+  -- landed within the last 5 minutes. The filter on reference_id IS NULL +
+  -- description='Order payment' makes the update idempotent: a re-tag
+  -- attempt is a no-op once the reference has been set.
+  UPDATE wallet_transactions
+  SET reference_type = 'order',
+      reference_id   = p_order_id::text,
+      description    = 'Order payment for #' || p_order_id::text
+  WHERE id = (
+    SELECT id FROM wallet_transactions
+    WHERE user_id = p_user_id
+      AND transaction_type = 'debit'
+      AND description = 'Order payment'
+      AND reference_id IS NULL
+      AND created_at > NOW() - INTERVAL '5 minutes'
+    ORDER BY id DESC
+    LIMIT 1
+  );
+END;
+$function$;
+
+-- Function: increment_wallet_balance
+CREATE OR REPLACE FUNCTION public.increment_wallet_balance(p_user_id uuid, p_amount numeric, p_description text DEFAULT ''::text, p_reference_type text DEFAULT NULL::text, p_reference_id text DEFAULT NULL::text)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+BEGIN
+  UPDATE profiles
+  SET wallet_balance = wallet_balance + p_amount
+  WHERE id = p_user_id;
+
+  INSERT INTO wallet_transactions
+    (user_id, transaction_type, amount, description, reference_type, reference_id)
+  VALUES
+    (p_user_id, 'credit', p_amount, p_description, p_reference_type, p_reference_id);
+END;
+$function$;
+
+-- Function: decrement_wallet_balance_if_sufficient
+CREATE OR REPLACE FUNCTION public.decrement_wallet_balance_if_sufficient(p_user_id uuid, p_amount numeric, p_description text DEFAULT 'Order payment'::text, p_reference_type text DEFAULT NULL::text, p_reference_id text DEFAULT NULL::text)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+  v_balance NUMERIC;
+BEGIN
+  SELECT wallet_balance INTO v_balance
+  FROM profiles
+  WHERE id = p_user_id
+  FOR UPDATE;
+
+  IF v_balance IS NULL OR v_balance < p_amount THEN
+    RETURN FALSE;
+  END IF;
+
+  UPDATE profiles
+  SET wallet_balance = wallet_balance - p_amount
+  WHERE id = p_user_id;
+
+  INSERT INTO wallet_transactions
+    (user_id, transaction_type, amount, description, reference_type, reference_id)
+  VALUES
+    (p_user_id, 'debit', p_amount, p_description, p_reference_type, p_reference_id);
+
+  RETURN TRUE;
+END;
+$function$;
+
+-- Function: complete_wallet_topup
+CREATE OR REPLACE FUNCTION public.complete_wallet_topup(p_razorpay_order_id text, p_razorpay_payment_id text)
+ RETURNS TABLE(user_id uuid, amount numeric)
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+  v_user_id UUID;
+  v_amount  NUMERIC;
+BEGIN
+  UPDATE pending_wallet_topups
+  SET status       = 'completed',
+      completed_at = NOW()
+  WHERE razorpay_order_id = p_razorpay_order_id
+    AND status = 'pending'
+  RETURNING pending_wallet_topups.user_id, pending_wallet_topups.amount
+  INTO v_user_id, v_amount;
+
+  IF v_user_id IS NOT NULL THEN
+    PERFORM increment_wallet_balance(
+      v_user_id,
+      v_amount,
+      'Wallet topup via Razorpay ' || p_razorpay_payment_id,
+      'topup',
+      p_razorpay_order_id
+    );
+  END IF;
+
+  RETURN QUERY SELECT v_user_id, v_amount;
+END;
+$function$;
+
+-- Function: redeem_loyalty_points
+CREATE OR REPLACE FUNCTION public.redeem_loyalty_points(p_points integer)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_user_id        uuid := auth.uid();
+  v_have           integer;
+  v_redemption_id  bigint;
+BEGIN
+  IF v_user_id IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+  IF p_points IS NULL OR p_points <= 0 THEN
+    RAISE EXCEPTION 'Enter a positive number of points to redeem';
+  END IF;
+
+  SELECT loyalty_points INTO v_have
+  FROM profiles
+  WHERE id = v_user_id
+  FOR UPDATE;
+
+  IF v_have IS NULL THEN
+    RAISE EXCEPTION 'Profile not found';
+  END IF;
+  IF v_have < p_points THEN
+    RAISE EXCEPTION 'Not enough points — you have %', v_have;
+  END IF;
+
+  UPDATE profiles
+  SET loyalty_points = loyalty_points - p_points,
+      wallet_balance = wallet_balance + p_points
+  WHERE id = v_user_id;
+
+  INSERT INTO loyalty_redemptions (user_id, points, type, description)
+  VALUES (v_user_id, p_points, 'redeemed',
+          'Redeemed ' || p_points || ' points for wallet credit')
+  RETURNING id INTO v_redemption_id;
+
+  INSERT INTO wallet_transactions
+    (user_id, amount, transaction_type, description, reference_type, reference_id)
+  VALUES
+    (v_user_id, p_points, 'credit',
+     'Loyalty points redeemed (' || p_points || ' pts)',
+     'loyalty_redemption', v_redemption_id::text);
+
+  RETURN jsonb_build_object(
+    'redeemed_points',          p_points,
+    'wallet_credited',          p_points,
+    'loyalty_points_remaining', v_have - p_points
+  );
+END;
+$function$;
+
+-- Function: handle_first_order_referral_bonus
+CREATE OR REPLACE FUNCTION public.handle_first_order_referral_bonus()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+  v_referrer_id   UUID;
+  v_referral_id   BIGINT;
+  v_already_done  BOOLEAN;
+  v_is_active     BOOLEAN;
+  v_credit        NUMERIC;
+  v_points        INTEGER;
+  v_order_count   INTEGER;
+BEGIN
+  IF TG_OP = 'UPDATE' THEN
+    IF NOT (NEW.status IN ('Paid', 'Confirmed') AND OLD.status NOT IN ('Paid', 'Confirmed')) THEN
+      RETURN NEW;
+    END IF;
+  ELSIF TG_OP = 'INSERT' THEN
+    IF NEW.status NOT IN ('Paid', 'Confirmed') THEN
+      RETURN NEW;
+    END IF;
+  END IF;
+
+  BEGIN
+    SELECT referred_by INTO v_referrer_id
+    FROM public.profiles WHERE id = NEW.user_id;
+    IF v_referrer_id IS NULL THEN RETURN NEW; END IF;
+
+    SELECT id, first_order_reward_given INTO v_referral_id, v_already_done
+    FROM public.referrals
+    WHERE referee_id = NEW.user_id AND referrer_id = v_referrer_id;
+    IF v_referral_id IS NULL OR v_already_done THEN RETURN NEW; END IF;
+
+    SELECT
+      COALESCE(is_active, FALSE),
+      COALESCE(referrer_first_order_credit, 30),
+      COALESCE(referrer_first_order_points, 100)
+    INTO v_is_active, v_credit, v_points
+    FROM public.referral_settings
+    LIMIT 1;
+    IF NOT v_is_active THEN RETURN NEW; END IF;
+
+    SELECT COUNT(*)::INTEGER INTO v_order_count
+    FROM public.orders
+    WHERE user_id = NEW.user_id
+      AND status NOT IN ('Cancelled', 'Failed', 'Pending');
+    IF v_order_count <> 1 THEN RETURN NEW; END IF;
+
+    IF v_credit > 0 THEN
+      PERFORM public.increment_wallet_balance(
+        v_referrer_id, v_credit,
+        'Referral bonus — your friend placed their first order',
+        'referral', v_referral_id::text
+      );
+    END IF;
+    IF v_points > 0 THEN
+      PERFORM public.increment_loyalty_points(v_referrer_id, v_points);
+    END IF;
+
+    UPDATE public.referrals
+    SET status = 'first_order_done',
+        first_order_reward_given = TRUE,
+        reward_given = TRUE
+    WHERE id = v_referral_id;
+
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING '[handle_first_order_referral_bonus] order_id=% user_id=% error: %',
+      NEW.id, NEW.user_id, SQLERRM;
+  END;
+
+  RETURN NEW;
+END;
+$function$;
+
+-- Function: mirror_staff_request_to_supply_items
+CREATE OR REPLACE FUNCTION public.mirror_staff_request_to_supply_items()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_item JSONB;
+BEGIN
+  IF NEW.status = 'Pending' THEN
+    FOR v_item IN SELECT * FROM jsonb_array_elements(NEW.items)
+    LOOP
+      PERFORM public.add_or_merge_supply_order_item(
+        v_item ->> 'name',
+        (v_item ->> 'qty')::INTEGER,
+        NEW.request_type,
+        NEW.id,
+        NEW.submitted_by,
+        NEW.branch_id
+      );
+    END LOOP;
+
+    UPDATE public.staff_order_requests
+    SET status = 'Approved',
+        approved_by = COALESCE(approved_by, submitted_by)
+    WHERE id = NEW.id;
+  END IF;
+  RETURN NULL;
+END;
+$function$;
+
+-- Trigger: on_auth_user_phone_updated
+CREATE TRIGGER on_auth_user_phone_updated AFTER UPDATE OF phone ON auth.users FOR EACH ROW EXECUTE FUNCTION sync_profile_phone_on_auth_update();
+
+-- Trigger: trg_cancelled_day_branch_id
+CREATE TRIGGER trg_cancelled_day_branch_id BEFORE INSERT ON public.cancelled_subscription_days FOR EACH ROW EXECUTE FUNCTION set_cancelled_day_branch_id();
+
+-- Trigger: trg_expense_claim_branch_id
+CREATE TRIGGER trg_expense_claim_branch_id BEFORE INSERT ON public.expense_claims FOR EACH ROW EXECUTE FUNCTION set_expense_claim_branch_id();
+
+-- Trigger: trg_staff_order_request_branch_id
+CREATE TRIGGER trg_staff_order_request_branch_id BEFORE INSERT ON public.staff_order_requests FOR EACH ROW EXECUTE FUNCTION set_staff_order_request_branch_id();
+
+-- RLS policy: admin_notes_hub_op_read
+CREATE POLICY admin_notes_hub_op_read ON public.admin_notes
+  FOR SELECT
+  USING (((target_tab = 'hub'::text) AND has_branch_access(branch_id) AND (EXISTS ( SELECT 1
+   FROM profiles p
+  WHERE ((p.id = auth.uid()) AND (p.role = 'customer'::text) AND (p.assigned_hub_id IS NOT NULL))))));
+
+-- admin_notes added to realtime publication
+ALTER PUBLICATION supabase_realtime ADD TABLE public.admin_notes;
