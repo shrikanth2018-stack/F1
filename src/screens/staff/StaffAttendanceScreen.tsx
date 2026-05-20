@@ -253,20 +253,20 @@ export function StaffAttendanceScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* Sticky header — sits OUTSIDE the ScrollView so the title doesn't
+          scroll away with the page body. */}
+      <View style={styles.headerRow}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+          <ThemedText variant="body" color="accent">‹ Back</ThemedText>
+        </TouchableOpacity>
+        <ThemedText variant="header" color="primary" style={styles.title}>
+          Attendance / Leaves
+        </ThemedText>
+        <View style={styles.backBtn} />
+      </View>
+      <View style={styles.hairline} />
+
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-
-        {/* Header row: back + centred title */}
-        <View style={styles.headerRow}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-            <ThemedText variant="body" color="accent">‹ Back</ThemedText>
-          </TouchableOpacity>
-          <ThemedText variant="header" color="primary" style={styles.title}>
-            Attendance / Leaves
-          </ThemedText>
-          <View style={styles.backBtn} />
-        </View>
-
-        <View style={styles.hairline} />
 
         {/* Today */}
         <View style={styles.section}>
@@ -331,9 +331,13 @@ export function StaffAttendanceScreen() {
 
         <View style={styles.hairline} />
 
-        {/* History — merged leaves + attendance corrections */}
+        {/* History — merged leaves + attendance corrections, all-time
+            (not month-scoped — the calendar above is the monthly view). */}
         <View style={styles.section}>
           <ThemedText variant="small" color="muted" style={styles.historyLabel}>HISTORY</ThemedText>
+          <ThemedText variant="small" color="muted" style={styles.historySub}>
+            All-time · {(leaves?.length ?? 0) + (corrections?.length ?? 0)} entries · newest first
+          </ThemedText>
 
           {showLeaveForm && (
             <View style={styles.leaveForm}>
@@ -482,7 +486,12 @@ const styles = StyleSheet.create({
   historyLabel: {
     letterSpacing: 1,
     textAlign: 'center',
+    marginBottom: 2,
+  },
+  historySub: {
+    textAlign: 'center',
     marginBottom: Theme.spacing.sm,
+    fontSize: Theme.typography.sizes.small - 1,
   },
   footerRow: {
     flexDirection: 'row',
