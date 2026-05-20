@@ -240,6 +240,26 @@ export function StaffAttendanceScreen() {
     else setMonth(month + 1);
   };
 
+  // History scoped to the calendar's currently-viewed month — leaves
+  // and corrections both filter by [monthStart, monthEnd] so the list
+  // under the calendar stays in lock-step with the ← → nav. Leaves
+  // overlap-test (start_date <= monthEnd AND end_date >= monthStart)
+  // to include cross-month leaves. Corrections include when any day
+  // in days[] falls in the window.
+  const monthStart = `${year}-${String(month).padStart(2, '0')}-01`;
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const monthEnd = `${year}-${String(month).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
+  const monthLeaves = useMemo(
+    () => (leaves ?? []).filter((l) => l.start_date <= monthEnd && l.end_date >= monthStart),
+    [leaves, monthStart, monthEnd],
+  );
+  const monthCorrections = useMemo(
+    () => (corrections ?? []).filter((c) =>
+      (c.days ?? []).some((d) => d.the_date >= monthStart && d.the_date <= monthEnd),
+    ),
+    [corrections, monthStart, monthEnd],
+  );
+
   // Case-insensitive — leave rows use 'Approved' / 'Pending' / 'Rejected'
   // (Title-Case), correction rows use 'approved' / 'pending' / 'rejected'
   // (lowercase per the DB CHECK constraint). The status pill colour stays
@@ -312,12 +332,20 @@ export function StaffAttendanceScreen() {
             screen compact. Same shape as the admin AttendanceTab. */}
         <View style={styles.section}>
           <View style={styles.monthNav}>
-            <TouchableOpacity onPress={prevMonth}>
-              <ThemedText variant="body" color="accent">‹</ThemedText>
+            <TouchableOpacity
+              onPress={prevMonth}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              style={styles.monthNavBtn}
+            >
+              <ThemedText variant="body" color="accent" style={styles.monthNavGlyph}>‹</ThemedText>
             </TouchableOpacity>
-            <ThemedText variant="body" color="primary">{monthLabel}</ThemedText>
-            <TouchableOpacity onPress={nextMonth}>
-              <ThemedText variant="body" color="accent">›</ThemedText>
+            <ThemedText variant="body" color="primary" style={styles.monthNavLabel}>{monthLabel}</ThemedText>
+            <TouchableOpacity
+              onPress={nextMonth}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              style={styles.monthNavBtn}
+            >
+              <ThemedText variant="body" color="accent" style={styles.monthNavGlyph}>›</ThemedText>
             </TouchableOpacity>
           </View>
 
@@ -331,12 +359,13 @@ export function StaffAttendanceScreen() {
 
         <View style={styles.hairline} />
 
-        {/* History — merged leaves + attendance corrections, all-time
-            (not month-scoped — the calendar above is the monthly view). */}
+        {/* History — merged leaves + attendance corrections, scoped to
+            the calendar's currently-viewed month. ← → on the calendar
+            above re-filters the list. */}
         <View style={styles.section}>
           <ThemedText variant="small" color="muted" style={styles.historyLabel}>HISTORY</ThemedText>
           <ThemedText variant="small" color="muted" style={styles.historySub}>
-            All-time · {(leaves?.length ?? 0) + (corrections?.length ?? 0)} entries · newest first
+            {monthLabel} · {monthLeaves.length + monthCorrections.length} entries
           </ThemedText>
 
           {showLeaveForm && (
@@ -380,11 +409,11 @@ export function StaffAttendanceScreen() {
             </View>
           )}
 
-          {(leaves ?? []).length === 0 && (corrections ?? []).length === 0 && !showLeaveForm ? (
-            <ThemedText variant="small" color="muted">No leave or correction requests</ThemedText>
+          {monthLeaves.length === 0 && monthCorrections.length === 0 && !showLeaveForm ? (
+            <ThemedText variant="small" color="muted">No entries this month</ThemedText>
           ) : (
             <>
-              {(leaves ?? []).map((leave) => (
+              {monthLeaves.map((leave) => (
                 <View key={`l-${leave.id}`} style={styles.leaveRow}>
                   <View style={{ flex: 1 }}>
                     <ThemedText variant="small" color="primary">
@@ -400,7 +429,7 @@ export function StaffAttendanceScreen() {
                 </View>
               ))}
 
-              {(corrections ?? []).map((c) => {
+              {monthCorrections.map((c) => {
                 const dayCount = c.days?.length ?? 0;
                 return (
                   <View key={`c-${c.id}`} style={styles.leaveRow}>
@@ -506,7 +535,22 @@ const styles = StyleSheet.create({
   clockRow: { flexDirection: 'row', justifyContent: 'space-between', marginVertical: Theme.spacing.sm },
   clockItem: { alignItems: 'center' },
   clockActions: { alignItems: 'flex-start', marginTop: Theme.spacing.xs },
-  monthNav: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Theme.spacing.sm },
+  monthNav: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: Theme.spacing.sm,
+    gap: Theme.spacing.md,
+  },
+  monthNavBtn: {
+    paddingHorizontal: Theme.spacing.xs,
+  },
+  monthNavGlyph: {
+    fontSize: Theme.typography.sizes.body + 2,
+  },
+  monthNavLabel: {
+    fontSize: Theme.typography.sizes.body + 2,
+  },
   leaveForm: { marginTop: Theme.spacing.sm },
   dateRow: {
     flexDirection: 'row',
