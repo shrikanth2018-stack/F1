@@ -240,10 +240,16 @@ export function StaffAttendanceScreen() {
     else setMonth(month + 1);
   };
 
-  const leaveStatusColor = (status: string) =>
-    status === 'Approved' ? Theme.colors.status.success
-    : status === 'Rejected' ? Theme.colors.status.error
-    : Theme.colors.status.warning;
+  // Case-insensitive — leave rows use 'Approved' / 'Pending' / 'Rejected'
+  // (Title-Case), correction rows use 'approved' / 'pending' / 'rejected'
+  // (lowercase per the DB CHECK constraint). The status pill colour stays
+  // green / yellow / red across both.
+  const leaveStatusColor = (status: string) => {
+    const s = (status ?? '').toLowerCase();
+    if (s === 'approved') return Theme.colors.status.success;
+    if (s === 'rejected') return Theme.colors.status.error;
+    return Theme.colors.status.warning;
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -325,16 +331,9 @@ export function StaffAttendanceScreen() {
 
         <View style={styles.hairline} />
 
-        {/* Leave requests */}
+        {/* History — merged leaves + attendance corrections */}
         <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <ThemedText variant="small" color="muted" style={styles.sectionLabel}>MY LEAVES</ThemedText>
-            <TouchableOpacity onPress={() => setShowLeaveForm(!showLeaveForm)}>
-              <ThemedText variant="body" color={showLeaveForm ? 'muted' : 'mint'}>
-                {showLeaveForm ? 'Cancel' : '+ Apply Leave'}
-              </ThemedText>
-            </TouchableOpacity>
-          </View>
+          <ThemedText variant="small" color="muted" style={styles.historyLabel}>HISTORY</ThemedText>
 
           {showLeaveForm && (
             <View style={styles.leaveForm}>
@@ -377,73 +376,68 @@ export function StaffAttendanceScreen() {
             </View>
           )}
 
-          {(leaves ?? []).length === 0 && !showLeaveForm ? (
-            <ThemedText variant="body" color="muted">No leave requests</ThemedText>
+          {(leaves ?? []).length === 0 && (corrections ?? []).length === 0 && !showLeaveForm ? (
+            <ThemedText variant="small" color="muted">No leave or correction requests</ThemedText>
           ) : (
-            (leaves ?? []).map((leave) => (
-              <View key={leave.id} style={styles.leaveRow}>
-                <View style={{ flex: 1 }}>
-                  <ThemedText variant="body" color="primary">
-                    {leave.start_date} → {leave.end_date}
+            <>
+              {(leaves ?? []).map((leave) => (
+                <View key={`l-${leave.id}`} style={styles.leaveRow}>
+                  <View style={{ flex: 1 }}>
+                    <ThemedText variant="small" color="primary">
+                      {leave.start_date} → {leave.end_date}
+                    </ThemedText>
+                    {leave.reason && (
+                      <ThemedText variant="small" color="muted">{leave.reason}</ThemedText>
+                    )}
+                  </View>
+                  <ThemedText variant="small" color="primary" style={{ color: leaveStatusColor(leave.status) }}>
+                    {leave.status}
                   </ThemedText>
-                  {leave.reason && (
-                    <ThemedText variant="small" color="muted">{leave.reason}</ThemedText>
-                  )}
                 </View>
-                <ThemedText variant="small" color="primary" style={{ color: leaveStatusColor(leave.status) }}>
-                  {leave.status}
-                </ThemedText>
-              </View>
-            ))
+              ))}
+
+              {(corrections ?? []).map((c) => {
+                const dayCount = c.days?.length ?? 0;
+                return (
+                  <View key={`c-${c.id}`} style={styles.leaveRow}>
+                    <View style={{ flex: 1 }}>
+                      <ThemedText variant="small" color="primary">
+                        Correction · {dayCount} day{dayCount === 1 ? '' : 's'}
+                        {c.days?.length
+                          ? `  ·  ${c.days[0].the_date}${c.days.length > 1 ? ` +${c.days.length - 1}` : ''}`
+                          : ''}
+                      </ThemedText>
+                      {c.reason && (
+                        <ThemedText variant="small" color="muted">{c.reason}</ThemedText>
+                      )}
+                      {c.reviewer_note && c.status === 'rejected' && (
+                        <ThemedText variant="small" color="accent">{c.reviewer_note}</ThemedText>
+                      )}
+                    </View>
+                    <ThemedText variant="small" color="primary" style={{ color: leaveStatusColor(c.status) }}>
+                      {c.status}
+                    </ThemedText>
+                  </View>
+                );
+              })}
+            </>
           )}
         </View>
 
       </ScrollView>
 
-      {/* Attendance corrections — pinned footer so it stays visible
-          regardless of how far the staff has scrolled. The history
-          list inside scrolls vertically within its capped height. */}
-      <View style={styles.correctionsFooter}>
-        <ThemedText variant="small" color="muted" style={styles.correctionsLabel}>
-          ATTENDANCE CORRECTIONS
-        </ThemedText>
-        <TouchableOpacity
-          onPress={() => setShowCorrectionModal(true)}
-          style={styles.correctionsAction}
-        >
-          <ThemedText variant="body" color="mint">+ Request correction</ThemedText>
+      {/* Pinned footer — Apply Leave on the left, Attendance request on
+          the right. Both stay visible no matter how far the staff has
+          scrolled; the history list above stays unified. */}
+      <View style={styles.footerRow}>
+        <TouchableOpacity onPress={() => setShowLeaveForm(!showLeaveForm)}>
+          <ThemedText variant="body" color={showLeaveForm ? 'muted' : 'mint'}>
+            {showLeaveForm ? 'Cancel' : '+ Apply leave'}
+          </ThemedText>
         </TouchableOpacity>
-
-        <ScrollView style={styles.correctionsList} showsVerticalScrollIndicator={false}>
-          {(corrections ?? []).length === 0 ? (
-            <ThemedText variant="body" color="muted">No correction requests</ThemedText>
-          ) : (
-            (corrections ?? []).map((c) => {
-              const dayCount = c.days?.length ?? 0;
-              return (
-                <View key={c.id} style={styles.leaveRow}>
-                  <View style={{ flex: 1 }}>
-                    <ThemedText variant="body" color="primary">
-                      {dayCount} day{dayCount === 1 ? '' : 's'}
-                      {c.days?.length
-                        ? `  ·  ${c.days[0].the_date}${c.days.length > 1 ? ` +${c.days.length - 1}` : ''}`
-                        : ''}
-                    </ThemedText>
-                    {c.reason && (
-                      <ThemedText variant="small" color="muted">{c.reason}</ThemedText>
-                    )}
-                    {c.reviewer_note && c.status === 'rejected' && (
-                      <ThemedText variant="small" color="accent">{c.reviewer_note}</ThemedText>
-                    )}
-                  </View>
-                  <ThemedText variant="small" color="primary" style={{ color: leaveStatusColor(c.status) }}>
-                    {c.status}
-                  </ThemedText>
-                </View>
-              );
-            })
-          )}
-        </ScrollView>
+        <TouchableOpacity onPress={() => setShowCorrectionModal(true)}>
+          <ThemedText variant="body" color="mint">+ Attendance request</ThemedText>
+        </TouchableOpacity>
       </View>
 
       {/* Date pickers */}
@@ -485,25 +479,19 @@ const styles = StyleSheet.create({
   hairlineThin: { height: StyleSheet.hairlineWidth, backgroundColor: Theme.colors.layout.divider },
   section: { paddingHorizontal: Theme.spacing.md, paddingVertical: Theme.spacing.sm },
   sectionLabel: { letterSpacing: 1, marginBottom: Theme.spacing.sm },
-  correctionsLabel: {
+  historyLabel: {
     letterSpacing: 1,
     textAlign: 'center',
-    marginBottom: Theme.spacing.xs,
-  },
-  correctionsAction: {
-    alignItems: 'center',
     marginBottom: Theme.spacing.sm,
   },
-  correctionsFooter: {
+  footerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: Theme.colors.text.mint,
     paddingHorizontal: Theme.spacing.md,
-    paddingTop: Theme.spacing.sm,
-    paddingBottom: Theme.spacing.sm,
-    maxHeight: 220,
-  },
-  correctionsList: {
-    flexGrow: 0,
+    paddingVertical: Theme.spacing.sm + 2,
   },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   clockRow: { flexDirection: 'row', justifyContent: 'space-between', marginVertical: Theme.spacing.sm },
