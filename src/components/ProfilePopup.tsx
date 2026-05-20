@@ -217,9 +217,17 @@ export function ProfilePopup() {
 
       {/* Dropdown panel — top-right, below profile button */}
       <Animated.View style={[styles.panel, { top: insets.top + 52 }, panelStyle]}>
-        {/* User name */}
+        {/* User name + gear → Edit Profile */}
         <View style={styles.nameSection}>
           <Text style={styles.userName}>{userName}</Text>
+          <TouchableOpacity
+            onPress={() => go('EditProfile')}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            accessibilityRole="button"
+            accessibilityLabel="Edit profile"
+          >
+            <Text style={styles.gearIcon}>{'⚙︎'}</Text>
+          </TouchableOpacity>
         </View>
 
         <ScrollView
@@ -233,8 +241,6 @@ export function ProfilePopup() {
             <IOSRow label="My Orders" onPress={() => go('Orders')} />
             <InsetDivider />
             <IOSRow label="My Subscriptions" onPress={() => go('Subscriptions')} />
-            <InsetDivider />
-            <IOSRow label="Edit Profile" onPress={() => go('EditProfile')} />
           </IOSGroup>
 
           <IOSGroup>
@@ -309,6 +315,9 @@ const styles = StyleSheet.create({
     elevation: 16,
   },
   nameSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 14,
     paddingVertical: 11,
     borderBottomWidth: 0.5,
@@ -318,6 +327,12 @@ const styles = StyleSheet.create({
   userName: {
     fontFamily: Theme.typography.fontFamily,
     fontSize: Theme.typography.sizes.body + 3,
+    color: Theme.colors.text.mint,
+    fontWeight: '400',
+  },
+  gearIcon: {
+    fontFamily: Theme.typography.fontFamily,
+    fontSize: Theme.typography.sizes.body + 14,
     color: Theme.colors.text.mint,
     fontWeight: '400',
   },

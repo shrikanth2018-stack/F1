@@ -4,7 +4,8 @@
  * Single hub for everything the customer can edit about themselves:
  *   - Full name (inline edit + save)
  *   - Login phone number (OTP-verified change)
- *   - Saved delivery addresses (links to AddressesScreen)
+ *   - Saved delivery addresses (inline list — label, address, hub, Edit;
+ *     Add Address at the bottom)
  *
  * Phone-change flow is a two-step inline modal:
  *   1. Enter new 10-digit phone → supabase.auth.updateUser({ phone })
@@ -13,6 +14,10 @@
  * On verify success, refreshSession() updates session.user.phone immediately,
  * and the on_auth_user_phone_updated SQL trigger mirrors the change into
  * profiles.phone_number so subsequent queries stay consistent.
+ *
+ * The standalone AddressesScreen is still routed for Checkout's
+ * address-picker flow; this screen replaces the ProfilePopup → Addresses
+ * path so the customer manages identity + addresses on one page.
  */
 
 import React, { useEffect, useState } from 'react';
@@ -36,14 +41,17 @@ import { useSupabaseMutation } from '../../api/useSupabaseQuery';
 import { supabase } from '../../api/supabaseClient';
 import { QUERY_KEYS } from '../../utils/constants';
 import { useWalletBalance } from '../../hooks/useWallet';
+import { useAddresses } from '../../hooks/useAddresses';
 import { formatPhone } from '../../utils/formatters';
 import { isValidIndianPhone, isValidOTP, normalizePhone } from '../../utils/validators';
+import type { CustomerAddress } from '../../types';
 
 type PhoneChangePhase = 'enter' | 'otp';
 
 export function EditProfileScreen({ navigation }: any) {
   const { session, startPhoneChange, verifyPhoneChange } = useAuth();
   const { data: wallet, refetch: refetchWallet } = useWalletBalance();
+  const { data: addresses, isLoading: addressesLoading } = useAddresses();
 
   // ── Name ─────────────────────────────────────────────────
   const [name, setName] = useState('');
@@ -134,6 +142,42 @@ export function EditProfileScreen({ navigation }: any) {
     );
   };
 
+  // ── Address row ──────────────────────────────────────────
+  const renderAddress = (item: CustomerAddress) => {
+    const hubName = item.delivery_hubs?.hub_name ?? '';
+    return (
+      <View key={item.id} style={styles.addressRow}>
+        <View style={styles.addressLeft}>
+          <ThemedText variant="subtitle" color="primary">{item.label}</ThemedText>
+          <ThemedText variant="body" color="subtitle" style={styles.addressLine}>
+            {item.full_name}
+          </ThemedText>
+          <ThemedText variant="body" color="subtitle">{item.address_line}</ThemedText>
+          {item.landmark ? (
+            <ThemedText variant="small" color="muted">{item.landmark}</ThemedText>
+          ) : null}
+          {item.city ? (
+            <ThemedText variant="small" color="muted">{item.city}</ThemedText>
+          ) : null}
+          {hubName ? (
+            <ThemedText variant="small" color="mint" style={styles.hubLine}>{hubName}</ThemedText>
+          ) : null}
+        </View>
+        <View style={styles.addressActions}>
+          {item.is_default ? (
+            <ThemedText variant="small" color="mint" style={styles.defaultLabel}>Default</ThemedText>
+          ) : null}
+          <TouchableOpacity
+            onPress={() => navigation.navigate('AddAddress', { addressId: item.id })}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <ThemedText variant="small" color="mint">Edit</ThemedText>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  };
+
   // ── Render ───────────────────────────────────────────────
 
   const currentPhone = session?.user.phone || '';
@@ -191,16 +235,28 @@ export function EditProfileScreen({ navigation }: any) {
 
         <View style={styles.hairline} />
 
-        {/* My Addresses */}
+        {/* Addresses */}
+        <View style={styles.section}>
+          <ThemedText variant="small" color="subtitle" style={styles.sectionLabel}>My Addresses</ThemedText>
+        </View>
+        {addressesLoading ? (
+          <ActivityIndicator color={Theme.colors.text.mint} style={styles.addressLoader} />
+        ) : (addresses ?? []).length === 0 ? (
+          <ThemedText variant="small" color="muted" style={styles.addressEmpty}>
+            No addresses saved yet. Tap Add Address below.
+          </ThemedText>
+        ) : (
+          (addresses ?? []).map(renderAddress)
+        )}
+
         <TouchableOpacity
-          style={styles.section}
-          onPress={() => navigation.navigate('Addresses')}
-          activeOpacity={0.6}
+          style={styles.addBtn}
+          activeOpacity={0.7}
+          onPress={() => navigation.navigate('AddAddress')}
         >
-          <View style={styles.rowBetween}>
-            <ThemedText variant="body" color="primary">My Addresses</ThemedText>
-            <ThemedText variant="body" color="mint">›</ThemedText>
-          </View>
+          <ThemedText variant="body" color="mint" style={styles.addBtnText}>
+            + Add Address
+          </ThemedText>
         </TouchableOpacity>
       </ScrollView>
 
@@ -319,6 +375,40 @@ const styles = StyleSheet.create({
     backgroundColor: Theme.colors.text.mint,
     marginHorizontal: Theme.spacing.md,
   },
+  addressRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.sm + 2,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Theme.colors.text.mint,
+  },
+  addressLeft: { flex: 1, marginRight: Theme.spacing.sm },
+  addressLine: { marginTop: 2 },
+  hubLine: { marginTop: 4 },
+  addressActions: {
+    alignItems: 'flex-end',
+    gap: Theme.spacing.sm,
+    flexShrink: 0,
+  },
+  defaultLabel: { fontWeight: '500' },
+  addressLoader: { marginVertical: Theme.spacing.md },
+  addressEmpty: {
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.sm,
+  },
+  addBtn: {
+    margin: Theme.spacing.md,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: `${Theme.colors.text.mint}4D`,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Theme.colors.background.secondary,
+  },
+  addBtnText: { fontWeight: '400' },
   modalBackdrop: {
     flex: 1,
     backgroundColor: Theme.colors.layout.overlayHeavy,
