@@ -167,7 +167,16 @@ export function aggregateOrdersDetail(orders: any[]) {
   const menuMap: Record<string, { date: string; itemName: string; qty: number }> = {};
 
   for (const o of orders) {
-    const cycleName = o.delivery_cycles?.cycle_name ?? `Cycle ${o.cycle_id}`;
+    // Subscription-purchase orders carry cycle_id=NULL by design (they pay
+    // for a whole plan, not a specific dispatch). Without this branch the
+    // fallback rendered them as the literal string "Cycle null", which
+    // looked like a bug. Surfacing them under their own label keeps
+    // parity with the customer's My Orders history while making the
+    // operational vs. revenue distinction readable.
+    const cycleName =
+      o.cycle_id == null
+        ? 'Subscription Purchase'
+        : (o.delivery_cycles?.cycle_name ?? `Cycle ${o.cycle_id}`);
     const ck = `${o.dispatch_date}__${cycleName}`;
     if (!cycleMap[ck]) cycleMap[ck] = { date: o.dispatch_date, cycleName, count: 0 };
     cycleMap[ck].count++;

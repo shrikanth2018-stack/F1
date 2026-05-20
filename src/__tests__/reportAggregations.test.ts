@@ -131,6 +131,25 @@ describe('aggregateOrdersDetail', () => {
     expect(r.cycleRows).toEqual([{ date: '2026-05-02', cycleName: 'Lunch', count: 2 }]);
     expect(r.menuRows).toEqual([{ date: '2026-05-02', itemName: 'Rice', qty: 5 }]);
   });
+
+  it('labels subscription-purchase orders (cycle_id null) instead of "Cycle null"', () => {
+    const r = aggregateOrdersDetail([
+      {
+        dispatch_date: '2026-05-02',
+        cycle_id: null,
+        delivery_cycles: null,
+        order_items: [{ item_name: 'Bajji 30', quantity: 1 }],
+      },
+      {
+        dispatch_date: '2026-05-02',
+        cycle_id: 1,
+        delivery_cycles: { cycle_name: 'Lunch' },
+        order_items: [{ item_name: 'Rice', quantity: 1 }],
+      },
+    ]);
+    const labels = r.cycleRows.map((x) => x.cycleName).sort();
+    expect(labels).toEqual(['Lunch', 'Subscription Purchase']);
+  });
 });
 
 describe('aggregateRevenueDetail', () => {
