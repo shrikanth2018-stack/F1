@@ -418,7 +418,7 @@ export function AdminOrderDetailScreen({
                 <ActivityIndicator color={Theme.colors.status.error} />
               ) : (
                 <ThemedText variant="body" style={styles.cancelText}>
-                  Cancel + Refund
+                  {isUnsuccessfulDelivery(o) ? 'Cancel Order' : 'Cancel + Refund'}
                 </ThemedText>
               )}
             </TouchableOpacity>
