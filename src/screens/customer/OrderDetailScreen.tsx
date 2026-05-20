@@ -28,6 +28,7 @@ import { useStoreConfig } from '../../hooks/useStoreConfig';
 import { formatPriceShort, formatDateLong, getErrorMessage } from '../../utils/formatters';
 import { formatTime12h } from '../../utils/timeEngine';
 import { istDateStr, istDateWithOffset } from '../../utils/istDate';
+import { isOperationalOrder } from '../../utils/orderFilters';
 
 // 'Paid' = Razorpay webhook confirmed but kitchen hasn't started yet — still cancellable
 const CANCELLABLE_STATUSES = new Set(['Pending', 'Confirmed', 'Paid', 'Preparing']);
@@ -94,8 +95,21 @@ export function OrderDetailScreen({ route, navigation }: any) {
       ( isCrossMidnight && earliestRow.dispatch_date === tomorrowISTStr && cutoffReached);
   }
 
+  // G7 (UX): subscription-purchase orders aren't customer-cancellable —
+  // cancel-order rejects them server-side, but the button was still
+  // visible. Hide it client-side so a tap doesn't bounce the customer
+  // off the "Cannot Cancel" alert. Subscription cancellation stays an
+  // admin action (atomic deactivate + prorated refund). Reusing the
+  // same isOperationalOrder predicate the staff/hub filters use
+  // (BF-31) keeps the rule defined in one place.
+  const hasOperationalRow = groupRows.some(isOperationalOrder);
+
   const canCancel =
-    cancellableRows.length > 0 && ageHours <= windowHours && !earliestCutoffPassed && !allCancelled;
+    cancellableRows.length > 0 &&
+    ageHours <= windowHours &&
+    !earliestCutoffPassed &&
+    !allCancelled &&
+    hasOperationalRow;
 
   // Must be before early returns — Rules of Hooks
   const handleCancel = useCallback(() => {
@@ -184,26 +198,6 @@ export function OrderDetailScreen({ route, navigation }: any) {
                 <ThemedText variant="small" color="muted" style={styles.cancelledRefund}>{line}</ThemedText>
               ) : null;
             })()}
-          </View>
-        )}
-
-        {/* Group-level cancel action */}
-        {canCancel && (
-          <View style={styles.cancelBar}>
-            {isCancelling ? (
-              <ActivityIndicator color={Theme.colors.status.error} size="small" />
-            ) : (
-              <TouchableOpacity onPress={handleCancel} activeOpacity={0.6}>
-                <ThemedText variant="body" style={styles.cancelText}>Cancel Order</ThemedText>
-              </TouchableOpacity>
-            )}
-            <ThemedText variant="micro" color="muted" style={styles.cancelHint}>
-              {isMulti
-                ? `Cancelling removes all ${groupRows.length} deliveries in this order`
-                : earliestCycle
-                  ? `Cancellable within ${windowHours}h of placing or before ${earliestCycle.cutoff_time.slice(0, 5)} cutoff`
-                  : `Cancellable within ${windowHours}h of placing`}
-            </ThemedText>
           </View>
         )}
 
@@ -364,6 +358,28 @@ export function OrderDetailScreen({ route, navigation }: any) {
             Payment · {groupRows[0].payment_method === 'wallet' ? 'Wallet' : 'Online'} · {formatPriceShort(groupTotal)}
           </ThemedText>
         </View>
+
+        {/* Cancel action — anchored to the bottom of the detail page so it
+            sits after every line item / total / payment line and doesn't
+            compete with the order summary at first glance. */}
+        {canCancel && (
+          <View style={styles.cancelBar}>
+            {isCancelling ? (
+              <ActivityIndicator color={Theme.colors.status.error} size="small" />
+            ) : (
+              <TouchableOpacity onPress={handleCancel} activeOpacity={0.6}>
+                <ThemedText variant="body" style={styles.cancelText}>Cancel Order</ThemedText>
+              </TouchableOpacity>
+            )}
+            <ThemedText variant="micro" color="muted" style={styles.cancelHint}>
+              {isMulti
+                ? `Cancelling removes all ${groupRows.length} deliveries in this order`
+                : earliestCycle
+                  ? `Cancellable within ${windowHours}h of placing or before ${earliestCycle.cutoff_time.slice(0, 5)} cutoff`
+                  : `Cancellable within ${windowHours}h of placing`}
+            </ThemedText>
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );

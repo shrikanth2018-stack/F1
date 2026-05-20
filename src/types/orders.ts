@@ -47,7 +47,7 @@ export interface OrderItem {
   id: number;
   order_id: number;
   item_id: number | null;
-  item_type: 'food' | 'essential';
+  item_type: 'food' | 'essential' | 'subscription';
   item_name: string;
   quantity: number;
   price_at_time: number;
