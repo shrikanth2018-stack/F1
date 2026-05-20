@@ -171,6 +171,93 @@ export type Database = {
         }
         Relationships: []
       }
+      attendance_correction_days: {
+        Row: {
+          id: number
+          request_id: number
+          the_date: string
+        }
+        Insert: {
+          id?: number
+          request_id: number
+          the_date: string
+        }
+        Update: {
+          id?: number
+          request_id?: number
+          the_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attendance_correction_days_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "attendance_correction_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      attendance_correction_requests: {
+        Row: {
+          branch_id: number | null
+          created_at: string
+          id: number
+          reason: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          reviewer_note: string | null
+          staff_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          branch_id?: number | null
+          created_at?: string
+          id?: number
+          reason: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          reviewer_note?: string | null
+          staff_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          branch_id?: number | null
+          created_at?: string
+          id?: number
+          reason?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          reviewer_note?: string | null
+          staff_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attendance_correction_requests_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attendance_correction_requests_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attendance_correction_requests_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       banners: {
         Row: {
           banner_type: string | null
@@ -2225,6 +2312,10 @@ export type Database = {
         Returns: number
       }
       alert_cron_failures: { Args: never; Returns: undefined }
+      approve_attendance_correction: {
+        Args: { p_request_id: number }
+        Returns: Json
+      }
       assign_addresses_to_hub: { Args: { p_hub_id: number }; Returns: number }
       assign_hub_operator: {
         Args: {
@@ -2399,6 +2490,10 @@ export type Database = {
         Returns: Json
       }
       redeem_loyalty_points: { Args: { p_points: number }; Returns: Json }
+      reject_attendance_correction: {
+        Args: { p_note?: string; p_request_id: number }
+        Returns: Json
+      }
       resolve_address_serviceability: {
         Args: { p_lat: number; p_lng: number }
         Returns: {

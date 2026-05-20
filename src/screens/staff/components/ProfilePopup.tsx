@@ -62,7 +62,7 @@ export function ProfilePopup({
         <Divider />
 
         <TouchableOpacity style={popup.row} onPress={() => go('Attendance')}>
-          <ThemedText variant="body" color="primary">Attendance</ThemedText>
+          <ThemedText variant="body" color="primary">My Attendance</ThemedText>
         </TouchableOpacity>
         <TouchableOpacity style={popup.row} onPress={() => go('StaffExpenses')}>
           <ThemedText variant="body" color="primary">Expense Claim</ThemedText>

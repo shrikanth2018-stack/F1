@@ -12,13 +12,12 @@ import {
   Alert,
   TextInput,
   StyleSheet,
-  Modal,
-  Text,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
+import { CalendarPicker } from '../../components/CalendarPicker';
 import {
   useTodayAttendance,
   useAttendanceHistory,
@@ -27,6 +26,9 @@ import {
   useStaffLeaves,
   useRequestLeave,
 } from '../../hooks/useAttendance';
+import { todayIST, addDaysToISODate } from '../../utils/istDate';
+import { useMyAttendanceCorrections } from '../../hooks/useAttendanceCorrections';
+import { CorrectionRequestModal } from './components/CorrectionRequestModal';
 
 function formatTime(iso: string | null): string {
   if (!iso) return '--:--';
@@ -41,95 +43,122 @@ function getHoursWorked(clockIn: string | null, clockOut: string | null): string
   return `${hrs}h ${mins}m`;
 }
 
-// ── Simple calendar date picker ──────────────────────────
-function CalendarPicker({
-  visible,
-  title,
-  selected,
-  onSelect,
-  onClose,
+// ── Month calendar (P / L / A) — same shape as admin AttendanceTab ──
+
+const DAY_LABELS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
+
+interface AttendanceRow { id: number; date: string; clock_in_time: string | null }
+interface LeaveRow { id: number; start_date: string; end_date: string; status: string }
+
+function MonthCalendar({
+  year,
+  month,
+  attendance,
+  leaves,
 }: {
-  visible: boolean;
-  title: string;
-  selected: string;
-  onSelect: (date: string) => void;
-  onClose: () => void;
+  year: number;
+  month: number;
+  attendance: AttendanceRow[];
+  leaves: LeaveRow[];
 }) {
-  const today = new Date();
-  const initDate = selected ? new Date(selected + 'T00:00:00') : today;
-  const [viewYear, setViewYear] = useState(initDate.getFullYear());
-  const [viewMonth, setViewMonth] = useState(initDate.getMonth());
-  const [picked, setPicked] = useState<string>(selected);
+  const attendanceMap = useMemo(() => {
+    const m = new Map<string, AttendanceRow>();
+    attendance.forEach((r) => m.set(r.date, r));
+    return m;
+  }, [attendance]);
 
-  const monthLabel = new Date(viewYear, viewMonth).toLocaleDateString('en-IN', {
-    month: 'long', year: 'numeric',
-  });
+  const approvedLeaveSet = useMemo(() => {
+    const s = new Set<string>();
+    leaves.filter((l) => l.status === 'Approved').forEach((l) => {
+      for (let ds = l.start_date; ds <= l.end_date; ds = addDaysToISODate(ds, 1)) s.add(ds);
+    });
+    return s;
+  }, [leaves]);
 
-  const prevMonth = () => {
-    if (viewMonth === 0) { setViewMonth(11); setViewYear(viewYear - 1); }
-    else setViewMonth(viewMonth - 1);
-  };
-  const nextMonth = () => {
-    if (viewMonth === 11) { setViewMonth(0); setViewYear(viewYear + 1); }
-    else setViewMonth(viewMonth + 1);
-  };
-
-  // Build grid
-  const firstDay = new Date(viewYear, viewMonth, 1).getDay(); // 0=Sun
-  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
-  const blanks = firstDay; // Sun-based offset
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const firstDayOfWeek = (new Date(year, month - 1, 1).getDay() + 6) % 7;
   const cells: (number | null)[] = [
-    ...Array(blanks).fill(null),
+    ...Array(firstDayOfWeek).fill(null),
     ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
   ];
+  const todayStr = todayIST();
 
-  const DAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+  const presentCount = attendance.filter((r) => r.clock_in_time).length;
+  const leaveCount = [...Array(daysInMonth)].filter((_, i) => {
+    const d = `${year}-${String(month).padStart(2, '0')}-${String(i + 1).padStart(2, '0')}`;
+    return approvedLeaveSet.has(d);
+  }).length;
+  const absentCount = [...Array(daysInMonth)].filter((_, i) => {
+    const d = `${year}-${String(month).padStart(2, '0')}-${String(i + 1).padStart(2, '0')}`;
+    return d <= todayStr && !attendanceMap.has(d) && !approvedLeaveSet.has(d);
+  }).length;
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={cal.backdrop}>
-        <View style={cal.box}>
-          <ThemedText variant="body" color="muted" style={cal.title}>{title}</ThemedText>
-
-          <View style={cal.navRow}>
-            <TouchableOpacity onPress={prevMonth}><ThemedText variant="body" color="accent">‹</ThemedText></TouchableOpacity>
-            <ThemedText variant="body" color="primary">{monthLabel}</ThemedText>
-            <TouchableOpacity onPress={nextMonth}><ThemedText variant="body" color="accent">›</ThemedText></TouchableOpacity>
+    <>
+      <View style={cal.summary}>
+        {[
+          { lbl: 'Present', val: presentCount, color: Theme.colors.status.success },
+          { lbl: 'Leave',   val: leaveCount,   color: Theme.colors.status.warning },
+          { lbl: 'Absent',  val: absentCount,  color: Theme.colors.status.error   },
+        ].map((s) => (
+          <View key={s.lbl} style={cal.summaryItem}>
+            <ThemedText variant="body" color="primary" style={[cal.summaryNum, { color: s.color }]}>{s.val}</ThemedText>
+            <ThemedText variant="small" color="muted" style={cal.summaryLbl}>{s.lbl}</ThemedText>
           </View>
-
-          <View style={cal.grid}>
-            {DAYS.map((d) => (
-              <Text key={d} style={cal.dayHeader}>{d}</Text>
-            ))}
-            {cells.map((day, idx) => {
-              if (!day) return <View key={`b${idx}`} style={cal.cell} />;
-              const ds = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-              const isPicked = ds === picked;
-              return (
-                <TouchableOpacity
-                  key={ds}
-                  style={[cal.cell, isPicked && cal.cellPicked]}
-                  onPress={() => setPicked(ds)}
-                >
-                  <Text style={[cal.dayText, isPicked && cal.dayTextPicked]}>{day}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          <View style={cal.footer}>
-            <TouchableOpacity onPress={onClose}>
-              <ThemedText variant="body" color="muted">Cancel</ThemedText>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => { onSelect(picked); onClose(); }}>
-              <ThemedText variant="body" color="mint">Confirm</ThemedText>
-            </TouchableOpacity>
-          </View>
-        </View>
+        ))}
       </View>
-    </Modal>
+
+      <View style={cal.grid}>
+        {DAY_LABELS.map((d) => (
+          <ThemedText key={d} variant="small" color="muted" style={cal.dayHeader}>{d}</ThemedText>
+        ))}
+      </View>
+
+      <View style={cal.grid}>
+        {cells.map((day, idx) => {
+          if (!day) return <View key={`pad-${idx}`} style={cal.cell} />;
+          const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+          const isPresent = attendanceMap.has(dateStr);
+          const isLeave = approvedLeaveSet.has(dateStr);
+          const isToday = dateStr === todayStr;
+          const isFuture = dateStr > todayStr;
+
+          let bg = 'transparent';
+          let label = '';
+          let labelColor: string = Theme.colors.text.muted;
+          if (isPresent) { bg = Theme.colors.status.success + '30'; label = 'P'; labelColor = Theme.colors.status.success; }
+          else if (isLeave) { bg = Theme.colors.status.warning + '30'; label = 'L'; labelColor = Theme.colors.status.warning; }
+          else if (!isFuture) { bg = Theme.colors.status.error + '18'; label = 'A'; labelColor = Theme.colors.status.error; }
+
+          return (
+            <View key={dateStr} style={[cal.cell, { backgroundColor: bg }, isToday && cal.cellToday]}>
+              <ThemedText variant="small" color="muted" style={[cal.cellDay, isToday && { color: Theme.colors.text.mint }]}>{day}</ThemedText>
+              {!!label && (
+                <ThemedText variant="small" color="muted" style={[cal.cellLabel, { color: labelColor }]}>{label}</ThemedText>
+              )}
+            </View>
+          );
+        })}
+      </View>
+    </>
   );
 }
+
+const cal = StyleSheet.create({
+  summary: {
+    flexDirection: 'row',
+    paddingBottom: Theme.spacing.sm,
+  },
+  summaryItem: { flex: 1, alignItems: 'center' },
+  summaryNum: { fontSize: Theme.typography.sizes.body + 4 },
+  summaryLbl: { fontSize: Theme.typography.sizes.small + 2 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap' },
+  dayHeader: { width: '14.28%', textAlign: 'center', fontSize: Theme.typography.sizes.small + 1, paddingVertical: 2 },
+  cell: { width: '14.28%', aspectRatio: 1.4, alignItems: 'center', justifyContent: 'center', borderRadius: 3, padding: 1 },
+  cellToday: { borderWidth: 1, borderColor: Theme.colors.text.mint },
+  cellDay: { fontSize: Theme.typography.sizes.small },
+  cellLabel: { fontSize: Theme.typography.sizes.small - 1 },
+});
 
 // ── Main Screen ──────────────────────────────────────────
 export function StaffAttendanceScreen() {
@@ -138,6 +167,8 @@ export function StaffAttendanceScreen() {
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
   const [showLeaveForm, setShowLeaveForm] = useState(false);
+  const [showCorrectionModal, setShowCorrectionModal] = useState(false);
+  const { data: corrections } = useMyAttendanceCorrections();
   const [leaveStart, setLeaveStart] = useState('');
   const [leaveEnd, setLeaveEnd] = useState('');
   const [leaveReason, setLeaveReason] = useState('');
@@ -156,11 +187,6 @@ export function StaffAttendanceScreen() {
   const monthLabel = new Date(year, month - 1).toLocaleDateString('en-IN', {
     month: 'long', year: 'numeric',
   });
-
-  const daysPresent = useMemo(
-    () => (history ?? []).filter((r) => r.clock_in_time).length,
-    [history]
-  );
 
   const handleClockIn = () => {
     Alert.alert('Clock In', 'Your GPS location will be recorded. Continue?', [
@@ -229,7 +255,7 @@ export function StaffAttendanceScreen() {
             <ThemedText variant="body" color="accent">‹ Back</ThemedText>
           </TouchableOpacity>
           <ThemedText variant="header" color="primary" style={styles.title}>
-            My Attendance / My Leaves
+            Attendance / Leaves
           </ThemedText>
           <View style={styles.backBtn} />
         </View>
@@ -276,7 +302,8 @@ export function StaffAttendanceScreen() {
 
         <View style={styles.hairline} />
 
-        {/* Monthly history */}
+        {/* Monthly attendance — calendar grid (P / L / A) to keep the
+            screen compact. Same shape as the admin AttendanceTab. */}
         <View style={styles.section}>
           <View style={styles.monthNav}>
             <TouchableOpacity onPress={prevMonth}>
@@ -287,25 +314,13 @@ export function StaffAttendanceScreen() {
               <ThemedText variant="body" color="accent">›</ThemedText>
             </TouchableOpacity>
           </View>
-          <ThemedText variant="small" color="muted" style={{ marginBottom: Theme.spacing.sm }}>
-            Present: {daysPresent} / {history?.length ?? 0} days
-          </ThemedText>
 
-          {(history ?? []).length === 0 ? (
-            <ThemedText variant="body" color="muted">No records this month</ThemedText>
-          ) : (
-            (history ?? []).map((record) => (
-              <View key={record.id} style={styles.historyRow}>
-                <ThemedText variant="body" color="primary" style={{ minWidth: 96 }}>{record.date}</ThemedText>
-                <ThemedText variant="body" color="subtitle">
-                  {formatTime(record.clock_in_time)} — {formatTime(record.clock_out_time)}
-                </ThemedText>
-                <ThemedText variant="small" color="muted">
-                  {getHoursWorked(record.clock_in_time, record.clock_out_time)}
-                </ThemedText>
-              </View>
-            ))
-          )}
+          <MonthCalendar
+            year={year}
+            month={month}
+            attendance={history ?? []}
+            leaves={leaves ?? []}
+          />
         </View>
 
         <View style={styles.hairline} />
@@ -382,7 +397,54 @@ export function StaffAttendanceScreen() {
             ))
           )}
         </View>
+
       </ScrollView>
+
+      {/* Attendance corrections — pinned footer so it stays visible
+          regardless of how far the staff has scrolled. The history
+          list inside scrolls vertically within its capped height. */}
+      <View style={styles.correctionsFooter}>
+        <ThemedText variant="small" color="muted" style={styles.correctionsLabel}>
+          ATTENDANCE CORRECTIONS
+        </ThemedText>
+        <TouchableOpacity
+          onPress={() => setShowCorrectionModal(true)}
+          style={styles.correctionsAction}
+        >
+          <ThemedText variant="body" color="mint">+ Request correction</ThemedText>
+        </TouchableOpacity>
+
+        <ScrollView style={styles.correctionsList} showsVerticalScrollIndicator={false}>
+          {(corrections ?? []).length === 0 ? (
+            <ThemedText variant="body" color="muted">No correction requests</ThemedText>
+          ) : (
+            (corrections ?? []).map((c) => {
+              const dayCount = c.days?.length ?? 0;
+              return (
+                <View key={c.id} style={styles.leaveRow}>
+                  <View style={{ flex: 1 }}>
+                    <ThemedText variant="body" color="primary">
+                      {dayCount} day{dayCount === 1 ? '' : 's'}
+                      {c.days?.length
+                        ? `  ·  ${c.days[0].the_date}${c.days.length > 1 ? ` +${c.days.length - 1}` : ''}`
+                        : ''}
+                    </ThemedText>
+                    {c.reason && (
+                      <ThemedText variant="small" color="muted">{c.reason}</ThemedText>
+                    )}
+                    {c.reviewer_note && c.status === 'rejected' && (
+                      <ThemedText variant="small" color="accent">{c.reviewer_note}</ThemedText>
+                    )}
+                  </View>
+                  <ThemedText variant="small" color="primary" style={{ color: leaveStatusColor(c.status) }}>
+                    {c.status}
+                  </ThemedText>
+                </View>
+              );
+            })
+          )}
+        </ScrollView>
+      </View>
 
       {/* Date pickers */}
       <CalendarPicker
@@ -398,6 +460,11 @@ export function StaffAttendanceScreen() {
         selected={leaveEnd}
         onSelect={setLeaveEnd}
         onClose={() => setPickerFor(null)}
+      />
+
+      <CorrectionRequestModal
+        visible={showCorrectionModal}
+        onClose={() => setShowCorrectionModal(false)}
       />
     </SafeAreaView>
   );
@@ -418,19 +485,31 @@ const styles = StyleSheet.create({
   hairlineThin: { height: StyleSheet.hairlineWidth, backgroundColor: Theme.colors.layout.divider },
   section: { paddingHorizontal: Theme.spacing.md, paddingVertical: Theme.spacing.sm },
   sectionLabel: { letterSpacing: 1, marginBottom: Theme.spacing.sm },
+  correctionsLabel: {
+    letterSpacing: 1,
+    textAlign: 'center',
+    marginBottom: Theme.spacing.xs,
+  },
+  correctionsAction: {
+    alignItems: 'center',
+    marginBottom: Theme.spacing.sm,
+  },
+  correctionsFooter: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Theme.colors.text.mint,
+    paddingHorizontal: Theme.spacing.md,
+    paddingTop: Theme.spacing.sm,
+    paddingBottom: Theme.spacing.sm,
+    maxHeight: 220,
+  },
+  correctionsList: {
+    flexGrow: 0,
+  },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   clockRow: { flexDirection: 'row', justifyContent: 'space-between', marginVertical: Theme.spacing.sm },
   clockItem: { alignItems: 'center' },
   clockActions: { alignItems: 'flex-start', marginTop: Theme.spacing.xs },
   monthNav: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Theme.spacing.sm },
-  historyRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: Theme.spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.layout.divider,
-  },
   leaveForm: { marginTop: Theme.spacing.sm },
   dateRow: {
     flexDirection: 'row',
@@ -455,57 +534,3 @@ const styles = StyleSheet.create({
   },
 });
 
-const cal = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: Theme.colors.layout.overlayMedium,
-    justifyContent: 'flex-end',
-  },
-  box: {
-    backgroundColor: Theme.colors.background.secondary,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: Theme.spacing.md,
-    paddingBottom: Theme.spacing.xl,
-  },
-  title: { textAlign: 'center', marginBottom: Theme.spacing.sm, letterSpacing: 1 },
-  navRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Theme.spacing.sm,
-  },
-  grid: { flexDirection: 'row', flexWrap: 'wrap' },
-  dayHeader: {
-    width: `${100 / 7}%`,
-    textAlign: 'center',
-    color: Theme.colors.text.muted,
-    fontFamily: Theme.typography.fontFamily,
-    fontSize: Theme.typography.sizes.small,
-    paddingVertical: 4,
-  },
-  cell: {
-    width: `${100 / 7}%`,
-    aspectRatio: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cellPicked: {
-    backgroundColor: Theme.colors.text.mint,
-    borderRadius: 20,
-  },
-  dayText: {
-    color: Theme.colors.text.primary,
-    fontFamily: Theme.typography.fontFamily,
-    fontSize: Theme.typography.sizes.body,
-  },
-  dayTextPicked: { color: Theme.colors.background.primary },
-  footer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: Theme.spacing.md,
-    paddingTop: Theme.spacing.sm,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: Theme.colors.layout.divider,
-  },
-});

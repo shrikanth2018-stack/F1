@@ -23,6 +23,12 @@ import { ThemedText } from '../../components/ThemedText';
 import { Divider } from '../../components/Divider';
 import { EmptyState } from '../../components/EmptyState';
 import { useStaffRoster, usePendingLeaves, type RosterEntry } from '../../hooks/useResourceManager';
+import {
+  useAdminAttendanceCorrections,
+  useApproveAttendanceCorrection,
+  useRejectAttendanceCorrection,
+  type AttendanceCorrectionRequest,
+} from '../../hooks/useAttendanceCorrections';
 import { useStaffAttendanceReport } from '../../hooks/useReports';
 import { exportCsv } from '../../utils/exportCsv';
 import { getErrorMessage } from '../../utils/formatters';
@@ -142,6 +148,40 @@ function leaveDays(start: string, end: string): number {
 }
 
 // ── Pending leave row ─────────────────────────────────────────
+function PendingCorrectionRow({
+  item,
+  busy,
+  onReview,
+}: {
+  item: AttendanceCorrectionRequest;
+  busy: boolean;
+  onReview: (req: AttendanceCorrectionRequest, action: 'approve' | 'reject') => void;
+}) {
+  const name = item.profiles?.full_name || item.profiles?.phone_number || 'Staff';
+  const dayCount = item.days?.length ?? 0;
+  const firstDay = item.days?.[0]?.the_date;
+  const moreDays = dayCount > 1 ? `  +${dayCount - 1}` : '';
+  return (
+    <View style={pl.row}>
+      <View style={pl.left}>
+        <ThemedText variant="body" color="primary" style={{ fontSize: B }}>{name}</ThemedText>
+        <ThemedText variant="small" color="muted" style={{ fontSize: S, marginTop: 2 }}>
+          {dayCount} day{dayCount === 1 ? '' : 's'}{firstDay ? `  ·  ${firstDay}${moreDays}` : ''}
+          {item.reason ? `  ·  ${item.reason}` : ''}
+        </ThemedText>
+      </View>
+      <View style={pl.btns}>
+        <TouchableOpacity style={pl.approveBtn} onPress={() => onReview(item, 'approve')} disabled={busy} activeOpacity={0.7}>
+          <ThemedText variant="small" color="primary" style={{ fontSize: S }}>Approve</ThemedText>
+        </TouchableOpacity>
+        <TouchableOpacity style={pl.rejectBtn} onPress={() => onReview(item, 'reject')} disabled={busy} activeOpacity={0.7}>
+          <ThemedText variant="small" color="primary" style={{ fontSize: S }}>Reject</ThemedText>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
 function PendingLeaveRow({ item, onReview }: { item: any; onReview: (id: number, status: 'Approved' | 'Rejected') => void }) {
   const name = item.profiles?.full_name || item.profiles?.phone_number || 'Staff';
   const empId = item.profiles?.employee_id ? `  ·  ${item.profiles.employee_id}` : '';
@@ -193,6 +233,9 @@ export function ResourceManagerScreen({ navigation }: { navigation: AdminNavProp
   const [filter, setFilter] = useState<Filter>('all');
   const { data: roster = [], isLoading, refetch } = useStaffRoster();
   const { data: pendingLeaves = [], review: reviewLeave } = usePendingLeaves();
+  const { data: pendingCorrections = [] } = useAdminAttendanceCorrections('pending');
+  const approveCorrection = useApproveAttendanceCorrection();
+  const rejectCorrection = useRejectAttendanceCorrection();
 
   const filtered = useMemo(() => {
     if (filter === 'all') return roster;
@@ -242,6 +285,35 @@ export function ResourceManagerScreen({ navigation }: { navigation: AdminNavProp
         ),
       },
     ]);
+  };
+
+  const handleReviewCorrection = (req: AttendanceCorrectionRequest, action: 'approve' | 'reject') => {
+    const verb = action === 'approve' ? 'Approve' : 'Reject';
+    const dayCount = req.days?.length ?? 0;
+    Alert.alert(
+      verb,
+      `${verb} ${dayCount} day${dayCount === 1 ? '' : 's'} of correction for ${req.profiles?.full_name ?? 'staff'}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: verb,
+          style: action === 'reject' ? 'destructive' : 'default',
+          onPress: () => {
+            if (action === 'approve') {
+              approveCorrection.mutate(req.id, {
+                onSuccess: () => Alert.alert('Approved', `${dayCount} day(s) added to attendance.`),
+                onError: (e: any) => Alert.alert('Could not approve', e?.message ?? 'unknown'),
+              });
+            } else {
+              rejectCorrection.mutate(
+                { requestId: req.id },
+                { onError: (e: any) => Alert.alert('Could not reject', e?.message ?? 'unknown') },
+              );
+            }
+          },
+        },
+      ],
+    );
   };
 
   return (
@@ -303,6 +375,31 @@ export function ResourceManagerScreen({ navigation }: { navigation: AdminNavProp
           </View>
           {pendingLeaves.map((l) => (
             <PendingLeaveRow key={l.id} item={l} onReview={handleReview} />
+          ))}
+          <Divider />
+        </>
+      )}
+
+      {/* Pending attendance correction approvals */}
+      {pendingCorrections.length > 0 && (
+        <>
+          <View style={styles.sectionHeader}>
+            <ThemedText variant="small" color="muted" style={styles.sectionLabel}>
+              CORRECTION REQUESTS
+            </ThemedText>
+            <View style={styles.pendingBadge}>
+              <ThemedText variant="small" color="primary" style={{ fontSize: S, color: Theme.colors.status.warning }}>
+                {pendingCorrections.length} pending
+              </ThemedText>
+            </View>
+          </View>
+          {pendingCorrections.map((c) => (
+            <PendingCorrectionRow
+              key={c.id}
+              item={c}
+              busy={approveCorrection.isPending || rejectCorrection.isPending}
+              onReview={handleReviewCorrection}
+            />
           ))}
           <Divider />
         </>
