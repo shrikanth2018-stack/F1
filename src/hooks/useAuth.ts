@@ -26,6 +26,8 @@ interface AuthContextType {
   isLoading: boolean;
   signInWithPhone: (phone: string) => Promise<{ error: Error | null }>;
   verifyOTP: (phone: string, token: string) => Promise<{ error: Error | null }>;
+  startPhoneChange: (newPhone: string) => Promise<{ error: Error | null }>;
+  verifyPhoneChange: (newPhone: string, token: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
 }
 
@@ -161,6 +163,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { error: error ? new Error(error.message) : null };
   }, []);
 
+  const startPhoneChange = useCallback(async (newPhone: string) => {
+    const { error } = await supabase.auth.updateUser({ phone: newPhone });
+    return { error: error ? new Error(error.message) : null };
+  }, []);
+
+  const verifyPhoneChange = useCallback(async (newPhone: string, token: string) => {
+    const { error } = await supabase.auth.verifyOtp({
+      phone: newPhone,
+      token,
+      type: 'phone_change',
+    });
+    if (!error) {
+      // Pick up the new auth.users.phone on the live session immediately
+      // (the SQL trigger we added mirrors it to profiles.phone_number).
+      const { data: { session: refreshed } } = await supabase.auth.refreshSession();
+      setSession(extractRole(refreshed));
+    }
+    return { error: error ? new Error(error.message) : null };
+  }, []);
+
   const signOut = useCallback(async () => {
     // Best-effort: delete this device's push token row so the previous user
     // doesn't keep receiving pushes after logout (shared-device case).
@@ -198,7 +220,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setSession(null);
   }, [session?.user.id]);
 
-  const value = { session, isLoading, signInWithPhone, verifyOTP, signOut };
+  const value = { session, isLoading, signInWithPhone, verifyOTP, startPhoneChange, verifyPhoneChange, signOut };
 
   return React.createElement(AuthContext.Provider, { value }, children);
 }

@@ -19,6 +19,7 @@ export interface CustomerAddress {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  delivery_hubs?: { hub_name: string } | null;
 }
 
 export interface WalletTransaction {

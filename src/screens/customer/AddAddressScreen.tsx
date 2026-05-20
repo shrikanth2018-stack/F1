@@ -27,7 +27,7 @@ import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { ThemedInput } from '../../components/ThemedInput';
 import { PinMap } from '../../components/PinMap';
-import { useAddAddress, useUpdateAddress, useAddresses } from '../../hooks/useAddresses';
+import { useAddAddress, useUpdateAddress, useAddresses, useSetDefaultAddress, useDeleteAddress } from '../../hooks/useAddresses';
 import { useAuth } from '../../hooks/useAuth';
 import { useFeatureFlag } from '../../hooks/useFeatureFlag';
 import { isNonEmpty, isValidIndianPhone, normalizePhone } from '../../utils/validators';
@@ -59,11 +59,15 @@ export function AddAddressScreen({ navigation, route, onComplete }: Props) {
 
   const { mutateAsync: addAddress, isPending: isAdding } = useAddAddress();
   const { mutateAsync: updateAddress, isPending: isUpdating } = useUpdateAddress();
+  const { mutate: setDefault, isPending: isSettingDefault } = useSetDefaultAddress();
+  const { mutate: deleteAddress, isPending: isDeleting } = useDeleteAddress();
   const isPending = isAdding || isUpdating;
   const { data: existingAddresses } = useAddresses();
   const editingAddress = isEditMode
     ? existingAddresses?.find((a) => a.id === editingId)
     : undefined;
+  const canDelete = (existingAddresses?.length ?? 0) > 1;
+  const isAlreadyDefault = editingAddress?.is_default === true;
   const { session } = useAuth();
   const hubDeliveryActive = useFeatureFlag('hub_delivery_active');
 
@@ -146,6 +150,36 @@ export function AddAddressScreen({ navigation, route, onComplete }: Props) {
     })();
     return () => { cancelled = true; };
   }, [isEditMode]);
+
+  const handleMakeDefault = () => {
+    if (!isEditMode || editingId == null) return;
+    setDefault(editingId, {
+      onError: () => Alert.alert('Error', 'Could not update default address. Please try again.'),
+    });
+  };
+
+  const handleDelete = () => {
+    if (!isEditMode || editingId == null) return;
+    Alert.alert(
+      'Delete Address',
+      'Remove this address from your saved list?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () =>
+            deleteAddress(editingId, {
+              onSuccess: () => {
+                if (onComplete) onComplete();
+                else navigation?.goBack();
+              },
+              onError: () => Alert.alert('Error', 'Could not delete address. Please try again.'),
+            }),
+        },
+      ]
+    );
+  };
 
   const handleAdd = async () => {
     if (!isNonEmpty(fullName)) {
@@ -333,6 +367,38 @@ export function AddAddressScreen({ navigation, route, onComplete }: Props) {
             : <ThemedText variant="subtitle" color="mint">{isEditMode ? 'Save Changes  ›' : 'Add Address  ›'}</ThemedText>
           }
         </TouchableOpacity>
+
+        {isEditMode && (!isAlreadyDefault || canDelete) && (
+          <View style={styles.hairline} />
+        )}
+
+        {isEditMode && !isAlreadyDefault && (
+          <TouchableOpacity
+            style={styles.actionRow}
+            onPress={handleMakeDefault}
+            activeOpacity={0.6}
+            disabled={isSettingDefault}
+          >
+            {isSettingDefault
+              ? <ActivityIndicator color={Theme.colors.text.mint} size="small" />
+              : <ThemedText variant="body" color="mint">Make this my default address</ThemedText>
+            }
+          </TouchableOpacity>
+        )}
+
+        {isEditMode && canDelete && (
+          <TouchableOpacity
+            style={styles.actionRow}
+            onPress={handleDelete}
+            activeOpacity={0.6}
+            disabled={isDeleting}
+          >
+            {isDeleting
+              ? <ActivityIndicator color={Theme.colors.status.error} size="small" />
+              : <ThemedText variant="body" style={styles.deleteText}>Delete this address</ThemedText>
+            }
+          </TouchableOpacity>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -340,13 +406,13 @@ export function AddAddressScreen({ navigation, route, onComplete }: Props) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
-  content: { paddingBottom: Theme.spacing.xl },
+  content: { paddingBottom: Theme.spacing.md },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
+    paddingVertical: Theme.spacing.xs,
   },
   hairline: {
     height: StyleSheet.hairlineWidth,
@@ -356,8 +422,8 @@ const styles = StyleSheet.create({
   labelRow: {
     flexDirection: 'row',
     paddingHorizontal: Theme.spacing.md,
-    paddingTop: Theme.spacing.sm,
-    paddingBottom: Theme.spacing.sm + 4,
+    paddingTop: Theme.spacing.xs,
+    paddingBottom: Theme.spacing.xs + 2,
     gap: Theme.spacing.lg,
   },
   labelTab: {
@@ -369,14 +435,23 @@ const styles = StyleSheet.create({
   labelTabTextActive: {  },
   mapFooter: {
     paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-    gap: Theme.spacing.xs,
+    paddingVertical: Theme.spacing.xs,
+    gap: 2,
   },
   gpsBtn: { alignSelf: 'flex-start' },
   indicator: { marginTop: 2 },
   submitRow: {
     paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.md,
+    paddingTop: Theme.spacing.sm,
+    paddingBottom: Theme.spacing.xs,
     alignItems: 'flex-end',
+  },
+  actionRow: {
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.sm,
+    alignItems: 'flex-start',
+  },
+  deleteText: {
+    color: Theme.colors.status.error,
   },
 });

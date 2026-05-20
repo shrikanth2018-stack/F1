@@ -234,7 +234,7 @@ export function ProfilePopup() {
             <InsetDivider />
             <IOSRow label="My Subscriptions" onPress={() => go('Subscriptions')} />
             <InsetDivider />
-            <IOSRow label="My Addresses" onPress={() => go('Addresses')} />
+            <IOSRow label="Edit Profile" onPress={() => go('EditProfile')} />
           </IOSGroup>
 
           <IOSGroup>

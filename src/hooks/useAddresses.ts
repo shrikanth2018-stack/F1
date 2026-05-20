@@ -19,7 +19,7 @@ export function useAddresses() {
     () =>
       supabase
         .from('customer_addresses')
-        .select('*')
+        .select('*, delivery_hubs(hub_name)')
         .eq('user_id', session?.user.id ?? '')
         .eq('is_active', true)
         .order('is_default', { ascending: false }),

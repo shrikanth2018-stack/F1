@@ -16,6 +16,7 @@ import { SubscriptionsScreen } from '../screens/customer/SubscriptionsScreen';
 import { CartScreen } from '../screens/customer/CartScreen';
 import { CheckoutScreen } from '../screens/customer/CheckoutScreen';
 import { OrderDetailScreen } from '../screens/customer/OrderDetailScreen';
+import { EditProfileScreen } from '../screens/customer/EditProfileScreen';
 import { AddressesScreen } from '../screens/customer/AddressesScreen';
 import { AddAddressScreen } from '../screens/customer/AddAddressScreen';
 import { PlanDetailScreen } from '../screens/customer/PlanDetailScreen';
@@ -47,6 +48,7 @@ export function CustomerNavigator() {
       <Stack.Screen name="Cart" component={CartScreen} />
       <Stack.Screen name="Checkout" component={CheckoutScreen} />
       <Stack.Screen name="OrderDetail" component={OrderDetailScreen} />
+      <Stack.Screen name="EditProfile" component={EditProfileScreen} />
       <Stack.Screen name="Addresses" component={AddressesScreen} />
       <Stack.Screen name="AddAddress" component={AddAddressScreen} />
       <Stack.Screen name="PlanDetail" component={PlanDetailScreen} />
