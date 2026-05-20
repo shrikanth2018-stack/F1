@@ -12,6 +12,31 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
       admin_notes: {
@@ -192,6 +217,7 @@ export type Database = {
           address: string | null
           branch_name: string
           created_at: string | null
+          essentials_enabled: boolean
           id: number
           is_active: boolean | null
           phone: string | null
@@ -201,6 +227,7 @@ export type Database = {
           address?: string | null
           branch_name: string
           created_at?: string | null
+          essentials_enabled?: boolean
           id?: number
           is_active?: boolean | null
           phone?: string | null
@@ -210,6 +237,7 @@ export type Database = {
           address?: string | null
           branch_name?: string
           created_at?: string | null
+          essentials_enabled?: boolean
           id?: number
           is_active?: boolean | null
           phone?: string | null
@@ -1289,6 +1317,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "profiles_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "profiles_referred_by_fkey"
             columns: ["referred_by"]
             isOneToOne: false
@@ -1768,52 +1803,52 @@ export type Database = {
       }
       store_config: {
         Row: {
-          cancellation_window_hours: number | null
+          cancellation_window_hours: number
           created_at: string | null
-          delivery_fee: number | null
+          delivery_fee: number
           essentials_module_active: boolean | null
           hub_delivery_active: boolean | null
           id: number
-          low_wallet_threshold: number | null
+          low_wallet_threshold: number
           loyalty_points_per_rupee: number | null
-          max_wallet_topup: number | null
-          min_wallet_topup: number | null
+          max_wallet_topup: number
+          min_wallet_topup: number
           storm_mode_active: boolean | null
-          tax_rate_percentage: number | null
+          tax_rate_percentage: number
           updated_at: string | null
           whatsapp_support_number: string | null
           winback_inactive_days: number | null
         }
         Insert: {
-          cancellation_window_hours?: number | null
+          cancellation_window_hours?: number
           created_at?: string | null
-          delivery_fee?: number | null
+          delivery_fee?: number
           essentials_module_active?: boolean | null
           hub_delivery_active?: boolean | null
           id?: number
-          low_wallet_threshold?: number | null
+          low_wallet_threshold?: number
           loyalty_points_per_rupee?: number | null
-          max_wallet_topup?: number | null
-          min_wallet_topup?: number | null
+          max_wallet_topup?: number
+          min_wallet_topup?: number
           storm_mode_active?: boolean | null
-          tax_rate_percentage?: number | null
+          tax_rate_percentage?: number
           updated_at?: string | null
           whatsapp_support_number?: string | null
           winback_inactive_days?: number | null
         }
         Update: {
-          cancellation_window_hours?: number | null
+          cancellation_window_hours?: number
           created_at?: string | null
-          delivery_fee?: number | null
+          delivery_fee?: number
           essentials_module_active?: boolean | null
           hub_delivery_active?: boolean | null
           id?: number
-          low_wallet_threshold?: number | null
+          low_wallet_threshold?: number
           loyalty_points_per_rupee?: number | null
-          max_wallet_topup?: number | null
-          min_wallet_topup?: number | null
+          max_wallet_topup?: number
+          min_wallet_topup?: number
           storm_mode_active?: boolean | null
-          tax_rate_percentage?: number | null
+          tax_rate_percentage?: number
           updated_at?: string | null
           whatsapp_support_number?: string | null
           winback_inactive_days?: number | null
@@ -2185,6 +2220,12 @@ export type Database = {
         Args: { p_refund_amount: number; p_subscription_id: number }
         Returns: Json
       }
+      advance_orders_status: {
+        Args: { p_order_ids: number[]; p_status: string }
+        Returns: number
+      }
+      alert_cron_failures: { Args: never; Returns: undefined }
+      assign_addresses_to_hub: { Args: { p_hub_id: number }; Returns: number }
       assign_hub_operator: {
         Args: {
           p_hub_id: number
@@ -2198,6 +2239,10 @@ export type Database = {
         Returns: undefined
       }
       auth_user_id_by_phone: { Args: { p_phone: string }; Returns: string }
+      backfill_dispatch_manifest: {
+        Args: { p_end_date: string; p_start_date: string }
+        Returns: Json
+      }
       complete_onboarding_atomic: {
         Args: {
           p_address_line: string
@@ -2225,7 +2270,13 @@ export type Database = {
       }
       custom_access_token_hook: { Args: { event: Json }; Returns: Json }
       decrement_wallet_balance_if_sufficient: {
-        Args: { p_amount: number; p_description?: string; p_user_id: string }
+        Args: {
+          p_amount: number
+          p_description?: string
+          p_reference_id?: string
+          p_reference_type?: string
+          p_user_id: string
+        }
         Returns: boolean
       }
       demote_employee: { Args: { target_id: string }; Returns: undefined }
@@ -2249,6 +2300,13 @@ export type Database = {
         Args: { p_cycle_id?: number; p_target_date?: string }
         Returns: Json
       }
+      get_active_staff_batch: {
+        Args: { p_branch_id?: number }
+        Returns: {
+          cycle_id: number
+          push_date: string
+        }[]
+      }
       get_addresses_for_hub_assignment: {
         Args: { p_hub_id: number }
         Returns: {
@@ -2267,6 +2325,17 @@ export type Database = {
           zone_id: number
         }[]
       }
+      get_job_health: { Args: never; Returns: Json }
+      get_kitchen_aggregate: {
+        Args: { p_cycle_id: number; p_dispatch_date: string }
+        Returns: {
+          item_name: string
+          order_ids: number[]
+          status: string
+          total_quantity: number
+          unit: string
+        }[]
+      }
       get_server_time: { Args: never; Returns: string }
       has_branch_access: { Args: { row_branch_id: number }; Returns: boolean }
       increment_loyalty_points: {
@@ -2274,7 +2343,13 @@ export type Database = {
         Returns: undefined
       }
       increment_wallet_balance: {
-        Args: { p_amount: number; p_description?: string; p_user_id: string }
+        Args: {
+          p_amount: number
+          p_description?: string
+          p_reference_id?: string
+          p_reference_type?: string
+          p_user_id: string
+        }
         Returns: undefined
       }
       is_admin: { Args: never; Returns: boolean }
@@ -2297,31 +2372,54 @@ export type Database = {
       place_order_atomic: {
         Args: {
           p_branch_id: number
-          p_cycle_id: number
           p_delivery_address_id: number
-          p_delivery_fee: number
           p_delivery_method: string
-          p_dispatch_date: string
+          p_groups: Json
           p_hub_id: number
-          p_items: Json
           p_notes: string
           p_order_type: string
           p_payment_method: string
           p_razorpay_order_id: string
           p_status: string
-          p_tax_amount: number
-          p_total_amount: number
           p_user_id: string
-          p_wallet_amount_used: number
         }
-        Returns: number
+        Returns: {
+          new_cycle_id: number
+          new_dispatch_date: string
+          new_group_id: string
+          new_order_id: number
+        }[]
+      }
+      point_in_polygon: {
+        Args: { p_lat: number; p_lng: number; p_poly: Json }
+        Returns: boolean
       }
       push_kitchen_summary: {
         Args: { p_cycle_id: number; p_target_date?: string }
         Returns: Json
       }
+      redeem_loyalty_points: { Args: { p_points: number }; Returns: Json }
+      resolve_address_serviceability: {
+        Args: { p_lat: number; p_lng: number }
+        Returns: {
+          hub_id: number
+          hub_name: string
+          is_serviceable: boolean
+          result: string
+          zone_id: number
+          zone_name: string
+        }[]
+      }
+      set_default_address: {
+        Args: { p_address_id: number }
+        Returns: undefined
+      }
       set_employee_designation: {
         Args: { new_designation: string; target_id: string }
+        Returns: undefined
+      }
+      tag_wallet_debit_to_order: {
+        Args: { p_order_id: number; p_user_id: string }
         Returns: undefined
       }
       trigger_kitchen_cutoff_pushes: { Args: never; Returns: undefined }
@@ -2457,6 +2555,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {},
   },

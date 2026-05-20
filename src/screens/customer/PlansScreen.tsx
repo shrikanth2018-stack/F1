@@ -29,6 +29,7 @@ import { EmptyState } from '../../components/EmptyState';
 import { SegmentedControl } from '../../components/SegmentedControl';
 import { useDeliveryCycles } from '../../hooks/useDeliveryCycles';
 import { useSubscriptionPlans } from '../../hooks/useSubscriptions';
+import { useEssentialsEnabled } from '../../hooks/useEssentialsEnabled';
 import { formatPriceShort } from '../../utils/formatters';
 import { essentialsCycleLabel } from '../../utils/cycleLabels';
 import type { SubscriptionPlan } from '../../types';
@@ -72,7 +73,13 @@ function dispatchLabelFor(timeStr: string | null | undefined): string | null {
 }
 
 export function PlansScreen({ navigation, route }: any) {
-  const initialTab: PlanTab = route?.params?.initialTab === 'essentials' ? 'essentials' : 'food';
+  // Essentials module flag gates the tab + any deep-link landing on essentials.
+  // Default true matches the historic behaviour; once the admin disables the
+  // module the segmented control collapses to Food only and a route param
+  // requesting the essentials tab is ignored.
+  const essentialsEnabled = useEssentialsEnabled();
+  const initialTab: PlanTab =
+    essentialsEnabled && route?.params?.initialTab === 'essentials' ? 'essentials' : 'food';
   const [activeTab, setActiveTab] = useState<PlanTab>(initialTab);
   const insets = useSafeAreaInsets();
 
@@ -112,7 +119,10 @@ export function PlansScreen({ navigation, route }: any) {
       .filter((s) => s.data.length > 0);
   }, [cycles, plans]);
 
-  const activeSections = activeTab === 'food' ? foodSections : essentialsSections;
+  // Force Food when the module is off — even if state still holds 'essentials'
+  // from a previous render before the flag flipped.
+  const effectiveTab: PlanTab = essentialsEnabled ? activeTab : 'food';
+  const activeSections = effectiveTab === 'food' ? foodSections : essentialsSections;
 
   const renderSectionHeader = ({ section }: { section: PlanSection }) => (
     <View style={styles.sectionHeader}>
@@ -157,15 +167,17 @@ export function PlansScreen({ navigation, route }: any) {
       </View>
 
       {/* Food | Essentials — shared glass pill (D24) */}
-      <SegmentedControl
-        style={styles.pill}
-        value={activeTab}
-        onChange={setActiveTab}
-        options={[
-          { key: 'food', label: 'Food' },
-          { key: 'essentials', label: 'Essentials' },
-        ]}
-      />
+      {essentialsEnabled && (
+        <SegmentedControl
+          style={styles.pill}
+          value={effectiveTab}
+          onChange={setActiveTab}
+          options={[
+            { key: 'food', label: 'Food' },
+            { key: 'essentials', label: 'Essentials' },
+          ]}
+        />
+      )}
 
       {/* Plans list */}
       <View style={styles.listWrap}>

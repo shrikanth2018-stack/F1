@@ -4,7 +4,7 @@
  * Search bar uses Google Geocoding API to re-center the map.
  */
 
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, TouchableOpacity, StyleSheet, TextInput, ActivityIndicator, Alert } from 'react-native';
 import MapView, { Polygon, Marker, MapPressEvent, Region } from 'react-native-maps';
 import { Theme } from '../theme';
@@ -24,6 +24,20 @@ export function ZoneMap({ vertices, onChange, initialRegion }: ZoneMapProps) {
   const apiKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY ?? '';
 
   const mapCoords = vertices.map((v) => ({ latitude: v.lat, longitude: v.lng }));
+
+  // react-native-maps applies initialRegion only at mount, so when the
+  // ZoneEditorModal stays mounted across "Edit zone A → close → Edit
+  // zone B" the MapView keeps zone A's view. Animate the map whenever
+  // the caller's region changes. Watch scalars (not the object) so a
+  // parent-render new-object identity doesn't re-fire the animation.
+  useEffect(() => {
+    mapRef.current?.animateToRegion(initialRegion, 500);
+  }, [
+    initialRegion.latitude,
+    initialRegion.longitude,
+    initialRegion.latitudeDelta,
+    initialRegion.longitudeDelta,
+  ]);
 
   const onPress = (e: MapPressEvent) => {
     const { latitude, longitude } = e.nativeEvent.coordinate;

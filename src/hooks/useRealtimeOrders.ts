@@ -1,7 +1,7 @@
 /**
  * 1stOne F1 — useRealtimeOrders
  *
- * Subscribes to Supabase Realtime on two tables:
+ * Subscribes to Supabase Realtime on three tables:
  *  - orders          — any INSERT/UPDATE refreshes every order-reading
  *                      cache so kitchen / packing / hub / driver views
  *                      update instantly.
@@ -9,6 +9,10 @@
  *                      active staff batch flips, so the batch lookup is
  *                      invalidated and the staff screens swing to the
  *                      new cycle (the previous cycle's orders drop off).
+ *  - admin_notes      — any INSERT/UPDATE/DELETE flips the staff banner.
+ *                      Invalidates the staff_notes query so kitchen /
+ *                      packing / delivery / hub banners update without
+ *                      the staff member relaunching the app.
  *
  * Mounted by StaffDashboard, AdminHome, HubDashboardScreen,
  * DriverDashboardScreen. Zero new queries — piggybacks on
@@ -84,6 +88,17 @@ export function useRealtimeOrders(enabled = true) {
             // swing to the new cycle, then refetch the order lists for it.
             queryClient.invalidateQueries({ queryKey: ['active_staff_batch'] });
             invalidateOrderQueries(queryClient);
+          },
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'admin_notes' },
+          () => {
+            // Admin saved/toggled/deleted a note — flip the staff banner
+            // queries so kitchen / packing / delivery / hub render the
+            // new state without waiting for staleTime / re-focus.
+            queryClient.invalidateQueries({ queryKey: ['staff_notes'] });
+            queryClient.invalidateQueries({ queryKey: ['admin_notes'] });
           },
         )
         .subscribe();

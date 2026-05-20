@@ -34,7 +34,7 @@ import { ProfilePopup } from '../../components/ProfilePopup';
 import { useDeliveryCycles } from '../../hooks/useDeliveryCycles';
 import { useMenuItems } from '../../hooks/useMenuItems';
 import { useSmartCart } from '../../hooks/useSmartCart';
-import { useFeatureFlag } from '../../hooks/useFeatureFlag';
+import { useEssentialsEnabled } from '../../hooks/useEssentialsEnabled';
 import { useEssentialsCatalog } from '../../hooks/useEssentials';
 import { useEssentialsCartStore } from '../../store/essentialsCartStore';
 import { useCartStore } from '../../store/cartStore';
@@ -87,7 +87,7 @@ export function HomeScreen() {
     }
   }, [activeHomeTab]);
 
-  const essentialsEnabled = useFeatureFlag('essentials_module_active', true);
+  const essentialsEnabled = useEssentialsEnabled();
   const { data: config } = useStoreConfig();
   const stormMode = config?.storm_mode_active ?? false;
   const walletNudge = useWalletNudge();

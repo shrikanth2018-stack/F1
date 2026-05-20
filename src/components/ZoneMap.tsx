@@ -4,7 +4,7 @@
  * The .native.tsx sibling handles iOS/Android — Metro/webpack picks the right one.
  */
 
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   GoogleMap,
   useJsApiLoader,
@@ -50,6 +50,16 @@ export function ZoneMap({ vertices, onChange, initialRegion }: ZoneMapProps) {
     lng: initialRegion.longitude,
   });
   const mapRef = useRef<google.maps.Map | null>(null);
+
+  // initialRegion is captured at first render only — when the parent
+  // changes it (admin opens Edit on a different zone), re-center the
+  // map. Watch scalars so a parent-render new-object identity doesn't
+  // re-fire the pan for the same coordinates.
+  useEffect(() => {
+    const next = { lat: initialRegion.latitude, lng: initialRegion.longitude };
+    setCenter(next);
+    mapRef.current?.panTo(next);
+  }, [initialRegion.latitude, initialRegion.longitude]);
   const [searchText, setSearchText] = useState('');
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);

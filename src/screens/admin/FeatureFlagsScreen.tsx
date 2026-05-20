@@ -20,6 +20,7 @@ import { ThemedText } from '../../components/ThemedText';
 import { useFeatureFlags } from '../../hooks/useFeatureFlag';
 import { useUpdateFeatureFlag, useUpdateStoreConfig } from '../../hooks/useStaffManagement';
 import { useStoreConfig } from '../../hooks/useStoreConfig';
+import { useBranchFilter } from '../../hooks/useBranchFilter';
 import type { AdminNavProp } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
@@ -28,7 +29,16 @@ const S = Theme.typography.sizes.small + 2;
 // storm_mode_active is surfaced separately at the top of this screen as a
 // dedicated section (canonical source: store_config.storm_mode_active), so
 // the feature_flags row itself stays hidden to avoid two-toggle confusion.
-const HIDDEN_FLAGS = new Set(['storm_mode_active']);
+// essentials_module_active is hidden because it migrated to per-branch
+// control — `branches.essentials_enabled` is the source of truth, exposed
+// on the Manage Branches screen (super-admin). The flag row stays in the
+// DB for one release as a safety net but is no longer toggled here.
+const HIDDEN_FLAGS = new Set(['storm_mode_active', 'essentials_module_active']);
+
+// Flags whose blast radius is system-wide (multi-branch isolation,
+// payment / RLS gating) — only super-admins should see and toggle them.
+// Regular branch admins don't need to know they exist.
+const SUPER_ADMIN_ONLY_FLAGS = new Set(['branch_management_active']);
 
 // Flags wired in app code — show as active toggles.
 // Per-flag helper notes shown on the admin row (empty object = no notes today).
@@ -39,6 +49,7 @@ export function FeatureFlagsScreen({ navigation }: { navigation: AdminNavProp })
   const updateFlag = useUpdateFeatureFlag();
   const { data: storeConfig } = useStoreConfig();
   const updateStoreConfig = useUpdateStoreConfig();
+  const { isSuperAdmin } = useBranchFilter();
   const stormActive = storeConfig?.storm_mode_active === true;
 
   // D4: storm mode is dual-control — flip BOTH store_config.storm_mode_active
@@ -112,7 +123,10 @@ export function FeatureFlagsScreen({ navigation }: { navigation: AdminNavProp })
         <ActivityIndicator style={{ marginTop: Theme.spacing.xl }} color={Theme.colors.action.primary} />
       ) : (
         <FlatList
-          data={flags.filter((f: any) => !HIDDEN_FLAGS.has(f.flag_key))}
+          data={flags.filter((f: any) =>
+            !HIDDEN_FLAGS.has(f.flag_key) &&
+            (isSuperAdmin || !SUPER_ADMIN_ONLY_FLAGS.has(f.flag_key))
+          )}
           keyExtractor={(f: any) => String(f.id)}
           contentContainerStyle={{ paddingBottom: Theme.spacing.xl * 2 }}
           ListHeaderComponent={

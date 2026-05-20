@@ -1,10 +1,13 @@
 /**
  * 1stOne F1 — Note to Staff Screen
  *
- * Admin composes a note per staff group (All Staff / Kitchen / Packing / Delivery).
- * Each group has an enable/disable toggle and a text input.
- * "Push ›" upserts all groups — active notes appear as a banner in the matching
- * tab on the StaffDashboard in real time.
+ * Admin composes a note per staff group (All Staff / Kitchen / Packing /
+ * Delivery / Hub). Each group has an enable/disable toggle and a text
+ * input. Save upserts all groups; active notes appear as an in-app
+ * banner on the matching staff/driver/hub dashboard via the
+ * admin_notes realtime subscription (useRealtimeOrders). No system
+ * push notification is sent — banners only, by design, so drivers /
+ * staff aren't pinged on the phone tray for non-actionable info.
  */
 
 import React, { useState, useEffect } from 'react';
@@ -22,14 +25,12 @@ import { getErrorMessage } from '../../utils/formatters';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
-import { sendPush } from '../../api/sendPush';
 import {
   useAdminNotes,
   useUpsertNote,
   NOTE_TARGETS,
   type NoteTarget,
 } from '../../hooks/useAdminNotes';
-import { useHubOperatorIds } from '../../hooks/useDeliveryHubs';
 import type { AdminNavProp } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
@@ -39,7 +40,6 @@ type NoteState = { text: string; active: boolean };
 
 export function NoteToStaffScreen({ navigation }: { navigation: AdminNavProp }) {
   const { data: notes = [], isLoading } = useAdminNotes();
-  const { data: hubOperators = [] } = useHubOperatorIds();
   const upsert = useUpsertNote();
 
   // Local state keyed by target
@@ -71,11 +71,14 @@ export function NoteToStaffScreen({ navigation }: { navigation: AdminNavProp }) 
   const handlePush = async () => {
     const targets = NOTE_TARGETS.filter((t) => state[t.key].text.trim());
     if (!targets.length) {
-      Alert.alert('Nothing to push', 'Enter a message for at least one group.');
+      Alert.alert('Nothing to save', 'Enter a message for at least one group.');
       return;
     }
 
     try {
+      // Save the note rows; the admin_notes realtime subscription in
+      // useRealtimeOrders flips the matching dashboard's banner the
+      // instant the row hits the DB. No system push — banners only.
       await Promise.all(
         targets.map((t) =>
           upsert.mutateAsync({
@@ -86,46 +89,7 @@ export function NoteToStaffScreen({ navigation }: { navigation: AdminNavProp }) 
         )
       );
 
-      // Push active notes only. Staff groups (Kitchen / Packing / Delivery /
-      // All Staff) go to role 'staff'; the Hub group goes only to assigned
-      // hub operators — they are role 'customer', so a staff push would
-      // never reach them, and staff shouldn't receive a hub-only note.
-      const activeTargets = targets.filter((t) => state[t.key].active);
-
-      const staffActive = activeTargets.filter((t) => t.key !== 'hub');
-      if (staffActive.length > 0) {
-        // One push per role, not per sub-group. With a single active note
-        // send its text as-is; with several, label each so no group's
-        // message is dropped (the per-tab banner still shows each note).
-        const pushBody = staffActive.length === 1
-          ? state[staffActive[0].key].text.trim()
-          : staffActive
-              .map((t) => `${t.label}: ${state[t.key].text.trim()}`)
-              .join('\n');
-        sendPush({
-          role: 'staff',
-          title: 'Note from Admin',
-          body: pushBody,
-          data: { screen: 'StaffDashboard' },
-          trigger_source: 'admin_push',
-        });
-      }
-
-      // Hub note → assigned hub operators, addressed by user_id.
-      if (activeTargets.some((t) => t.key === 'hub')) {
-        const hubIds = hubOperators.map((o) => o.id);
-        if (hubIds.length > 0) {
-          sendPush({
-            user_ids: hubIds,
-            title: 'Note from Admin',
-            body: state.hub.text.trim(),
-            data: { screen: 'HubDashboard' },
-            trigger_source: 'admin_push',
-          });
-        }
-      }
-
-      Alert.alert('Done', 'Notes updated for staff dashboard.');
+      Alert.alert('Saved', 'Notes updated. Staff will see the banner now.');
     } catch (e) {
       Alert.alert('Error', getErrorMessage(e));
     }
@@ -150,7 +114,7 @@ export function NoteToStaffScreen({ navigation }: { navigation: AdminNavProp }) 
         showsVerticalScrollIndicator={false}
       >
         <ThemedText variant="small" color="muted" style={styles.hint}>
-          Active notes appear as a banner in each staff tab. Toggle on to make a note visible; toggle off to hide it.
+          Active notes show as a banner on the matching dashboard.
         </ThemedText>
 
         {NOTE_TARGETS.map((target) => (
@@ -176,7 +140,7 @@ export function NoteToStaffScreen({ navigation }: { navigation: AdminNavProp }) 
               value={state[target.key].text}
               onChangeText={(v) => setField(target.key, 'text', v)}
               multiline
-              numberOfLines={3}
+              numberOfLines={2}
               textAlignVertical="top"
             />
           </View>
@@ -194,7 +158,7 @@ export function NoteToStaffScreen({ navigation }: { navigation: AdminNavProp }) 
           <ActivityIndicator color={Theme.colors.text.mint} />
         ) : (
           <ThemedText variant="body" color="mint" style={styles.footerTxt}>
-            Push  ›
+            Save  ›
           </ThemedText>
         )}
       </TouchableOpacity>
@@ -219,25 +183,25 @@ const styles = StyleSheet.create({
 
   scroll: {
     paddingHorizontal: Theme.spacing.md,
-    paddingBottom: Theme.spacing.xl * 2,
+    paddingBottom: Theme.spacing.md,
   },
 
   hint: {
     fontSize: S,
-    paddingVertical: Theme.spacing.md,
-    lineHeight: S * 1.5,
+    paddingVertical: Theme.spacing.xs,
+    lineHeight: S * 1.3,
   },
 
   card: {
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: Theme.colors.layout.divider,
-    paddingVertical: Theme.spacing.md,
+    paddingVertical: Theme.spacing.xs + 2,
   },
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: Theme.spacing.sm,
+    marginBottom: 2,
   },
   groupLabel: { fontSize: B },
 
@@ -247,16 +211,16 @@ const styles = StyleSheet.create({
     fontSize: B,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: Theme.colors.layout.divider,
-    paddingVertical: Theme.spacing.xs + 2,
-    minHeight: 64,
+    paddingVertical: 2,
+    minHeight: 36,
   },
   inputDim: { opacity: 0.4 },
 
   footer: {
     paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm + 2,
+    paddingVertical: Theme.spacing.sm,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: Theme.colors.text.mint,
   },
-  footerTxt: { fontSize: B },
+  footerTxt: { fontSize: B, textAlign: 'right' },
 });

@@ -30,6 +30,7 @@ import { formatTime12h } from '../../utils/timeEngine';
 import { confirmDialog } from '../../utils/confirmDialog';
 import { useOrderQuote } from '../../hooks/useOrderQuote';
 import { useAddresses } from '../../hooks/useAddresses';
+import { useEssentialsEnabled } from '../../hooks/useEssentialsEnabled';
 
 type Scenario = 'A' | 'B' | 'C';
 
@@ -316,8 +317,13 @@ export function CartScreen({ navigation, route }: any) {
     );
   }
 
+  // Essentials module gate. When the admin turns essentials_module_active
+  // off, the cart hides every essentials surface — list + checkout button.
+  // Items already in the local essentials cart stay in storage (we don't
+  // clear them) so flipping the flag back on restores the cart as it was.
+  const essentialsEnabled = useEssentialsEnabled();
   const foodHasContent = foodItems.length > 0 || foodPlans.length > 0;
-  const essHasContent = essItems.length > 0 || essPlans.length > 0;
+  const essHasContent = essentialsEnabled && (essItems.length > 0 || essPlans.length > 0);
 
   return (
     <SafeAreaView style={styles.container}>

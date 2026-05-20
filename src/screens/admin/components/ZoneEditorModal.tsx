@@ -26,6 +26,7 @@ import { ThemedText } from '../../../components/ThemedText';
 import { PhonePicker, type PickedProfile } from '../../../components/PhonePicker';
 import { useAddZone, useUpdateZone } from '../../../hooks/useDeliveryZones';
 import { useActiveHubs } from '../../../hooks/useDeliveryHubs';
+import { supabase } from '../../../api/supabaseClient';
 import type { DeliveryZone } from '../../../types';
 
 const B = Theme.typography.sizes.body + 2;
@@ -105,15 +106,57 @@ export function ZoneEditorModal({ visible, editingZone, onClose }: ZoneEditorMod
       setSelectedHubId(null);
       setDriver(null);
       centreOnDeviceLocation();
-    } else if (editingZone?.polygon_geojson?.length) {
-      const lats = editingZone.polygon_geojson.map((p) => p.lat);
-      const lngs = editingZone.polygon_geojson.map((p) => p.lng);
-      setMapRegion({
-        latitude: lats.reduce((a, b) => a + b, 0) / lats.length,
-        longitude: lngs.reduce((a, b) => a + b, 0) / lngs.length,
-        latitudeDelta: Math.max(...lats) - Math.min(...lats) + 0.02,
-        longitudeDelta: Math.max(...lngs) - Math.min(...lngs) + 0.02,
-      });
+      return;
+    }
+
+    // Edit mode: the useState initializers above only run on the first
+    // mount, so re-seed every field from the zone we're editing each
+    // time the modal opens. Without this, tapping Edit on an existing
+    // zone after a New Zone session showed a blank form.
+    if (editingZone) {
+      setVertices(editingZone.polygon_geojson ?? []);
+      setZoneName(editingZone.zone_name ?? '');
+      setFeeOverride(
+        editingZone.delivery_fee_override != null
+          ? String(editingZone.delivery_fee_override)
+          : '',
+      );
+      setSelectedHubId(editingZone.hub_id ?? null);
+
+      // Driver card needs name + phone for the PhonePicker's selected-
+      // state UI; useDeliveryZones doesn't join profiles, so fetch the
+      // driver row inline. Falls back to a placeholder card if the
+      // driver was removed since the zone was saved.
+      if (editingZone.driver_user_id) {
+        const driverId = editingZone.driver_user_id;
+        const driverCode = editingZone.driver_code ?? null;
+        (async () => {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('id, full_name, phone_number, employee_id')
+            .eq('id', driverId)
+            .maybeSingle();
+          setDriver({
+            userId: driverId,
+            name: profile?.full_name ?? '—',
+            phone: profile?.phone_number ?? '',
+            employeeId: profile?.employee_id ?? driverCode,
+          });
+        })();
+      } else {
+        setDriver(null);
+      }
+
+      if (editingZone.polygon_geojson?.length) {
+        const lats = editingZone.polygon_geojson.map((p) => p.lat);
+        const lngs = editingZone.polygon_geojson.map((p) => p.lng);
+        setMapRegion({
+          latitude: lats.reduce((a, b) => a + b, 0) / lats.length,
+          longitude: lngs.reduce((a, b) => a + b, 0) / lngs.length,
+          latitudeDelta: Math.max(...lats) - Math.min(...lats) + 0.02,
+          longitudeDelta: Math.max(...lngs) - Math.min(...lngs) + 0.02,
+        });
+      }
     }
   };
 
@@ -190,7 +233,11 @@ export function ZoneEditorModal({ visible, editingZone, onClose }: ZoneEditorMod
           </TouchableOpacity>
         </View>
 
-        {/* Map — platform-aware: ZoneMap.native.tsx on iOS/Android, ZoneMap.tsx on web */}
+        {/* Map — platform-aware: ZoneMap.native.tsx on iOS/Android,
+            ZoneMap.tsx on web. ZoneMap watches initialRegion via
+            useEffect and animateToRegion so re-centering works
+            without a forced remount; the parent just keeps
+            mapRegion in sync. */}
         <ZoneMap
           vertices={vertices}
           onChange={setVertices}

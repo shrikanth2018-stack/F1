@@ -19,7 +19,6 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
-  Switch,
   Alert,
   StyleSheet,
   ActivityIndicator,
@@ -252,19 +251,25 @@ function ClaimsTab() {
 
 function ExpensesTab({ showForm, onCloseForm }: { showForm: boolean; onCloseForm: () => void }) {
   const { data: expenses = [], isLoading, add, markPaid } = useBusinessExpenses();
-  const today = todayIST();
+  const todayIso = todayIST(); // YYYY-MM-DD (storage / DB format)
+  // Admin input is DD-MM-YYYY (regional convention); we convert at submit.
+  const todayDmy = useMemo(() => {
+    const [y, m, d] = todayIso.split('-');
+    return `${d}-${m}-${y}`;
+  }, [todayIso]);
 
-  // Form state
+  // Form state. Business expenses logged here are always already-paid
+  // (admin records the spend), so is_paid is fixed true — the per-claim
+  // toggle was removed from the UI.
   const [category,    setCategory]  = useState('');
   const [description, setDesc]      = useState('');
   const [amount,      setAmount]    = useState('');
   const [vendor,      setVendor]    = useState('');
-  const [date,        setDate]      = useState(today);
-  const [isPaid,      setIsPaid]    = useState(true);
+  const [date,        setDate]      = useState(todayDmy);
 
   const resetForm = () => {
     setCategory(''); setDesc(''); setAmount('');
-    setVendor(''); setDate(today); setIsPaid(true);
+    setVendor(''); setDate(todayDmy);
     onCloseForm();
   };
 
@@ -273,10 +278,12 @@ function ExpensesTab({ showForm, onCloseForm }: { showForm: boolean; onCloseForm
     if (!description.trim()) { Alert.alert('', 'Enter a description'); return; }
     const amt = parseFloat(amount);
     if (isNaN(amt) || amt <= 0) { Alert.alert('', 'Enter a valid amount'); return; }
-    if (!date.match(/^\d{4}-\d{2}-\d{2}$/)) { Alert.alert('', 'Date must be YYYY-MM-DD'); return; }
+    const dmy = date.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+    if (!dmy) { Alert.alert('', 'Date must be DD-MM-YYYY'); return; }
+    const expenseIso = `${dmy[3]}-${dmy[2]}-${dmy[1]}`;
 
     add.mutate(
-      { category: category.trim(), description: description.trim(), amount: amt, expense_date: date, vendor: vendor.trim(), is_paid: isPaid },
+      { category: category.trim(), description: description.trim(), amount: amt, expense_date: expenseIso, vendor: vendor.trim(), is_paid: true },
       {
         onSuccess: resetForm,
         onError: (e: any) => Alert.alert('Error', e?.message),
@@ -306,9 +313,8 @@ function ExpensesTab({ showForm, onCloseForm }: { showForm: boolean; onCloseForm
       {/* Inline add form */}
       {showForm && (
         <View style={ef.container}>
-          <ThemedText variant="small" color="muted" style={tab.sectionLabel}>ADD EXPENSE</ThemedText>
+          <ThemedText variant="small" color="muted" style={ef.heading}>ADD EXPENSE</ThemedText>
 
-          <ThemedText variant="small" color="muted" style={ef.chipLabel}>Category</ThemedText>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={ef.chipRow}>
             {EXPENSE_CATEGORIES.map((cat) => (
               <TouchableOpacity
@@ -329,33 +335,23 @@ function ExpensesTab({ showForm, onCloseForm }: { showForm: boolean; onCloseForm
           </ScrollView>
 
           {[
-            { label: 'Description',        value: description, set: setDesc,   kb: 'default' as const },
-            { label: 'Vendor / Supplier',  value: vendor,      set: setVendor, kb: 'default' as const },
-            { label: 'Amount  ₹',          value: amount,      set: setAmount, kb: 'numeric' as const },
-            { label: 'Date  (YYYY-MM-DD)', value: date,        set: setDate,   kb: 'default' as const },
+            { key: 'description', value: description, set: setDesc,   kb: 'default' as const, placeholder: 'Description' },
+            { key: 'vendor',      value: vendor,      set: setVendor, kb: 'default' as const, placeholder: 'Vendor / Supplier (optional)' },
+            { key: 'amount',      value: amount,      set: setAmount, kb: 'numeric' as const, placeholder: 'Amount  ₹' },
+            { key: 'date',        value: date,        set: setDate,   kb: 'default' as const, placeholder: 'Date (DD-MM-YYYY)' },
           ].map((f) => (
-            <View key={f.label} style={ef.field}>
-              <ThemedText variant="small" color="muted" style={ef.fieldLabel}>{f.label}</ThemedText>
+            <View key={f.key} style={ef.field}>
               <TextInput
                 style={ef.input}
                 value={f.value}
                 onChangeText={f.set}
                 keyboardType={f.kb}
                 returnKeyType="next"
+                placeholder={f.placeholder}
                 placeholderTextColor={Theme.colors.text.muted}
               />
             </View>
           ))}
-
-          <View style={ef.toggleRow}>
-            <ThemedText variant="body" color="primary" style={{ fontSize: B }}>Already paid</ThemedText>
-            <Switch
-              value={isPaid}
-              onValueChange={setIsPaid}
-              trackColor={{ true: Theme.colors.status.success, false: Theme.colors.background.tertiary }}
-              thumbColor={Theme.colors.text.primary}
-            />
-          </View>
 
           <View style={ef.btns}>
             <TouchableOpacity onPress={resetForm}>
@@ -434,8 +430,14 @@ const ef = StyleSheet.create({
     paddingBottom: Theme.spacing.md,
     marginBottom: Theme.spacing.sm,
   },
-  chipLabel: { fontSize: S, paddingHorizontal: Theme.spacing.md, marginBottom: 6 },
-  chipRow:   { flexDirection: 'row', gap: 8, paddingHorizontal: Theme.spacing.md, marginBottom: Theme.spacing.sm },
+  heading: {
+    fontSize: S,
+    letterSpacing: 1,
+    textAlign: 'center',
+    paddingTop: Theme.spacing.md,
+    paddingBottom: Theme.spacing.sm,
+  },
+  chipRow: { flexDirection: 'row', gap: 8, paddingHorizontal: Theme.spacing.md, marginBottom: Theme.spacing.sm },
   chip: {
     paddingHorizontal: 12, paddingVertical: 5,
     borderRadius: 14, borderWidth: StyleSheet.hairlineWidth,
@@ -445,8 +447,7 @@ const ef = StyleSheet.create({
     borderColor: Theme.colors.text.mint,
     backgroundColor: Theme.colors.text.mint + '15',
   },
-  field:      { paddingHorizontal: Theme.spacing.md, marginBottom: Theme.spacing.sm },
-  fieldLabel: { fontSize: S, marginBottom: 4 },
+  field: { paddingHorizontal: Theme.spacing.md, marginBottom: Theme.spacing.sm },
   input: {
     fontFamily: Theme.typography.fontFamily,
     fontSize: B,
@@ -454,13 +455,6 @@ const ef = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: Theme.colors.layout.divider,
     paddingVertical: Theme.spacing.xs,
-  },
-  toggleRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
   },
   btns: {
     flexDirection: 'row',

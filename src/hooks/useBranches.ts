@@ -27,7 +27,7 @@ export function useBranches(opts?: { includeInactive?: boolean }) {
     queryFn: async () => {
       let query = supabase
         .from('branches')
-        .select('id, branch_name, address, phone, is_active, created_at')
+        .select('id, branch_name, address, phone, is_active, essentials_enabled, created_at')
         .order('branch_name', { ascending: true });
       if (!includeInactive) {
         query = query.eq('is_active', true);

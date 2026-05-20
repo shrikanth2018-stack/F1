@@ -18,6 +18,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  Text,
 } from 'react-native';
 import { getErrorMessage } from '../../utils/formatters';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -32,6 +33,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useUpdateOrderStatus } from '../../hooks/useStaffOrders';
 import { useActiveStaffBatch } from '../../hooks/useActiveStaffBatch';
 import { useRealtimeOrders } from '../../hooks/useRealtimeOrders';
+import { useStaffNoteForTab } from '../../hooks/useAdminNotes';
 import { isOperationalOrder } from '../../utils/orderFilters';
 import { todayIST } from '../../utils/istDate';
 import { supabase } from '../../api/supabaseClient';
@@ -49,7 +51,11 @@ export function DriverDashboardScreen({ navigation }: CustomerScreenProps<'Drive
 
   const { mutateAsync: updateStatus, isPending: isUpdating } = useUpdateOrderStatus();
   // Realtime: refresh when an order is dispatched / advances through hub handoff.
+  // Also keeps the admin-note banner below in sync — useRealtimeOrders
+  // invalidates the staff_notes query on any admin_notes change.
   useRealtimeOrders(true);
+  // Delivery-tab + All-Staff broadcast banner. Same shape as Hub.
+  const { data: notes = [] } = useStaffNoteForTab('delivery');
 
   const { data: orders = [], isLoading, isRefetching, error, refetch } = useQuery({
     queryKey: ['driver_orders', userId, batch ? `${batch.cycle_id}:${batch.push_date}` : 'none', today],
@@ -130,6 +136,12 @@ export function DriverDashboardScreen({ navigation }: CustomerScreenProps<'Drive
         <View style={styles.spacer} />
       </View>
 
+      {/* Admin notes — delivery-specific + broadcasts. Single-line, centered,
+          mild yellow. Same pattern as HubDashboard / StaffDashboard. */}
+      {notes.map((n: any) => (
+        <Text key={n.id} style={styles.noteLine} numberOfLines={1}>{n.note_text}</Text>
+      ))}
+
       {error ? (
         <ErrorRetry message="Failed to load deliveries" onRetry={refetch} />
       ) : (
@@ -176,4 +188,12 @@ const styles = StyleSheet.create({
   spacer: { minWidth: 60 },
   list: { paddingBottom: Theme.spacing.xl },
   loader: { marginTop: Theme.spacing.xl },
+  noteLine: {
+    fontFamily: Theme.typography.fontFamily,
+    fontSize: Theme.typography.sizes.body + 3,
+    color: Theme.colors.status.warning,
+    textAlign: 'center',
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.xs + 2,
+  },
 });

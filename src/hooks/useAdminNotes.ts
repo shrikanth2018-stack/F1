@@ -16,11 +16,11 @@ import type { AdminNote } from '../types';
 export type NoteTarget = 'kitchen' | 'packing' | 'delivery' | 'all' | 'hub';
 
 export const NOTE_TARGETS: { key: NoteTarget; label: string }[] = [
-  { key: 'all',      label: 'All Staff'  },
-  { key: 'kitchen',  label: 'Kitchen'    },
-  { key: 'packing',  label: 'Packing'    },
-  { key: 'delivery', label: 'Delivery'   },
-  { key: 'hub',      label: 'Hub Staff'  },
+  { key: 'all',      label: 'All Staff'    },
+  { key: 'kitchen',  label: 'Kitchen'      },
+  { key: 'packing',  label: 'Packing'      },
+  { key: 'delivery', label: 'Delivery page'},
+  { key: 'hub',      label: 'Hub page'     },
 ];
 
 export function useAdminNotes() {

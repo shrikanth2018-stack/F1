@@ -41,6 +41,7 @@ import { useWalletBalance } from '../../hooks/useWallet';
 import { useSmartCart } from '../../hooks/useSmartCart';
 import { useOrderQuote, type QuoteItemInput } from '../../hooks/useOrderQuote';
 import { useAuth } from '../../hooks/useAuth';
+import { useEssentialsEnabled } from '../../hooks/useEssentialsEnabled';
 import { formatPriceShort, formatDateLong, getErrorMessage } from '../../utils/formatters';
 import { supabase } from '../../api/supabaseClient';
 import { RAZORPAY_KEY_ID } from '../../utils/env';
@@ -55,6 +56,12 @@ export function CheckoutScreen({ navigation, route }: any) {
   const subscriptionPlanId: number | undefined = route?.params?.subscriptionPlanId;
   const isSubscriptionOnly = subscriptionPlanId != null;
   const { session } = useAuth();
+  // Defense-in-depth: even if CartScreen / PlanDetail somehow leak the user
+  // through to Checkout with an essentials payload while the module is
+  // disabled, refuse to load the checkout. Past essentials orders / subs
+  // continue to live in My Orders unaffected.
+  const essentialsEnabled = useEssentialsEnabled();
+  const essentialsBlocked = !essentialsEnabled && cartType === 'essentials';
 
   const foodItems = useCartStore((s) => s.items);
   const foodPlans = useCartStore((s) => s.plans);
@@ -385,6 +392,25 @@ export function CheckoutScreen({ navigation, route }: any) {
     clearFood, clearEss, clearFoodPlans, clearEssPlans,
     navigation, setGlobalLoading, queryClient, cartType, totalCartCount, grandTotal,
   ]);
+
+  if (essentialsBlocked) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <ScrollView contentContainerStyle={styles.content}>
+          <View style={styles.header}>
+            <TouchableOpacity onPress={() => navigation.goBack()}>
+              <ThemedText variant="body" color="accent">‹ Back</ThemedText>
+            </TouchableOpacity>
+            <ThemedText variant="header" color="primary">Checkout</ThemedText>
+            <View style={{ width: 40 }} />
+          </View>
+          <ThemedText variant="body" color="subtitle" style={{ padding: Theme.spacing.lg, textAlign: 'center' }}>
+            Essentials checkout is currently unavailable.
+          </ThemedText>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>

@@ -91,6 +91,12 @@ export function HubDashboardScreen({ navigation }: CustomerScreenProps<'HubDashb
         <View style={styles.spacer} />
       </View>
 
+      {/* Admin notes — hub-specific. Sits above the tab toggle so it
+          reads as a header banner rather than interrupting the tab body. */}
+      {isToday && notes.map((n) => (
+        <Text key={n.id} style={styles.noteLine} numberOfLines={1}>{n.note_text}</Text>
+      ))}
+
       {/* Today | History — shared glass pill (D24) */}
       <SegmentedControl
         style={styles.tabs}
@@ -101,11 +107,6 @@ export function HubDashboardScreen({ navigation }: CustomerScreenProps<'HubDashb
           { key: 'History', label: 'History' },
         ]}
       />
-
-      {/* Admin notes — hub-specific + broadcasts. Single-line, centered, mild yellow. */}
-      {isToday && notes.map((n) => (
-        <Text key={n.id} style={styles.noteLine} numberOfLines={1}>{n.note_text}</Text>
-      ))}
 
       {error ? (
         <ErrorRetry message={isToday ? 'Failed to load hub orders' : 'Failed to load history'} onRetry={refetch} />

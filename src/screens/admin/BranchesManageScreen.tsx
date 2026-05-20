@@ -42,6 +42,7 @@ type FormState = {
   address: string;
   phone: string;
   is_active: boolean;
+  essentials_enabled: boolean;
 };
 
 const EMPTY_FORM: FormState = {
@@ -49,6 +50,7 @@ const EMPTY_FORM: FormState = {
   address: '',
   phone: '',
   is_active: true,
+  essentials_enabled: true,
 };
 
 export function BranchesManageScreen({ navigation }: AdminScreenProps<'BranchesManage'>) {
@@ -106,6 +108,7 @@ export function BranchesManageScreen({ navigation }: AdminScreenProps<'BranchesM
       address: b.address ?? '',
       phone: b.phone ?? '',
       is_active: b.is_active,
+      essentials_enabled: b.essentials_enabled,
     });
     setEditing(b);
   };
@@ -127,6 +130,7 @@ export function BranchesManageScreen({ navigation }: AdminScreenProps<'BranchesM
         branch_name: form.branch_name,
         address: form.address || null,
         phone: form.phone || null,
+        essentials_enabled: form.essentials_enabled,
       });
       closeModals();
     } catch (err) {
@@ -172,7 +176,8 @@ export function BranchesManageScreen({ navigation }: AdminScreenProps<'BranchesM
       if (
         form.branch_name.trim() !== editing.branch_name ||
         (form.address || null) !== (editing.address ?? null) ||
-        (form.phone || null) !== (editing.phone ?? null)
+        (form.phone || null) !== (editing.phone ?? null) ||
+        form.essentials_enabled !== editing.essentials_enabled
       ) {
         updates.push(
           updateMut.mutateAsync({
@@ -180,6 +185,7 @@ export function BranchesManageScreen({ navigation }: AdminScreenProps<'BranchesM
             branch_name: form.branch_name,
             address: form.address || null,
             phone: form.phone || null,
+            essentials_enabled: form.essentials_enabled,
           })
         );
       }
@@ -376,6 +382,23 @@ function BranchFormModal({
               />
             </View>
           )}
+
+          {/* Per-branch essentials offering. Off hides the essentials module
+              from customers whose default address sits in this branch. */}
+          <View style={styles.toggleRow}>
+            <View style={styles.toggleInfo}>
+              <ThemedText variant="body" color="primary" style={{ fontSize: B }}>Essentials</ThemedText>
+              <ThemedText variant="small" color="muted" style={styles.toggleSub}>
+                Offer essentials (groceries, newspaper, etc.) to customers in this branch.
+              </ThemedText>
+            </View>
+            <Switch
+              value={form.essentials_enabled}
+              onValueChange={(v) => setForm({ ...form, essentials_enabled: v })}
+              trackColor={{ true: Theme.colors.status.success, false: Theme.colors.background.tertiary }}
+              thumbColor={Theme.colors.text.primary}
+            />
+          </View>
 
           <View style={styles.modalActions}>
             <TouchableOpacity style={styles.modalBtn} onPress={onCancel} disabled={saving}>

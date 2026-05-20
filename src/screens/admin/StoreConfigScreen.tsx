@@ -166,14 +166,33 @@ export function StoreConfigScreen({ navigation }: { navigation: AdminNavProp }) 
   };
 
   const handleSave = () => {
+    // Reject blanks before sending — `parseFloat('') || N` was silently
+    // substituting the per-field "default" (0 / 2 / 100 / …) for an empty
+    // string, so blanking a field overwrote the live config without the
+    // admin realising. Explicit zero is still accepted (admin can type 0).
+    const required: { label: string; raw: string }[] = [
+      { label: 'Tax rate %',          raw: taxRate },
+      { label: 'Delivery fee',        raw: deliveryFee },
+      { label: 'Cancel window hours', raw: cancelWindow },
+      { label: 'Min wallet top-up',   raw: minTopup },
+      { label: 'Max wallet top-up',   raw: maxTopup },
+      { label: 'Loyalty per rupee',   raw: loyaltyRate },
+    ];
+    for (const f of required) {
+      if (f.raw.trim() === '' || Number.isNaN(parseFloat(f.raw))) {
+        Alert.alert('Invalid value', `${f.label} cannot be empty.`);
+        return;
+      }
+    }
+
     updateConfig.mutate(
       {
-        tax_rate_percentage: parseFloat(taxRate) || 0,
-        delivery_fee: parseFloat(deliveryFee) || 0,
-        cancellation_window_hours: parseFloat(cancelWindow) || 2,
-        min_wallet_topup: parseFloat(minTopup) || 100,
-        max_wallet_topup: parseFloat(maxTopup) || 50000,
-        loyalty_points_per_rupee: parseFloat(loyaltyRate) || 0.1,
+        tax_rate_percentage: parseFloat(taxRate),
+        delivery_fee: parseFloat(deliveryFee),
+        cancellation_window_hours: parseFloat(cancelWindow),
+        min_wallet_topup: parseFloat(minTopup),
+        max_wallet_topup: parseFloat(maxTopup),
+        loyalty_points_per_rupee: parseFloat(loyaltyRate),
         whatsapp_support_number: whatsappNum || null,
       },
       { onSuccess: () => Alert.alert('Saved', 'Operations config updated.') },

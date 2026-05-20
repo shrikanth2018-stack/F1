@@ -107,7 +107,12 @@ function ZonesTab() {
 
       <ScrollView showsVerticalScrollIndicator={false}>
         {(zones as DeliveryZone[]).map((zone) => (
-          <View key={zone.id} style={zt.zoneRow}>
+          <TouchableOpacity
+            key={zone.id}
+            style={zt.zoneRow}
+            onPress={() => openEdit(zone)}
+            activeOpacity={0.7}
+          >
             <View style={zt.zoneInfo}>
               <ThemedText variant="body" color="primary" style={zt.zoneName}>
                 {zone.zone_name}
@@ -125,14 +130,11 @@ function ZonesTab() {
                 trackColor={{ true: Theme.colors.status.success, false: Theme.colors.background.tertiary }}
                 thumbColor={Theme.colors.text.primary}
               />
-              <TouchableOpacity onPress={() => openEdit(zone)} style={zt.editBtn} activeOpacity={0.7}>
-                <ThemedText variant="small" color="mint">Edit</ThemedText>
-              </TouchableOpacity>
               <TouchableOpacity onPress={() => handleDelete(zone)} style={zt.delBtn} activeOpacity={0.7}>
                 <ThemedText variant="small" color="accent">✕</ThemedText>
               </TouchableOpacity>
             </View>
-          </View>
+          </TouchableOpacity>
         ))}
       </ScrollView>
 
@@ -170,7 +172,6 @@ const zt = StyleSheet.create({
   zoneInfo: { flex: 1 },
   zoneName: { fontSize: B, marginBottom: 2 },
   zoneActions: { flexDirection: 'row', alignItems: 'center', gap: Theme.spacing.sm },
-  editBtn: { paddingHorizontal: Theme.spacing.xs + 2 },
   delBtn: { paddingHorizontal: Theme.spacing.xs + 2 },
 });
 

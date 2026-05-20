@@ -28,6 +28,7 @@ import { Divider } from '../../components/Divider';
 import { useSubscriptionPlans, usePlanItems, useMySubscriptions } from '../../hooks/useSubscriptions';
 import { useDeliveryCycles } from '../../hooks/useDeliveryCycles';
 import { useCycleDispatch } from '../../hooks/useCycleDispatch';
+import { useEssentialsEnabled } from '../../hooks/useEssentialsEnabled';
 import { useCartStore } from '../../store/cartStore';
 import { useEssentialsCartStore } from '../../store/essentialsCartStore';
 import { formatPriceShort, formatDateShort } from '../../utils/formatters';
@@ -70,6 +71,7 @@ export function PlanDetailScreen({ route, navigation }: any) {
   const plan = plans?.find((p) => p.id === planId);
   const { data: planItems } = usePlanItems(planId);
   const { data: cycles } = useDeliveryCycles();
+  const essentialsEnabled = useEssentialsEnabled();
   const cycle = cycles?.find((c) => c.id === plan?.cycle_id);
   const { data: mySubs } = useMySubscriptions();
   const { data: cycleDispatch } = useCycleDispatch();
@@ -183,6 +185,26 @@ export function PlanDetailScreen({ route, navigation }: any) {
         </View>
         <ThemedText variant="body" color="subtitle" style={styles.loading}>
           Loading...
+        </ThemedText>
+      </SafeAreaView>
+    );
+  }
+
+  // Essentials module gate: an essentials plan opened via deep-link or
+  // stale list while the admin has disabled the module shouldn't render
+  // the buy flow. Existing essentials subscriptions stay valid — this
+  // only blocks new purchases.
+  if (!essentialsEnabled && planType === 'essentials') {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <ThemedText variant="header" color="primary" style={styles.headerTitle}>Plan Details</ThemedText>
+          <TouchableOpacity onPress={goHome} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <ThemedText variant="body" color="muted">Close</ThemedText>
+          </TouchableOpacity>
+        </View>
+        <ThemedText variant="body" color="subtitle" style={styles.loading}>
+          Essentials subscriptions are currently unavailable.
         </ThemedText>
       </SafeAreaView>
     );

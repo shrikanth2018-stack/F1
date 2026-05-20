@@ -18,7 +18,12 @@ function invalidateBranchCaches(qc: ReturnType<typeof useQueryClient>) {
 export function useCreateBranch() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { branch_name: string; address?: string | null; phone?: string | null }) => {
+    mutationFn: async (input: {
+      branch_name: string;
+      address?: string | null;
+      phone?: string | null;
+      essentials_enabled?: boolean;
+    }) => {
       const { data, error } = await supabase
         .from('branches')
         .insert({
@@ -26,8 +31,9 @@ export function useCreateBranch() {
           address: input.address?.trim() || null,
           phone: input.phone?.trim() || null,
           is_active: true,
+          essentials_enabled: input.essentials_enabled ?? true,
         })
-        .select('id, branch_name, address, phone, is_active, created_at')
+        .select('id, branch_name, address, phone, is_active, essentials_enabled, created_at')
         .single();
       if (error) throw new Error(error.message);
       return data;
@@ -44,11 +50,18 @@ export function useUpdateBranch() {
       branch_name?: string;
       address?: string | null;
       phone?: string | null;
+      essentials_enabled?: boolean;
     }) => {
-      const patch: { branch_name?: string; address?: string | null; phone?: string | null } = {};
+      const patch: {
+        branch_name?: string;
+        address?: string | null;
+        phone?: string | null;
+        essentials_enabled?: boolean;
+      } = {};
       if (input.branch_name !== undefined) patch.branch_name = input.branch_name.trim();
       if (input.address !== undefined) patch.address = input.address?.trim() || null;
       if (input.phone !== undefined) patch.phone = input.phone?.trim() || null;
+      if (input.essentials_enabled !== undefined) patch.essentials_enabled = input.essentials_enabled;
       const { error } = await supabase
         .from('branches')
         .update(patch)

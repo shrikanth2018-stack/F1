@@ -46,5 +46,6 @@ export interface Branch {
   address: string | null;
   phone: string | null;
   is_active: boolean;
+  essentials_enabled: boolean;
   created_at: string;
 }
