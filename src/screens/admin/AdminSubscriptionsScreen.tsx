@@ -1,9 +1,19 @@
 /**
  * 1stOne F1 — Admin Running Subscriptions Screen
- * Lists active subscriptions. Admin can cancel with prorated wallet refund.
+ *
+ * Lists active subscriptions (is_active=true) — paused subs included.
+ * Admin can cancel with prorated wallet refund.
+ *
+ * Filters in-place:
+ *   - Period (start_date within Weekly / Monthly / Quarterly / Custom range)
+ *   - Status (All / Active / Paused — status is a property of an active sub)
+ *
+ * Row tap opens the cancel modal with a read-only detail block above the
+ * refund input so the admin sees lifecycle state (start date, days
+ * consumed vs total, payment method) before confirming.
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   FlatList,
@@ -22,6 +32,13 @@ import { ThemedText } from '../../components/ThemedText';
 import { Divider } from '../../components/Divider';
 import { EmptyState } from '../../components/EmptyState';
 import { ErrorRetry } from '../../components/ErrorRetry';
+import {
+  ReportPeriodPicker,
+  defaultCustomRange,
+  getPeriodRange,
+  type Period,
+  type DateRange,
+} from '../../components/ReportPeriodPicker';
 import { useAdminSubscriptions, useAdminCancelSubscription } from '../../hooks/useSubscriptions';
 import { useStoreConfig } from '../../hooks/useStoreConfig';
 import { formatDateShort, getErrorMessage } from '../../utils/formatters';
@@ -36,17 +53,24 @@ const S = Theme.typography.sizes.small + 2;
 // BF-20 (D-03b, 2026-05-04): the previous local useWalletRefund mini-hook
 // (which separately invoked increment_wallet_balance after deactivation)
 // was retired. The atomic admin_cancel_subscription_atomic RPC now does
-// deactivate + wallet credit in one Postgres transaction. See
-// useAdminCancelSubscription in useSubscriptions.ts.
+// deactivate + wallet credit in one Postgres transaction.
+
+type StatusFilter = 'All' | 'Active' | 'Paused';
+const STATUS_FILTERS: StatusFilter[] = ['All', 'Active', 'Paused'];
 
 interface CancelTarget {
   id: number;
   user_id: string;
   customer: string;
+  customerPhone: string;
   planName: string;
+  planPrice: number;
+  durationDays: number;
+  daysConsumed: number;
   daysRemaining: number;
-  proratedAmount: number;
+  startDate: string;
   paymentMethod: string;
+  proratedAmount: number;
 }
 
 export function AdminSubscriptionsScreen({ navigation }: any) {
@@ -54,6 +78,40 @@ export function AdminSubscriptionsScreen({ navigation }: any) {
   const { mutateAsync: cancelSub } = useAdminCancelSubscription();
   const { data: storeConfig } = useStoreConfig();
 
+  // ── Filters ─────────────────────────────────────────────
+  const [period, setPeriod] = useState<Period>('Monthly');
+  const [customRange, setCustomRange] = useState<DateRange>(defaultCustomRange());
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('All');
+  const { start, end } = useMemo(
+    () => getPeriodRange(period, customRange),
+    [period, customRange],
+  );
+
+  const filtered = useMemo(() => {
+    const all = subs ?? [];
+    return all.filter((s) => {
+      // status
+      if (statusFilter === 'Active' && s.is_paused) return false;
+      if (statusFilter === 'Paused' && !s.is_paused) return false;
+      // period (start_date inclusive bounds)
+      if (s.start_date) {
+        const sd = String(s.start_date).slice(0, 10);
+        if (sd < start || sd > end) return false;
+      }
+      return true;
+    });
+  }, [subs, statusFilter, start, end]);
+
+  const counts = useMemo(() => {
+    const all = subs ?? [];
+    return {
+      all: all.length,
+      active: all.filter((s) => !s.is_paused).length,
+      paused: all.filter((s) => s.is_paused).length,
+    };
+  }, [subs]);
+
+  // ── Cancel modal ────────────────────────────────────────
   const [target, setTarget] = useState<CancelTarget | null>(null);
   const [refundStr, setRefundStr] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -73,10 +131,15 @@ export function AdminSubscriptionsScreen({ navigation }: any) {
       id: sub.id,
       user_id: sub.user_id,
       customer: sub.profiles?.full_name ?? sub.profiles?.phone_number ?? `User #${sub.user_id.slice(0, 8)}`,
+      customerPhone: sub.profiles?.phone_number ?? '',
       planName: plan.plan_name ?? `Plan #${sub.plan_id}`,
+      planPrice: plan.price ?? 0,
+      durationDays: plan.duration_days ?? 0,
+      daysConsumed: sub.days_consumed ?? 0,
       daysRemaining,
-      proratedAmount: prorated,
+      startDate: sub.start_date,
       paymentMethod: sub.payment_method ?? 'wallet',
+      proratedAmount: prorated,
     });
     setRefundStr(String(prorated));
   }, [storeConfig]);
@@ -94,7 +157,7 @@ export function AdminSubscriptionsScreen({ navigation }: any) {
         'Subscription Cancelled',
         refundAmount > 0
           ? `${target.customer}'s subscription cancelled.\n₹${refundAmount} credited to wallet.`
-          : `${target.customer}'s subscription cancelled.`
+          : `${target.customer}'s subscription cancelled.`,
       );
     } catch (e) {
       Alert.alert('Error', getErrorMessage(e));
@@ -115,27 +178,63 @@ export function AdminSubscriptionsScreen({ navigation }: any) {
         <View style={{ minWidth: 60 }} />
       </View>
 
+      <ReportPeriodPicker
+        period={period}
+        customRange={customRange}
+        onChangePeriod={setPeriod}
+        onChangeCustomRange={setCustomRange}
+      />
+
+      {/* Status filter */}
+      <View style={styles.statusRow}>
+        {STATUS_FILTERS.map((f, i) => {
+          const count = f === 'All' ? counts.all : f === 'Active' ? counts.active : counts.paused;
+          const active = statusFilter === f;
+          return (
+            <React.Fragment key={f}>
+              {i > 0 && <ThemedText variant="body" color="muted" style={styles.pipe}>|</ThemedText>}
+              <TouchableOpacity onPress={() => setStatusFilter(f)}>
+                <ThemedText
+                  variant="body"
+                  color={active ? 'primary' : 'muted'}
+                  style={[styles.txt, active && styles.activeTxt]}
+                >
+                  {f} · {count}
+                </ThemedText>
+              </TouchableOpacity>
+            </React.Fragment>
+          );
+        })}
+      </View>
+
       {isLoading && (
         <ActivityIndicator color={Theme.colors.action.primary} style={{ marginTop: Theme.spacing.xl }} />
       )}
 
       <FlatList
-        data={subs ?? []}
+        data={filtered}
         keyExtractor={(item) => item.id.toString()}
         contentContainerStyle={styles.list}
-        ListEmptyComponent={!isLoading ? <EmptyState title="No active subscriptions" /> : null}
+        ListEmptyComponent={!isLoading ? <EmptyState title="No subscriptions in this view" /> : null}
         ItemSeparatorComponent={() => <Divider />}
         renderItem={({ item }) => {
           const plan = item.subscription_plans ?? {};
+          const daysConsumed = item.days_consumed ?? 0;
+          const total = plan.duration_days ?? 0;
           const daysRemaining = subscriptionDaysRemaining(plan, item);
           const customer = item.profiles?.full_name ?? item.profiles?.phone_number ?? `User #${item.user_id.slice(0, 8)}`;
+          const pmLabel = (item.payment_method ?? 'wallet') === 'wallet' ? 'Wallet' : 'Online';
           return (
-            <View style={styles.row}>
+            <TouchableOpacity
+              style={styles.row}
+              activeOpacity={0.6}
+              onPress={() => openCancel(item)}
+            >
               <View style={styles.rowTop}>
                 <ThemedText variant="body" color="primary" style={styles.txt}>{customer}</ThemedText>
-                <TouchableOpacity onPress={() => openCancel(item)} activeOpacity={0.6}>
-                  <ThemedText variant="small" style={styles.cancelText}>Cancel</ThemedText>
-                </TouchableOpacity>
+                <ThemedText variant="small" color="muted" style={styles.sub}>
+                  {daysConsumed}/{total} consumed
+                </ThemedText>
               </View>
               <View style={styles.rowBottom}>
                 <ThemedText variant="small" color="subtitle" style={styles.sub}>
@@ -143,10 +242,10 @@ export function AdminSubscriptionsScreen({ navigation }: any) {
                   {item.is_paused ? '  · Paused' : ''}
                 </ThemedText>
                 <ThemedText variant="small" color="muted" style={styles.sub}>
-                  {daysRemaining} days left · from {formatDateShort(item.start_date)}
+                  {daysRemaining} left · {pmLabel}
                 </ThemedText>
               </View>
-            </View>
+            </TouchableOpacity>
           );
         }}
       />
@@ -162,12 +261,42 @@ export function AdminSubscriptionsScreen({ navigation }: any) {
               Cancel Subscription
             </ThemedText>
 
-            <ThemedText variant="body" color="subtitle" style={styles.modalLine}>
+            {/* Detail block — read-only summary so admin sees lifecycle state */}
+            <ThemedText variant="body" color="primary" style={styles.modalLine}>
               {target?.customer}
             </ThemedText>
-            <ThemedText variant="small" color="muted" style={styles.modalLine}>
-              {target?.planName} · {target?.daysRemaining} days remaining
-            </ThemedText>
+            {target?.customerPhone ? (
+              <ThemedText variant="small" color="muted" style={styles.modalLine}>
+                {target.customerPhone}
+              </ThemedText>
+            ) : null}
+
+            <View style={styles.detailGrid}>
+              <View style={styles.detailRow}>
+                <ThemedText variant="small" color="muted" style={styles.detailLabel}>Plan</ThemedText>
+                <ThemedText variant="small" color="subtitle" style={styles.detailValue}>
+                  {target?.planName} · ₹{target?.planPrice} / {target?.durationDays}d
+                </ThemedText>
+              </View>
+              <View style={styles.detailRow}>
+                <ThemedText variant="small" color="muted" style={styles.detailLabel}>Started</ThemedText>
+                <ThemedText variant="small" color="subtitle" style={styles.detailValue}>
+                  {target ? formatDateShort(target.startDate) : ''}
+                </ThemedText>
+              </View>
+              <View style={styles.detailRow}>
+                <ThemedText variant="small" color="muted" style={styles.detailLabel}>Consumed</ThemedText>
+                <ThemedText variant="small" color="subtitle" style={styles.detailValue}>
+                  {target?.daysConsumed}/{target?.durationDays} · {target?.daysRemaining} remaining
+                </ThemedText>
+              </View>
+              <View style={styles.detailRow}>
+                <ThemedText variant="small" color="muted" style={styles.detailLabel}>Paid via</ThemedText>
+                <ThemedText variant="small" color="subtitle" style={styles.detailValue}>
+                  {target?.paymentMethod === 'wallet' ? 'Wallet' : (target?.paymentMethod ?? 'wallet')}
+                </ThemedText>
+              </View>
+            </View>
 
             <Divider />
 
@@ -237,9 +366,19 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  cancelText: { color: Theme.colors.status.error, fontSize: S },
   txt: { fontSize: B },
   sub: { fontSize: S },
+  activeTxt: {  },
+  pipe: { marginHorizontal: Theme.spacing.sm, opacity: 0.4, fontSize: B },
+
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Theme.spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Theme.colors.layout.divider,
+  },
 
   // Modal
   modalBackdrop: {
@@ -262,6 +401,18 @@ const styles = StyleSheet.create({
     marginBottom: Theme.spacing.xs,
     fontSize: B,
   },
+  detailGrid: {
+    marginTop: Theme.spacing.xs,
+    marginBottom: Theme.spacing.sm,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 2,
+  },
+  detailLabel: { fontSize: S, letterSpacing: 0.5 },
+  detailValue: { fontSize: S, textAlign: 'right', flex: 1, marginLeft: Theme.spacing.sm },
   modalLabel: {
     letterSpacing: 0.8,
     marginTop: Theme.spacing.md,
