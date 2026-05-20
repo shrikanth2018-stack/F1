@@ -238,10 +238,11 @@ export function AddAddressScreen({ navigation, route, onComplete }: Props) {
         // Edit mode: update in place, leave is_default untouched.
         await updateAddress({ id: editingId, ...basePayload });
       } else {
-        // Add mode: only auto-mark as default if this is the user's first active
-        // address. Otherwise leave default unchanged so they can pick via
-        // the "Set default" toggle on AddressesScreen — the partial unique
-        // index would reject a second default anyway.
+        // Add mode: only auto-mark as default if this is the user's first
+        // active address. Otherwise leave default unchanged — the customer
+        // can promote it from the Edit Address screen's "Make this my
+        // default" action, and the partial unique index would reject a
+        // second default anyway.
         let isFirstAddress = true;
         const userId = session?.user.id;
         if (userId) {

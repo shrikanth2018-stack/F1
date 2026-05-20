@@ -15,9 +15,9 @@
  * and the on_auth_user_phone_updated SQL trigger mirrors the change into
  * profiles.phone_number so subsequent queries stay consistent.
  *
- * The standalone AddressesScreen is still routed for Checkout's
- * address-picker flow; this screen replaces the ProfilePopup → Addresses
- * path so the customer manages identity + addresses on one page.
+ * Checkout reads useAddresses() inline for its address picker, so this is
+ * the only screen the customer uses to *manage* their saved addresses —
+ * no separate Addresses screen exists anymore.
  */
 
 import React, { useEffect, useState } from 'react';
