@@ -38,7 +38,9 @@ import {
   type EssentialRow,
   type PlanRow,
 } from '../../utils/csvParsers';
+import { downloadCsvString } from '../../utils/exportCsv';
 import type { AdminScreenProps } from '../../navigation/types';
+import { Platform } from 'react-native';
 
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
@@ -110,27 +112,15 @@ export function ImportItemsScreen({ navigation, route }: AdminScreenProps<'Impor
   // ── Download template ──────────────────────────────────
   const handleDownloadTemplate = async () => {
     try {
-      // SDK 54: the classic documentDirectory / read/writeAsStringAsync API
-      // moved to the /legacy entry; the default export is the new File API.
-      const FileSystem = require('expo-file-system/legacy');
-      const Sharing = require('expo-sharing');
       const csv = isMenu
         ? buildMenuTemplate(cycles as AnyCycle[])
         : isPlans
           ? buildPlansTemplate(cycles as AnyCycle[], menuItems as AnyItem[], essItems as AnyItem[])
           : buildEssentialsTemplate(cycles as AnyCycle[]);
       const name = isMenu ? 'menu_import_template.csv' : isPlans ? 'plans_import_template.csv' : 'essentials_import_template.csv';
-      const uri = FileSystem.documentDirectory + name;
-      await FileSystem.writeAsStringAsync(uri, csv, {
-        encoding: FileSystem.EncodingType.UTF8,
-      });
-      await Sharing.shareAsync(uri, {
-        mimeType: 'text/csv',
-        UTI: 'public.comma-separated-values-text',
-        dialogTitle: 'Save template CSV',
-      });
+      await downloadCsvString(name, csv);
     } catch {
-      Alert.alert('Error', 'Could not generate template. Ensure expo-file-system and expo-sharing are installed.');
+      Alert.alert('Error', 'Could not generate template.');
     }
   };
 
@@ -138,9 +128,6 @@ export function ImportItemsScreen({ navigation, route }: AdminScreenProps<'Impor
   const handleUpload = async () => {
     try {
       const DocumentPicker = require('expo-document-picker');
-      // SDK 54: the classic documentDirectory / read/writeAsStringAsync API
-      // moved to the /legacy entry; the default export is the new File API.
-      const FileSystem = require('expo-file-system/legacy');
 
       const result = await DocumentPicker.getDocumentAsync({
         type: ['text/csv', 'text/comma-separated-values', 'public.comma-separated-values-text', '*/*'],
@@ -152,9 +139,17 @@ export function ImportItemsScreen({ navigation, route }: AdminScreenProps<'Impor
       const asset = result.assets[0];
       setFileName(asset.name ?? 'file.csv');
 
-      const csvText = await FileSystem.readAsStringAsync(asset.uri, {
-        encoding: FileSystem.EncodingType.UTF8,
-      });
+      // Web: the picker hands us a real File on asset.file — read it directly.
+      // Native: read via the FileSystem URI (the /legacy entry in SDK 54).
+      let csvText: string;
+      if (Platform.OS === 'web' && (asset as any).file) {
+        csvText = await (asset as any).file.text();
+      } else {
+        const FileSystem = require('expo-file-system/legacy');
+        csvText = await FileSystem.readAsStringAsync(asset.uri, {
+          encoding: FileSystem.EncodingType.UTF8,
+        });
+      }
 
       const rows = isMenu ? parseMenuCsv(csvText) : isPlans ? parsePlansCsv(csvText) : parseEssentialsCsv(csvText);
 

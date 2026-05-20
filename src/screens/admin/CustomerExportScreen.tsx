@@ -25,7 +25,7 @@ import { useBranches } from '../../hooks/useBranches';
 import { useDeliveryHubs } from '../../hooks/useDeliveryHubs';
 import { useDeliveryZones } from '../../hooks/useDeliveryZones';
 import { useCustomerExport, type CustomerExportRow } from '../../hooks/useCustomerExport';
-import { buildCsv } from '../../utils/csvBuilder';
+import { exportCsv } from '../../utils/exportCsv';
 import type { AdminScreenProps } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
@@ -138,13 +138,8 @@ export function CustomerExportScreen({ navigation }: AdminScreenProps<'CustomerE
     }
     setDownloading(true);
     try {
-      // SDK 54: classic documentDirectory / writeAsStringAsync moved to /legacy.
-      const FileSystem = require('expo-file-system/legacy');
-      const Sharing = require('expo-sharing');
-
       const headers = activeCols.map((c) => c.header);
       const body = rows.map((r) => activeCols.map((c) => c.read(r)));
-      const csv = buildCsv(headers, body);
 
       // Filename: customers_{branch}_{hub}_{zone}_{status}_{YYYYMMDD-HHMM}.csv
       const slugBranch = branchId
@@ -159,16 +154,8 @@ export function CustomerExportScreen({ navigation }: AdminScreenProps<'CustomerE
         : 'all';
       const ts = stamp();
       const name = `customers_${slugBranch}_${slugHub}_${slugZone}_${status}_${ts}.csv`;
-      const uri = FileSystem.documentDirectory + name;
 
-      await FileSystem.writeAsStringAsync(uri, csv, {
-        encoding: FileSystem.EncodingType.UTF8,
-      });
-      await Sharing.shareAsync(uri, {
-        mimeType: 'text/csv',
-        UTI: 'public.comma-separated-values-text',
-        dialogTitle: 'Save customer export',
-      });
+      await exportCsv(name, headers, body);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Unknown error';
       Alert.alert('Download failed', msg);
