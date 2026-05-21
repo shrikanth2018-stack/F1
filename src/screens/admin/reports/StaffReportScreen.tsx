@@ -4,7 +4,7 @@
  * Period: Weekly | Monthly | Quarterly
  * Flat rows: Name | Days Present | Total Hours
  * Footer: Print | Download PDF
- * Requires: npx expo install expo-print expo-sharing
+ * Printing & PDF go through utils/printHtml (web + native).
  */
 
 import React, { useState, useMemo } from 'react';
@@ -19,6 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../../theme';
 import { ThemedText } from '../../../components/ThemedText';
 import { EmptyState } from '../../../components/EmptyState';
+import { printHtml, sharePdf } from '../../../utils/printHtml';
 import { useStaffAttendanceReport } from '../../../hooks/useReports';
 import type { AdminNavProp } from '../../../navigation/types';
 import {
@@ -54,21 +55,17 @@ function buildHtml(
 
 async function handlePrint(html: string) {
   try {
-    const Print = require('expo-print');
-    await Print.printAsync({ html });
+    await printHtml(html);
   } catch {
-    Alert.alert('Print unavailable', 'Run: npx expo install expo-print expo-sharing');
+    Alert.alert('Print unavailable', 'Could not open the print dialog.');
   }
 }
 
 async function handleDownload(html: string) {
   try {
-    const Print = require('expo-print');
-    const Sharing = require('expo-sharing');
-    const { uri } = await Print.printToFileAsync({ html });
-    await Sharing.shareAsync(uri, { UTI: '.pdf', mimeType: 'application/pdf' });
+    await sharePdf(html, 'Staff Report');
   } catch {
-    Alert.alert('PDF unavailable', 'Run: npx expo install expo-print expo-sharing');
+    Alert.alert('PDF unavailable', 'Could not export the PDF.');
   }
 }
 

@@ -30,7 +30,7 @@ import {
   Text,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as Print from 'expo-print';
+import { printHtml } from '../../utils/printHtml';
 import { Theme } from '../../theme';
 
 const PACKING_ICONS = {
@@ -208,7 +208,7 @@ export function StaffDashboard() {
     Linking.openURL(`tel:${phone}`);
   };
 
-  // ── Print helpers (expo-print) ───────────────────────────
+  // ── Print helpers (web + native, via utils/printHtml) ─────
   const handlePrintOrderLabel = async (item: any) => {
     const addr = item.customer_addresses;
     const items = (item.order_items ?? [])
@@ -230,7 +230,7 @@ export function StaffDashboard() {
       </div>
     </body></html>`;
     try {
-      await Print.printAsync({ html });
+      await printHtml(html);
     } catch {
       Alert.alert('Print Error', 'Could not open print dialog.');
     }
@@ -283,7 +283,7 @@ export function StaffDashboard() {
       </div>`;
     }).join('');
     const html = `<!DOCTYPE html><html><head><style>${LABEL_STYLES}</style></head><body>${sections}</body></html>`;
-    try { await Print.printAsync({ html }); }
+    try { await printHtml(html); }
     catch { Alert.alert('Print Error', 'Could not open print dialog.'); }
   };
 
@@ -312,7 +312,7 @@ export function StaffDashboard() {
         </div>`;
       }).join('');
     const html = `<!DOCTYPE html><html><head><style>${LABEL_STYLES}</style></head><body>${sections}</body></html>`;
-    try { await Print.printAsync({ html }); }
+    try { await printHtml(html); }
     catch { Alert.alert('Print Error', 'Could not open print dialog.'); }
   };
 
@@ -350,7 +350,7 @@ export function StaffDashboard() {
       </table>
     </body></html>`;
     try {
-      await Print.printAsync({ html });
+      await printHtml(html);
     } catch {
       Alert.alert('Print Error', 'Could not open print dialog.');
     }

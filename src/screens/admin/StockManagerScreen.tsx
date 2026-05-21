@@ -29,8 +29,8 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as Print from 'expo-print';
-import * as Sharing from 'expo-sharing';
+import { sharePdf } from '../../utils/printHtml';
+import { confirmDialog, infoDialog } from '../../utils/confirmDialog';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { Divider } from '../../components/Divider';
@@ -278,8 +278,7 @@ function HistoryTab() {
   const handleReprint = async (batch: any) => {
     const html = buildOrderListHTML(batch.items_snapshot, batch.printed_at);
     try {
-      const { uri } = await Print.printToFileAsync({ html });
-      await Sharing.shareAsync(uri, { UTI: 'com.adobe.pdf', mimeType: 'application/pdf' });
+      await sharePdf(html, 'Stock Order List');
     } catch {
       Alert.alert('Error', 'Could not generate PDF.');
     }
@@ -481,40 +480,35 @@ export function StockManagerScreen({ navigation }: { navigation: AdminNavProp })
       : activeItems.filter((i) => i.category === scope);
 
     if (targetItems.length === 0) {
-      Alert.alert('Empty', scope === 'all' ? 'No items in the order list.' : `No ${scope} items to print.`);
+      await infoDialog('Empty', scope === 'all' ? 'No items in the order list.' : `No ${scope} items to print.`);
       return;
     }
 
     const label = scope === 'all' ? 'all items' : scope;
-    Alert.alert(
-      scope === 'all' ? 'Print All?' : `Print ${scope}?`,
-      `Print ${targetItems.length} ${label === 'all items' ? 'item' : label.toLowerCase() + ' item'}${targetItems.length !== 1 ? 's' : ''} and archive this batch? These items will be cleared from the current list.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Print & Archive',
-          onPress: async () => {
-            printBatch.mutate(targetItems, {
-              onSuccess: async (_batchId) => {
-                const html = buildOrderListHTML(
-                  targetItems.map((i) => ({ name: i.name, qty: i.qty, category: i.category })),
-                );
-                try {
-                  const { uri } = await Print.printToFileAsync({ html });
-                  await Sharing.shareAsync(uri, {
-                    UTI: 'com.adobe.pdf',
-                    mimeType: 'application/pdf',
-                  });
-                } catch {
-                  Alert.alert('Archived', `Batch archived. PDF export failed — reprint from History.`);
-                }
-              },
-              onError: (e: any) => Alert.alert('Error', e.message),
-            });
-          },
-        },
-      ],
-    );
+    // confirmDialog (not Alert.alert) — RN-Web does not render a multi-button
+    // Alert, so the confirm step silently no-op'd on the web app and the print
+    // never ran. confirmDialog uses window.confirm on web, DialogHost on native.
+    const ok = await confirmDialog({
+      title: scope === 'all' ? 'Print All?' : `Print ${scope}?`,
+      message: `Print ${targetItems.length} ${label === 'all items' ? 'item' : label.toLowerCase() + ' item'}${targetItems.length !== 1 ? 's' : ''} and archive this batch? These items will be cleared from the current list.`,
+      confirmLabel: 'Print & Archive',
+      cancelLabel: 'Cancel',
+    });
+    if (!ok) return;
+
+    printBatch.mutate(targetItems, {
+      onSuccess: async (_batchId) => {
+        const html = buildOrderListHTML(
+          targetItems.map((i) => ({ name: i.name, qty: i.qty, category: i.category })),
+        );
+        try {
+          await sharePdf(html, 'Stock Order List');
+        } catch {
+          await infoDialog('Archived', 'Batch archived. PDF export failed — reprint from History.');
+        }
+      },
+      onError: (e: any) => infoDialog('Error', e.message),
+    });
   };
 
   const handlePrintCategory = (cat: Category) => runPrint(cat);

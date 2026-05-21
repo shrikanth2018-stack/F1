@@ -20,6 +20,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../../theme';
 import { ThemedText } from '../../../components/ThemedText';
 import { EmptyState } from '../../../components/EmptyState';
+import { printHtml, sharePdf } from '../../../utils/printHtml';
 import { useHubReport, type HubStat } from '../../../hooks/useHubReport';
 import { formatPriceShort } from '../../../utils/formatters';
 import { todayIST, istDateWithOffset } from '../../../utils/istDate';
@@ -106,21 +107,17 @@ function buildHtml(periodTitle: string, hubs: HubStat[], totals: any): string {
 
 async function handlePrint(html: string) {
   try {
-    const Print = require('expo-print');
-    await Print.printAsync({ html });
+    await printHtml(html);
   } catch {
-    Alert.alert('Print unavailable', 'Run: npx expo install expo-print expo-sharing');
+    Alert.alert('Print unavailable', 'Could not open the print dialog.');
   }
 }
 
 async function handleShare(html: string) {
   try {
-    const Print = require('expo-print');
-    const Sharing = require('expo-sharing');
-    const { uri } = await Print.printToFileAsync({ html });
-    await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: 'Hub Report' });
+    await sharePdf(html, 'Hub Report');
   } catch {
-    Alert.alert('Share unavailable', 'Run: npx expo install expo-print expo-sharing');
+    Alert.alert('Share unavailable', 'Could not export the PDF.');
   }
 }
 
