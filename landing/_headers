@@ -1,0 +1,16 @@
+# Cloudflare Pages — custom response headers.
+# https://developers.cloudflare.com/pages/configuration/headers/
+#
+# Always revalidate the stylesheet (and the pages that reference it) so a CSS
+# update never leaves a returning visitor on a stale cached copy. The ETag
+# makes revalidation cheap: a 304 "Not Modified" when nothing changed.
+# Belt-and-suspenders with the ?v= query string on the <link> in the HTML.
+
+/styles.css
+  Cache-Control: public, max-age=0, must-revalidate
+
+/
+  Cache-Control: public, max-age=0, must-revalidate
+
+/faq
+  Cache-Control: public, max-age=0, must-revalidate
