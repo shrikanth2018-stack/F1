@@ -6,16 +6,16 @@
 
   <!-- ── SEO PRIMARY ─────────────────────────────────────── -->
   <title>1stOne — Healthy meals, delivered daily</title>
-  <meta name="description" content="1stOne delivers fresh, home-style meals daily across Siddapur, Uttara Kannada. Subscribe to a plan or order single meals — no middlemen, no factory food." />
-  <meta name="keywords" content="meal delivery, healthy food, Siddapur, Uttara Kannada, Karnataka, tiffin service, home food, subscription meals" />
-  <meta name="theme-color" content="#151515" />
+  <meta name="description" content="1stOne delivers fresh, home-style meals and daily essentials across Siddapur, Uttara Kannada. Order a single meal or subscribe — pause any day, pay by wallet or UPI, track every delivery. No middlemen, no factory food." />
+  <meta name="keywords" content="meal delivery, healthy food, Siddapur, Uttara Kannada, Karnataka, tiffin service, home food, subscription meals, meal subscription, daily essentials delivery" />
+  <meta name="theme-color" content="#0a0b0d" />
   <link rel="canonical" href="https://1stone.in/" />
 
   <!-- ── OPENGRAPH (Facebook, WhatsApp, LinkedIn previews) ─ -->
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://1stone.in/" />
   <meta property="og:title" content="1stOne — Healthy meals, delivered daily" />
-  <meta property="og:description" content="Fresh, home-style meals delivered daily. Subscribe once, eat well every day." />
+  <meta property="og:description" content="Fresh, home-style meals delivered daily. Subscribe once, eat well every day — pause any day, pay by wallet or UPI." />
   <meta property="og:image" content="https://images.unsplash.com/photo-1742281258189-3b933879867a?fm=jpg&q=80&w=1200&h=630&fit=crop" />
   <meta property="og:locale" content="en_IN" />
 
@@ -31,10 +31,12 @@
     "@context": "https://schema.org",
     "@type": "FoodEstablishment",
     "name": "1stOne",
-    "description": "Healthy home-style meals, delivered daily.",
+    "description": "Healthy home-style meals and daily essentials, delivered daily.",
     "url": "https://1stone.in/",
     "telephone": "+91-9448-36-4017",
     "email": "support@1stone.in",
+    "servesCuisine": "Home-style Indian",
+    "paymentAccepted": "UPI, Credit Card, Debit Card, Net Banking, Wallet",
     "address": {
       "@type": "PostalAddress",
       "addressLocality": "Siddapur",
@@ -47,6 +49,11 @@
     }
   }
   </script>
+
+  <!-- ── FONTS (Inter — crisp UI typeface) ───────────────── -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
 
   <!-- ── FAVICON (replace later with brand mark) ─────────── -->
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%234ECDC4'/%3E%3Ctext x='50' y='65' font-family='Arial' font-size='50' font-weight='400' fill='white' text-anchor='middle'%3E1%3C/text%3E%3C/svg%3E" />
@@ -66,14 +73,15 @@
       <nav class="nav">
         <a href="#how">How it works</a>
         <a href="#plans">Plans</a>
+        <a href="#features">Features</a>
         <a href="#area">Coverage</a>
         <a href="faq.html">FAQ</a>
-        <a href="#contact">Contact</a>
+        <a href="#contact" class="nav-cta">Contact</a>
       </nav>
     </div>
   </header>
 
-  <!-- ── LAUNCHING-SHORTLY NOTICE ───────────────────────── -->
+  <!-- ── LAUNCHING-SHORTLY NOTICE (sticky, below header) ──── -->
   <div class="notice" role="status">
     <div class="container">
       Launching shortly — we'll notify you the moment service is live.
@@ -84,15 +92,23 @@
   <section class="hero" id="hero">
     <div class="hero-bg" id="hero-banner"></div>
     <div class="hero-overlay"></div>
+    <div class="hero-glow" aria-hidden="true"></div>
     <div class="container hero-content">
-      <h1 class="hero-sanskrit" lang="sa">सह नौ भुनक्तु</h1>
-      <p class="hero-translit">Saha Nau Bhunaktu</p>
-      <p class="hero-meaning">"May we eat together"</p>
+      <p class="hero-shloka" lang="sa">सह नौ भुनक्तु</p>
+      <p class="hero-translit">Saha Nau Bhunaktu — “May we eat together”</p>
 
-      <h2 class="hero-headline">Your home kitchen is now in your pocket</h2>
-      <p class="hero-subhead">Healthy meals, delivered daily.</p>
+      <h1 class="hero-headline">Your home kitchen,<br /><span class="grad">now in your pocket.</span></h1>
+      <p class="hero-subhead">
+        Fresh, home-style meals — and daily essentials — delivered to your door,
+        every single day.
+      </p>
 
       <div class="cta-row">
+        <a href="#how" class="btn btn-primary">See how it works</a>
+        <a href="#features" class="btn btn-ghost">Explore the app</a>
+      </div>
+
+      <div class="store-badges">
         <a href="#" class="badge ios" aria-label="Download on the App Store" data-track="ios-download">
           <span class="badge-sub">Download on the</span>
           <span class="badge-main">App Store</span>
@@ -102,57 +118,126 @@
           <span class="badge-main">Google Play</span>
         </a>
       </div>
-      <p class="cta-note">Apps coming soon — bookmark this page or contact us below.</p>
+      <p class="cta-note">Apps coming soon — bookmark this page or reach us below.</p>
     </div>
   </section>
 
   <!-- ── SECTION 1: HOW IT WORKS ─────────────────────────── -->
   <section class="section" id="how">
     <div class="container">
-      <h2>How it works</h2>
-      <p>
-        Open the 1stOne app and browse the day's fresh menu or choose a subscription plan.
-        Pick your delivery cycle — breakfast, lunch, snacks, or dinner — and pay via UPI or wallet.
-        Our team prepares your meal in our home kitchen the same morning and a local rider
-        hand-delivers it warm to your door. No middlemen. No factory food. Just home cooking,
-        scaled.
+      <p class="eyebrow">How it works</p>
+      <h2>Home cooking, four taps away</h2>
+      <p class="section-lead">
+        No middlemen. No factory food. Just home cooking, prepared fresh each day
+        and hand-delivered warm.
       </p>
+      <ol class="steps">
+        <li class="step">
+          <span class="step-num">01</span>
+          <h3>Browse your meal cycle</h3>
+          <p>Open the app and pick a cycle — <strong>breakfast, lunch, snacks, or dinner</strong>. Each shows the day's fresh menu and its order cut-off.</p>
+        </li>
+        <li class="step">
+          <span class="step-num">02</span>
+          <h3>Order before the cut-off</h3>
+          <p>Add meals and essentials, then pay by UPI, card, or your 1stOne wallet. The app shows exactly when each item arrives — today or tomorrow.</p>
+        </li>
+        <li class="step">
+          <span class="step-num">03</span>
+          <h3>We cook it fresh</h3>
+          <p>After the cut-off, our team prepares your meal fresh in our home kitchen — sealed warm in food-grade packaging.</p>
+        </li>
+        <li class="step">
+          <span class="step-num">04</span>
+          <h3>Our staff will deliver</h3>
+          <p>Our delivery staff hand-delivers during the cycle window. Track every stage in the app and get a ping when it's on the way.</p>
+        </li>
+      </ol>
     </div>
   </section>
 
   <!-- ── SECTION 2: SUBSCRIPTION PLANS ───────────────────── -->
   <section class="section section-alt" id="plans">
     <div class="container">
-      <h2>Subscription plans</h2>
-      <p>
-        Subscribe once and forget about daily ordering. Choose a 7-day, 15-day, or 30-day plan
-        and lock in your meals at the best price. Pause any day with one tap, skip cycles
-        when you travel, resume whenever. All plans include the same fresh menu — only the
-        duration changes. Wallet credits roll over, so unused days never go to waste.
+      <p class="eyebrow">Subscriptions</p>
+      <h2>Subscribe once, eat well every day</h2>
+      <p class="section-lead">
+        Choose a plan length that suits you and lock in your meals at the best price.
+        It delivers automatically, every day — no daily ordering, no forgetting.
       </p>
+      <ul class="plan-points">
+        <li><strong>Pause anytime.</strong> Travelling or eating out? Pause with one tap and resume whenever you like.</li>
+        <li><strong>Skip single days.</strong> Tap any date on the calendar to skip just that day.</li>
+        <li><strong>Never lose a paid meal.</strong> Pauses and skips don't burn days — your plan simply runs longer until every meal you paid for is delivered.</li>
+        <li><strong>Food or essentials.</strong> Subscribe to daily meals, daily essentials, or both.</li>
+      </ul>
     </div>
   </section>
 
-  <!-- ── SECTION 3: COVERAGE AREA ────────────────────────── -->
-  <section class="section" id="area">
+  <!-- ── SECTION 3: FEATURES ─────────────────────────────── -->
+  <section class="section" id="features">
     <div class="container">
-      <h2>Coverage area</h2>
-      <p>
+      <p class="eyebrow">Features</p>
+      <h2>Everything in one app</h2>
+      <p class="section-lead">Order, pay, track, and earn — all in one place, built to make eating well effortless.</p>
+      <div class="features">
+        <div class="feature-card">
+          <h3>Single meals or subscriptions</h3>
+          <p>Order a one-off meal for today, or subscribe for daily delivery. Mix and match as you go.</p>
+        </div>
+        <div class="feature-card">
+          <h3>Daily essentials</h3>
+          <p>Add household essentials to the same delivery run as your meals — one delivery, one trip.</p>
+        </div>
+        <div class="feature-card">
+          <h3>1stOne Wallet</h3>
+          <p>Top up once for one-tap checkout. Cancellations refund to your wallet instantly — no waiting.</p>
+        </div>
+        <div class="feature-card">
+          <h3>Loyalty points</h3>
+          <p>Earn points as you order and redeem them as wallet credit. Eating well pays you back.</p>
+        </div>
+        <div class="feature-card">
+          <h3>Refer &amp; earn</h3>
+          <p>Invite friends with your personal code — you both get rewarded when they join.</p>
+        </div>
+        <div class="feature-card">
+          <h3>Live order tracking</h3>
+          <p>Watch your order move from kitchen to door, with a heads-up as it progresses.</p>
+        </div>
+        <div class="feature-card">
+          <h3>Flexible payments</h3>
+          <p>UPI, debit/credit cards, and net banking via Razorpay — or pay instantly from your wallet.</p>
+        </div>
+        <div class="feature-card">
+          <h3>Honest pricing</h3>
+          <p>The price you see is the price you pay — taxes included, no surprises at checkout.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── SECTION 4: COVERAGE AREA ────────────────────────── -->
+  <section class="section section-alt" id="area">
+    <div class="container">
+      <p class="eyebrow">Coverage</p>
+      <h2>Now serving Uttara Kannada</h2>
+      <p class="section-lead">
         We currently deliver across <strong>Siddapur</strong> and surrounding zones in
-        <strong>Uttara Kannada</strong> district, Karnataka. Our coverage expands as more
-        home cooks join the network. Enter your address in the app to check live availability
-        — if you're outside our base zone, we may still deliver via a partner hub.
+        <strong>Uttara Kannada</strong> district, Karnataka. Enter your address in the app
+        and it checks availability live — drop a pin and we'll tell you instantly whether
+        we serve your spot. Just outside our base zone? We may still reach you through a
+        nearby delivery hub. Our coverage grows as more home cooks join the network.
       </p>
     </div>
   </section>
 
   <!-- ── CONTACT / FEEDBACK ──────────────────────────────── -->
-  <section class="section section-alt" id="contact">
+  <section class="section" id="contact">
     <div class="container">
+      <p class="eyebrow">Contact</p>
       <h2>Help &amp; feedback</h2>
-      <p>
-        Question, suggestion, or partnership idea? We'd love to hear it.
-      </p>
+      <p class="section-lead">Question, suggestion, or partnership idea? We'd love to hear it.</p>
       <ul class="contact-list">
         <li>
           <span class="contact-label">Email</span>
