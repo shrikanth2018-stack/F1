@@ -193,4 +193,4 @@ These are deliberate: the customer-facing action (cancel/charge) always complete
 
 ---
 
-*End of Doc 4. Companion docs: Doc 1 (Architecture & Data Model), Doc 2 (Business Logic & Flows), Doc 3 (Screen-by-Screen).*
+*End of Doc 4. Companion docs: Doc 1 (Architecture & Data Model), Doc 2 (Business Logic & Flows), Doc 3 (Screen-by-Screen), **Doc 07 (Incident Playbooks & Recovery — outages, OTA rollback, key rotation, DR)**.*

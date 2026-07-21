@@ -283,3 +283,18 @@ supabase functions deploy send-push          --no-verify-jwt   # #10 Expo timeou
 
 (Other functions pick up the shared `_shared/notifications.ts` timeout
 whenever they are next deployed — no urgency.)
+
+## 13. External heartbeat (2026-07-21, health report Slice C, #5)
+
+**SQL (run in SQL editor, idempotent):**
+
+```
+supabase/sql/cron_heartbeat.sql
+```
+
+Prereq: create the healthchecks.io check (Period 5 min, Grace 10 min) and
+store its ping URL first — see the file header for the exact
+`INSERT INTO app_config` statement. New cron `external-heartbeat` (*/5 min):
+pings healthchecks.io; `/fail` on recent cron failures; silence when the
+chain itself is dead → healthchecks.io emails the owner. Incident playbooks:
+`docs/07-incident-playbooks.md`.
