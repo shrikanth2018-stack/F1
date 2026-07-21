@@ -33,27 +33,6 @@ export function useDeliveryHubs() {
   );
 }
 
-/**
- * User IDs of assigned hub operators (branch-scoped). A hub operator is a
- * profile with a non-null assigned_hub_id. Used by the admin Note-to-Staff
- * push so a 'Hub' note reaches hub operators directly — they are role
- * 'customer', so a role-based staff push never reaches them.
- */
-export function useHubOperatorIds() {
-  const bf = useBranchFilter();
-  return useSupabaseQuery<{ id: string }>(
-    [...QUERY_KEYS.HUBS, 'operators', bf.isActive ? bf.branchId ?? 'all' : 'off'],
-    () => {
-      let q = supabase
-        .from('profiles')
-        .select('id')
-        .not('assigned_hub_id', 'is', null);
-      if (bf.isActive && bf.branchId != null) q = q.eq('branch_id', bf.branchId);
-      return q;
-    },
-  );
-}
-
 /** Active hubs (id + name only) — for zone editor hub picker */
 export function useActiveHubs() {
   return useSupabaseQuery<{ id: number; hub_name: string }>(

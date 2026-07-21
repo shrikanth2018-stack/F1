@@ -63,6 +63,21 @@ export function useRealtimeOrders(enabled = true) {
     let channel: ReturnType<typeof supabase.channel> | null = null;
     let rolloverTimer: ReturnType<typeof setTimeout> | null = null;
 
+    // Coalesce bursts of order events into one invalidation round (health
+    // report #9). The daily manifest inserts one row per subscription and
+    // bulk-advance updates N rows — that's N realtime events in seconds,
+    // each previously triggering 6 query-family invalidations on every
+    // mounted dashboard, right at kitchen-push time. Trailing 500 ms
+    // debounce: first event schedules the round, the burst rides along.
+    let invalidateTimer: ReturnType<typeof setTimeout> | null = null;
+    const debouncedInvalidate = () => {
+      if (invalidateTimer) return;
+      invalidateTimer = setTimeout(() => {
+        invalidateTimer = null;
+        invalidateOrderQueries(queryClient);
+      }, 500);
+    };
+
     const subscribe = () => {
       const today = todayIST();
       channel = supabase
@@ -76,7 +91,7 @@ export function useRealtimeOrders(enabled = true) {
             // No dispatch_date filter: the active batch's push_date can be
             // tomorrow (cross-midnight cycles); the staff queries scope to
             // the batch themselves, so catching every order change is right.
-            invalidateOrderQueries(queryClient);
+            debouncedInvalidate();
           },
         )
         .on(
@@ -118,6 +133,7 @@ export function useRealtimeOrders(enabled = true) {
 
     return () => {
       if (rolloverTimer) clearTimeout(rolloverTimer);
+      if (invalidateTimer) clearTimeout(invalidateTimer);
       if (channel) supabase.removeChannel(channel);
     };
   }, [enabled, queryClient, instanceId]);

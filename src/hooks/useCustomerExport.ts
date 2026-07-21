@@ -60,47 +60,60 @@ export function useCustomerExport(filters: CustomerExportFilters) {
       // is_default=true entry client-side. PostgREST embed names match FK names.
       // Note: profiles.branch_id has no FK to branches in the live schema,
       // so we fetch branches separately and join by id below.
-      let query = supabase
-        .from('profiles')
-        .select(`
-          id,
-          full_name,
-          phone_number,
-          wallet_balance,
-          loyalty_points,
-          created_at,
-          branch_id,
-          role,
-          customer_addresses (
-            id,
-            is_default,
-            is_active,
-            full_name,
-            phone_number,
-            address_line,
-            city,
-            pincode,
-            hub_id,
-            zone_id,
-            delivery_hubs (hub_name),
-            delivery_zones (zone_name)
-          )
-        `)
-        .eq('role', 'customer');
-
-      if (filters.branchId != null) {
-        query = query.eq('branch_id', filters.branchId);
-      }
+      // Health report #8: single unbounded selects are silently capped at
+      // ~1000 rows by PostgREST — past that, the export quietly dropped
+      // customers. Page through everything explicitly.
+      const PAGE = 1000;
+      const fetchAllProfiles = async () => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const all: any[] = [];
+        for (let from = 0; ; from += PAGE) {
+          let query = supabase
+            .from('profiles')
+            .select(`
+              id,
+              full_name,
+              phone_number,
+              wallet_balance,
+              loyalty_points,
+              created_at,
+              branch_id,
+              role,
+              customer_addresses (
+                id,
+                is_default,
+                is_active,
+                full_name,
+                phone_number,
+                address_line,
+                city,
+                pincode,
+                hub_id,
+                zone_id,
+                delivery_hubs (hub_name),
+                delivery_zones (zone_name)
+              )
+            `)
+            .eq('role', 'customer');
+          if (filters.branchId != null) {
+            query = query.eq('branch_id', filters.branchId);
+          }
+          const { data: page, error } = await query
+            .order('id', { ascending: true })
+            .range(from, from + PAGE - 1);
+          if (error) throw new Error(error.message);
+          all.push(...(page ?? []));
+          if ((page ?? []).length < PAGE) break;
+        }
+        return all;
+      };
 
       // Branches list is tiny (1-2 rows today) — fetch separately and merge.
-      const [profilesRes, branchesRes] = await Promise.all([
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (query as any),
+      const [data, branchesRes] = await Promise.all([
+        fetchAllProfiles(),
         supabase.from('branches').select('id, branch_name'),
       ]);
-      if (profilesRes.error) throw new Error(profilesRes.error.message);
       if (branchesRes.error) throw new Error(branchesRes.error.message);
-      const data = profilesRes.data;
       const branchNameById: Record<number, string> = {};
       for (const b of (branchesRes.data ?? []) as Array<{ id: number; branch_name: string }>) {
         branchNameById[b.id] = b.branch_name;
@@ -149,22 +162,38 @@ export function useCustomerExport(filters: CustomerExportFilters) {
       if (filters.needAggregates && rows.length > 0) {
         const userIds = rows.map((r) => r.id);
 
-        const [ordersRes, subsRes] = await Promise.all([
-          supabase
-            .from('orders')
-            .select('user_id, dispatch_date')
-            .in('user_id', userIds),
-          supabase
+        // Chunk the IN() filters (URL length) and page within each chunk
+        // (200 users × many orders can exceed the ~1000-row cap) (#8).
+        const CHUNK = 200;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const allOrders: any[] = [];
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const allSubs: any[] = [];
+        for (let i = 0; i < userIds.length; i += CHUNK) {
+          const chunk = userIds.slice(i, i + CHUNK);
+          for (let from = 0; ; from += PAGE) {
+            const { data: page, error } = await supabase
+              .from('orders')
+              .select('user_id, dispatch_date')
+              .in('user_id', chunk)
+              .order('id', { ascending: true })
+              .range(from, from + PAGE - 1);
+            if (error) throw new Error(error.message);
+            allOrders.push(...(page ?? []));
+            if ((page ?? []).length < PAGE) break;
+          }
+          const { data: subsPage, error: subsErr } = await supabase
             .from('user_subscriptions')
             .select('user_id, is_active')
-            .in('user_id', userIds)
-            .eq('is_active', true),
-        ]);
-        if (ordersRes.error) throw new Error(ordersRes.error.message);
-        if (subsRes.error) throw new Error(subsRes.error.message);
+            .in('user_id', chunk)
+            .eq('is_active', true)
+            .range(0, PAGE - 1);
+          if (subsErr) throw new Error(subsErr.message);
+          allSubs.push(...(subsPage ?? []));
+        }
 
         const orderTally: Record<string, { count: number; last: string | null }> = {};
-        for (const o of (ordersRes.data ?? []) as Array<{ user_id: string; dispatch_date: string }>) {
+        for (const o of allOrders as Array<{ user_id: string; dispatch_date: string }>) {
           const t = orderTally[o.user_id] ?? { count: 0, last: null };
           t.count += 1;
           if (o.dispatch_date && (t.last == null || o.dispatch_date > t.last)) {
@@ -173,7 +202,7 @@ export function useCustomerExport(filters: CustomerExportFilters) {
           orderTally[o.user_id] = t;
         }
         const subCount: Record<string, number> = {};
-        for (const s of (subsRes.data ?? []) as Array<{ user_id: string }>) {
+        for (const s of allSubs as Array<{ user_id: string }>) {
           subCount[s.user_id] = (subCount[s.user_id] ?? 0) + 1;
         }
 
@@ -194,24 +223,30 @@ export function useCustomerExport(filters: CustomerExportFilters) {
           const since = new Date(Date.now() - ACTIVE_WINDOW_DAYS * 86400_000).toISOString();
           const userIds = rows.map((r) => r.id);
           if (userIds.length > 0) {
-            const [recentRes, subsRes] = await Promise.all([
-              supabase
-                .from('orders')
-                .select('user_id')
-                .in('user_id', userIds)
-                .gte('created_at', since),
-              supabase
-                .from('user_subscriptions')
-                .select('user_id')
-                .in('user_id', userIds)
-                .eq('is_active', true),
-            ]);
-            if (recentRes.error) throw new Error(recentRes.error.message);
-            if (subsRes.error) throw new Error(subsRes.error.message);
-            const activeIds = new Set<string>([
-              ...((recentRes.data ?? []) as Array<{ user_id: string }>).map((o) => o.user_id),
-              ...((subsRes.data ?? []) as Array<{ user_id: string }>).map((s) => s.user_id),
-            ]);
+            // Same chunk+page treatment as the aggregates pass (#8).
+            const CHUNK = 200;
+            const activeIds = new Set<string>();
+            for (let i = 0; i < userIds.length; i += CHUNK) {
+              const chunk = userIds.slice(i, i + CHUNK);
+              const [recentRes, subsRes] = await Promise.all([
+                supabase
+                  .from('orders')
+                  .select('user_id')
+                  .in('user_id', chunk)
+                  .gte('created_at', since)
+                  .range(0, PAGE - 1),
+                supabase
+                  .from('user_subscriptions')
+                  .select('user_id')
+                  .in('user_id', chunk)
+                  .eq('is_active', true)
+                  .range(0, PAGE - 1),
+              ]);
+              if (recentRes.error) throw new Error(recentRes.error.message);
+              if (subsRes.error) throw new Error(subsRes.error.message);
+              for (const o of (recentRes.data ?? []) as Array<{ user_id: string }>) activeIds.add(o.user_id);
+              for (const s of (subsRes.data ?? []) as Array<{ user_id: string }>) activeIds.add(s.user_id);
+            }
             rows = rows.filter((r) =>
               filters.status === 'active' ? activeIds.has(r.id) : !activeIds.has(r.id)
             );

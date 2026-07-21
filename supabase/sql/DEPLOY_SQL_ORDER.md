@@ -255,3 +255,31 @@ supabase/sql/log_retention_and_indexes.sql
 **No app coupling, no edge-function changes, no OTA needed.**
 Rollback: `cron.unschedule('prune-operational-logs')` + `DROP INDEX` the
 three indexes; nothing depends on them.
+
+## 12. Atomic supply-batch print (2026-07-21, health report #19)
+
+**SQL (run in SQL editor, idempotent):**
+
+```
+supabase/sql/print_supply_batch_atomic.sql
+```
+
+`print_supply_batch_atomic(p_item_ids, p_branch_id)` — snapshot + batch-stamp
+in one transaction, snapshot built server-side. Admin-only (checks
+`is_admin()`).
+
+**App coupling:** run BEFORE the OTA that switches `usePrintBatch` to this
+RPC. Old app builds keep using the two-step path harmlessly.
+
+**Edge functions to redeploy with the same release** (timeout + pagination
+changes — no contract changes, safe to deploy independently of the app):
+
+```bash
+supabase functions deploy dormant-user-check --no-verify-jwt   # #8 pagination
+supabase functions deploy place-order        --no-verify-jwt   # #10 Razorpay timeout
+supabase functions deploy wallet-topup       --no-verify-jwt   # #10 Razorpay timeout
+supabase functions deploy send-push          --no-verify-jwt   # #10 Expo timeout
+```
+
+(Other functions pick up the shared `_shared/notifications.ts` timeout
+whenever they are next deployed — no urgency.)

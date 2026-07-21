@@ -17,11 +17,11 @@ import {
   View,
   ScrollView,
   TouchableOpacity,
-  Alert,
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
 import { getErrorMessage } from '../../utils/formatters';
+import { confirmDialog, infoDialog } from '../../utils/confirmDialog';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
 import { Theme } from '../../theme';
@@ -120,7 +120,7 @@ export function ImportItemsScreen({ navigation, route }: AdminScreenProps<'Impor
       const name = isMenu ? 'menu_import_template.csv' : isPlans ? 'plans_import_template.csv' : 'essentials_import_template.csv';
       await downloadCsvString(name, csv);
     } catch {
-      Alert.alert('Error', 'Could not generate template.');
+      infoDialog('Error', 'Could not generate template.');
     }
   };
 
@@ -154,13 +154,13 @@ export function ImportItemsScreen({ navigation, route }: AdminScreenProps<'Impor
       const rows = isMenu ? parseMenuCsv(csvText) : isPlans ? parsePlansCsv(csvText) : parseEssentialsCsv(csvText);
 
       if (!rows.length) {
-        Alert.alert('Empty file', 'No valid rows found. Check the template format.');
+        infoDialog('Empty file', 'No valid rows found. Check the template format.');
         return;
       }
 
       setParsedRows(rows as any);
     } catch {
-      Alert.alert('Error', 'Could not read file. Please pick a valid CSV.');
+      infoDialog('Error', 'Could not read file. Please pick a valid CSV.');
     }
   };
 
@@ -294,13 +294,12 @@ export function ImportItemsScreen({ navigation, route }: AdminScreenProps<'Impor
       const { error } = await (supabase.from(table as any) as any).insert(records as any);
       if (error) throw error;
       queryKeys.forEach((qk) => queryClient.invalidateQueries({ queryKey: qk }));
-      Alert.alert(
+      infoDialog(
         'Import complete',
         `${records.length} item${records.length !== 1 ? 's' : ''} imported.`,
-        [{ text: 'OK', onPress: () => navigation.goBack() }]
-      );
+      ).then(() => navigation.goBack());
     } catch (err) {
-      Alert.alert('Import failed', getErrorMessage(err));
+      infoDialog('Import failed', getErrorMessage(err));
     } finally {
       setImporting(false);
     }
@@ -309,7 +308,7 @@ export function ImportItemsScreen({ navigation, route }: AdminScreenProps<'Impor
   const handleImport = async () => {
     if (!parsedRows?.length) return;
     if (branchFilter.branchIdForWrite == null) {
-      Alert.alert('Select a branch', 'Pick a specific branch before importing items.');
+      infoDialog('Select a branch', 'Pick a specific branch before importing items.');
       return;
     }
     setImporting(true);
@@ -325,7 +324,7 @@ export function ImportItemsScreen({ navigation, route }: AdminScreenProps<'Impor
     const tail = skipped.length > 5 ? `\n…and ${skipped.length - 5} more` : '';
 
     if (records.length === 0) {
-      Alert.alert(
+      infoDialog(
         'Nothing to import',
         `All ${skipped.length} row${skipped.length !== 1 ? 's' : ''} had issues:\n\n${head}${tail}\n\nFix your CSV and try again.`,
       );
@@ -333,14 +332,13 @@ export function ImportItemsScreen({ navigation, route }: AdminScreenProps<'Impor
       return;
     }
 
-    Alert.alert(
-      `Skip ${skipped.length} row${skipped.length !== 1 ? 's' : ''}?`,
-      `${head}${tail}\n\nImport the ${records.length} valid row${records.length !== 1 ? 's' : ''} and skip the rest?`,
-      [
-        { text: 'Cancel', style: 'cancel', onPress: () => setImporting(false) },
-        { text: `Import ${records.length}`, onPress: () => performInsert(records, table, queryKeys) },
-      ]
-    );
+    const proceed = await confirmDialog({
+      title: `Skip ${skipped.length} row${skipped.length !== 1 ? 's' : ''}?`,
+      message: `${head}${tail}\n\nImport the ${records.length} valid row${records.length !== 1 ? 's' : ''} and skip the rest?`,
+      confirmLabel: `Import ${records.length}`,
+    });
+    if (proceed) await performInsert(records, table, queryKeys);
+    else setImporting(false);
   };
 
   const title = isMenu ? 'Import Menu Items' : isPlans ? 'Import Plans' : 'Import Essentials';

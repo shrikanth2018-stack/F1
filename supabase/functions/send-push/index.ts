@@ -199,6 +199,8 @@ Deno.serve(async (req) => {
     for (const chunk of chunks) {
       const res = await fetch(EXPO_PUSH_URL, {
         method: 'POST',
+        // Bounded — an Expo stall must not hang the cron/status-update caller (#10).
+        signal: AbortSignal.timeout(15_000),
         headers: {
           'Accept': 'application/json',
           'Accept-Encoding': 'gzip, deflate',

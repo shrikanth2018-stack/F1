@@ -16,7 +16,6 @@ export function formatPrice(amount: number): string {
 }
 
 /** Alias for formatPrice — preferred in UI contexts */
-export const formatCurrency = formatPrice;
 
 /**
  * Format price without decimals, Indian-grouped (₹1,23,456) — for

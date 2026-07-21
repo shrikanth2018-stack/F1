@@ -12,7 +12,6 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
-  Alert,
   Platform,
   StyleSheet,
 } from 'react-native';
@@ -62,11 +61,11 @@ export function WalletScreen({ navigation }: { navigation: CustomerNavProp }) {
       return;
     }
     if (amount < minTopup) {
-      Alert.alert('Minimum', `Minimum top-up is ${formatPriceShort(minTopup)}`);
+      infoDialog('Minimum', `Minimum top-up is ${formatPriceShort(minTopup)}`);
       return;
     }
     if (amount > maxTopup) {
-      Alert.alert('Maximum', `Maximum top-up is ${formatPriceShort(maxTopup)}`);
+      infoDialog('Maximum', `Maximum top-up is ${formatPriceShort(maxTopup)}`);
       return;
     }
     topup.mutate(amount, {
@@ -88,7 +87,7 @@ export function WalletScreen({ navigation }: { navigation: CustomerNavProp }) {
             theme: { color: Theme.colors.action.primary },
           });
         } catch {
-          Alert.alert('Payment Cancelled', 'Your top-up was not completed.');
+          infoDialog('Payment Cancelled', 'Your top-up was not completed.');
           return;
         }
 
@@ -105,7 +104,7 @@ export function WalletScreen({ navigation }: { navigation: CustomerNavProp }) {
           );
           if (confirmData?.status === 'credited') {
             trackWalletTopUp(confirmData.amount ?? amount);
-            Alert.alert('Wallet Topped Up!', `${formatPriceShort(confirmData.amount ?? 0)} has been added to your wallet.`);
+            infoDialog('Wallet Topped Up!', `${formatPriceShort(confirmData.amount ?? 0)} has been added to your wallet.`);
           }
         } catch {
           // Webhook will resolve — silent fail is intentional.
@@ -113,14 +112,14 @@ export function WalletScreen({ navigation }: { navigation: CustomerNavProp }) {
 
         refreshWallet();
       },
-      onError: (err) => Alert.alert('Error', err.message),
+      onError: (err) => infoDialog('Error', err.message),
     });
   };
 
   const handleAdd = () => {
     const amt = parseFloat(customAmount);
     if (!amt || amt <= 0) {
-      Alert.alert('Enter an amount', 'Please enter a top-up amount.');
+      infoDialog('Enter an amount', 'Please enter a top-up amount.');
       return;
     }
     handleTopup(amt);

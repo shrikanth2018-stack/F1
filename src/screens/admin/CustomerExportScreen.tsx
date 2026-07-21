@@ -14,11 +14,11 @@ import {
   View,
   ScrollView,
   TouchableOpacity,
-  Alert,
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { infoDialog } from '../../utils/confirmDialog';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { useBranches } from '../../hooks/useBranches';
@@ -128,12 +128,12 @@ export function CustomerExportScreen({ navigation }: AdminScreenProps<'CustomerE
 
   const handleDownload = async () => {
     if (rows.length === 0) {
-      Alert.alert('No customers', 'No customers match the current filters.');
+      infoDialog('No customers', 'No customers match the current filters.');
       return;
     }
     const activeCols = COLUMNS.filter((c) => selectedCols.has(c.key));
     if (activeCols.length === 0) {
-      Alert.alert('No columns selected', 'Pick at least one column to include.');
+      infoDialog('No columns selected', 'Pick at least one column to include.');
       return;
     }
     setDownloading(true);
@@ -158,7 +158,7 @@ export function CustomerExportScreen({ navigation }: AdminScreenProps<'CustomerE
       await exportCsv(name, headers, body);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Unknown error';
-      Alert.alert('Download failed', msg);
+      infoDialog('Download failed', msg);
     } finally {
       setDownloading(false);
     }

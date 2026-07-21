@@ -57,27 +57,48 @@ Deno.serve(async (req: Request) => {
     // Cutoff: anyone whose latest order is older than this date (or who has no orders) qualifies.
     const cutoffIso = new Date(Date.now() - inactiveDays * 86_400_000).toISOString();
 
+    // Health report #8: these scans previously issued single unbounded
+    // selects, which PostgREST silently caps at ~1000 rows — past that,
+    // "recently active" users went missing from the set and got wrongly
+    // win-back-pushed, and dormant users past the cap were never nudged.
+    // Page through everything explicitly.
+    const PAGE = 1000;
+    const fetchAllPages = async (makeQuery: (from: number, to: number) => any) => {
+      const all: any[] = [];
+      for (let from = 0; ; from += PAGE) {
+        const { data, error } = await makeQuery(from, from + PAGE - 1);
+        if (error) throw error;
+        all.push(...(data ?? []));
+        if ((data ?? []).length < PAGE) break;
+      }
+      return all;
+    };
+
     // Find customers — skip admin/staff.
     // We fetch recent orders per user to get "most recent order time" server-side.
-    const { data: recentOrders, error: ordErr } = await supabase
-      .from('orders')
-      .select('user_id, created_at')
-      .gte('created_at', cutoffIso);
-    if (ordErr) throw ordErr;
+    const recentOrders = await fetchAllPages((from, to) =>
+      supabase
+        .from('orders')
+        .select('user_id')
+        .gte('created_at', cutoffIso)
+        .order('id', { ascending: true })
+        .range(from, to));
 
     const activeRecently = new Set<string>();
-    for (const o of recentOrders ?? []) {
+    for (const o of recentOrders) {
       if ((o as any).user_id) activeRecently.add((o as any).user_id);
     }
 
     // Pull customer profiles; exclude anyone with a recent order.
-    const { data: allProfiles, error: profErr } = await supabase
-      .from('profiles')
-      .select('id, role')
-      .eq('role', 'customer');
-    if (profErr) throw profErr;
+    const allProfiles = await fetchAllPages((from, to) =>
+      supabase
+        .from('profiles')
+        .select('id')
+        .eq('role', 'customer')
+        .order('id', { ascending: true })
+        .range(from, to));
 
-    let candidates = (allProfiles ?? [])
+    let candidates = allProfiles
       .filter((p) => !activeRecently.has((p as any).id))
       .map((p) => (p as any).id as string);
 
@@ -86,15 +107,21 @@ Deno.serve(async (req: Request) => {
     // got a winback push every Monday. Now: skip anyone who already received
     // a winback in the last `inactiveDays` days.
     if (candidates.length > 0) {
-      const { data: recentWinbacks } = await supabase
-        .from('push_logs')
-        .select('user_id')
-        .eq('trigger_source', 'winback')
-        .gte('sent_at', cutoffIso)
-        .in('user_id', candidates);
-      const alreadyPushed = new Set(
-        (recentWinbacks ?? []).map((r: any) => r.user_id).filter(Boolean),
-      );
+      // Chunk the IN() lookup — thousands of ids would blow the URL length
+      // and the result would hit the same ~1000-row cap (#8).
+      const alreadyPushed = new Set<string>();
+      const CHUNK = 500;
+      for (let i = 0; i < candidates.length; i += CHUNK) {
+        const { data: recentWinbacks } = await supabase
+          .from('push_logs')
+          .select('user_id')
+          .eq('trigger_source', 'winback')
+          .gte('sent_at', cutoffIso)
+          .in('user_id', candidates.slice(i, i + CHUNK));
+        for (const r of recentWinbacks ?? []) {
+          if ((r as any).user_id) alreadyPushed.add((r as any).user_id);
+        }
+      }
       candidates = candidates.filter((id) => !alreadyPushed.has(id));
     }
 

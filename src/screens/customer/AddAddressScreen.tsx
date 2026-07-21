@@ -15,12 +15,12 @@ import React, { useState, useEffect } from 'react';
 import {
   View,
   ScrollView,
-  Alert,
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
 } from 'react-native';
 import { getErrorMessage } from '../../utils/formatters';
+import { confirmDialog, infoDialog } from '../../utils/confirmDialog';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import { Theme } from '../../theme';
@@ -81,7 +81,7 @@ export function AddAddressScreen({ navigation, route, onComplete }: Props) {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission Denied', 'Location access is needed to use your current position.');
+        infoDialog('Permission Denied', 'Location access is needed to use your current position.');
         return;
       }
       const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
@@ -90,7 +90,7 @@ export function AddAddressScreen({ navigation, route, onComplete }: Props) {
       setLongitude(lng);
       await runChecks(lat, lng);
     } catch {
-      Alert.alert('Error', 'Could not fetch location. Please tap the map to set your delivery pin.');
+      infoDialog('Error', 'Could not fetch location. Please tap the map to set your delivery pin.');
     } finally {
       setLocating(false);
     }
@@ -154,61 +154,55 @@ export function AddAddressScreen({ navigation, route, onComplete }: Props) {
   const handleMakeDefault = () => {
     if (!isEditMode || editingId == null) return;
     setDefault(editingId, {
-      onError: () => Alert.alert('Error', 'Could not update default address. Please try again.'),
+      onError: () => infoDialog('Error', 'Could not update default address. Please try again.'),
     });
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!isEditMode || editingId == null) return;
-    Alert.alert(
-      'Delete Address',
-      'Remove this address from your saved list?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () =>
-            deleteAddress(editingId, {
-              onSuccess: () => {
-                if (onComplete) onComplete();
-                else navigation?.goBack();
-              },
-              onError: () => Alert.alert('Error', 'Could not delete address. Please try again.'),
-            }),
-        },
-      ]
-    );
+    const ok = await confirmDialog({
+      title: 'Delete Address',
+      message: 'Remove this address from your saved list?',
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (!ok) return;
+    deleteAddress(editingId, {
+      onSuccess: () => {
+        if (onComplete) onComplete();
+        else navigation?.goBack();
+      },
+      onError: () => infoDialog('Error', 'Could not delete address. Please try again.'),
+    });
   };
 
   const handleAdd = async () => {
     if (!isNonEmpty(fullName)) {
-      Alert.alert('Required', 'Please enter full name');
+      infoDialog('Required', 'Please enter full name');
       return;
     }
     if (!isValidIndianPhone(phone)) {
-      Alert.alert('Required', 'Please enter a valid 10-digit phone number for this address');
+      infoDialog('Required', 'Please enter a valid 10-digit phone number for this address');
       return;
     }
     if (!isNonEmpty(addressLine)) {
-      Alert.alert('Required', 'Please enter address');
+      infoDialog('Required', 'Please enter address');
       return;
     }
     if (latitude == null || longitude == null) {
-      Alert.alert('Location Required', 'Please tap the map or use GPS to set your delivery location.');
+      infoDialog('Location Required', 'Please tap the map or use GPS to set your delivery location.');
       return;
     }
 
     if (zoneResult?.result === 'not_serviceable') {
-      Alert.alert(
-        'Outside Delivery Area',
-        "We don't deliver to this pin yet. You can move the pin to a valid location (e.g., your office), or enter anyway to browse — we'll notify you when we expand.",
-        [
-          { text: 'Adjust the Pin' },
-          { text: 'Enter Anyway', onPress: () => saveAddress() },
-          { text: 'Cancel', style: 'cancel' },
-        ]
-      );
+      const enterAnyway = await confirmDialog({
+        title: 'Outside Delivery Area',
+        message:
+          "We don't deliver to this pin yet. You can move the pin to a valid location (e.g., your office), or enter anyway to browse — we'll notify you when we expand.",
+        confirmLabel: 'Enter Anyway',
+        cancelLabel: 'Adjust the Pin',
+      });
+      if (enterAnyway) await saveAddress();
       return;
     }
 
@@ -262,7 +256,7 @@ export function AddAddressScreen({ navigation, route, onComplete }: Props) {
         navigation?.goBack();
       }
     } catch (err) {
-      Alert.alert('Error', getErrorMessage(err));
+      infoDialog('Error', getErrorMessage(err));
     }
   };
 

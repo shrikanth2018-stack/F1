@@ -150,6 +150,8 @@ async function doResolveAndSend(args: ResolveAndSendArgs): Promise<{
       try {
         const res = await fetch(EXPO_PUSH_URL, {
           method: 'POST',
+          // Bounded — an Expo stall must not hang the calling function (#10).
+          signal: AbortSignal.timeout(15_000),
           headers: {
             'Accept': 'application/json',
             'Accept-Encoding': 'gzip, deflate',

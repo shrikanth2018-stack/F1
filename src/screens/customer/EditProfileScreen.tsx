@@ -26,13 +26,13 @@ import {
   ScrollView,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   ActivityIndicator,
   Modal,
   TouchableWithoutFeedback,
   Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { infoDialog } from '../../utils/confirmDialog';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { ThemedInput } from '../../components/ThemedInput';
@@ -74,7 +74,7 @@ export function EditProfileScreen({ navigation }: any) {
   const handleSaveName = async () => {
     const trimmed = name.trim();
     if (!trimmed) {
-      Alert.alert('Required', 'Please enter your name.');
+      infoDialog('Required', 'Please enter your name.');
       return;
     }
     try {
@@ -82,7 +82,7 @@ export function EditProfileScreen({ navigation }: any) {
       setNameDirty(false);
       await refetchWallet();
     } catch {
-      Alert.alert('Error', 'Could not save name. Please try again.');
+      infoDialog('Error', 'Could not save name. Please try again.');
     }
   };
 
@@ -103,19 +103,19 @@ export function EditProfileScreen({ navigation }: any) {
 
   const handleSendOtp = async () => {
     if (!isValidIndianPhone(newPhone)) {
-      Alert.alert('Invalid', 'Please enter a valid 10-digit phone number.');
+      infoDialog('Invalid', 'Please enter a valid 10-digit phone number.');
       return;
     }
     const normalized = normalizePhone(newPhone);
     if (normalized === session?.user.phone) {
-      Alert.alert('Same Number', 'This is already your login phone number.');
+      infoDialog('Same Number', 'This is already your login phone number.');
       return;
     }
     setBusy(true);
     const { error } = await startPhoneChange(normalized);
     setBusy(false);
     if (error) {
-      Alert.alert('Could not send OTP', error.message);
+      infoDialog('Could not send OTP', error.message);
       return;
     }
     setPhase('otp');
@@ -123,7 +123,7 @@ export function EditProfileScreen({ navigation }: any) {
 
   const handleVerifyOtp = async () => {
     if (!isValidOTP(otp)) {
-      Alert.alert('Invalid', 'Please enter the 6-digit OTP.');
+      infoDialog('Invalid', 'Please enter the 6-digit OTP.');
       return;
     }
     setBusy(true);
@@ -131,12 +131,12 @@ export function EditProfileScreen({ navigation }: any) {
     const { error } = await verifyPhoneChange(normalized, otp);
     setBusy(false);
     if (error) {
-      Alert.alert('Verification failed', error.message);
+      infoDialog('Verification failed', error.message);
       return;
     }
     await refetchWallet();
     resetPhoneModal();
-    Alert.alert(
+    infoDialog(
       'Phone number changed',
       'From your next login onwards, use the new number.',
     );

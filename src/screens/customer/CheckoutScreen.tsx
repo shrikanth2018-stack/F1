@@ -16,7 +16,6 @@ import React, { useState, useCallback, useRef, useMemo } from 'react';
 import {
   View,
   ScrollView,
-  Alert,
   AppState,
   Platform,
   StyleSheet,
@@ -182,27 +181,27 @@ export function CheckoutScreen({ navigation, route }: any) {
     }
     if (!selectedAddressId) {
       isPlacingRef.current = false;
-      Alert.alert('Address Required', 'Please select a delivery address');
+      infoDialog('Address Required', 'Please select a delivery address');
       return;
     }
     if (totalCartCount === 0) {
       isPlacingRef.current = false;
-      Alert.alert('Empty Cart', 'Add items or a subscription plan to your cart first');
+      infoDialog('Empty Cart', 'Add items or a subscription plan to your cart first');
       return;
     }
     if (!quote) {
       isPlacingRef.current = false;
-      Alert.alert('One moment', 'Still calculating your order total — please try again in a second.');
+      infoDialog('One moment', 'Still calculating your order total — please try again in a second.');
       return;
     }
     if (quote.storm_mode) {
       isPlacingRef.current = false;
-      Alert.alert('Orders Paused', 'Deliveries are paused due to adverse conditions. Please try again later.');
+      infoDialog('Orders Paused', 'Deliveries are paused due to adverse conditions. Please try again later.');
       return;
     }
     if (quote.serviceable === false) {
       isPlacingRef.current = false;
-      Alert.alert('Outside Delivery Area', 'This address is outside our delivery zone. Please select a different address or add a new one.');
+      infoDialog('Outside Delivery Area', 'This address is outside our delivery zone. Please select a different address or add a new one.');
       return;
     }
 
@@ -262,7 +261,7 @@ export function CheckoutScreen({ navigation, route }: any) {
           isPlacingRef.current = false;
           setIsPlacing(false);
           setGlobalLoading(false);
-          Alert.alert(
+          infoDialog(
             'Order Updated',
             'Pricing or delivery timing changed since you opened checkout. Please review the updated total and tap Pay again.',
           );
@@ -304,7 +303,7 @@ export function CheckoutScreen({ navigation, route }: any) {
           setIsPlacing(false);
           setGlobalLoading(false);
           if ((e as { code?: string })?.code === 'PAYMENT_CANCELLED') {
-            Alert.alert('Payment Cancelled', 'Your order was not placed. Please try again.');
+            infoDialog('Payment Cancelled', 'Your order was not placed. Please try again.');
           } else {
             // Money-path visibility (health report #3): a non-cancel Razorpay
             // failure leaves the customer on "status unknown" — record it.
@@ -313,11 +312,10 @@ export function CheckoutScreen({ navigation, route }: any) {
               order_id: order.id,
               razorpay_order_id: order.razorpay_order_id,
             });
-            Alert.alert(
+            infoDialog(
               'Payment Status Unknown',
               'There was a connectivity issue. Check the Orders tab in a few minutes.',
-              [{ text: 'OK', onPress: () => navigation.popToTop() }],
-            );
+            ).then(() => navigation.popToTop());
           }
           return;
         }
@@ -385,19 +383,19 @@ export function CheckoutScreen({ navigation, route }: any) {
 
       const hadPlans = activePlans.length > 0;
       if (razorpayAttempted) {
-        Alert.alert(
+        infoDialog(
           hadPlans ? 'Order & Subscription Activated!' : 'Order Placed!',
           hadPlans
             ? 'Payment received. Your receipt is in My Orders; the plan is active in My Subscriptions.'
             : 'Payment received. You can track your order in the Orders tab.',
         );
       } else if (hadPlans) {
-        Alert.alert(
+        infoDialog(
           'Order & Subscription Activated!',
           'Your receipt is in My Orders; the plan is active in My Subscriptions.',
         );
       } else {
-        Alert.alert('Order Placed!', 'You can track your order in the Orders tab.');
+        infoDialog('Order Placed!', 'You can track your order in the Orders tab.');
       }
 
       if (isSubscriptionOnly) {
@@ -415,7 +413,7 @@ export function CheckoutScreen({ navigation, route }: any) {
         cart_type: cartType,
         payment_method: paymentMethod,
       });
-      Alert.alert('Order Failed', msg);
+      infoDialog('Order Failed', msg);
     } finally {
       isPlacingRef.current = false;
       setIsPlacing(false);

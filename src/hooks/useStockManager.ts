@@ -152,42 +152,24 @@ export function useRemoveOrderItem() {
 // ── Print batch ──────────────────────────────────────────
 
 export function usePrintBatch() {
-  const { session } = useAuth();
   const bf = useBranchFilter();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (activeItems: SupplyOrderItem[]) => {
       if (activeItems.length === 0) throw new Error('Order list is empty.');
 
-      const snapshot = activeItems.map((i) => ({
-        name: i.name,
-        qty: i.qty,
-        category: i.category,
-      }));
-
-      // 1. Create batch record
-      const { data: batch, error: batchErr } = await supabase
-        .from('supply_batches')
-        .insert({
-          printed_at: new Date().toISOString(),
-          printed_by: session?.user.id ?? null,
-          items_snapshot: snapshot,
-          note: null,
-          branch_id: requireWriteBranch(bf),
-        })
-        .select('id')
-        .single();
-      if (batchErr) throw new Error(batchErr.message);
-
-      // 2. Stamp batch_id on all active items
-      const ids = activeItems.map((i) => i.id);
-      const { error: stampErr } = await supabase
-        .from('supply_order_items')
-        .update({ batch_id: batch.id })
-        .in('id', ids);
-      if (stampErr) throw new Error(stampErr.message);
-
-      return batch.id as number;
+      // Snapshot + batch-stamp in ONE transaction (health report #19) — the
+      // old two-step client sequence could crash between the insert and the
+      // stamp, leaving items on the active list for a double order. The RPC
+      // also builds the snapshot server-side from the live rows.
+      // RPC post-dates the generated types — cast (MF-08 pattern).
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase as any).rpc('print_supply_batch_atomic', {
+        p_item_ids: activeItems.map((i) => i.id),
+        p_branch_id: requireWriteBranch(bf),
+      });
+      if (error) throw new Error(error.message);
+      return (data as { batch_id: number }).batch_id;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['supply_order_items'] });
@@ -207,7 +189,10 @@ export function useSupplyBatches() {
       let query = supabase
         .from('supply_batches')
         .select('*')
-        .order('printed_at', { ascending: false });
+        .order('printed_at', { ascending: false })
+        // Each row drags its full items_snapshot JSON — bound the history
+        // (health report #20). Older batches remain reprintable via SQL.
+        .limit(24);
 
       if (bf.isActive && bf.branchId != null) {
         query = query.eq('branch_id', bf.branchId);

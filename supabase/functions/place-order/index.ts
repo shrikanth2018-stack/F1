@@ -180,6 +180,8 @@ serve(async (req) => {
       }
       const rzpRes = await fetch('https://api.razorpay.com/v1/orders', {
         method: 'POST',
+        // Bounded — a Razorpay stall must not hang the checkout call (#10).
+        signal: AbortSignal.timeout(15_000),
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Basic ${btoa(`${RAZORPAY_KEY_ID}:${RAZORPAY_KEY_SECRET}`)}`,

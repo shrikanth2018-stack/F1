@@ -30,7 +30,7 @@ import { useStoreConfig } from '../hooks/useStoreConfig';
 import { useWalletBalance } from '../hooks/useWallet';
 import { useFeatureFlag } from '../hooks/useFeatureFlag';
 import { useUIStore } from '../store/uiStore';
-import { formatPhone, formatCurrency } from '../utils/formatters';
+import { formatPhone, formatPrice } from '../utils/formatters';
 import { assetUrl } from '../utils/assets';
 import { openWhatsApp } from '../utils/links';
 import { confirmDialog } from '../utils/confirmDialog';
@@ -200,7 +200,7 @@ export function ProfilePopup() {
     ? formatPhone(session.user.phone)
     : 'Guest');
   const walletLabel = wallet
-    ? `My Wallet  ${formatCurrency(wallet.balance)}`
+    ? `My Wallet  ${formatPrice(wallet.balance)}`
     : 'My Wallet';
   const loyaltyLabel = wallet?.loyaltyPoints
     ? `My Loyalty Points · ${wallet.loyaltyPoints} pts`
