@@ -233,3 +233,25 @@ release reuses the already-deployed `send-push` function as-is.
 Commission tab. Old app builds are unaffected (additive columns + new RPCs
 only). Rollback: the app tab errors gracefully if the RPCs are missing;
 dropping the functions and columns reverts fully.
+
+## 11. Log retention & growth indexes (2026-07-21, health report Slice B)
+
+**SQL (run in SQL editor, idempotent):**
+
+```
+supabase/sql/log_retention_and_indexes.sql
+```
+
+- New nightly cron `prune-operational-logs` (02:30 IST): prunes
+  `push_logs` (90d), `manifest_run_log` (180d), `kitchen_push_log` (90d),
+  `cron.job_run_details` (7d). Appears in `get_job_health()` automatically.
+- `ux_orders_subscription_dispatch` — partial unique index making the
+  subscription-dispatch dedupe a DB constraint (the file aborts with a
+  diagnostic query if pre-existing duplicates are found — resolve those
+  first, then re-run).
+- Growth indexes: `idx_orders_cycle_dispatch`, `idx_orders_undelivered_past`
+  (partial), `idx_wallet_tx_user_created`.
+
+**No app coupling, no edge-function changes, no OTA needed.**
+Rollback: `cron.unschedule('prune-operational-logs')` + `DROP INDEX` the
+three indexes; nothing depends on them.
