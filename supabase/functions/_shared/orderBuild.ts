@@ -190,7 +190,9 @@ export async function buildAuthoritativeOrder(args: BuildArgs): Promise<BuildRes
       if (m.cycle_id == null) {
         return { ok: false, status: 400, error: `"${m.name}" is not assigned to a delivery cycle.` };
       }
-      const g = byCycle.get(m.cycle_id) ?? { cycle_id: m.cycle_id, items: [], subtotal: 0 };
+      // Explicit Accum annotation — a bare literal here infers items: never[]
+      // under strict tsc (type-only; no behavior change).
+      const g: Accum = byCycle.get(m.cycle_id) ?? { cycle_id: m.cycle_id, items: [], subtotal: 0 };
       g.items.push({
         item_id: m.id, item_type: 'food', item_name: m.name,
         quantity: inp.quantity, price_at_time: m.price,
@@ -214,7 +216,7 @@ export async function buildAuthoritativeOrder(args: BuildArgs): Promise<BuildRes
       if (e.cycle_id == null) {
         return { ok: false, status: 400, error: `"${e.name}" is not assigned to a delivery cycle.` };
       }
-      const g = byCycle.get(e.cycle_id) ?? { cycle_id: e.cycle_id, items: [], subtotal: 0 };
+      const g: Accum = byCycle.get(e.cycle_id) ?? { cycle_id: e.cycle_id, items: [], subtotal: 0 };
       g.items.push({
         item_id: e.id, item_type: 'essential', item_name: e.name,
         quantity: inp.quantity, price_at_time: e.price,

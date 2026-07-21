@@ -33,7 +33,9 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-function extractRole(session: Session | null): AuthSession | null {
+// Exported for unit tests (extractRole.test.ts) — this pure function is the
+// single place JWT claims become the app's routing/permission state.
+export function extractRole(session: Session | null): AuthSession | null {
   if (!session?.user) return null;
 
   // Extract role from JWT custom claim (set by custom_access_token_hook)

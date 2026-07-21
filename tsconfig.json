@@ -4,6 +4,10 @@
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
+    // Lets Jest suites import the Deno edge modules (which use explicit
+    // .ts import specifiers, e.g. orderBuild.ts → './dispatch.ts').
+    // Safe: tsc runs --noEmit only; app bundling is Babel/Metro.
+    "allowImportingTsExtensions": true,
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"]
