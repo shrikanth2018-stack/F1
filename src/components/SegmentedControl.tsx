@@ -89,6 +89,9 @@ export function SegmentedControl<T extends string>({ options, value, onChange, s
               variant="subtitle"
               color={active ? 'primary' : 'muted'}
               style={active ? styles.tabActive : styles.tabInactive}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.75}
             >
               {o.label}
             </ThemedText>
@@ -116,7 +119,7 @@ const styles = StyleSheet.create({
     backgroundColor: `${Theme.colors.text.mint}22`,
     borderRadius: 20,
   },
-  tab: { flex: 1, alignItems: 'center', justifyContent: 'center', zIndex: 1 },
+  tab: { flex: 1, alignItems: 'center', justifyContent: 'center', zIndex: 1, paddingHorizontal: 6 },
   tabInactive: { fontSize: Theme.typography.sizes.subtitle + 2 },
   tabActive: { fontSize: Theme.typography.sizes.subtitle + 4 },
 });
