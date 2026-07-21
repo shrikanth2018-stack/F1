@@ -95,6 +95,14 @@ export function CartScreen({ navigation, route }: any) {
   const { evaluations } = useSmartCart();
   const { evaluations: essEvaluations } = useSmartEssentialsCart();
   const { data: cycles } = useDeliveryCycles();
+  // Essentials module gate. When the admin turns essentials_module_active
+  // off, the cart hides every essentials surface — list + checkout button.
+  // Items already in the local essentials cart stay in storage (we don't
+  // clear them) so flipping the flag back on restores the cart as it was.
+  // NOTE: must be called here with the other hooks — it previously sat
+  // below the early returns, which changes the hook count between renders
+  // (React "rendered fewer hooks" crash) when the cart empties/fills.
+  const essentialsEnabled = useEssentialsEnabled();
 
   // Server-authoritative cart preview. Pre-pass uses the default serviceable
   // address so the cart shows the full total incl. delivery fee; with no
@@ -317,11 +325,6 @@ export function CartScreen({ navigation, route }: any) {
     );
   }
 
-  // Essentials module gate. When the admin turns essentials_module_active
-  // off, the cart hides every essentials surface — list + checkout button.
-  // Items already in the local essentials cart stay in storage (we don't
-  // clear them) so flipping the flag back on restores the cart as it was.
-  const essentialsEnabled = useEssentialsEnabled();
   const foodHasContent = foodItems.length > 0 || foodPlans.length > 0;
   const essHasContent = essentialsEnabled && (essItems.length > 0 || essPlans.length > 0);
 

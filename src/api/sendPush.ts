@@ -33,19 +33,36 @@ export interface SendPushBody {
   reference_id?: string;
 }
 
+/** Result of a send-push call — null when the send failed or was skipped. */
+export interface SendPushResult {
+  sent: number;
+  failed: number;
+}
+
 /**
  * Sends a push via the `send-push` Edge Function using the current user's
  * JWT. Fire-and-forget — awaiting is optional, and it never throws.
+ * Returns {sent, failed} on success (used by the admin custom-push
+ * composer for feedback); null on any failure.
  */
-export async function sendPush(body: SendPushBody): Promise<void> {
+export async function sendPush(body: SendPushBody): Promise<SendPushResult | null> {
   try {
     const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.access_token) return;
-    await supabase.functions.invoke('send-push', {
+    if (!session?.access_token) return null;
+    const { data, error } = await supabase.functions.invoke('send-push', {
       headers: { Authorization: `Bearer ${session.access_token}` },
       body,
     });
+    if (error) {
+      console.error('[sendPush]', error);
+      return null;
+    }
+    return {
+      sent: Number(data?.sent ?? 0),
+      failed: Number(data?.failed ?? 0),
+    };
   } catch (e) {
     console.error('[sendPush]', e);
+    return null;
   }
 }

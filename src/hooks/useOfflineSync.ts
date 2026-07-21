@@ -13,6 +13,7 @@ import { useStaffQueueStore } from '../store/staffQueueStore';
 import { MAX_QUEUE_RETRIES } from '../utils/constants';
 import { fireOrderStatusPush } from '../utils/orderStatusPush';
 import { ORDER_STATUS_FLOW } from '../utils/orderStatus';
+import { captureError } from '../utils/sentry';
 
 // Status progression used to guard offline replay: a queued status update
 // only applies while the order is still at a status logically EARLIER than
@@ -43,6 +44,18 @@ export function useOfflineSync() {
 
     for (const mutation of currentQueue) {
       if (mutation.retryCount >= MAX_QUEUE_RETRIES) {
+        // Giving up on a queued staff mutation is data loss — it was
+        // previously silent (health report #17). Record what was dropped
+        // so it can be reconciled manually.
+        captureError(new Error('Offline queue mutation dropped after max retries'), {
+          table: mutation.table,
+          operation: mutation.operation,
+          matchColumn: mutation.matchColumn,
+          matchValue: mutation.matchValue,
+          payload: mutation.payload,
+          retryCount: mutation.retryCount,
+          queuedAt: mutation.createdAt,
+        });
         dequeue(mutation.id);
         continue;
       }

@@ -15,9 +15,9 @@
  */
 
 import React, { useEffect } from 'react';
-import { StatusBar, LogBox } from 'react-native';
+import { AppState, Platform, StatusBar, LogBox } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-query';
 import * as SplashScreen from 'expo-splash-screen';
 
 import { ErrorBoundary } from './src/components/ErrorBoundary';
@@ -49,7 +49,12 @@ const queryClient = new QueryClient({
     queries: {
       staleTime: QUERY_STALE_TIME,
       retry: 2,
-      refetchOnWindowFocus: false,
+      // Refetch stale queries when the app returns to the foreground —
+      // paired with the AppState → focusManager wiring below. Without it a
+      // staff phone waking from sleep (realtime socket silently dropped)
+      // shows a stale board until pull-to-refresh (health report #21).
+      // Only queries older than staleTime actually refetch.
+      refetchOnWindowFocus: true,
     },
     mutations: {
       retry: 1,
@@ -57,8 +62,22 @@ const queryClient = new QueryClient({
   },
 });
 
+// Tell React Query when the app is foregrounded — on native it has no
+// window focus events, so without this refetchOnWindowFocus never fires.
+// Web keeps React Query's built-in visibility handling.
+function useAppFocusManager() {
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    const sub = AppState.addEventListener('change', (status) => {
+      focusManager.setFocused(status === 'active');
+    });
+    return () => sub.remove();
+  }, []);
+}
+
 function AppContent() {
   const { isLoading } = useAuth();
+  useAppFocusManager();
   const isGlobalLoading = useUIStore((s) => s.isGlobalLoading);
   const globalLoadingMessage = useUIStore((s) => s.globalLoadingMessage);
 

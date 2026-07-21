@@ -48,6 +48,7 @@ import { RAZORPAY_KEY_ID } from '../../utils/env';
 import { trackOrderPlaced, trackOrderFailed, trackSubscribed } from '../../utils/analytics';
 import { infoDialog, confirmDialog } from '../../utils/confirmDialog';
 import { newIdempotencyKey } from '../../utils/idempotency';
+import { captureError } from '../../utils/sentry';
 
 type PaymentChoice = 'razorpay' | 'wallet';
 
@@ -305,6 +306,13 @@ export function CheckoutScreen({ navigation, route }: any) {
           if ((e as { code?: string })?.code === 'PAYMENT_CANCELLED') {
             Alert.alert('Payment Cancelled', 'Your order was not placed. Please try again.');
           } else {
+            // Money-path visibility (health report #3): a non-cancel Razorpay
+            // failure leaves the customer on "status unknown" — record it.
+            captureError(e instanceof Error ? e : new Error(String(e)), {
+              stage: 'razorpay_open',
+              order_id: order.id,
+              razorpay_order_id: order.razorpay_order_id,
+            });
             Alert.alert(
               'Payment Status Unknown',
               'There was a connectivity issue. Check the Orders tab in a few minutes.',
@@ -323,16 +331,36 @@ export function CheckoutScreen({ navigation, route }: any) {
             razorpay_order_id: order.razorpay_order_id,
             razorpay_signature: rzpResult?.razorpay_signature,
           };
+          let confirmed = false;
+          let lastConfirmErr: unknown = null;
           for (let attempt = 1; attempt <= 2; attempt++) {
             const { error: confirmErr } = await supabase.functions.invoke('confirm-order', {
               headers: { Authorization: `Bearer ${freshSession?.access_token}` },
               body: confirmBody,
             });
-            if (!confirmErr) break;
+            if (!confirmErr) { confirmed = true; break; }
+            lastConfirmErr = confirmErr;
             if (attempt === 1) await new Promise((r) => setTimeout(r, 1000));
           }
-        } catch {
-          // Webhook will resolve — silent fail is intentional.
+          if (!confirmed) {
+            // Webhook will resolve the payment — UX stays silent by design,
+            // but record the event so webhook-only confirmations are visible
+            // in Sentry (health report #3).
+            captureError(new Error('confirm-order failed after 2 attempts'), {
+              stage: 'confirm_order',
+              order_id: order.id,
+              razorpay_order_id: order.razorpay_order_id,
+              last_error: String((lastConfirmErr as any)?.message ?? lastConfirmErr),
+            });
+          }
+        } catch (e) {
+          // Webhook will resolve — silent fail is intentional (UX). Still
+          // record it (health report #3).
+          captureError(e instanceof Error ? e : new Error(String(e)), {
+            stage: 'confirm_order_throw',
+            order_id: order.id,
+            razorpay_order_id: order.razorpay_order_id,
+          });
         }
       }
 
@@ -380,6 +408,13 @@ export function CheckoutScreen({ navigation, route }: any) {
     } catch (err) {
       const msg = getErrorMessage(err);
       trackOrderFailed(msg, cartType);
+      // Money-path visibility (health report #3): place-order failures were
+      // previously Alert-only — PostHog got a counter, Sentry got nothing.
+      captureError(err instanceof Error ? err : new Error(msg), {
+        stage: 'place_order',
+        cart_type: cartType,
+        payment_method: paymentMethod,
+      });
       Alert.alert('Order Failed', msg);
     } finally {
       isPlacingRef.current = false;

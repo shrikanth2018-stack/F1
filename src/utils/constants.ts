@@ -31,6 +31,7 @@ export const QUERY_KEYS = {
   ZONES: ['delivery_zones'] as const,
   REFERRALS: ['referrals'] as const,
   EXPENSE_CLAIMS: ['expense_claims'] as const,
+  HUB_COMMISSION: ['hub_commission'] as const,
 } as const;
 
 

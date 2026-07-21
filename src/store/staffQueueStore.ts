@@ -84,6 +84,19 @@ export const useStaffQueueStore = create<StaffQueueState>()(
     {
       name: '1stone-staff-queue',
       storage: createJSONStorage(() => AsyncStorage),
+      // Persist ONLY the queue. isSyncing is runtime state — if it were
+      // persisted and the app died mid-drain, it would rehydrate as `true`
+      // and drainQueue's re-entry guard would block every future sync
+      // until storage was cleared (health report #2).
+      partialize: (state) => ({ queue: state.queue }),
+      // Devices that stored the pre-partialize shape may still carry
+      // isSyncing:true in AsyncStorage — force it false on rehydrate so
+      // an old blob can never wedge the queue either.
+      merge: (persisted, current) => ({
+        ...current,
+        ...(persisted as Partial<StaffQueueState>),
+        isSyncing: false,
+      }),
     }
   )
 );

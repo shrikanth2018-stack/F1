@@ -27,6 +27,9 @@ import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { Divider } from '../../components/Divider';
 import { ErrorRetry } from '../../components/ErrorRetry';
+import { SegmentedControl } from '../../components/SegmentedControl';
+import { sendPush } from '../../api/sendPush';
+import { confirmDialog } from '../../utils/confirmDialog';
 import {
   useNotificationTemplates,
   useUpdateNotificationTemplate,
@@ -49,6 +52,125 @@ const SAMPLE_VARS: Record<string, string> = {
 
 function renderSample(text: string): string {
   return text.replace(/\{\{(\w+)\}\}/g, (_match, key) => SAMPLE_VARS[key] ?? `{{${key}}}`);
+}
+
+// ── Custom push composer ───────────────────────────────────────────────────
+// Ad-hoc "send now" push — free title/body to a chosen audience. Rides the
+// existing send-push edge function (admin JWT + role fan-out) and is fully
+// audited in push_logs like every other push. 'Everyone' fans out as one
+// call per role (send-push resolves a single role per call).
+type Audience = 'customer' | 'staff' | 'everyone';
+
+const AUDIENCE_LABEL: Record<Audience, string> = {
+  customer: 'all customers',
+  staff: 'all staff',
+  everyone: 'everyone (customers, staff & admins)',
+};
+
+function CustomPushComposer() {
+  const [audience, setAudience] = useState<Audience>('customer');
+  const [title, setTitle] = useState('');
+  const [body, setBody] = useState('');
+  const [isSending, setIsSending] = useState(false);
+
+  const canSend = title.trim().length > 0 && body.trim().length > 0 && !isSending;
+
+  const handleSend = async () => {
+    const ok = await confirmDialog({
+      title: 'Send this notification?',
+      message: `"${title.trim()}" will be sent to ${AUDIENCE_LABEL[audience]} right now.`,
+      confirmLabel: 'Send',
+    });
+    if (!ok) return;
+
+    setIsSending(true);
+    try {
+      const roles: Array<'customer' | 'staff' | 'admin'> =
+        audience === 'everyone' ? ['customer', 'staff', 'admin'] : [audience];
+
+      let sent = 0;
+      let anySuccess = false;
+      for (const role of roles) {
+        const res = await sendPush({
+          role,
+          title: title.trim(),
+          body: body.trim(),
+          trigger_source: 'admin_custom',
+        });
+        if (res) {
+          anySuccess = true;
+          sent += res.sent;
+        }
+      }
+
+      if (anySuccess) {
+        Alert.alert('Notification Sent', `Delivered to ${sent} device${sent === 1 ? '' : 's'}.`);
+        setTitle('');
+        setBody('');
+      } else {
+        Alert.alert('Send Failed', 'The notification could not be sent. Please try again.');
+      }
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  return (
+    <View style={styles.card}>
+      <ThemedText variant="body" color="primary" style={styles.eventKey}>Send Custom Notification</ThemedText>
+      <ThemedText variant="small" color="muted" style={styles.description}>
+        One-off push, sent immediately to the chosen audience.
+      </ThemedText>
+
+      <SegmentedControl
+        style={styles.composerTabs}
+        value={audience}
+        onChange={setAudience}
+        options={[
+          { key: 'customer', label: 'Customers' },
+          { key: 'staff', label: 'Staff' },
+          { key: 'everyone', label: 'Everyone' },
+        ]}
+      />
+
+      <View style={styles.field}>
+        <ThemedText variant="small" color="muted" style={styles.fieldLabel}>Title</ThemedText>
+        <TextInput
+          style={styles.input}
+          value={title}
+          onChangeText={setTitle}
+          placeholder="e.g. Special weekend menu!"
+          placeholderTextColor={Theme.colors.text.muted}
+        />
+      </View>
+
+      <View style={styles.field}>
+        <ThemedText variant="small" color="muted" style={styles.fieldLabel}>Message</ThemedText>
+        <TextInput
+          style={[styles.input, styles.bodyInput]}
+          value={body}
+          onChangeText={setBody}
+          placeholder="The message people will see in the notification"
+          placeholderTextColor={Theme.colors.text.muted}
+          multiline
+          textAlignVertical="top"
+        />
+      </View>
+
+      <View style={styles.actionRow}>
+        <TouchableOpacity
+          onPress={() => Alert.alert(title.trim() || '(empty title)', body.trim() || '(empty body)')}
+        >
+          <ThemedText variant="body" color="accent">Preview  ›</ThemedText>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={handleSend} disabled={!canSend}>
+          {isSending
+            ? <ActivityIndicator color={Theme.colors.text.mint} size="small" />
+            : <ThemedText variant="body" color={canSend ? 'mint' : 'muted'}>Send now  ›</ThemedText>}
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
 }
 
 function TemplateCard({ template }: { template: NotificationTemplate }) {
@@ -176,6 +298,7 @@ export function NotificationManagerScreen({ navigation }: { navigation: AdminNav
         <ActivityIndicator color={Theme.colors.text.mint} style={styles.loading} />
       ) : (
         <ScrollView contentContainerStyle={styles.list}>
+          <CustomPushComposer />
           <ThemedText variant="small" color="muted" style={styles.intro}>
             Customize push text per event or toggle any event off. Variables like {'{{order_id}}'} get replaced at send time.
           </ThemedText>
@@ -220,6 +343,7 @@ const styles = StyleSheet.create({
   },
   eventKey: {  },
   description: { marginTop: 2 },
+  composerTabs: { marginTop: Theme.spacing.sm },
   field: { marginTop: Theme.spacing.sm },
   fieldLabel: { letterSpacing: 1, marginBottom: 4 },
   input: {

@@ -205,3 +205,31 @@ supabase functions deploy place-order  --no-verify-jwt   # rewritten — flat `i
 
 Rollback: redeploy the previous `place-order` and ship the previous app build;
 `quote-order` can be left deployed (nothing else calls it).
+
+## 10. Hub commission claims (2026-07-21)
+
+Hub operators claim their monthly commission from the Hub Dashboard; the
+claim lands in `expense_claims` (category `Hub Commission`) and rides the
+existing admin approve → paid flow in Expense Manager.
+
+**SQL (run in SQL editor, idempotent):**
+
+```
+supabase/sql/hub_commission_claims.sql
+```
+
+Adds two nullable columns to `expense_claims` (`hub_id`, `claim_period`), a
+partial unique index (one claim per hub per month), and three functions:
+`_hub_commission_for_period` (internal), `get_hub_commission_summary`,
+`create_hub_commission_claim` (both SECURITY DEFINER, granted to
+`authenticated` — the claim amount is computed server-side from delivered
+item value × `delivery_hubs.commission_percent`; the client never sends an
+amount).
+
+**No edge-function changes.** The custom-push composer added in the same app
+release reuses the already-deployed `send-push` function as-is.
+
+**App build:** run this SQL **before** shipping the OTA that adds the
+Commission tab. Old app builds are unaffected (additive columns + new RPCs
+only). Rollback: the app tab errors gracefully if the RPCs are missing;
+dropping the functions and columns reverts fully.

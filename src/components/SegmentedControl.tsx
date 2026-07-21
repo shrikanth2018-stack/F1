@@ -1,10 +1,11 @@
 /**
  * 1stOne F1 — SegmentedControl
  *
- * One shared 2-tab "glass pill" with an animated sliding indicator and a
- * spring entrance (audit D24). Replaces the per-screen toggle UIs — the
- * Home/Plans inline glass pill and the plain pills on Orders / Hub — so
- * every 2-tab switch in the app looks and behaves identically.
+ * One shared "glass pill" tab switch (2+ tabs) with an animated sliding
+ * indicator and a spring entrance (audit D24). Replaces the per-screen
+ * toggle UIs — the Home/Plans inline glass pill and the plain pills on
+ * Orders / Hub — so every tab switch in the app looks and behaves
+ * identically. Indicator width self-derives from the option count.
  *
  * Self-measuring: the indicator width is derived from the rendered width,
  * so the control simply fills whatever the parent gives it. Pass `style`
@@ -34,7 +35,8 @@ export interface SegmentOption<T extends string> {
 }
 
 interface Props<T extends string> {
-  options: [SegmentOption<T>, SegmentOption<T>];
+  /** At least two tabs; the pill divides its width evenly between them. */
+  options: [SegmentOption<T>, SegmentOption<T>, ...SegmentOption<T>[]];
   value: T;
   onChange: (key: T) => void;
   style?: StyleProp<ViewStyle>;
@@ -42,8 +44,8 @@ interface Props<T extends string> {
 
 export function SegmentedControl<T extends string>({ options, value, onChange, style }: Props<T>) {
   const [width, setWidth] = useState(0);
-  const tabWidth = width / 2;
-  const activeIndex = options[0].key === value ? 0 : 1;
+  const tabWidth = width / options.length;
+  const activeIndex = Math.max(0, options.findIndex((o) => o.key === value));
 
   // Sliding indicator.
   const pos = useSharedValue(activeIndex);

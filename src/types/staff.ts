@@ -1,7 +1,7 @@
 export interface ExpenseClaim {
   id: number;
   staff_id: string;
-  category: 'Grocery' | 'Vegetable' | 'Stationery' | 'Fuel' | 'Others';
+  category: 'Grocery' | 'Vegetable' | 'Stationery' | 'Fuel' | 'Others' | 'Hub Commission';
   description: string;
   amount: number;
   status: 'Pending' | 'Approved' | 'Rejected' | 'Paid';
@@ -10,6 +10,10 @@ export interface ExpenseClaim {
   branch_id: number | null;
   created_at: string;
   updated_at: string;
+  /** Hub-commission claims only — the hub the commission belongs to. */
+  hub_id?: number | null;
+  /** Hub-commission claims only — first day of the claimed month (IST). */
+  claim_period?: string | null;
 }
 
 export interface BusinessExpense {
