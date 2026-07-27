@@ -357,10 +357,17 @@ export function OrderDetailScreen({ route, navigation }: any) {
           </View>
         )}
 
-        {/* Payment — one line */}
+        {/* Payment — one line.
+            'account' is a back-office order confirmed now and collected
+            later; labelling it "Online" like every other non-wallet method
+            would tell the customer an unpaid order was already paid. */}
         <View style={styles.section}>
           <ThemedText variant="body" color="subtitle">
-            Payment · {groupRows[0].payment_method === 'wallet' ? 'Wallet' : 'Online'} · {formatPriceShort(groupTotal)}
+            Payment · {
+              groupRows[0].payment_method === 'wallet' ? 'Wallet'
+                : groupRows[0].payment_method === 'account' ? 'To pay'
+                : 'Online'
+            } · {formatPriceShort(groupTotal)}
           </ThemedText>
         </View>
 

@@ -171,6 +171,9 @@ const SUPER_ADMIN_MANAGE_ROWS: ManageRowDef[] = [
 ];
 
 const ALL_MANAGE_ROWS: ManageRowDef[] = [
+  { label: 'Add Customer', screen: 'AdminCreateCustomer' },
+  { label: 'Customer Lookup', screen: 'AdminCustomerLookup' },
+  { label: 'Create Order (Bulk / B2B)', screen: 'AdminCreateOrder' },
   { label: 'Manage Running Orders', screen: 'AdminOrders' },
   { label: 'Manage Running Subscriptions', screen: 'AdminSubscriptions' },
   { label: 'Menu Manager', screen: 'MenuManage' },
@@ -240,6 +243,23 @@ function ManageTab() {
           {/* BRANCH — super-admin's branch picker (Manage Branches + Export
               Customers live inside Operations Manager → super-admin section) */}
           <BranchRow />
+
+          {/* CUSTOMERS — registration and history. Separate from ORDERS
+              because a B2B account is often set up well before its first
+              order, and because lookup is a support task, not an ordering one. */}
+          <View style={styles.section}>
+            <ThemedText variant="small" color="muted" style={styles.sectionLabel}>CUSTOMERS</ThemedText>
+          </View>
+          <AdminRow label="Add Customer" showChevron onPress={() => navigation.navigate('AdminCreateCustomer')} />
+          <AdminRow label="Customer Lookup" showChevron onPress={() => navigation.navigate('AdminCustomerLookup')} />
+
+          <Divider />
+
+          {/* ORDERS */}
+          <View style={styles.section}>
+            <ThemedText variant="small" color="muted" style={styles.sectionLabel}>ORDERS</ThemedText>
+          </View>
+          <AdminRow label="Create Order (Bulk / B2B)" showChevron onPress={() => navigation.navigate('AdminCreateOrder')} />
           <AdminRow label="Manage Running Orders" showChevron onPress={() => navigation.navigate('AdminOrders')} />
           <AdminRow label="Manage Running Subscriptions" showChevron onPress={() => navigation.navigate('AdminSubscriptions')} />
 

@@ -3,9 +3,13 @@
  *
  * Lists menus per cycle (toggle tap cycles through Breakfast → Lunch → …).
  * Each row: menu name | tap-to-edit price | enable/disable switch.
- * Footer: "+ Add new item" → CreateMenuScreen.
+ * Footer: "+ Item" → CreateItemScreen · "+ Menu item" → CreateMenuScreen.
  *
- * Sub-items (kitchen prep components) are stored as JSON in menu_items.ingredients.
+ * Shows BOTH stages of the builder: the priced building-block items
+ * (is_customer_visible = false) and the customer-facing menu items composed
+ * from them. Items are listed here deliberately — this is where their price
+ * is edited after creation. A row with components under its name is a menu
+ * item; a row without is an item.
  */
 
 import React, { useState, useMemo } from 'react';
@@ -35,17 +39,35 @@ const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
 const P = Theme.typography.sizes.body + 4;   // price text
 
-/** Parse components stored as JSON in ingredients field */
+/**
+ * Parse a menu item's components from `ingredients`.
+ *
+ * Two formats coexist. The two-stage builder writes the "Name:qty;Name:qty"
+ * grammar that get_kitchen_aggregate parses; menus created before it hold a
+ * JSON array. Both are rendered so no existing row goes blank.
+ */
 function parseComponents(raw?: string | null): { name: string; qty: string }[] {
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) return parsed;
-  } catch {
-    // legacy plain-text ingredients — show as single entry
-    return [{ name: raw, qty: '' }];
+  const text = raw?.trim();
+  if (!text) return [];
+
+  if (text.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(text);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {
+      /* not valid JSON after all — fall through to the text grammar */
+    }
   }
-  return [];
+
+  return text
+    .split(';')
+    .map((chunk) => chunk.trim())
+    .filter(Boolean)
+    .map((chunk) => {
+      const [name, qty] = chunk.split(':');
+      return { name: (name ?? '').trim(), qty: (qty ?? '').trim() };
+    })
+    .filter((c) => c.name.length > 0);
 }
 
 export function MenuManageScreen({ navigation }: { navigation: AdminNavProp }) {
@@ -178,7 +200,7 @@ export function MenuManageScreen({ navigation }: { navigation: AdminNavProp }) {
         renderItem={renderItem}
         ListEmptyComponent={
           !isLoading ? (
-            <EmptyState title="No menus for this cycle" subtitle={'Tap "+ Add new item" below'} />
+            <EmptyState title="No menus for this cycle" subtitle={'Tap "+ Item" below to start'} />
           ) : null
         }
         contentContainerStyle={styles.list}
@@ -199,6 +221,19 @@ export function MenuManageScreen({ navigation }: { navigation: AdminNavProp }) {
         <TouchableOpacity
           activeOpacity={0.7}
           onPress={() =>
+            navigation.navigate('CreateItem', {
+              cycleId: selected?.id,
+              cycleName: selected?.cycle_name,
+            })
+          }
+        >
+          <ThemedText variant="body" color="mint" style={styles.rowText}>
+            + Item{'  ›'}
+          </ThemedText>
+        </TouchableOpacity>
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={() =>
             navigation.navigate('CreateMenu', {
               cycleId: selected?.id,
               cycleName: selected?.cycle_name,
@@ -206,7 +241,7 @@ export function MenuManageScreen({ navigation }: { navigation: AdminNavProp }) {
           }
         >
           <ThemedText variant="body" color="mint" style={styles.rowText}>
-            + Add new item{'  ›'}
+            + Menu item{'  ›'}
           </ThemedText>
         </TouchableOpacity>
       </View>

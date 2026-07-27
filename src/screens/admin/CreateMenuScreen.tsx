@@ -1,35 +1,50 @@
 /**
- * 1stOne F1 — Create Menu Screen
+ * 1stOne F1 — Create Menu Item (stage 2 of the menu builder)
  *
- * Define a named menu for a cycle, with individual sub-items (qty each).
- * Sub-items are kitchen prep tasks — when a customer orders this menu,
- * the kitchen tab shows each sub-item × quantity ordered.
+ * Stage 1 (CreateItemScreen) defines priced ITEMS — the building blocks
+ * (Idli ₹12, Vada ₹25), hidden from the customer menu. This screen clubs
+ * them into a customer-facing MENU ITEM ("Idli Vada") that carries its OWN
+ * combination price — a combo is rarely the sum of its parts, so the price
+ * is entered here rather than derived.
+ *
+ * Storage: one menu_items row, is_customer_visible = true, with the recipe
+ * in `ingredients` as "Idli:2;Vada:1". That text grammar is exactly what
+ * get_kitchen_aggregate parses, so the kitchen explodes this menu item into
+ * its components and merges them with the same item ordered on its own —
+ * one correct prep line either way.
+ *
+ * Only component-less items of the SAME cycle can be added: the kitchen
+ * aggregation explodes one level only, so a menu item may not contain
+ * another menu item.
  *
  * Cycle toggle: tap the title text to cycle through Breakfast → Lunch → …
- * Sub-items are stored as JSON in menu_items.ingredients.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   ScrollView,
   TouchableOpacity,
   TextInput,
   StyleSheet,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
+import { infoDialog } from '../../utils/confirmDialog';
 import {
   useAddMenuItem,
+  useAllMenuItems,
   useAllDeliveryCycles,
 } from '../../hooks/useMenuManagement';
+import type { MenuItem } from '../../types';
 import type { AdminScreenProps } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
+const S = Theme.typography.sizes.small + 2;
 
-type SubItem = { name: string; qty: string };
+/** A building-block item chosen for this menu item, with its quantity. */
+type PickedItem = { id: number; name: string; price: number; qty: string };
 
 export function CreateMenuScreen({ navigation, route }: AdminScreenProps<'CreateMenu'>) {
   const { data: rawCycles = [] } = useAllDeliveryCycles();
@@ -41,9 +56,8 @@ export function CreateMenuScreen({ navigation, route }: AdminScreenProps<'Create
 
   const [cycleIdx, setCycleIdx] = useState(0);
   const [menuName, setMenuName] = useState('');
-  const [subItems, setSubItems] = useState<SubItem[]>([]);
-  const [itemName, setItemName] = useState('');
-  const [itemQty, setItemQty] = useState('');
+  const [menuPrice, setMenuPrice] = useState('');
+  const [picked, setPicked] = useState<PickedItem[]>([]);
 
   // Sync initial cycle from navigation param once cycles load
   useEffect(() => {
@@ -57,40 +71,102 @@ export function CreateMenuScreen({ navigation, route }: AdminScreenProps<'Create
   const selectedCycle = cycles[cycleIdx];
   const cycleLabel = selectedCycle ? `${selectedCycle.cycle_name} Menu` : 'Select cycle  ›';
 
+  const { data: allInCycle = [] } = useAllMenuItems(selectedCycle?.id);
+
+  // Selectable building blocks: this cycle's active, admin-only items that
+  // are not themselves composites (no nesting — see the header note).
+  const availableItems = useMemo(
+    () =>
+      (allInCycle as MenuItem[]).filter(
+        (m) =>
+          m.is_active &&
+          m.is_customer_visible === false &&
+          !(m.ingredients && m.ingredients.trim()) &&
+          !picked.some((p) => p.id === m.id),
+      ),
+    [allInCycle, picked],
+  );
+
+  // Sum of the parts — shown as a reference next to the combination price.
+  const partsTotal = useMemo(
+    () => picked.reduce((sum, p) => sum + p.price * (parseInt(p.qty, 10) || 0), 0),
+    [picked],
+  );
+
   const handleCycleToggle = () => {
     if (!cycles.length) return;
+    // Items belong to a cycle, so switching cycles invalidates the selection.
     setCycleIdx((p) => (p + 1) % cycles.length);
+    setPicked([]);
   };
 
-  const handleAddSubItem = () => {
-    const name = itemName.trim();
-    if (!name) return;
-    setSubItems((prev) => [...prev, { name, qty: itemQty.trim() || '1' }]);
-    setItemName('');
-    setItemQty('');
+  const handleAdd = (item: MenuItem) => {
+    setPicked((prev) => [
+      ...prev,
+      { id: item.id, name: item.name, price: item.price, qty: '1' },
+    ]);
   };
 
-  const handleRemove = (idx: number) => {
-    setSubItems((prev) => prev.filter((_, i) => i !== idx));
+  const handleQty = (id: number, qty: string) => {
+    setPicked((prev) => prev.map((p) => (p.id === id ? { ...p, qty } : p)));
+  };
+
+  const handleRemove = (id: number) => {
+    setPicked((prev) => prev.filter((p) => p.id !== id));
   };
 
   const handleSave = () => {
-    if (!menuName.trim()) {
-      Alert.alert('Error', 'Enter a menu name');
+    const name = menuName.trim();
+    if (!name) {
+      infoDialog('Name required', 'Enter the menu item name.');
+      return;
+    }
+    if (name.includes(':') || name.includes(';')) {
+      infoDialog(
+        'Invalid character',
+        'Menu item names cannot contain ":" or ";" — they separate the parts of a recipe.',
+      );
       return;
     }
     if (!selectedCycle) {
-      Alert.alert('Error', 'No delivery cycles available');
+      infoDialog('No cycle', 'No delivery cycles available.');
       return;
     }
+    const clash = (allInCycle as MenuItem[]).find(
+      (m) => m.name.trim().toLowerCase() === name.toLowerCase(),
+    );
+    if (clash) {
+      infoDialog(
+        'Name already used',
+        `"${clash.name}" already exists in ${selectedCycle.cycle_name}. The kitchen groups prep by name, so each name must be used once per cycle.`,
+      );
+      return;
+    }
+    const badQty = picked.find((p) => !(parseInt(p.qty, 10) > 0));
+    if (badQty) {
+      infoDialog('Quantity required', `Set how many ${badQty.name} go into this menu item.`);
+      return;
+    }
+
+    const price = parseFloat(menuPrice);
+    // Price may be left blank and set later from Menu Manager — but never
+    // negative, and never silently NaN.
+    const finalPrice = Number.isFinite(price) && price >= 0 ? price : 0;
+
+    // "Idli:2;Vada:1" — the grammar get_kitchen_aggregate parses. Names come
+    // straight from the selected rows, so they always match exactly.
+    const recipe = picked.map((p) => `${p.name}:${parseInt(p.qty, 10)}`).join(';');
+
     addMenuItem.mutate(
       {
         cycle_id: selectedCycle.id,
-        name: menuName.trim(),
-        price: 0,
-        ingredients: subItems.length ? JSON.stringify(subItems) : undefined,
+        name,
+        price: finalPrice,
+        ingredients: recipe || undefined,
+        // Stage 2 always produces a customer-facing row.
+        is_customer_visible: true,
       },
-      { onSuccess: () => navigation.goBack() }
+      { onSuccess: () => navigation.goBack() },
     );
   };
 
@@ -122,55 +198,99 @@ export function CreateMenuScreen({ navigation, route }: AdminScreenProps<'Create
         {/* Menu name */}
         <TextInput
           style={styles.input}
-          placeholder="Menu name  (e.g. Breakfast Thali)"
+          placeholder="Menu item name  (e.g. Idli Vada)"
           placeholderTextColor={Theme.colors.text.muted}
           value={menuName}
           onChangeText={setMenuName}
+          returnKeyType="next"
         />
 
-        {/* Sub-item entry row */}
-        <View style={styles.subEntryRow}>
-          <TextInput
-            style={[styles.input, styles.flex1]}
-            placeholder="Item  (e.g. Idli)"
-            placeholderTextColor={Theme.colors.text.muted}
-            value={itemName}
-            onChangeText={setItemName}
-            onSubmitEditing={handleAddSubItem}
-            returnKeyType="next"
-          />
-          <TextInput
-            style={[styles.input, styles.qtyInput]}
-            placeholder="Qty"
-            placeholderTextColor={Theme.colors.text.muted}
-            value={itemQty}
-            onChangeText={setItemQty}
-            onSubmitEditing={handleAddSubItem}
-            returnKeyType="done"
-          />
-          <TouchableOpacity style={styles.addBtn} onPress={handleAddSubItem}>
-            <ThemedText variant="body" color="mint" style={styles.txt}>+</ThemedText>
-          </TouchableOpacity>
-        </View>
+        {/* Combination price */}
+        <TextInput
+          style={styles.input}
+          placeholder="Price on the customer menu  (₹)"
+          placeholderTextColor={Theme.colors.text.muted}
+          value={menuPrice}
+          onChangeText={setMenuPrice}
+          keyboardType="numeric"
+          returnKeyType="done"
+        />
+        {picked.length > 0 && (
+          <ThemedText variant="small" color="muted" style={styles.hint}>
+            Parts add up to ₹{partsTotal} — the menu price is set independently.
+          </ThemedText>
+        )}
 
-        {/* Sub-items list */}
-        {subItems.length > 0 && (
-          <View style={styles.subList}>
-            {subItems.map((si, idx) => (
-              <View key={idx} style={styles.subRow}>
-                <ThemedText variant="body" color="primary" style={[styles.txt, styles.flex1]}>
-                  {si.name}
+        {/* Chosen parts */}
+        {picked.length > 0 && (
+          <View style={styles.block}>
+            <ThemedText variant="small" color="muted" style={styles.sectionLabel}>
+              THIS MENU ITEM CONTAINS
+            </ThemedText>
+            {picked.map((p) => (
+              <View key={p.id} style={styles.row}>
+                <ThemedText
+                  variant="body"
+                  color="primary"
+                  style={[styles.txt, styles.flex1]}
+                  numberOfLines={1}
+                >
+                  {p.name}
                 </ThemedText>
-                <ThemedText variant="body" color="subtitle" style={styles.txt}>
-                  {si.qty}
-                </ThemedText>
-                <TouchableOpacity onPress={() => handleRemove(idx)} hitSlop={{ top: 8, bottom: 8, left: 12, right: 4 }}>
-                  <ThemedText variant="body" color="muted" style={[styles.txt, styles.removeX]}>×</ThemedText>
+                <TextInput
+                  style={styles.qtyInput}
+                  value={p.qty}
+                  onChangeText={(v) => handleQty(p.id, v)}
+                  keyboardType="numeric"
+                  placeholder="Qty"
+                  placeholderTextColor={Theme.colors.text.muted}
+                />
+                <TouchableOpacity
+                  onPress={() => handleRemove(p.id)}
+                  hitSlop={{ top: 8, bottom: 8, left: 12, right: 4 }}
+                >
+                  <ThemedText variant="body" color="muted" style={styles.removeX}>×</ThemedText>
                 </TouchableOpacity>
               </View>
             ))}
           </View>
         )}
+
+        {/* Available building blocks */}
+        <View style={styles.block}>
+          <ThemedText variant="small" color="muted" style={styles.sectionLabel}>
+            ADD FROM ITEMS
+          </ThemedText>
+          {availableItems.length === 0 ? (
+            <ThemedText variant="small" color="muted" style={styles.hint}>
+              {picked.length > 0
+                ? 'All items in this cycle have been added.'
+                : 'No items yet in this cycle. Create them first from Menu Manager → + Item.'}
+            </ThemedText>
+          ) : (
+            availableItems.map((it) => (
+              <TouchableOpacity
+                key={it.id}
+                style={styles.row}
+                onPress={() => handleAdd(it)}
+                activeOpacity={0.7}
+              >
+                <ThemedText
+                  variant="body"
+                  color="primary"
+                  style={[styles.txt, styles.flex1]}
+                  numberOfLines={1}
+                >
+                  {it.name}
+                </ThemedText>
+                <ThemedText variant="body" color="subtitle" style={styles.txt}>
+                  ₹{it.price}
+                </ThemedText>
+                <ThemedText variant="body" color="mint" style={styles.plus}>+</ThemedText>
+              </TouchableOpacity>
+            ))
+          )}
+        </View>
       </ScrollView>
 
       {/* Save footer */}
@@ -230,36 +350,35 @@ const styles = StyleSheet.create({
     marginBottom: Theme.spacing.sm,
   },
 
-  subEntryRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Theme.spacing.sm,
-    marginTop: Theme.spacing.xs,
-  },
-  flex1: { flex: 1 },
-  qtyInput: { width: 64, marginBottom: Theme.spacing.sm },
-  addBtn: {
-    paddingHorizontal: Theme.spacing.sm,
-    paddingBottom: Theme.spacing.sm,
-  },
+  hint: { fontSize: S, marginTop: 2 },
 
-  subList: {
-    marginTop: Theme.spacing.xs,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: Theme.colors.text.mint,
-  },
-  subRow: {
+  block: { marginTop: Theme.spacing.lg },
+  sectionLabel: { fontSize: S, letterSpacing: 1, marginBottom: Theme.spacing.xs },
+
+  row: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: Theme.spacing.sm,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: Theme.colors.layout.divider,
   },
+  flex1: { flex: 1 },
+  qtyInput: {
+    width: 64,
+    textAlign: 'center',
+    color: Theme.colors.text.primary,
+    fontFamily: Theme.typography.fontFamily,
+    fontSize: B,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Theme.colors.text.mint,
+    paddingVertical: 2,
+  },
   removeX: {
     fontSize: B + 4,
     marginLeft: Theme.spacing.sm,
     color: Theme.colors.text.muted,
   },
+  plus: { fontSize: B + 4, marginLeft: Theme.spacing.md },
 
   footer: {
     paddingHorizontal: Theme.spacing.md,

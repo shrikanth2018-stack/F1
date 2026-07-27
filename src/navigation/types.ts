@@ -13,6 +13,9 @@ export type AdminStackParamList = {
   HubReport: undefined;
   // Menu & catalog
   MenuManage: undefined;
+  /** Stage 1 of the menu builder — a priced building-block item. */
+  CreateItem: { cycleId?: number; cycleName?: string };
+  /** Stage 2 — a customer-facing menu item composed from stage-1 items. */
   CreateMenu: { cycleId?: number; cycleName?: string };
   CreatePlan: { cycleId?: number; cycleName?: string; planType?: 'food' | 'essentials' };
   PlansManage: undefined;
@@ -40,6 +43,12 @@ export type AdminStackParamList = {
   // Operations
   AdminOrders: undefined;
   AdminOrderDetail: { orderId: number };
+  /** Back-office / bulk order entry on behalf of a customer. */
+  AdminCreateOrder: undefined;
+  /** Register a customer + address from the back office, or fix an address. */
+  AdminCreateCustomer: { phone?: string; addressId?: number } | undefined;
+  /** Order history for a phone number. */
+  AdminCustomerLookup: undefined;
   AdminSubscriptions: undefined;
   StoreConfig: undefined;
   FeatureFlags: undefined;

@@ -63,7 +63,7 @@ function useOrdersForDate(date: string) {
       const { data, error } = await supabase
         .from('orders')
         .select(`
-          id, status, delivery_method, dispatch_date,
+          id, status, delivery_method, dispatch_date, placed_by,
           customer_addresses(
             delivery_hubs(hub_name),
             delivery_zones(zone_name)
@@ -81,6 +81,9 @@ export function AdminOrdersScreen({ navigation }: { navigation: AdminNavProp }) 
   const [dateOffset, setDateOffset] = useState(0);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('All');
   const [searchTerm, setSearchTerm] = useState('');
+  // Back-office orders carry placed_by (the admin who created them);
+  // customer-placed orders leave it null.
+  const [bulkOnly, setBulkOnly] = useState(false);
   const date = istDateWithOffset(dateOffset);
 
   const { data: orders, isLoading, error, refetch } = useOrdersForDate(date);
@@ -91,6 +94,7 @@ export function AdminOrdersScreen({ navigation }: { navigation: AdminNavProp }) 
     const filtered = all.filter((o) => {
       if (statusFilter !== 'All' && o.status !== statusFilter) return false;
       if (term && !String(o.id).includes(term)) return false;
+      if (bulkOnly && !(o as any).placed_by) return false;
       return true;
     });
     // D2: pin unsuccessful-delivery orders to the top — they need action.
@@ -98,7 +102,7 @@ export function AdminOrdersScreen({ navigation }: { navigation: AdminNavProp }) 
       (a, b) =>
         (isUnsuccessfulDelivery(a) ? 0 : 1) - (isUnsuccessfulDelivery(b) ? 0 : 1)
     );
-  }, [orders, statusFilter, searchTerm]);
+  }, [orders, statusFilter, searchTerm, bulkOnly]);
 
   if (error) return <ErrorRetry message="Could not load orders" onRetry={refetch} />;
 
@@ -166,6 +170,17 @@ export function AdminOrdersScreen({ navigation }: { navigation: AdminNavProp }) 
             <ThemedText variant="body" color="muted">×</ThemedText>
           </TouchableOpacity>
         )}
+        <TouchableOpacity
+          style={[styles.chip, bulkOnly && styles.chipActive, styles.bulkChip]}
+          onPress={() => setBulkOnly((v) => !v)}
+          activeOpacity={0.7}
+          accessibilityRole="switch"
+          accessibilityState={{ checked: bulkOnly }}
+        >
+          <ThemedText variant="small" color={bulkOnly ? 'mint' : 'muted'} style={styles.chipText}>
+            Bulk only
+          </ThemedText>
+        </TouchableOpacity>
       </View>
 
       <Divider />
@@ -318,4 +333,5 @@ const styles = StyleSheet.create({
     borderBottomColor: Theme.colors.layout.divider,
   },
   searchClear: { paddingHorizontal: Theme.spacing.sm },
+  bulkChip: { marginLeft: Theme.spacing.sm },
 });

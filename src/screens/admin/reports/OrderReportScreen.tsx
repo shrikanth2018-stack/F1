@@ -20,7 +20,7 @@ import { Theme } from '../../../theme';
 import { ThemedText } from '../../../components/ThemedText';
 import { EmptyState } from '../../../components/EmptyState';
 import { printHtml, sharePdf } from '../../../utils/printHtml';
-import { useOrdersDetailReport } from '../../../hooks/useReports';
+import { useOrdersDetailReport, type OrderSource } from '../../../hooks/useReports';
 import type { AdminNavProp } from '../../../navigation/types';
 import {
   ReportPeriodPicker,
@@ -34,6 +34,19 @@ import {
 type ViewMode = 'Cycle wise' | 'Menu wise';
 
 const VIEWS: ViewMode[] = ['Cycle wise', 'Menu wise'];
+
+/** Order provenance filter — 'All' is the pre-existing report, unchanged. */
+const SOURCES: OrderSource[] = ['all', 'bulk', 'retail'];
+const SOURCE_LABEL: Record<OrderSource, string> = {
+  all: 'All',
+  bulk: 'Bulk',
+  retail: 'Retail',
+};
+const SOURCE_TITLE: Record<OrderSource, string> = {
+  all: '',
+  bulk: ' · Bulk / B2B only',
+  retail: ' · Customer-placed only',
+};
 
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
@@ -57,6 +70,7 @@ async function handleDownload(html: string, _period: Period) {
 function buildHtml(
   viewMode: ViewMode,
   periodTitle: string,
+  sourceTitle: string,
   cycleRows: { date: string; cycleName: string; count: number }[],
   menuRows: { date: string; itemName: string; qty: number }[],
   total: number
@@ -71,7 +85,7 @@ function buildHtml(
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
   <style>body{font-family:sans-serif;font-size:12px;padding:20px}h2{margin-bottom:4px}p{color:#666;margin-bottom:16px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ddd;padding:6px 10px;text-align:left}th{background:#f4f4f4}tfoot td{font-weight:bold;background:#f9f9f9}</style>
   </head><body>
-  <h2>Orders Report — ${periodTitle} (${viewMode})</h2>
+  <h2>Orders Report — ${periodTitle} (${viewMode})${sourceTitle}</h2>
   <p>Generated: ${new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
   <table>
     <thead><tr><th>Date</th><th>${col2}</th><th>${col3}</th></tr></thead>
@@ -85,8 +99,9 @@ export function OrderReportScreen({ navigation }: { navigation: AdminNavProp }) 
   const [period, setPeriod] = useState<Period>('Monthly');
   const [customRange, setCustomRange] = useState<DateRange>(defaultCustomRange);
   const [viewMode, setViewMode] = useState<ViewMode>('Cycle wise');
+  const [source, setSource] = useState<OrderSource>('all');
   const { start, end } = useMemo(() => getPeriodRange(period, customRange), [period, customRange]);
-  const { data, isLoading } = useOrdersDetailReport(start, end);
+  const { data, isLoading } = useOrdersDetailReport(start, end, source);
 
   const cycleRows = useMemo(() => data?.cycleRows ?? [], [data]);
   const menuRows = useMemo(() => data?.menuRows ?? [], [data]);
@@ -94,8 +109,8 @@ export function OrderReportScreen({ navigation }: { navigation: AdminNavProp }) 
   const displayRows = viewMode === 'Cycle wise' ? cycleRows : menuRows;
 
   const html = useMemo(
-    () => buildHtml(viewMode, periodLabel(period, customRange), cycleRows, menuRows, total),
-    [viewMode, period, customRange, cycleRows, menuRows, total]
+    () => buildHtml(viewMode, periodLabel(period, customRange), SOURCE_TITLE[source], cycleRows, menuRows, total),
+    [viewMode, period, customRange, source, cycleRows, menuRows, total]
   );
 
   const hasData = displayRows.length > 0;
@@ -126,6 +141,24 @@ export function OrderReportScreen({ navigation }: { navigation: AdminNavProp }) 
             <TouchableOpacity onPress={() => setViewMode(v)}>
               <ThemedText variant="body" color={viewMode === v ? 'primary' : 'muted'}
                 style={[styles.txt, viewMode === v && styles.active]}>{v}</ThemedText>
+            </TouchableOpacity>
+          </React.Fragment>
+        ))}
+      </View>
+
+      {/* Order source — All | Bulk | Retail */}
+      <View style={styles.toggleRow}>
+        {SOURCES.map((s, i) => (
+          <React.Fragment key={s}>
+            {i > 0 && <ThemedText variant="body" color="muted" style={styles.pipe}>|</ThemedText>}
+            <TouchableOpacity onPress={() => setSource(s)}>
+              <ThemedText
+                variant="body"
+                color={source === s ? 'primary' : 'muted'}
+                style={[styles.txt, source === s && styles.active]}
+              >
+                {SOURCE_LABEL[s]}
+              </ThemedText>
             </TouchableOpacity>
           </React.Fragment>
         ))}

@@ -12,31 +12,6 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
   public: {
     Tables: {
       admin_notes: {
@@ -782,8 +757,10 @@ export type Database = {
           approved_by: string | null
           branch_id: number | null
           category: string | null
+          claim_period: string | null
           created_at: string | null
           description: string
+          hub_id: number | null
           id: number
           paid_at: string | null
           staff_id: string | null
@@ -795,8 +772,10 @@ export type Database = {
           approved_by?: string | null
           branch_id?: number | null
           category?: string | null
+          claim_period?: string | null
           created_at?: string | null
           description: string
+          hub_id?: number | null
           id?: number
           paid_at?: string | null
           staff_id?: string | null
@@ -808,8 +787,10 @@ export type Database = {
           approved_by?: string | null
           branch_id?: number | null
           category?: string | null
+          claim_period?: string | null
           created_at?: string | null
           description?: string
+          hub_id?: number | null
           id?: number
           paid_at?: string | null
           staff_id?: string | null
@@ -829,6 +810,13 @@ export type Database = {
             columns: ["branch_id"]
             isOneToOne: false
             referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expense_claims_hub_id_fkey"
+            columns: ["hub_id"]
+            isOneToOne: false
+            referencedRelation: "delivery_hubs"
             referencedColumns: ["id"]
           },
           {
@@ -1017,6 +1005,7 @@ export type Database = {
           id: number
           ingredients: string | null
           is_active: boolean | null
+          is_customer_visible: boolean
           name: string
           price: number
           sort_order: number | null
@@ -1029,6 +1018,7 @@ export type Database = {
           id?: number
           ingredients?: string | null
           is_active?: boolean | null
+          is_customer_visible?: boolean
           name: string
           price: number
           sort_order?: number | null
@@ -1041,6 +1031,7 @@ export type Database = {
           id?: number
           ingredients?: string | null
           is_active?: boolean | null
+          is_customer_visible?: boolean
           name?: string
           price?: number
           sort_order?: number | null
@@ -1187,6 +1178,7 @@ export type Database = {
           delivery_address_id: number | null
           delivery_fee: number | null
           delivery_method: string | null
+          discount_percent: number | null
           dispatch_date: string
           hub_id: number | null
           id: number
@@ -1195,8 +1187,10 @@ export type Database = {
           order_type: string | null
           paid_at: string | null
           payment_method: string | null
+          placed_by: string | null
           razorpay_order_id: string | null
           razorpay_payment_id: string | null
+          razorpay_payment_link_id: string | null
           status: string | null
           subscription_id: number | null
           tax_amount: number | null
@@ -1212,6 +1206,7 @@ export type Database = {
           delivery_address_id?: number | null
           delivery_fee?: number | null
           delivery_method?: string | null
+          discount_percent?: number | null
           dispatch_date: string
           hub_id?: number | null
           id?: number
@@ -1220,8 +1215,10 @@ export type Database = {
           order_type?: string | null
           paid_at?: string | null
           payment_method?: string | null
+          placed_by?: string | null
           razorpay_order_id?: string | null
           razorpay_payment_id?: string | null
+          razorpay_payment_link_id?: string | null
           status?: string | null
           subscription_id?: number | null
           tax_amount?: number | null
@@ -1237,6 +1234,7 @@ export type Database = {
           delivery_address_id?: number | null
           delivery_fee?: number | null
           delivery_method?: string | null
+          discount_percent?: number | null
           dispatch_date?: string
           hub_id?: number | null
           id?: number
@@ -1245,8 +1243,10 @@ export type Database = {
           order_type?: string | null
           paid_at?: string | null
           payment_method?: string | null
+          placed_by?: string | null
           razorpay_order_id?: string | null
           razorpay_payment_id?: string | null
+          razorpay_payment_link_id?: string | null
           status?: string | null
           subscription_id?: number | null
           tax_amount?: number | null
@@ -1898,6 +1898,7 @@ export type Database = {
           id: number
           low_wallet_threshold: number
           loyalty_points_per_rupee: number | null
+          max_admin_discount_percent: number
           max_wallet_topup: number
           min_wallet_topup: number
           storm_mode_active: boolean | null
@@ -1915,6 +1916,7 @@ export type Database = {
           id?: number
           low_wallet_threshold?: number
           loyalty_points_per_rupee?: number | null
+          max_admin_discount_percent?: number
           max_wallet_topup?: number
           min_wallet_topup?: number
           storm_mode_active?: boolean | null
@@ -1932,6 +1934,7 @@ export type Database = {
           id?: number
           low_wallet_threshold?: number
           loyalty_points_per_rupee?: number | null
+          max_admin_discount_percent?: number
           max_wallet_topup?: number
           min_wallet_topup?: number
           storm_mode_active?: boolean | null
@@ -2287,6 +2290,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      _hub_commission_for_period: {
+        Args: { p_hub_id: number; p_next_start: string; p_start: string }
+        Returns: {
+          base_amount: number
+          commission: number
+          delivered_orders: number
+        }[]
+      }
       _kitchen_get_secret: { Args: { p_name: string }; Returns: string }
       add_or_merge_supply_order_item: {
         Args: {
@@ -2359,6 +2370,7 @@ export type Database = {
           user_id: string
         }[]
       }
+      create_hub_commission_claim: { Args: never; Returns: Json }
       custom_access_token_hook: { Args: { event: Json }; Returns: Json }
       decrement_wallet_balance_if_sufficient: {
         Args: {
@@ -2387,6 +2399,7 @@ export type Database = {
         }
         Returns: string
       }
+      external_heartbeat: { Args: never; Returns: string }
       generate_daily_manifest: {
         Args: { p_cycle_id?: number; p_target_date?: string }
         Returns: Json
@@ -2407,6 +2420,7 @@ export type Database = {
           user_id: string
         }[]
       }
+      get_hub_commission_summary: { Args: never; Returns: Json }
       get_hub_impact_addresses: {
         Args: { p_hub_id: number }
         Returns: {
@@ -2485,6 +2499,11 @@ export type Database = {
         Args: { p_lat: number; p_lng: number; p_poly: Json }
         Returns: boolean
       }
+      print_supply_batch_atomic: {
+        Args: { p_branch_id?: number; p_item_ids: number[] }
+        Returns: Json
+      }
+      prune_operational_logs: { Args: never; Returns: string }
       push_kitchen_summary: {
         Args: { p_cycle_id: number; p_target_date?: string }
         Returns: Json
@@ -2650,9 +2669,6 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {},
   },

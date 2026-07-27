@@ -298,3 +298,121 @@ store its ping URL first — see the file header for the exact
 pings healthchecks.io; `/fail` on recent cron failures; silence when the
 chain itself is dead → healthchecks.io emails the owner. Incident playbooks:
 `docs/07-incident-playbooks.md`.
+
+## 14. Two-stage menu builder (2026-07-27, Slice 1)
+
+Splits the two roles that already shared `menu_items`: priced building-block
+**items** (Idli ₹12) and the customer-facing **menu items** composed from
+them (Idli Vada ₹55, recipe `Idli:2;Vada:1`). Items are admin-only — they
+exist so a single part can be priced and sold on its own from the back
+office, and they must never reach the customer menu.
+
+**SQL (run in SQL editor, idempotent):**
+
+```
+supabase/sql/menu_items_visibility.sql
+```
+
+Adds `menu_items.is_customer_visible BOOLEAN NOT NULL DEFAULT TRUE`. The
+default is the whole safety story: every pre-existing row keeps its current
+behaviour, so this is safe to run **before** the matching app release, and
+old app builds ignore the column entirely.
+
+**No edge-function changes.** The kitchen aggregation is untouched —
+`get_kitchen_aggregate` explodes a menu item's `ingredients` by component
+NAME, and an item ordered on its own falls through the "no ingredients" path
+under its own name, so the two merge onto one prep line. That name match is
+why item names are treated as stable: there is no rename path in the app and
+none should be added.
+
+**App coupling:** run the SQL, then `npm run supabase:gen-types`, then ship
+the OTA. The customer-facing change is one filter
+(`useMenuItems` → `.eq('is_customer_visible', true)`) and it is a no-op until
+the first hidden item is created.
+
+**Rollback:** `ALTER TABLE public.menu_items DROP COLUMN is_customer_visible;`
+— nothing else depends on it.
+
+> Note: the builder now writes `ingredients` in the `Name:qty;Name:qty` text
+> grammar the kitchen parser reads, where `CreateMenuScreen` previously wrote
+> JSON. Rows written before this keep working exactly as they did; only newly
+> built menus use the new format.
+
+## 15. Admin / bulk order entry (2026-07-27, Slice 2)
+
+Back-office order creation: an admin places an order on behalf of a customer
+— bulk, individual or B2B — for one delivery cycle, from items and menu
+items defined by the two-stage builder. Depends on §14.
+
+**SQL (run in SQL editor, idempotent):**
+
+```
+supabase/sql/admin_bulk_orders.sql
+```
+
+- `orders.placed_by` (FK `auth.users`) — provenance, and the discriminator
+  behind the "Bulk only" filter on the admin orders list.
+- `orders.discount_percent` + CHECK 0–100 — recorded for the invoice; the
+  discounted price is already reflected in `order_items.price_at_time` and
+  `orders.total_amount`.
+- `orders.razorpay_payment_link_id` — deliberately NOT `razorpay_order_id`,
+  which four existing code paths match on.
+- **Widens `orders_payment_method_check`** to allow `'account'` (confirmed
+  now, collected later). Pure widening — no existing row is affected.
+- `store_config.max_admin_discount_percent` (default 15) — the discount
+  ceiling is a business rule, so it lives in config, not code.
+- `idx_orders_placed_by` — partial index for the filter.
+- **Revokes `place_order_atomic` from PUBLIC / anon / authenticated.** It is
+  SECURITY DEFINER with no authorization check of its own, so any logged-in
+  user could have called it directly and minted a Confirmed, unpaid order,
+  bypassing place-order's pricing, drift check, rate limit and payment.
+  `service_role` keeps its explicit grant, so `place-order` and
+  `admin-place-order` are unaffected. Reversed with a `GRANT` if ever needed.
+
+**Edge Functions:**
+
+```bash
+supabase functions deploy admin-create-customer --no-verify-jwt   # NEW — registration
+supabase functions deploy admin-place-order     --no-verify-jwt   # NEW — ordering
+supabase functions deploy verify-payment        --no-verify-jwt   # + payment_link.paid branch
+supabase functions deploy reports               --no-verify-jwt   # + source filter (All/Bulk/Retail)
+```
+
+The back office is split in two on purpose, mirroring the customer side where
+Checkout picks an address and AddAddress creates one:
+
+- **`admin-create-customer`** — find-or-create the auth user, fill the profile
+  name only when empty, and write the address. Routing is resolved server-side
+  (explicit zone/hub → else the map pin via `resolve_address_serviceability`)
+  and an address resolving to NEITHER a zone nor a hub is rejected.
+- **`admin-place-order`** — requires an existing `customer.user_id` and an
+  address that already routes. No create-on-the-fly path, so there is no
+  second copy of registration logic to keep in step, and the money path stays
+  a single job: known customer + items → priced, routed, paid order.
+
+`reports` gains an optional `source: 'all' | 'bulk' | 'retail'` body field,
+applied to the four order-based reports (`revenue`, `orders`, `ordersDetail`,
+`revenueDetail`) as a QUERY filter on `orders.placed_by` — not as a change to
+`_shared/reportAggregations.ts`, which is untouched. Anything unrecognised or
+absent falls back to `'all'`, so app builds that predate the filter get
+byte-identical numbers and this function can be deployed independently.
+
+`admin-place-order` calls the same `_shared/orderBuild.ts` the customer path
+uses, so pricing, GST carve-out, dispatch dates, fee priority, storm mode and
+serviceability behave identically. It deliberately drops the quote-echo drift
+check and the 5-per-60s rate limit, and it creates the order **before** taking
+payment — confirmation does not depend on payment here, so there is no
+compensating transaction: a failed wallet debit simply leaves the order unpaid.
+
+**Razorpay dashboard:** tick **`payment_link.paid`** on the existing webhook,
+or admin orders paid by link are never stamped. No new webhook or secret is
+needed — the existing one already covers the active mode.
+
+**App coupling:** run the SQL → `npm run supabase:gen-types` → deploy both
+functions → OTA. `admin-place-order` is new so no old build can call it; the
+`verify-payment` branch is additive and returns before any existing path.
+
+**Rollback:** redeploy the previous `verify-payment` from git; drop the added
+columns and the index; restore the CHECK to its three-value form (only if no
+`'account'` order exists yet).
+

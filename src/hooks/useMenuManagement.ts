@@ -32,7 +32,16 @@ export function useAllMenuItems(cycleId?: number) {
   );
 }
 
-/** Add a new menu item */
+/**
+ * Add a new menu item.
+ *
+ * Serves both stages of the builder:
+ *   stage 1 — a building-block ITEM: is_customer_visible false, no ingredients
+ *   stage 2 — a customer-facing MENU ITEM: is_customer_visible true, with the
+ *             "Name:qty;Name:qty" recipe in `ingredients`
+ * Omitting the flag keeps the DB default (TRUE), so every existing caller
+ * behaves exactly as before.
+ */
 export function useAddMenuItem() {
   const bf = useBranchFilter();
   return useSupabaseMutation<{
@@ -40,6 +49,7 @@ export function useAddMenuItem() {
     name: string;
     price: number;
     ingredients?: string;
+    is_customer_visible?: boolean;
     sort_order?: number;
   }>(
     (item) =>

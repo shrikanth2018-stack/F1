@@ -10,6 +10,7 @@ import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { AdminHome } from '../screens/admin/AdminHome';
 import { MenuManageScreen } from '../screens/admin/MenuManageScreen';
+import { CreateItemScreen } from '../screens/admin/CreateItemScreen';
 import { CreateMenuScreen } from '../screens/admin/CreateMenuScreen';
 import { CreatePlanScreen } from '../screens/admin/CreatePlanScreen';
 import { DeliveryManagerScreen } from '../screens/admin/DeliveryManagerScreen';
@@ -34,6 +35,9 @@ import { StockManagerScreen } from '../screens/admin/StockManagerScreen';
 import { HubDetailScreen } from '../screens/admin/HubDetailScreen';
 import { AdminOrdersScreen } from '../screens/admin/AdminOrdersScreen';
 import { AdminOrderDetailScreen } from '../screens/admin/AdminOrderDetailScreen';
+import { AdminCreateOrderScreen } from '../screens/admin/AdminCreateOrderScreen';
+import { AdminCreateCustomerScreen } from '../screens/admin/AdminCreateCustomerScreen';
+import { AdminCustomerLookupScreen } from '../screens/admin/AdminCustomerLookupScreen';
 import { AdminSubscriptionsScreen } from '../screens/admin/AdminSubscriptionsScreen';
 import { BranchesManageScreen } from '../screens/admin/BranchesManageScreen';
 import { CustomerExportScreen } from '../screens/admin/CustomerExportScreen';
@@ -68,6 +72,7 @@ export function AdminNavigator() {
 
       {/* Manage — Menu */}
       <Stack.Screen name="MenuManage" component={MenuManageScreen} />
+      <Stack.Screen name="CreateItem" component={CreateItemScreen} />
       <Stack.Screen name="CreateMenu" component={CreateMenuScreen} />
       <Stack.Screen name="CreatePlan" component={CreatePlanScreen} />
       <Stack.Screen name="PlansManage" component={PlansManageScreen} />
@@ -101,6 +106,9 @@ export function AdminNavigator() {
       {/* Manage — Operations */}
       <Stack.Screen name="AdminOrders" component={AdminOrdersScreen} />
       <Stack.Screen name="AdminOrderDetail" component={AdminOrderDetailScreen} />
+      <Stack.Screen name="AdminCreateOrder" component={AdminCreateOrderScreen} />
+      <Stack.Screen name="AdminCreateCustomer" component={AdminCreateCustomerScreen} />
+      <Stack.Screen name="AdminCustomerLookup" component={AdminCustomerLookupScreen} />
       <Stack.Screen name="AdminSubscriptions" component={AdminSubscriptionsScreen} />
       <Stack.Screen name="StoreConfig" component={StoreConfigScreen} />
       <Stack.Screen name="FeatureFlags" component={FeatureFlagsScreen} />

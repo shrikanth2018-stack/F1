@@ -9,13 +9,20 @@
  *        c. Activate subscription     (user_subscriptions.is_active = true)
  *   3. payment.failed:
  *        Mark order/topup/subscription failed
+ *   4. payment_link.paid:
+ *        Stamp an admin/bulk order (admin-place-order) as paid. Payment
+ *        Links are a different Razorpay API from in-app checkout and fire
+ *        their own events, so they get their own branch — matched on
+ *        orders.razorpay_payment_link_id, never razorpay_order_id.
  *
  * Deploy: supabase functions deploy verify-payment --no-verify-jwt
  *
  * Razorpay Dashboard → Webhooks:
  *   URL:    https://<PROJECT>.supabase.co/functions/v1/verify-payment
- *   Events: payment.captured, payment.failed, order.paid
+ *   Events: payment.captured, payment.failed, order.paid, payment_link.paid
  *   Secret: same value as RAZORPAY_WEBHOOK_SECRET
+ *   ⚠ payment_link.paid must be ticked in the dashboard or admin/bulk
+ *     orders will never be marked paid.
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
@@ -83,6 +90,57 @@ Deno.serve(async (req: Request) => {
   const razorpayPaymentId       = payment.id          ?? null;
 
   console.log('[verify-payment] Event:', eventType, 'order:', razorpayOrderId, 'payment:', razorpayPaymentId);
+
+  // ── payment_link.paid (admin / bulk orders) ────────────────
+  // Handled BEFORE the no-order_id guard below: a Payment Link event is not
+  // guaranteed to carry an order_id, and the guard would otherwise swallow
+  // it. Idempotent — the paid_at IS NULL filter makes a redelivery a no-op.
+  if (eventType === 'payment_link.paid') {
+    const linkId: string = event.payload?.payment_link?.entity?.id ?? '';
+    if (!linkId) {
+      console.warn('[verify-payment] payment_link.paid with no link id — acking');
+      return text('ok: no payment_link id', 200);
+    }
+    const { data: paidRows, error: linkErr } = await supabase
+      .from('orders')
+      .update({
+        paid_at: new Date().toISOString(),
+        razorpay_payment_id: razorpayPaymentId,
+      })
+      .eq('razorpay_payment_link_id', linkId)
+      .is('paid_at', null)
+      .select('id, user_id');
+
+    if (linkErr) {
+      // Log but ack — a 500 makes Razorpay retry indefinitely.
+      console.error('[verify-payment] payment link update error:', linkErr.message);
+      return text('ok: link update failed', 200);
+    }
+    if (!paidRows || paidRows.length === 0) {
+      console.warn('[verify-payment] No unpaid order for payment link:', linkId);
+      return text('ok: no matching link', 200);
+    }
+
+    const paid = paidRows[0];
+    console.log('[verify-payment] Admin order marked paid via link:', linkId, paid.id);
+    if (paid.user_id) {
+      resolveAndSendPush({
+        supabase,
+        supabaseUrl: SUPABASE_URL,
+        serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY,
+        eventKey: 'order.razorpay_confirmed',
+        userIds: [paid.user_id],
+        vars: { order_id: paid.id },
+        fallback: {
+          title: 'Payment Received',
+          body: `Payment for order #${paid.id} is confirmed. Thank you!`,
+        },
+        data: { screen: 'OrderDetail', params: { orderId: paid.id } },
+        referenceId: String(paid.id),
+      }).catch((e: any) => console.error('[verify-payment] link push failed:', e));
+    }
+    return text('ok: payment link paid', 200);
+  }
 
   if (!razorpayOrderId) {
     console.warn('[verify-payment] No order_id in payload — acking');

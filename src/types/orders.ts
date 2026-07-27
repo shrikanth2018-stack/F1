@@ -13,7 +13,11 @@ export type OrderStatus =
   | 'Failed';
 
 export type OrderType = 'food' | 'essential';
-export type PaymentMethod = 'wallet' | 'razorpay' | 'split';
+/**
+ * 'account' = a back-office order confirmed now and collected later
+ * (admin-place-order). 'split' is legacy and unused.
+ */
+export type PaymentMethod = 'wallet' | 'razorpay' | 'split' | 'account';
 
 export interface Order {
   id: number;

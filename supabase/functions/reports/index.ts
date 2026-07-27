@@ -6,9 +6,14 @@
  * used to run on the device. The client report hooks (useReports /
  * useHubReport) now only call this function; no report math runs on-device.
  *
- * Body: { report, start_date?, end_date?, branch_id? }
+ * Body: { report, start_date?, end_date?, branch_id?, source? }
  *   branch_id: number | null — when non-null, rows are filtered to that branch
  *   (the client passes the already-resolved branch filter value).
+ *   source: 'all' | 'bulk' | 'retail' — narrows the ORDER-based reports by
+ *   provenance. 'bulk' = created from the back office (orders.placed_by set),
+ *   'retail' = placed by the customer themselves. Applied to the QUERY, not
+ *   the aggregation, so reportAggregations.ts is untouched and the numbers
+ *   for 'all' are byte-identical to before this filter existed.
  *
  * Deploy: supabase functions deploy reports --no-verify-jwt
  */
@@ -71,6 +76,17 @@ Deno.serve(async (req) => {
     const endDate: string = body?.end_date ?? '';
     const branchId: number | null = typeof body?.branch_id === 'number' ? body.branch_id : null;
 
+    // Provenance filter for the order-based reports. Anything unrecognised
+    // (including absent) falls back to 'all', so older app builds that don't
+    // send the field keep getting exactly the report they got before.
+    const source: 'all' | 'bulk' | 'retail' =
+      body?.source === 'bulk' || body?.source === 'retail' ? body.source : 'all';
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const bySource = (q: any) =>
+      source === 'bulk' ? q.not('placed_by', 'is', null)
+        : source === 'retail' ? q.is('placed_by', null)
+          : q;
+
     switch (report) {
       case 'revenue': {
         let q = supabase
@@ -81,6 +97,7 @@ Deno.serve(async (req) => {
           .neq('status', 'Cancelled')
           .order('dispatch_date', { ascending: true });
         if (branchId != null) q = q.eq('branch_id', branchId);
+        q = bySource(q);
         const { data, error } = await q;
         if (error) throw error;
         return json(aggregateRevenue(data ?? []));
@@ -94,6 +111,7 @@ Deno.serve(async (req) => {
           .lte('dispatch_date', endDate)
           .order('dispatch_date', { ascending: true });
         if (branchId != null) q = q.eq('branch_id', branchId);
+        q = bySource(q);
         const { data, error } = await q;
         if (error) throw error;
         return json(aggregateOrders(data ?? []));
@@ -147,6 +165,7 @@ Deno.serve(async (req) => {
           .neq('status', 'Cancelled')
           .order('dispatch_date', { ascending: false });
         if (branchId != null) q = q.eq('branch_id', branchId);
+        q = bySource(q);
         const { data, error } = await q;
         if (error) throw error;
         return json(aggregateOrdersDetail(data ?? []));
@@ -161,6 +180,7 @@ Deno.serve(async (req) => {
           .neq('status', 'Cancelled')
           .order('dispatch_date', { ascending: false });
         if (branchId != null) q = q.eq('branch_id', branchId);
+        q = bySource(q);
         const { data, error } = await q;
         if (error) throw error;
         return json(aggregateRevenueDetail(data ?? []));

@@ -36,6 +36,11 @@ export function useMenuItems(cycleIds?: number[]) {
         .from('menu_items')
         .select('*')
         .eq('is_active', true)
+        // Building-block items (Idli, Vada) are priced parts used to compose
+        // menu items and to sell individually from the admin side — they must
+        // never reach the customer menu. Rows pre-dating the two-stage builder
+        // are TRUE by DB default, so this filter changes nothing for them.
+        .eq('is_customer_visible', true)
         .order('sort_order');
       if (sortedIds) {
         q = q.in('cycle_id', sortedIds);

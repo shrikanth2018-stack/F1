@@ -20,10 +20,19 @@ import type {
 
 const REPORT_STALE_TIME = 5 * 60 * 1000;
 
+/**
+ * Order provenance filter for the order-based reports.
+ *   'retail' — placed by the customer themselves
+ *   'bulk'   — created from the back office (orders.placed_by set)
+ * The server applies it to the query, not the aggregation, so 'all' returns
+ * exactly the numbers these reports returned before the filter existed.
+ */
+export type OrderSource = 'all' | 'bulk' | 'retail';
+
 /** Calls the `reports` Edge Function for one report and returns its result. */
 function fetchReport<T>(
   report: string,
-  params: { startDate?: string; endDate?: string; branchId: number | null },
+  params: { startDate?: string; endDate?: string; branchId: number | null; source?: OrderSource },
 ): Promise<T> {
   return invokeFunction<T>(
     'reports',
@@ -32,6 +41,7 @@ function fetchReport<T>(
       start_date: params.startDate,
       end_date: params.endDate,
       branch_id: params.branchId,
+      source: params.source ?? 'all',
     },
     { fallbackMessage: 'Could not load the report. Please try again.' },
   );
@@ -68,21 +78,29 @@ export function useStaffAttendanceReport(startDate: string, endDate: string) {
 }
 
 /** Orders detail: cycle-wise and menu-wise day-level rows */
-export function useOrdersDetailReport(startDate: string, endDate: string) {
+export function useOrdersDetailReport(
+  startDate: string,
+  endDate: string,
+  source: OrderSource = 'all',
+) {
   const { branchId, keyPart } = useBranchId();
   return useQuery({
-    queryKey: ['report_orders_detail', startDate, endDate, keyPart],
-    queryFn: () => fetchReport<OrdersDetailReport>('ordersDetail', { startDate, endDate, branchId }),
+    queryKey: ['report_orders_detail', startDate, endDate, keyPart, source],
+    queryFn: () => fetchReport<OrdersDetailReport>('ordersDetail', { startDate, endDate, branchId, source }),
     staleTime: REPORT_STALE_TIME,
   });
 }
 
 /** Revenue detail: day-level rows with orders, revenue, tax */
-export function useRevenueDetailReport(startDate: string, endDate: string) {
+export function useRevenueDetailReport(
+  startDate: string,
+  endDate: string,
+  source: OrderSource = 'all',
+) {
   const { branchId, keyPart } = useBranchId();
   return useQuery({
-    queryKey: ['report_revenue_detail', startDate, endDate, keyPart],
-    queryFn: () => fetchReport<RevenueDetailReport>('revenueDetail', { startDate, endDate, branchId }),
+    queryKey: ['report_revenue_detail', startDate, endDate, keyPart, source],
+    queryFn: () => fetchReport<RevenueDetailReport>('revenueDetail', { startDate, endDate, branchId, source }),
     staleTime: REPORT_STALE_TIME,
   });
 }
