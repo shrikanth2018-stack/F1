@@ -702,6 +702,7 @@ export type Database = {
           branch_id: number | null
           created_at: string | null
           cycle_id: number | null
+          daily_cap: number | null
           id: number
           is_active: boolean | null
           name: string
@@ -709,11 +710,14 @@ export type Database = {
           sort_order: number | null
           unit: string | null
           updated_at: string | null
+          vendor_cost: number | null
+          vendor_id: number | null
         }
         Insert: {
           branch_id?: number | null
           created_at?: string | null
           cycle_id?: number | null
+          daily_cap?: number | null
           id?: number
           is_active?: boolean | null
           name: string
@@ -721,11 +725,14 @@ export type Database = {
           sort_order?: number | null
           unit?: string | null
           updated_at?: string | null
+          vendor_cost?: number | null
+          vendor_id?: number | null
         }
         Update: {
           branch_id?: number | null
           created_at?: string | null
           cycle_id?: number | null
+          daily_cap?: number | null
           id?: number
           is_active?: boolean | null
           name?: string
@@ -733,6 +740,8 @@ export type Database = {
           sort_order?: number | null
           unit?: string | null
           updated_at?: string | null
+          vendor_cost?: number | null
+          vendor_id?: number | null
         }
         Relationships: [
           {
@@ -747,6 +756,20 @@ export type Database = {
             columns: ["cycle_id"]
             isOneToOne: false
             referencedRelation: "delivery_cycles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "essentials_catalog_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendor_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "essentials_catalog_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendors"
             referencedColumns: ["id"]
           },
         ]
@@ -1356,6 +1379,7 @@ export type Database = {
           role: string | null
           shift_timing: string | null
           updated_at: string | null
+          vendor_id: number | null
           wallet_balance: number | null
         }
         Insert: {
@@ -1378,6 +1402,7 @@ export type Database = {
           role?: string | null
           shift_timing?: string | null
           updated_at?: string | null
+          vendor_id?: number | null
           wallet_balance?: number | null
         }
         Update: {
@@ -1400,6 +1425,7 @@ export type Database = {
           role?: string | null
           shift_timing?: string | null
           updated_at?: string | null
+          vendor_id?: number | null
           wallet_balance?: number | null
         }
         Relationships: [
@@ -1415,6 +1441,20 @@ export type Database = {
             columns: ["referred_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profiles_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendor_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profiles_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendors"
             referencedColumns: ["id"]
           },
         ]
@@ -2244,6 +2284,270 @@ export type Database = {
           },
         ]
       }
+      vendor_earnings: {
+        Row: {
+          commission_amount: number
+          commission_percent: number
+          created_at: string
+          gross_amount: number
+          id: number
+          net_amount: number
+          order_id: number
+          order_item_id: number
+          selling_model: string
+          vendor_id: number
+          wallet_transaction_id: number | null
+        }
+        Insert: {
+          commission_amount: number
+          commission_percent: number
+          created_at?: string
+          gross_amount: number
+          id?: number
+          net_amount: number
+          order_id: number
+          order_item_id: number
+          selling_model: string
+          vendor_id: number
+          wallet_transaction_id?: number | null
+        }
+        Update: {
+          commission_amount?: number
+          commission_percent?: number
+          created_at?: string
+          gross_amount?: number
+          id?: number
+          net_amount?: number
+          order_id?: number
+          order_item_id?: number
+          selling_model?: string
+          vendor_id?: number
+          wallet_transaction_id?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vendor_earnings_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vendor_earnings_order_item_id_fkey"
+            columns: ["order_item_id"]
+            isOneToOne: false
+            referencedRelation: "order_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vendor_earnings_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendor_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vendor_earnings_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vendor_earnings_wallet_transaction_id_fkey"
+            columns: ["wallet_transaction_id"]
+            isOneToOne: false
+            referencedRelation: "wallet_transactions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vendor_order_fulfilment: {
+        Row: {
+          created_at: string
+          id: number
+          order_id: number
+          ready_at: string | null
+          ready_by: string | null
+          vendor_id: number
+        }
+        Insert: {
+          created_at?: string
+          id?: number
+          order_id: number
+          ready_at?: string | null
+          ready_by?: string | null
+          vendor_id: number
+        }
+        Update: {
+          created_at?: string
+          id?: number
+          order_id?: number
+          ready_at?: string | null
+          ready_by?: string | null
+          vendor_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vendor_order_fulfilment_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vendor_order_fulfilment_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendor_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vendor_order_fulfilment_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vendor_zones: {
+        Row: {
+          created_at: string
+          hub_id: number | null
+          id: number
+          vendor_id: number
+          zone_id: number | null
+        }
+        Insert: {
+          created_at?: string
+          hub_id?: number | null
+          id?: number
+          vendor_id: number
+          zone_id?: number | null
+        }
+        Update: {
+          created_at?: string
+          hub_id?: number | null
+          id?: number
+          vendor_id?: number
+          zone_id?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vendor_zones_hub_id_fkey"
+            columns: ["hub_id"]
+            isOneToOne: false
+            referencedRelation: "delivery_hubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vendor_zones_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendor_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vendor_zones_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vendor_zones_zone_id_fkey"
+            columns: ["zone_id"]
+            isOneToOne: false
+            referencedRelation: "delivery_zones"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vendors: {
+        Row: {
+          admin_note: string | null
+          approved_at: string | null
+          approved_by: string | null
+          branch_id: number | null
+          business_name: string | null
+          commission_percent: number
+          contact_phone: string | null
+          created_at: string
+          fssai_number: string | null
+          gst_number: string | null
+          id: number
+          invited_by: string | null
+          owner_user_id: string
+          return_policy: string | null
+          selling_model: string
+          status: string
+          submitted_at: string | null
+          supply_mode: string
+          terms_accepted_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          admin_note?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
+          branch_id?: number | null
+          business_name?: string | null
+          commission_percent?: number
+          contact_phone?: string | null
+          created_at?: string
+          fssai_number?: string | null
+          gst_number?: string | null
+          id?: number
+          invited_by?: string | null
+          owner_user_id: string
+          return_policy?: string | null
+          selling_model?: string
+          status?: string
+          submitted_at?: string | null
+          supply_mode?: string
+          terms_accepted_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          admin_note?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
+          branch_id?: number | null
+          business_name?: string | null
+          commission_percent?: number
+          contact_phone?: string | null
+          created_at?: string
+          fssai_number?: string | null
+          gst_number?: string | null
+          id?: number
+          invited_by?: string | null
+          owner_user_id?: string
+          return_policy?: string | null
+          selling_model?: string
+          status?: string
+          submitted_at?: string | null
+          supply_mode?: string
+          terms_accepted_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vendors_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vendors_owner_profile_fkey"
+            columns: ["owner_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       wallet_transactions: {
         Row: {
           amount: number
@@ -2287,7 +2591,21 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      vendor_public: {
+        Row: {
+          business_name: string | null
+          id: number | null
+        }
+        Insert: {
+          business_name?: string | null
+          id?: number | null
+        }
+        Update: {
+          business_name?: string | null
+          id?: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       _hub_commission_for_period: {
@@ -2317,6 +2635,32 @@ export type Database = {
       admin_cancel_subscription_atomic: {
         Args: { p_refund_amount: number; p_subscription_id: number }
         Returns: Json
+      }
+      admin_onboard_vendor: {
+        Args: {
+          p_branch_id?: number
+          p_business_name: string
+          p_commission_percent?: number
+          p_contact_phone?: string
+          p_selling_model?: string
+          p_supply_mode?: string
+          p_user_id: string
+        }
+        Returns: number
+      }
+      admin_set_vendor_status: {
+        Args: { p_note?: string; p_status: string; p_vendor_id: number }
+        Returns: Json
+      }
+      admin_set_vendor_terms: {
+        Args: {
+          p_commission_percent?: number
+          p_return_policy?: string
+          p_selling_model?: string
+          p_supply_mode?: string
+          p_vendor_id: number
+        }
+        Returns: undefined
       }
       advance_orders_status: {
         Args: { p_order_ids: number[]; p_status: string }
@@ -2371,6 +2715,11 @@ export type Database = {
         }[]
       }
       create_hub_commission_claim: { Args: never; Returns: Json }
+      create_vendor_payout_claim: { Args: never; Returns: Json }
+      credit_vendor_earnings_for_order: {
+        Args: { p_order_id: number }
+        Returns: number
+      }
       custom_access_token_hook: { Args: { event: Json }; Returns: Json }
       decrement_wallet_balance_if_sufficient: {
         Args: {
@@ -2540,6 +2889,48 @@ export type Database = {
       update_employee_profile: {
         Args: { target_id: string; updates: Json }
         Returns: undefined
+      }
+      vendor_ids_for_address: {
+        Args: { p_address_id: number }
+        Returns: {
+          vendor_id: number
+        }[]
+      }
+      vendor_mark_order_ready: {
+        Args: { p_order_id: number; p_ready?: boolean }
+        Returns: undefined
+      }
+      vendor_orders: {
+        Args: never
+        Returns: {
+          customer_name: string
+          customer_phone: string
+          cycle_name: string
+          dispatch_date: string
+          items: Json
+          order_id: number
+          ready_at: string
+          status: string
+        }[]
+      }
+      vendor_supply_list: {
+        Args: never
+        Returns: {
+          cycle_id: number
+          cycle_name: string
+          dispatch_date: string
+          item_id: number
+          item_name: string
+          order_count: number
+          total_qty: number
+        }[]
+      }
+      vendor_used_quantities: {
+        Args: { p_dispatch_date: string; p_item_ids: number[] }
+        Returns: {
+          item_id: number
+          used_qty: number
+        }[]
       }
     }
     Enums: {

@@ -6,6 +6,10 @@
  *  CLAIMS     Staff-submitted expense claims.
  *             Pending   → Approve / Reject
  *             Approved  → Mark Paid
+ *             Vendor Payout claims settle in ONE step (Approve & pay): the
+ *             money is already the vendor's, held in their wallet, so
+ *             approving IS releasing it. Going straight to Paid fires the
+ *             wallet debit, clearing their balance immediately.
  *             History   → Paid / Rejected (read-only)
  *
  *  EXPENSES   Admin-logged business spending.
@@ -77,19 +81,41 @@ function ClaimsTab() {
   const approved = useMemo(() => claims.filter((c) => c.status === 'Approved'), [claims]);
   const history  = useMemo(() => claims.filter((c) => c.status === 'Paid' || c.status === 'Rejected'), [claims]);
 
+  // A vendor payout settles in one step: the money is already theirs, sitting
+  // in their wallet, and approving it is the act of releasing it. Going
+  // straight to Paid fires the wallet debit (trg_vendor_payout_paid), so the
+  // vendor's balance clears the moment you approve rather than lingering
+  // until someone remembers a second tap. Staff expense claims keep the
+  // two-step Approve → Mark Paid flow, where approval and payment really are
+  // separate events.
+  const isVendorPayout = (claim: ExpenseClaim) => claim.category === 'Vendor Payout';
+
   const handleReview = (claim: ExpenseClaim & { profiles: any }, status: 'Approved' | 'Rejected') => {
     const name = claim.profiles?.full_name || claim.profiles?.phone_number || 'Staff';
-    Alert.alert(status, `${status} ₹${claim.amount} claim from ${name}?`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: status,
-        style: status === 'Rejected' ? 'destructive' : 'default',
-        onPress: () => review.mutate(
-          { claimId: claim.id, status },
-          { onError: (e: any) => Alert.alert('Error', e?.message) }
-        ),
-      },
-    ]);
+    const payoutNow = status === 'Approved' && isVendorPayout(claim);
+
+    Alert.alert(
+      payoutNow ? 'Approve & pay' : status,
+      payoutNow
+        ? `Release ₹${claim.amount} to ${name}? Their wallet balance clears now — make the transfer separately.`
+        : `${status} ₹${claim.amount} claim from ${name}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: payoutNow ? 'Approve & pay' : status,
+          style: status === 'Rejected' ? 'destructive' : 'default',
+          onPress: () =>
+            payoutNow
+              ? markPaid.mutate(claim.id, {
+                  onError: (e: any) => Alert.alert('Error', e?.message),
+                })
+              : review.mutate(
+                  { claimId: claim.id, status },
+                  { onError: (e: any) => Alert.alert('Error', e?.message) }
+                ),
+        },
+      ],
+    );
   };
 
   const handlePaid = (claim: ExpenseClaim & { profiles: any }) => {
@@ -148,7 +174,9 @@ function ClaimsTab() {
                   disabled={review.isPending}
                   activeOpacity={0.7}
                 >
-                  <ThemedText variant="small" color="primary" style={{ fontSize: S }}>Approve</ThemedText>
+                  <ThemedText variant="small" color="primary" style={{ fontSize: S }}>
+                    {isVendorPayout(c) ? 'Approve & pay' : 'Approve'}
+                  </ThemedText>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={tab.rejectBtn}

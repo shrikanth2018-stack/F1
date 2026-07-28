@@ -1,7 +1,12 @@
 export interface ExpenseClaim {
   id: number;
   staff_id: string;
-  category: 'Grocery' | 'Vegetable' | 'Stationery' | 'Fuel' | 'Others' | 'Hub Commission';
+  category:
+    | 'Grocery' | 'Vegetable' | 'Stationery' | 'Fuel' | 'Others'
+    /** Hub operator's monthly commission claim. */
+    | 'Hub Commission'
+    /** Vendor releasing their wallet balance. Settles in one step. */
+    | 'Vendor Payout';
   description: string;
   amount: number;
   status: 'Pending' | 'Approved' | 'Rejected' | 'Paid';

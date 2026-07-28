@@ -30,6 +30,12 @@ export interface EssentialItem {
   description?: string | null;
   price: number;
   unit: string;
+  /** NULL = 1stOne's own item. Set = sold by a third-party vendor. */
+  vendor_id?: number | null;
+  /** Trading name, attached client-side from the vendor_public view. */
+  vendor_name?: string | null;
+  /** Vendor-set cap for the day; NULL = uncapped. */
+  daily_cap?: number | null;
   is_active: boolean;
   branch_id: number | null;
   sort_order: number;

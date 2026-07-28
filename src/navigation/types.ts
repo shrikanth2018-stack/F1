@@ -49,6 +49,10 @@ export type AdminStackParamList = {
   AdminCreateCustomer: { phone?: string; addressId?: number } | undefined;
   /** Order history for a phone number. */
   AdminCustomerLookup: undefined;
+  // Vendors
+  AdminVendorManager: undefined;
+  AdminVendorOnboard: undefined;
+  AdminVendorDetail: { vendorId: number };
   AdminSubscriptions: undefined;
   StoreConfig: undefined;
   FeatureFlags: undefined;
@@ -80,6 +84,9 @@ export type CustomerStackParamList = {
   Plans: { initialTab?: 'food' | 'essentials' } | undefined;
   LoyaltyPoints: undefined;
   HubDashboard: undefined;
+  /** Vendor's own store — the same profile-menu arrangement a hub operator has. */
+  VendorDashboard: undefined;
+  VendorRegistration: undefined;
   HubOrderHistoryDetail: { orderId: number };
   DriverDashboard: undefined;
 };

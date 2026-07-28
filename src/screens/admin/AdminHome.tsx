@@ -173,6 +173,7 @@ const SUPER_ADMIN_MANAGE_ROWS: ManageRowDef[] = [
 const ALL_MANAGE_ROWS: ManageRowDef[] = [
   { label: 'Add Customer', screen: 'AdminCreateCustomer' },
   { label: 'Customer Lookup', screen: 'AdminCustomerLookup' },
+  { label: 'Vendors', screen: 'AdminVendorManager' },
   { label: 'Create Order (Bulk / B2B)', screen: 'AdminCreateOrder' },
   { label: 'Manage Running Orders', screen: 'AdminOrders' },
   { label: 'Manage Running Subscriptions', screen: 'AdminSubscriptions' },
@@ -252,6 +253,7 @@ function ManageTab() {
           </View>
           <AdminRow label="Add Customer" showChevron onPress={() => navigation.navigate('AdminCreateCustomer')} />
           <AdminRow label="Customer Lookup" showChevron onPress={() => navigation.navigate('AdminCustomerLookup')} />
+          <AdminRow label="Vendors" showChevron onPress={() => navigation.navigate('AdminVendorManager')} />
 
           <Divider />
 

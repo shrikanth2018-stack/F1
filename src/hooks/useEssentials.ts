@@ -10,17 +10,42 @@
  * all branches' items until they add one.
  */
 
+import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../api/supabaseClient';
 import { useSupabaseQuery } from '../api/useSupabaseQuery';
 import { QUERY_KEYS, QUERY_STALE_TIME } from '../utils/constants';
 import { useBranchFilter } from './useBranchFilter';
 import type { EssentialItem } from '../types';
 
+/**
+ * Trading names of approved vendors, for the "Sold by" line.
+ *
+ * Read from the vendor_public VIEW, not the vendors table: `vendors` also
+ * holds GST, FSSAI and the commission negotiated with them, and RLS is
+ * row-level — a read policy there would have exposed the whole row to every
+ * customer. The view publishes two columns and nothing else.
+ *
+ * Fetched separately rather than embedded because PostgREST can only embed
+ * through a foreign key, and there is no FK to a view.
+ */
+export function useVendorNames() {
+  return useQuery({
+    queryKey: ['vendor_public_names'],
+    queryFn: async (): Promise<Map<number, string>> => {
+      const { data, error } = await supabase.from('vendor_public').select('id, business_name');
+      if (error) throw new Error(error.message);
+      return new Map((data ?? []).map((v: any) => [v.id as number, (v.business_name ?? '') as string]));
+    },
+    staleTime: QUERY_STALE_TIME,
+  });
+}
+
 /** Fetch active essentials catalog items */
 export function useEssentialsCatalog(cycleId?: number) {
   const bf = useBranchFilter();
+  const { data: vendorNames } = useVendorNames();
 
-  return useSupabaseQuery<EssentialItem>(
+  return useSupabaseQuery<EssentialItem, EssentialItem[]>(
     [
       ...QUERY_KEYS.ESSENTIALS,
       cycleId ?? 'all',
@@ -41,6 +66,17 @@ export function useEssentialsCatalog(cycleId?: number) {
       }
       return query;
     },
-    { staleTime: QUERY_STALE_TIME },
+    {
+      staleTime: QUERY_STALE_TIME,
+      // Vendor items carry no name of their own — attach the trading name so
+      // the row can say who the customer is actually buying from. Which items
+      // are visible at all is decided by RLS, not here.
+      transform: (rows: EssentialItem[]) =>
+        rows.map((r) =>
+          r.vendor_id != null
+            ? { ...r, vendor_name: vendorNames?.get(r.vendor_id) ?? null }
+            : r,
+        ),
+    },
   );
 }

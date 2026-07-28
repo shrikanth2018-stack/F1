@@ -29,6 +29,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useStoreConfig } from '../hooks/useStoreConfig';
 import { useWalletBalance } from '../hooks/useWallet';
 import { useFeatureFlag } from '../hooks/useFeatureFlag';
+import { useMyVendor } from '../hooks/useMyVendor';
 import { useUIStore } from '../store/uiStore';
 import { formatPhone, formatPrice } from '../utils/formatters';
 import { assetUrl } from '../utils/assets';
@@ -127,6 +128,10 @@ export function ProfilePopup() {
   const referralEnabled = useFeatureFlag('referral_system', true);
   const isHubManager = session?.role === 'customer' && session?.assignedHubId != null;
   const isDriver = session?.isDriver === true;
+  // A vendor is a customer-role profile with a vendors row, the same shape a
+  // hub operator has. Read from the table rather than a JWT claim: the token
+  // hook runs for every login of every user and has drifted before (BF-37).
+  const { data: myVendor } = useMyVendor();
 
   const [modalMounted, setModalMounted] = useState(false);
   const opacity = useSharedValue(0);
@@ -256,6 +261,26 @@ export function ProfilePopup() {
           {isHubManager && (
             <IOSGroup>
               <IOSRow label="My Hub Dashboard" onPress={() => go('HubDashboard')} />
+            </IOSGroup>
+          )}
+
+          {/* One entry whose destination follows the vendor's state: finish
+              registering, or run the store once approved. */}
+          {myVendor && (
+            <IOSGroup>
+              {myVendor.status === 'invited' || myVendor.status === 'submitted' ? (
+                <IOSRow
+                  label={myVendor.status === 'invited'
+                    ? 'Complete vendor registration'
+                    : 'Vendor registration — in review'}
+                  onPress={() => go('VendorRegistration')}
+                />
+              ) : myVendor.status === 'rejected' ? null : (
+                <IOSRow
+                  label={myVendor.status === 'suspended' ? 'My Store (paused)' : 'My Store'}
+                  onPress={() => go('VendorDashboard')}
+                />
+              )}
             </IOSGroup>
           )}
 

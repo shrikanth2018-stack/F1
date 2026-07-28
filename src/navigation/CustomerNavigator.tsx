@@ -25,6 +25,8 @@ import { FeedbackScreen } from '../screens/customer/FeedbackScreen';
 import { PlansScreen } from '../screens/customer/PlansScreen';
 import { LoyaltyPointsScreen } from '../screens/customer/LoyaltyPointsScreen';
 import { HubDashboardScreen } from '../screens/customer/HubDashboardScreen';
+import { VendorDashboardScreen } from '../screens/customer/VendorDashboardScreen';
+import { VendorRegistrationScreen } from '../screens/customer/VendorRegistrationScreen';
 import { HubOrderHistoryDetailScreen } from '../screens/customer/HubOrderHistoryDetailScreen';
 import { DriverDashboardScreen } from '../screens/customer/DriverDashboardScreen';
 import { Theme } from '../theme';
@@ -68,6 +70,8 @@ export function CustomerNavigator() {
         options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
       />
       <Stack.Screen name="HubDashboard" component={HubDashboardScreen} />
+      <Stack.Screen name="VendorDashboard" component={VendorDashboardScreen} />
+      <Stack.Screen name="VendorRegistration" component={VendorRegistrationScreen} />
       <Stack.Screen name="HubOrderHistoryDetail" component={HubOrderHistoryDetailScreen} />
       <Stack.Screen name="DriverDashboard" component={DriverDashboardScreen} />
     </Stack.Navigator>

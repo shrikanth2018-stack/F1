@@ -38,6 +38,9 @@ import { AdminOrderDetailScreen } from '../screens/admin/AdminOrderDetailScreen'
 import { AdminCreateOrderScreen } from '../screens/admin/AdminCreateOrderScreen';
 import { AdminCreateCustomerScreen } from '../screens/admin/AdminCreateCustomerScreen';
 import { AdminCustomerLookupScreen } from '../screens/admin/AdminCustomerLookupScreen';
+import { AdminVendorManagerScreen } from '../screens/admin/AdminVendorManagerScreen';
+import { AdminVendorOnboardScreen } from '../screens/admin/AdminVendorOnboardScreen';
+import { AdminVendorDetailScreen } from '../screens/admin/AdminVendorDetailScreen';
 import { AdminSubscriptionsScreen } from '../screens/admin/AdminSubscriptionsScreen';
 import { BranchesManageScreen } from '../screens/admin/BranchesManageScreen';
 import { CustomerExportScreen } from '../screens/admin/CustomerExportScreen';
@@ -109,6 +112,9 @@ export function AdminNavigator() {
       <Stack.Screen name="AdminCreateOrder" component={AdminCreateOrderScreen} />
       <Stack.Screen name="AdminCreateCustomer" component={AdminCreateCustomerScreen} />
       <Stack.Screen name="AdminCustomerLookup" component={AdminCustomerLookupScreen} />
+      <Stack.Screen name="AdminVendorManager" component={AdminVendorManagerScreen} />
+      <Stack.Screen name="AdminVendorOnboard" component={AdminVendorOnboardScreen} />
+      <Stack.Screen name="AdminVendorDetail" component={AdminVendorDetailScreen} />
       <Stack.Screen name="AdminSubscriptions" component={AdminSubscriptionsScreen} />
       <Stack.Screen name="StoreConfig" component={StoreConfigScreen} />
       <Stack.Screen name="FeatureFlags" component={FeatureFlagsScreen} />

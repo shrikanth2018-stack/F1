@@ -172,6 +172,10 @@ export async function buildAuthoritativeOrder(args: BuildArgs): Promise<BuildRes
   // ── Price + cycle every item from the DB, group by cycle ───
   type Accum = { cycle_id: number; items: OrderItemRow[]; subtotal: number };
   const byCycle = new Map<number, Accum>();
+  // Items a vendor has capped for the day. Collected while pricing, checked
+  // once the dispatch DATE is known — a cap is per day, and the date only
+  // exists after the cutoff rule has run.
+  const cappedItems = new Map<number, { name: string; cap: number; cycleId: number }>();
 
   const foodInputs = items.filter((i) => i.item_type === 'food');
   const essInputs = items.filter((i) => i.item_type === 'essential');
@@ -205,9 +209,32 @@ export async function buildAuthoritativeOrder(args: BuildArgs): Promise<BuildRes
   if (essInputs.length > 0) {
     const ids = essInputs.map((i) => i.item_id);
     const { data: rows, error } = await supabase
-      .from('essentials_catalog').select('id, name, price, is_active, cycle_id').in('id', ids);
+      .from('essentials_catalog')
+      .select('id, name, price, is_active, cycle_id, vendor_id, daily_cap')
+      .in('id', ids);
     if (error) return { ok: false, status: 500, error: error.message };
     const map = new Map<number, any>((rows ?? []).map((r: any) => [r.id, r]));
+
+    // A vendor sells only into the zones/hubs an admin granted them. RLS
+    // enforces that while BROWSING, but this builder runs with the
+    // service-role key and so bypasses RLS entirely — without this check a
+    // hand-crafted cart could order a vendor's goods from outside their
+    // area. One set-returning call, not one per line.
+    //
+    // Only runs when the cart actually contains a vendor item, so a cart of
+    // 1stOne's own items — which is every cart today — is untouched.
+    let allowedVendorIds: Set<number> | null = null;
+    const cartHasVendorItem = (rows ?? []).some((r: any) => r.vendor_id != null);
+    if (cartHasVendorItem) {
+      if (deliveryAddressId == null) {
+        return { ok: false, status: 400, error: 'Select a delivery address to order these items.' };
+      }
+      const { data: allowed, error: vErr } = await supabase
+        .rpc('vendor_ids_for_address', { p_address_id: deliveryAddressId });
+      if (vErr) return { ok: false, status: 500, error: vErr.message };
+      allowedVendorIds = new Set<number>((allowed ?? []).map((r: any) => Number(r.vendor_id)));
+    }
+
     for (const inp of essInputs) {
       const e = map.get(inp.item_id);
       if (!e || !e.is_active) {
@@ -216,6 +243,12 @@ export async function buildAuthoritativeOrder(args: BuildArgs): Promise<BuildRes
       if (e.cycle_id == null) {
         return { ok: false, status: 400, error: `"${e.name}" is not assigned to a delivery cycle.` };
       }
+      if (e.vendor_id != null && !(allowedVendorIds?.has(Number(e.vendor_id)) ?? false)) {
+        return {
+          ok: false, status: 400,
+          error: `"${e.name}" is not available for this delivery address.`,
+        };
+      }
       const g: Accum = byCycle.get(e.cycle_id) ?? { cycle_id: e.cycle_id, items: [], subtotal: 0 };
       g.items.push({
         item_id: e.id, item_type: 'essential', item_name: e.name,
@@ -223,6 +256,9 @@ export async function buildAuthoritativeOrder(args: BuildArgs): Promise<BuildRes
       });
       g.subtotal += e.price * inp.quantity;
       byCycle.set(e.cycle_id, g);
+      if (e.daily_cap != null) {
+        cappedItems.set(e.id, { name: e.name, cap: Number(e.daily_cap), cycleId: e.cycle_id });
+      }
     }
   }
 
@@ -355,6 +391,47 @@ export async function buildAuthoritativeOrder(args: BuildArgs): Promise<BuildRes
       total_amount: 0,
       group_total_paise: 0,
     });
+  }
+
+  // ── Daily caps ─────────────────────────────────────────────
+  // A cap the app merely displays is not a cap. This is the only place that
+  // can enforce it, because it needs the dispatch date and the quantity
+  // already committed by other customers for that date.
+  //
+  // Runs only when the cart holds a capped item — which no cart does today,
+  // so every existing order takes exactly the path it took before.
+  if (cappedItems.size > 0) {
+    for (const group of groups) {
+      if (group.cycle_id == null) continue;
+      const idsInGroup = [...cappedItems.entries()]
+        .filter(([, c]) => c.cycleId === group.cycle_id)
+        .map(([id]) => id);
+      if (idsInGroup.length === 0) continue;
+
+      const { data: usedRows, error: usedErr } = await supabase.rpc('vendor_used_quantities', {
+        p_item_ids: idsInGroup,
+        p_dispatch_date: group.dispatch_date,
+      });
+      if (usedErr) return { ok: false, status: 500, error: usedErr.message };
+      const used = new Map<number, number>(
+        (usedRows ?? []).map((r: any) => [Number(r.item_id), Number(r.used_qty)]),
+      );
+
+      for (const line of group.items) {
+        const capped = cappedItems.get(line.item_id);
+        if (!capped) continue;
+        const alreadyTaken = used.get(line.item_id) ?? 0;
+        const remaining = capped.cap - alreadyTaken;
+        if (line.quantity > remaining) {
+          return {
+            ok: false, status: 400,
+            error: remaining <= 0
+              ? `"${capped.name}" is sold out for ${group.dispatch_date}.`
+              : `Only ${remaining} of "${capped.name}" left for ${group.dispatch_date}.`,
+          };
+        }
+      }
+    }
   }
 
   if (groups.length === 0) {

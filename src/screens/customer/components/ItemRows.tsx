@@ -71,7 +71,13 @@ export function EssentialRow({ item, qty, isLast, onAdd, onIncrement, onDecremen
         <Ionicons name="basket-outline" size={17} color={Theme.colors.text.mint} style={styles.rowIcon} />
         <View style={styles.itemMeta}>
           <Text style={styles.itemName}>{item.name}</Text>
-          {item.description ? <Text style={styles.itemSub}>{item.description}</Text> : null}
+          {/* Attribution is the safeguard that makes third-party selling
+              honest — the customer should know who they are buying from. */}
+          {item.vendor_name ? (
+            <Text style={styles.itemSub}>Sold by {item.vendor_name}</Text>
+          ) : item.description ? (
+            <Text style={styles.itemSub}>{item.description}</Text>
+          ) : null}
         </View>
         <Text style={styles.itemPrice}>{formatPriceShort(item.price)}</Text>
         {qty === 0 ? (

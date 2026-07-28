@@ -416,3 +416,51 @@ functions → OTA. `admin-place-order` is new so no old build can call it; the
 columns and the index; restore the CHECK to its three-value form (only if no
 `'account'` order exists yet).
 
+
+## 16. Vendor network — phase 1 (2026-07-28)
+
+Third-party vendors list their own items in the **Essentials** section,
+scoped to the zones/hubs an admin grants them. Food is never involved — the
+kitchen aggregation is untouched by this whole feature.
+
+**SQL — run in SQL editor in this order (all idempotent):**
+
+| # | File | What it installs |
+|---|------|------------------|
+| 1 | `vendors_schema.sql` | `vendors`, `vendor_zones`, `vendor_earnings`; `essentials_catalog.vendor_id` + `.daily_cap`; `profiles.vendor_id`; RLS. Also a SECOND FK `vendors_owner_profile_fkey → profiles(id)` — PostgREST can only embed `profiles` through a constraint that targets it, and `owner_user_id` references `auth.users`. |
+| 2 | `vendors_earnings_trigger.sql` | `essentials_catalog.vendor_cost` (house-brand rate) + credit-on-delivery. A TRIGGER, because an order reaches `Delivered` by four routes — staff update, offline replay, bulk advance, admin override — and only a trigger catches all four. |
+| 3 | `vendors_admin_rpcs.sql` | `admin_onboard_vendor`, `admin_set_vendor_status`, `admin_set_vendor_terms`. `vendors` has UPDATE revoked from `authenticated` except the seven business-detail columns, so status and commission can only move through these — same pattern as `profiles.role` behind `elevate_to_staff`. |
+| 4 | `vendors_visibility.sql` | `vendor_public` view (trading name only) + a **RESTRICTIVE** policy on `essentials_catalog` + `vendor_ids_for_address`. |
+| 5 | `vendors_portal.sql` | `vendor_supply_list`, `create_vendor_payout_claim`, and the wallet debit when a payout is marked Paid. |
+| 6 | `vendors_caps_and_fulfilment.sql` | `vendor_used_quantities`, `vendor_order_fulfilment`, `vendor_orders`, `vendor_mark_order_ready`. |
+
+**Edge Functions — redeploy (they bundle `_shared/orderBuild.ts`):**
+
+```bash
+supabase functions deploy quote-order       --no-verify-jwt
+supabase functions deploy place-order       --no-verify-jwt
+supabase functions deploy admin-place-order --no-verify-jwt
+```
+
+`orderBuild` gained two guards, both of which only run when a cart actually
+contains a vendor item — so every existing cart takes exactly the path it
+took before:
+
+- **zone scope** — RLS covers browsing, but the builder runs with the
+  service-role key and bypasses RLS, so ordering needs its own check
+- **daily caps** — enforced after the dispatch date is derived, since a cap
+  is per day. Counts `Pending` too: an order mid-payment has reserved that
+  stock.
+
+**Two enforcement points, deliberately different.** Browsing is filtered by
+RLS against ALL of a customer's addresses; ordering is checked against the
+one address the order is going to. Browse is the looser of the two on
+purpose.
+
+**No app coupling for the SQL** — every column is nullable or defaulted and
+nothing is visible until the first vendor exists. Run the SQL, regenerate
+types, deploy the functions, then OTA.
+
+**Rollback:** drop the four tables (`vendor_order_fulfilment`,
+`vendor_earnings`, `vendor_zones`, `vendors`) with CASCADE, drop the added
+columns, drop both triggers, redeploy the three functions from git.
