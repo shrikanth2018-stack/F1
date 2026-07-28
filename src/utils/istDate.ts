@@ -43,6 +43,29 @@ export function addDaysToISODate(dateStr: string, days: number): string {
   return IST_DATE.format(new Date(Date.UTC(y, m - 1, d + days, 12)));
 }
 
+/**
+ * An instant as an IST wall-clock label: '6:30 pm', or 'Tue 6:30 pm' when it
+ * does not land on today's IST date. Deadlines are quoted in the business
+ * timezone, never the device's — a vendor travelling should still read the
+ * time their cutoff actually happens.
+ */
+export function istTimeLabel(instant: string | Date): string {
+  const d = typeof instant === 'string' ? new Date(instant) : instant;
+  if (Number.isNaN(d.getTime())) return '';
+  const time = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Kolkata',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).format(d).toLowerCase();
+  if (istDateStr(d) === todayIST()) return time;
+  const day = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Kolkata',
+    weekday: 'short',
+  }).format(d);
+  return `${day} ${time}`;
+}
+
 /** Minutes since IST midnight (0–1439) for right now — for time-of-day logic. */
 export function istMinutesNow(): number {
   const hhmm = new Intl.DateTimeFormat('en-GB', {

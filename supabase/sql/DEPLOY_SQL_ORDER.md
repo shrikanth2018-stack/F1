@@ -433,6 +433,8 @@ kitchen aggregation is untouched by this whole feature.
 | 4 | `vendors_visibility.sql` | `vendor_public` view (trading name only) + a **RESTRICTIVE** policy on `essentials_catalog` + `vendor_ids_for_address`. |
 | 5 | `vendors_portal.sql` | `vendor_supply_list`, `create_vendor_payout_claim`, and the wallet debit when a payout is marked Paid. |
 | 6 | `vendors_caps_and_fulfilment.sql` | `vendor_used_quantities`, `vendor_order_fulfilment`, `vendor_orders`, `vendor_mark_order_ready`. |
+| 7 | `vendors_fixes_01.sql` | Device-test fixes. BIGINT→INTEGER casts in three functions (only `vendors.id` is bigint; `orders.id`, `order_items.*` and `essentials_catalog.id` are all integer), and `vendor_submit_registration` — the missing `invited → submitted` transition, which could only live in a SECURITY DEFINER function because `status` is deliberately not grantable. |
+| 8 | `vendors_fixes_02.sql` | `vendor_orders` gains `cancellable_until` — the instant the order stops being cancellable, computed over the whole `order_group_id` and with the cross-midnight cutoff rule, so it matches what `cancel-order` will actually permit rather than approximating it. Tells the vendor when it is safe to buy stock. Also returns the cycle's **essentials label** ("Morning") rather than the kitchen name ("Breakfast") — a vendor sells essentials, so they should read the cycle the way their customer does. |
 
 **Edge Functions — redeploy (they bundle `_shared/orderBuild.ts`):**
 

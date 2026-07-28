@@ -2903,6 +2903,7 @@ export type Database = {
       vendor_orders: {
         Args: never
         Returns: {
+          cancellable_until: string
           customer_name: string
           customer_phone: string
           cycle_name: string
@@ -2912,6 +2913,16 @@ export type Database = {
           ready_at: string
           status: string
         }[]
+      }
+      vendor_submit_registration: {
+        Args: {
+          p_business_name: string
+          p_contact_phone?: string
+          p_fssai_number?: string
+          p_gst_number?: string
+          p_return_policy?: string
+        }
+        Returns: Json
       }
       vendor_supply_list: {
         Args: never

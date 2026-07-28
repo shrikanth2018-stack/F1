@@ -64,7 +64,10 @@ export function VendorRegistrationScreen({ navigation }: CustomerScreenProps<'Ve
     );
   }
 
-  const awaitingReview = vendor.status === 'submitted';
+  // Once it is with us for verification the vendor cannot re-send or edit —
+  // the RPC refuses a second submission, and the form reflects that rather
+  // than letting them fill it in and be rejected at the last step.
+  const awaitingReview = vendor.status !== 'invited';
 
   const handleSubmit = async () => {
     if (!businessName.trim()) {
@@ -77,13 +80,11 @@ export function VendorRegistrationScreen({ navigation }: CustomerScreenProps<'Ve
     }
     try {
       await submit.mutateAsync({
-        vendorId: vendor.id,
         businessName: businessName.trim(),
         contactPhone: phone.trim() || undefined,
         gstNumber: gst.trim() || undefined,
         fssaiNumber: fssai.trim() || undefined,
         returnPolicy: returns.trim() || undefined,
-        acceptTerms: true,
       });
       navigation.goBack();
       setTimeout(
@@ -108,8 +109,8 @@ export function VendorRegistrationScreen({ navigation }: CustomerScreenProps<'Ve
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         {awaitingReview && (
           <ThemedText variant="small" color="mint" style={styles.hint}>
-            Your details are with us for verification. You can still change them until
-            they are approved.
+            Your details are with us for verification. We will confirm shortly — get in
+            touch if anything needs changing.
           </ThemedText>
         )}
 
@@ -120,6 +121,7 @@ export function VendorRegistrationScreen({ navigation }: CustomerScreenProps<'Ve
           placeholderTextColor={Theme.colors.text.muted}
           value={businessName}
           onChangeText={setBusinessName}
+          editable={!awaitingReview}
         />
         <TextInput
           style={styles.input}
@@ -128,6 +130,7 @@ export function VendorRegistrationScreen({ navigation }: CustomerScreenProps<'Ve
           value={phone}
           onChangeText={setPhone}
           keyboardType="phone-pad"
+          editable={!awaitingReview}
         />
         <TextInput
           style={styles.input}
@@ -136,6 +139,7 @@ export function VendorRegistrationScreen({ navigation }: CustomerScreenProps<'Ve
           value={gst}
           onChangeText={setGst}
           autoCapitalize="characters"
+          editable={!awaitingReview}
         />
         <TextInput
           style={styles.input}
@@ -144,6 +148,7 @@ export function VendorRegistrationScreen({ navigation }: CustomerScreenProps<'Ve
           value={fssai}
           onChangeText={setFssai}
           autoCapitalize="characters"
+          editable={!awaitingReview}
         />
         <TextInput
           style={styles.input}
@@ -152,6 +157,7 @@ export function VendorRegistrationScreen({ navigation }: CustomerScreenProps<'Ve
           value={returns}
           onChangeText={setReturns}
           multiline
+          editable={!awaitingReview}
         />
 
         <Divider />
@@ -165,7 +171,7 @@ export function VendorRegistrationScreen({ navigation }: CustomerScreenProps<'Ve
           {SUPPLY_MODE_LABEL[vendor.supply_mode]}
         </ThemedText>
         {vendor.selling_model === 'own_brand' && (
-          <ThemedText variant="body" color="subtitle" style={styles.txt}>
+          <ThemedText variant="body" color="mint" style={styles.txt}>
             Commission {vendor.commission_percent}%
           </ThemedText>
         )}
@@ -188,18 +194,20 @@ export function VendorRegistrationScreen({ navigation }: CustomerScreenProps<'Ve
         </TouchableOpacity>
       </ScrollView>
 
-      <TouchableOpacity
-        style={styles.footer}
-        onPress={handleSubmit}
-        disabled={submit.isPending}
-        activeOpacity={0.7}
-      >
-        {submit.isPending
-          ? <ActivityIndicator color={Theme.colors.text.mint} />
-          : <ThemedText variant="body" color="mint" style={styles.txt}>
-              {awaitingReview ? 'Update details  ›' : 'Send for verification  ›'}
-            </ThemedText>}
-      </TouchableOpacity>
+      {!awaitingReview && (
+        <TouchableOpacity
+          style={styles.footer}
+          onPress={handleSubmit}
+          disabled={submit.isPending}
+          activeOpacity={0.7}
+        >
+          {submit.isPending
+            ? <ActivityIndicator color={Theme.colors.text.mint} />
+            : <ThemedText variant="body" color="mint" style={styles.txt}>
+                Send for verification  ›
+              </ThemedText>}
+        </TouchableOpacity>
+      )}
     </SafeAreaView>
   );
 }

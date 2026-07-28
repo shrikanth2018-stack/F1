@@ -31,10 +31,17 @@ import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { Divider } from '../../components/Divider';
 import { EmptyState } from '../../components/EmptyState';
+import { ErrorRetry } from '../../components/ErrorRetry';
 import { SegmentedControl } from '../../components/SegmentedControl';
 import { DispatchBadge } from '../../components/DispatchBadge';
 import { infoDialog, confirmDialog } from '../../utils/confirmDialog';
 import { formatPriceShort, formatDateShort, getErrorMessage } from '../../utils/formatters';
+import { istTimeLabel } from '../../utils/istDate';
+// A vendor only ever sells essentials, so every cycle they see must be named
+// the way the customer sees it on the Essentials menu — Morning, not
+// Breakfast. The order rows get this from the server; the picker here has the
+// full cycle row, so it uses the shared helper.
+import { essentialsCycleLabel } from '../../utils/cycleLabels';
 import { useDeliveryCycles } from '../../hooks/useDeliveryCycles';
 import { useWalletBalance } from '../../hooks/useWallet';
 import {
@@ -168,12 +175,28 @@ export function VendorDashboardScreen({ navigation }: CustomerScreenProps<'Vendo
           contentContainerStyle={styles.list}
           ListHeaderComponent={
             <ThemedText variant="small" color="muted" style={styles.hint}>
-              Paid orders only. Mark each one ready once your goods are set aside.
+              Paid orders only, shown as they come in. Each one says whether the
+              customer can still cancel it — buy stock once it reads confirmed.
             </ThemedText>
           }
-          ListEmptyComponent={!orders.isLoading ? <EmptyState title="No orders yet" /> : null}
+          // A failed RPC used to render as "No orders yet", which is exactly
+          // how the broken return type stayed hidden. An error must look like
+          // an error.
+          ListEmptyComponent={
+            orders.error
+              ? <ErrorRetry message="Could not load your orders" onRetry={orders.refetch} />
+              : !orders.isLoading ? <EmptyState title="No orders yet" /> : null
+          }
           renderItem={({ item }) => {
             const isReady = !!item.ready_at;
+            // The vendor sees orders live, well before the kitchen push, so
+            // they have real lead time to procure. The flip side is that an
+            // order is provisional until the cancellation window shuts, and
+            // stock bought against one that is then cancelled is the vendor's
+            // loss. `cancellable_until` is the same instant cancel-order
+            // enforces, so this note is not an estimate.
+            const lockAt = item.cancellable_until ? new Date(item.cancellable_until) : null;
+            const stillCancellable = !!lockAt && lockAt.getTime() > Date.now();
             return (
               <View style={styles.orderRow}>
                 <View style={styles.rowTop}>
@@ -192,6 +215,16 @@ export function VendorDashboardScreen({ navigation }: CustomerScreenProps<'Vendo
                     {line.item_name}  ×{line.quantity}
                   </ThemedText>
                 ))}
+
+                <ThemedText
+                  variant="small"
+                  color={stillCancellable ? 'warning' : 'mint'}
+                  style={styles.sub}
+                >
+                  {stillCancellable
+                    ? `Can still be cancelled until ${istTimeLabel(lockAt!)}`
+                    : 'Confirmed — safe to source'}
+                </ThemedText>
 
                 {/* Only populated for a vendor whose goods sit at the hub —
                     everyone else never receives these fields at all. */}
@@ -239,9 +272,11 @@ export function VendorDashboardScreen({ navigation }: CustomerScreenProps<'Vendo
               />
             </View>
           ))}
-          {(items.data ?? []).length === 0 && !items.isLoading && (
+          {items.error ? (
+            <ErrorRetry message="Could not load your items" onRetry={items.refetch} />
+          ) : (items.data ?? []).length === 0 && !items.isLoading ? (
             <EmptyState title="No items yet" subtitle="Add your first one below" />
-          )}
+          ) : null}
 
           {!suspended && (
             <>
@@ -252,7 +287,7 @@ export function VendorDashboardScreen({ navigation }: CustomerScreenProps<'Vendo
                 activeOpacity={0.7}
               >
                 <ThemedText variant="body" color="mint" style={styles.txt}>
-                  {selectedCycle ? selectedCycle.cycle_name : 'Loading…'}{'  ›'}
+                  {selectedCycle ? essentialsCycleLabel(selectedCycle) : 'Loading…'}{'  ›'}
                 </ThemedText>
               </TouchableOpacity>
               <TextInput style={styles.input} placeholder="Item name" placeholderTextColor={Theme.colors.text.muted} value={name} onChangeText={setName} />
@@ -302,9 +337,11 @@ export function VendorDashboardScreen({ navigation }: CustomerScreenProps<'Vendo
           )}
 
           <ThemedText variant="small" color="muted" style={styles.sectionLabel}>RECENT SALES</ThemedText>
-          {(earnings.data ?? []).length === 0 && !earnings.isLoading && (
+          {earnings.error ? (
+            <ErrorRetry message="Could not load your sales" onRetry={earnings.refetch} />
+          ) : (earnings.data ?? []).length === 0 && !earnings.isLoading ? (
             <EmptyState title="No sales yet" />
-          )}
+          ) : null}
           {(earnings.data ?? []).map((e) => (
             <View key={e.id} style={styles.row}>
               <View style={styles.flex1}>

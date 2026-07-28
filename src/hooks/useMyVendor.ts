@@ -39,34 +39,32 @@ export function useMyVendor() {
 }
 
 /**
- * Complete registration. Only the seven business-detail columns are
- * grantable to `authenticated`, so a vendor physically cannot set their own
- * status, commission or selling model here — the database refuses it.
+ * Complete registration and send it for verification.
+ *
+ * Goes through an RPC rather than a table update because `status` is not
+ * grantable to `authenticated` — deliberately, so nobody approves
+ * themselves. A plain update therefore wrote the details but left the vendor
+ * stuck at 'invited' forever, invisible to the admin's "To verify" tab.
+ * The RPC is the only thing that can make the move, and it refuses a second
+ * submission once the details are already with us.
  */
 export function useSubmitVendorRegistration() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (p: {
-      vendorId: number;
       businessName: string;
       contactPhone?: string;
       gstNumber?: string;
       fssaiNumber?: string;
       returnPolicy?: string;
-      acceptTerms: boolean;
     }) => {
-      const { error } = await supabase
-        .from('vendors')
-        .update({
-          business_name: p.businessName,
-          contact_phone: p.contactPhone ?? null,
-          gst_number: p.gstNumber ?? null,
-          fssai_number: p.fssaiNumber ?? null,
-          return_policy: p.returnPolicy ?? null,
-          terms_accepted_at: p.acceptTerms ? new Date().toISOString() : null,
-          submitted_at: new Date().toISOString(),
-        })
-        .eq('id', p.vendorId);
+      const { error } = await supabase.rpc('vendor_submit_registration', {
+        p_business_name: p.businessName,
+        p_contact_phone: p.contactPhone ?? undefined,
+        p_gst_number: p.gstNumber ?? undefined,
+        p_fssai_number: p.fssaiNumber ?? undefined,
+        p_return_policy: p.returnPolicy ?? undefined,
+      });
       if (error) throw new Error(error.message);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['my_vendor'] }),
@@ -194,6 +192,14 @@ export interface VendorOrder {
   ready_at: string | null;
   customer_name: string | null;
   customer_phone: string | null;
+  /**
+   * The moment this order stops being cancellable — the same instant
+   * `cancel-order` enforces (store_config window from creation, or the
+   * group's earliest cycle cutoff, whichever falls first). Null once the
+   * order is already past cancelling. Before it passes the vendor should
+   * not be buying stock against this order.
+   */
+  cancellable_until: string | null;
 }
 
 /**
