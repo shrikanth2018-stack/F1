@@ -501,3 +501,43 @@ introduces a new claim category. Three features have now shipped without it.
 **Rollback:** re-add the constraint with the original five values
 (`Grocery, Vegetable, Stationery, Fuel, Expense`) — only safe if no row is
 carrying one of the new categories.
+
+---
+
+## 18. Vendor visibility fix (2026-07-30)
+
+**Applied to production 2026-07-30 and verified per-user under real RLS.**
+
+`essentials_vendor_scope` decided customer visibility with an inline `EXISTS`
+over `vendors` and `vendor_zones`. A policy expression runs as the CALLING
+user, so both tables applied their own RLS — and both deny SELECT to ordinary
+customers by design (`vendors_owner_read`, `vendor_zones_read`). The subquery
+therefore read zero rows for every real customer and the RESTRICTIVE policy
+denied the item.
+
+**No customer could see any vendor item.** The only account that could was the
+vendor's own owner, via the separate owner branch — which is precisely why it
+read as a zone-mapping problem during device testing.
+
+| # | File | What it does |
+|---|------|--------------|
+| 1 | `vendors_fixes_03_visibility.sql` | Adds `vendor_ids_visible_to_me()` (SECURITY DEFINER, returns vendor IDs only) and repoints the policy at it. |
+
+Mirror of `vendor_ids_for_address`, which already existed for the ORDER path
+because the service-role builder bypasses RLS. The browse path had the
+opposite problem and nobody had checked it.
+
+**Verifying this class of bug:** query as the user, not as superuser. A
+superuser query bypasses RLS entirely and will happily confirm a policy that
+denies every real customer.
+
+```sql
+SELECT set_config('request.jwt.claims',
+  json_build_object('sub','<user-uuid>','role','authenticated','user_role','customer')::text, true);
+SET LOCAL ROLE authenticated;
+SELECT count(*) FROM essentials_catalog WHERE vendor_id IS NOT NULL;
+RESET ROLE;
+```
+
+**Rollback:** restore the policy body from `vendors_visibility.sql` §2 — but
+that restores the bug.

@@ -210,6 +210,28 @@ the state **after** the fixes of that date.
 
 ## Closed
 
+- **No customer could see any vendor item.** `essentials_vendor_scope` tested
+  visibility with an inline `EXISTS` over `vendors` and `vendor_zones`. A policy
+  expression runs as the *calling user*, so both tables applied their own RLS —
+  and both deny SELECT to ordinary customers by design. The subquery read zero
+  rows for every real customer, so the RESTRICTIVE policy denied every vendor
+  item. Only the vendor's own owner account could see their goods. The whole
+  vendor network could not make a single sale, and it presented as a
+  zone-mapping problem during device testing. Fixed by
+  `vendors_fixes_03_visibility.sql` — the rule now lives in
+  `vendor_ids_visible_to_me()` (SECURITY DEFINER, returns vendor IDs only), the
+  mirror of `vendor_ids_for_address` on the order path.
+  **Lesson: never verify an RLS policy with a superuser query.** It bypasses RLS
+  and will confirm a policy that denies everyone. Impersonate the user —
+  `set_config('request.jwt.claims', …)` plus `SET LOCAL ROLE authenticated`.
+  Note the rule now exists twice on purpose: browse matches *any* active
+  address, ordering re-checks the one address being delivered to. Change one,
+  check the other.
+- **Staff dashboard queried a column that does not exist.**
+  `store_config.staff_message` has never been on the table. The query 400'd on
+  every dashboard load, React Query retried it twice, and because the result
+  only fed an `||` fallback nobody ever saw it. Removed; per-tab `admin_notes`
+  had long since replaced it.
 - **`expense_claims` categories.** The CHECK had never been widened past its
   original five values, so staff `Others` expenses, `Hub Commission` and
   `Vendor Payout` were all rejected at insert — the latter two dead since the

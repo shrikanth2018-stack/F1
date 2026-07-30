@@ -2,19 +2,20 @@
  * 1stOne F1 — Staff Dashboard
  *
  * Header: Logo + profile circle popup
- * Tabs: Kitchen  |  Packing  |  Delivery  (pipe-separated, +4pt)
- * Staff message bar below header (from admin)
+ * Tabs: Kitchen  |  Packing  (pipe-separated, +4pt)
+ * Admin note banners below the tabs, targeted per tab
  *
- * Kitchen: aggregated item list, Confirmed → Ready toggle
- *   Floating: Mark all to next ›
+ * Kitchen: server-aggregated item list, Confirmed → Ready toggle
+ *   Floating: Mark all as Ready ›
  *   Footer: Vegetables order  |  Grocery order
  *
  * Packing: Food / Essentials sub-tabs, order-level list
- *   Floating: Mark all to next ›
- *   Footer: Print all labels  |  Print summary  (then gap)  Stationery order
+ *   Floating: Stationery order  |  Mark all as Packed ›
+ *   Footer: By Driver  |  By Hub  |  Summary   (printed slips)
  *
- * Delivery: all dispatched orders, On the Way / Delivered toggle
- *   Footer: Route map PDF
+ * There is NO Delivery tab here — it moved to DriverDashboardScreen and the
+ * admin Delivery Manager, because delivery is a driver/hub-operator job and
+ * those personas route through the customer navigator.
  */
 
 import React, { useState, useCallback, useMemo } from 'react';
@@ -55,16 +56,88 @@ import { useRealtimeOrders } from '../../hooks/useRealtimeOrders';
 import { useOfflineSync } from '../../hooks/useOfflineSync';
 import { useAuth } from '../../hooks/useAuth';
 import { useWalletBalance } from '../../hooks/useWallet';
+import { useStoreConfig } from '../../hooks/useStoreConfig';
+import { useDeliveryCycles } from '../../hooks/useDeliveryCycles';
+import { essentialsCycleLabel } from '../../utils/cycleLabels';
 import { useStaffNoteForTab, type NoteTarget } from '../../hooks/useAdminNotes';
-import { supabase } from '../../api/supabaseClient';
-import { useSupabaseQuery } from '../../api/useSupabaseQuery';
 import { assetUrl } from '../../utils/assets';
+import { formatDateShort as formatSlipDate } from '../../utils/formatters';
 import type { OrderStatus } from '../../types';
 
 type StaffTab = 'Kitchen' | 'Packing';
 type PackingSubTab = 'Food' | 'Essentials';
 
 const LOGO_URL = assetUrl('logo.png');
+
+/** Trading name as printed on a customer's slip. Matches app.config.js `name`. */
+const BRAND_NAME = '1stOne';
+
+// ── Printed slip ─────────────────────────────────────────────
+//
+// One slip is both the bill and the delivery label: the customer needs the
+// prices, the driver needs the address, and printing two pieces of paper per
+// order for the same bag was never going to survive a busy morning.
+//
+// NOT a GST tax invoice, deliberately. 1stOne is not GST-registered yet, so
+// the slip carries no GSTIN, no tax breakdown and does not call itself a tax
+// invoice — printing any of those while unregistered would be a
+// misrepresentation. `orders.tax_amount` is therefore ignored here, not
+// forgotten. When registration happens this becomes a real invoice: add the
+// GSTIN, an invoice number, the HSN code and the CGST/SGST split.
+
+/** Escape anything that reaches the printed HTML — names and addresses are user text. */
+function esc(v: unknown): string {
+  return String(v ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/** ₹ with Indian digit grouping. `&#8377;` rather than the glyph — print engines vary. */
+function money(n: number): string {
+  return `&#8377;${Math.round(Number(n) || 0).toLocaleString('en-IN')}`;
+}
+
+/**
+ * What the customer owes, or doesn't.
+ *
+ * Deliberately does NOT read `paid_at`: until 2026-07-30 confirm-order won the
+ * race against the webhook without stamping it, so every card order placed
+ * before then has status 'Confirmed' and a null paid_at. Status is the reliable
+ * signal — a Razorpay order only leaves 'Pending' once payment is confirmed.
+ */
+function paymentLine(order: any): string {
+  if (order.subscription_id != null) return 'SUBSCRIPTION &middot; PREPAID';
+  if (order.status === 'Pending') return 'PAYMENT PENDING';
+  if (order.payment_method === 'wallet') return 'PAID &middot; Wallet';
+  if (order.payment_method === 'razorpay') return 'PAID &middot; Online';
+  return `TO COLLECT ${money(order.total_amount)}`;
+}
+
+const SLIP_STYLES = `
+  body{font-family:Arial,Helvetica,sans-serif;margin:0;color:#000}
+  .section{page-break-after:always;padding:8px}
+  .section:last-child{page-break-after:auto}
+  .sectionTitle{font-size:15px;font-weight:bold;margin:4px 0 10px;padding:6px 10px;background:#000;color:#fff}
+  .slip{page-break-inside:avoid;border:1.5px solid #000;padding:12px;margin:8px 0;max-width:420px}
+  .biz{display:flex;justify-content:space-between;align-items:baseline}
+  .bizName{font-size:17px;font-weight:bold}
+  .ord{font-size:15px;font-weight:bold}
+  .bizSub{font-size:11px;color:#333;margin:1px 0 0}
+  .rule{border-top:1px solid #000;margin:8px 0}
+  .who{font-size:13px;font-weight:bold}
+  .when{font-size:11px;color:#333;float:right;font-weight:normal}
+  .addr{font-size:12px;margin:2px 0}
+  table{width:100%;border-collapse:collapse;font-size:12px;margin-top:2px}
+  td{padding:2px 0;vertical-align:top}
+  .qty{text-align:right;white-space:nowrap;padding-left:8px;color:#333}
+  .amt{text-align:right;white-space:nowrap;padding-left:10px}
+  .totRow td{padding-top:4px}
+  .grand td{font-size:14px;font-weight:bold;border-top:1px solid #000;padding-top:5px}
+  .pay{margin-top:7px;font-size:12px;font-weight:bold;letter-spacing:.4px}
+  .note{margin-top:6px;font-size:11px;font-style:italic}
+`;
 
 // Text size offsets for this screen
 const BODY2 = Theme.typography.sizes.body + 2;
@@ -89,17 +162,12 @@ function statusColor(status: OrderStatus): string {
 // the get_kitchen_aggregate RPC (audit D5).
 
 // ── Staff message bar ────────────────────────────────────
-function useStaffMessage() {
-  return useSupabaseQuery(
-    ['staff_message'],
-    () => supabase.from('store_config').select('staff_message').limit(1).single(),
-    {
-      staleTime: 60_000,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      transform: (rows: any[]): string | null => rows[0]?.staff_message ?? null,
-    },
-  );
-}
+// The legacy single `store_config.staff_message` fallback is GONE, and it had
+// to be: that column does not exist on the table (verified against the live
+// database 2026-07-30). The query 400'd on every staff dashboard load, React
+// Query retried it twice, and because the result only fed an `||` fallback the
+// failure was completely invisible. Admin notes (`useStaffNoteForTab`, which
+// supports per-tab targeting) have been the real mechanism for some time.
 
 // ── Main Dashboard ───────────────────────────────────────
 export function StaffDashboard() {
@@ -114,8 +182,6 @@ export function StaffDashboard() {
   const updateStatus = useUpdateOrderStatus();
   const bulkAdvance = useBulkAdvanceStatus();
   const { pendingCount } = useOfflineSync();
-  // Deprecated: single staff_message from store_config (kept as last-resort fallback)
-  const { data: legacyStaffMessage } = useStaffMessage();
 
   // Active admin notes targeting the current tab (+ broadcasts targeting 'all')
   const tabKey: NoteTarget =
@@ -124,6 +190,21 @@ export function StaffDashboard() {
   const { data: tabNotes = [] } = useStaffNoteForTab(tabKey);
 
   useRealtimeOrders(true);
+
+  // ── Printed-slip inputs ──────────────────────
+  // The trading name is the app's own name, so it comes from the constant that
+  // already names the app rather than from store_config — which has no
+  // store_name, tagline or address column at all. Those become necessary the
+  // day this slip has to carry a GSTIN and a registered address on it; today
+  // the header is the name plus a number a customer can call.
+  const { data: storeConfig } = useStoreConfig();
+  const storeName = BRAND_NAME;
+  const supportNumber = storeConfig?.whatsapp_support_number ?? '';
+  const { data: cyclesForSlip = [] } = useDeliveryCycles();
+  const cycleById = useMemo(
+    () => new Map(cyclesForSlip.map((c) => [c.id, c])),
+    [cyclesForSlip],
+  );
 
   const staffName = profile?.fullName || (session?.user.phone ? `...${session.user.phone.slice(-4)}` : 'Staff');
   const staffInitial = (profile?.fullName?.[0] ?? 'S').toUpperCase();
@@ -209,26 +290,12 @@ export function StaffDashboard() {
   };
 
   // ── Print helpers (web + native, via utils/printHtml) ─────
+  // Single order, printed from the row's print icon. Uses the same builder as
+  // the batch prints below — a reprint must be identical to the original, not
+  // a second version of the format that drifts from it.
   const handlePrintOrderLabel = async (item: any) => {
-    const addr = item.customer_addresses;
-    const items = (item.order_items ?? [])
-      .map((i: any) => `<li>${i.item_name} &times;${i.quantity}</li>`)
-      .join('');
-    const html = `<!DOCTYPE html><html><head><style>
-      body{font-family:Arial,sans-serif;padding:20px}
-      .label{border:2px solid #000;padding:20px;max-width:320px}
-      h2{margin:0 0 8px 0}p{margin:3px 0}
-      ul{margin:10px 0 0;padding-left:18px;border-top:1px solid #000;padding-top:10px}
-    </style></head><body>
-      <div class="label">
-        <h2>Order #${item.id}</h2>
-        <p><strong>${addr?.full_name ?? '—'}</strong></p>
-        <p>${addr?.address_line ?? '—'}</p>
-        ${addr?.landmark ? `<p>${addr.landmark}</p>` : ''}
-        ${addr?.city ? `<p>${addr.city}</p>` : ''}
-        <ul>${items || '<li>—</li>'}</ul>
-      </div>
-    </body></html>`;
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${SLIP_STYLES}</style></head>`
+      + `<body><div class="section">${renderLabelBlock(item)}</div></body></html>`;
     try {
       await printHtml(html);
     } catch {
@@ -236,29 +303,69 @@ export function StaffDashboard() {
     }
   };
 
-  // Render a single label block for an order (shared HTML fragment builder).
+  /**
+   * One order as a combined bill + delivery slip. Shared by every print path
+   * (single order, by driver, by hub) so the paper the customer receives is
+   * identical however it was produced.
+   */
   const renderLabelBlock = (order: any) => {
     const addr = order.customer_addresses;
-    const items = (order.order_items ?? [])
-      .map((i: any) => `<li>${i.item_name} &times;${i.quantity}</li>`)
-      .join('');
-    return `<div class="label">
-      <h2>Order #${order.id}</h2>
-      <p><strong>${addr?.full_name ?? '—'}</strong></p>
-      <p>${addr?.address_line ?? '—'}</p>
-      ${addr?.landmark ? `<p>${addr.landmark}</p>` : ''}
-      ${addr?.city ? `<p>${addr.city}</p>` : ''}
-      <ul>${items || '<li>—</li>'}</ul>
+    const isSub = order.subscription_id != null;
+    const lines = order.order_items ?? [];
+
+    // A subscription dispatch is an operational instruction, not a sale — the
+    // money was taken when the plan was bought (BF-19), so every one of these
+    // rows is zero. Printing "₹0" next to real food reads as a mistake or a
+    // freebie, so priced columns are dropped entirely for these.
+    const rows = lines.length === 0
+      ? `<tr><td>&mdash;</td></tr>`
+      : lines.map((i: any) => {
+          const qty = Number(i.quantity) || 0;
+          const rate = Number(i.price_at_time) || 0;
+          if (isSub) {
+            return `<tr><td>${esc(i.item_name)}</td><td class="qty">&times;${qty}</td></tr>`;
+          }
+          return `<tr>
+            <td>${esc(i.item_name)}</td>
+            <td class="qty">${qty} &times; ${Math.round(rate)}</td>
+            <td class="amt">${money(rate * qty)}</td>
+          </tr>`;
+        }).join('');
+
+    const fee = Number(order.delivery_fee) || 0;
+    const totals = isSub ? '' : `
+      ${fee > 0 ? `<tr class="totRow"><td>Delivery</td><td class="qty"></td><td class="amt">${money(fee)}</td></tr>` : ''}
+      <tr class="grand"><td>TOTAL</td><td class="qty"></td><td class="amt">${money(order.total_amount)}</td></tr>`;
+
+    const cycle = cycleById.get(order.cycle_id);
+    const cycleName = cycle
+      ? (order.order_type === 'essential' ? essentialsCycleLabel(cycle) : cycle.cycle_name)
+      : '';
+    const when = [order.dispatch_date ? formatSlipDate(order.dispatch_date) : '', cycleName]
+      .filter(Boolean).join(' &middot; ');
+
+    return `<div class="slip">
+      <div class="biz">
+        <span class="bizName">${esc(storeName)}</span>
+        <span class="ord">#${order.id}</span>
+      </div>
+      ${supportNumber ? `<p class="bizSub">${esc(supportNumber)}</p>` : ''}
+      <div class="rule"></div>
+      <div>
+        <span class="when">${when}</span>
+        <span class="who">${esc(addr?.full_name ?? '—')}</span>
+      </div>
+      <p class="addr">${esc(addr?.address_line ?? '—')}${addr?.landmark ? `, ${esc(addr.landmark)}` : ''}</p>
+      ${addr?.city ? `<p class="addr">${esc(addr.city)}</p>` : ''}
+      ${addr?.phone_number ? `<p class="addr">${esc(addr.phone_number)}</p>` : ''}
+      <div class="rule"></div>
+      <table>${rows}${totals}</table>
+      <p class="pay">${paymentLine(order)}</p>
+      ${order.notes ? `<p class="note">${esc(order.notes)}</p>` : ''}
     </div>`;
   };
 
-  const LABEL_STYLES = `body{font-family:Arial,sans-serif;margin:0}
-    .section{page-break-after:always;padding:10px}
-    .section:last-child{page-break-after:auto}
-    .sectionTitle{font-size:16px;font-weight:bold;margin:6px 0 12px 0;padding:6px 10px;background:#000;color:#fff}
-    .label{page-break-inside:avoid;border:2px solid #000;padding:16px;margin:8px 0}
-    h2{margin:0 0 6px 0}p{margin:2px 0}
-    ul{margin:8px 0 0;padding-left:18px;border-top:1px solid #000;padding-top:8px}`;
+  const LABEL_STYLES = SLIP_STYLES;
 
   /** One page-break per hub. Only hub-bound orders; branch driver picks up bundles. */
   const handlePrintByHub = async () => {
@@ -282,7 +389,7 @@ export function StaffDashboard() {
         ${labels}
       </div>`;
     }).join('');
-    const html = `<!DOCTYPE html><html><head><style>${LABEL_STYLES}</style></head><body>${sections}</body></html>`;
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${LABEL_STYLES}</style></head><body>${sections}</body></html>`;
     try { await printHtml(html); }
     catch { Alert.alert('Print Error', 'Could not open print dialog.'); }
   };
@@ -311,7 +418,7 @@ export function StaffDashboard() {
           ${labels}
         </div>`;
       }).join('');
-    const html = `<!DOCTYPE html><html><head><style>${LABEL_STYLES}</style></head><body>${sections}</body></html>`;
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${LABEL_STYLES}</style></head><body>${sections}</body></html>`;
     try { await printHtml(html); }
     catch { Alert.alert('Print Error', 'Could not open print dialog.'); }
   };
@@ -483,15 +590,11 @@ export function StaffDashboard() {
       </View>
 
       {/* Admin note banners — below the tabs, single-line, centered, mild yellow.
-          Falls back to legacy staff_message when no admin_notes exist. */}
-      {tabNotes.length > 0
-        ? tabNotes.map((n) => (
-            <Text key={n.id} style={styles.noteLine} numberOfLines={1}>{n.note_text}</Text>
-          ))
-        : !!legacyStaffMessage && (
-            <Text style={styles.noteLine} numberOfLines={1}>{legacyStaffMessage}</Text>
-          )
-      }
+          Targeted per tab via admin_notes; there is no longer a legacy
+          store_config fallback (the column it read never existed). */}
+      {tabNotes.map((n) => (
+        <Text key={n.id} style={styles.noteLine} numberOfLines={1}>{n.note_text}</Text>
+      ))}
 
       {/* Packing sub-tabs */}
       {activeTab === 'Packing' && (
