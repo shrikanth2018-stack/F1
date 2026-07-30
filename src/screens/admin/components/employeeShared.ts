@@ -24,9 +24,12 @@ export function formatTime(iso: string | null): string {
   });
 }
 
+/** IST-anchored — a bare 'YYYY-MM-DD' is UTC midnight, so the device zone
+ *  would shift the day back west of UTC (see utils/formatters.ts). */
 export function formatDate(str: string | null): string {
   if (!str) return '—';
   return new Date(str).toLocaleDateString('en-IN', {
+    timeZone: 'Asia/Kolkata',
     day: '2-digit', month: 'short', year: 'numeric',
   });
 }

@@ -48,11 +48,18 @@ export function formatPhone(phone: string): string {
 }
 
 /**
- * Format date as "Mon, 6 Apr" style
+ * Format date as "Mon, 6 Apr" style.
+ *
+ * Rendered in explicit Asia/Kolkata: a bare 'YYYY-MM-DD' parses as UTC
+ * midnight, so formatting it in the *device* zone shifts the day back for any
+ * device west of UTC — a travelling user would read a dispatch date one day
+ * early (same class as audit G8 / O6). Business dates are IST calendar dates;
+ * display them in IST regardless of where the device is.
  */
 export function formatDateShort(dateStr: string): string {
   const date = new Date(dateStr);
   return date.toLocaleDateString('en-IN', {
+    timeZone: 'Asia/Kolkata',
     weekday: 'short',
     day: 'numeric',
     month: 'short',
@@ -60,11 +67,12 @@ export function formatDateShort(dateStr: string): string {
 }
 
 /**
- * Format date as "6 April 2026"
+ * Format date as "6 April 2026" — IST-anchored, see formatDateShort.
  */
 export function formatDateLong(dateStr: string): string {
   const date = new Date(dateStr);
   return date.toLocaleDateString('en-IN', {
+    timeZone: 'Asia/Kolkata',
     day: 'numeric',
     month: 'long',
     year: 'numeric',
