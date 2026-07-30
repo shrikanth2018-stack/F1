@@ -909,31 +909,40 @@ export type Database = {
       }
       kitchen_push_log: {
         Row: {
+          attempts: number
           cycle_id: number
           http_request_id: number | null
           id: number
           items_summary: string | null
+          notified_at: string | null
           orders_count: number | null
           push_date: string
           pushed_at: string | null
+          status: string | null
         }
         Insert: {
+          attempts?: number
           cycle_id: number
           http_request_id?: number | null
           id?: number
           items_summary?: string | null
+          notified_at?: string | null
           orders_count?: number | null
           push_date: string
           pushed_at?: string | null
+          status?: string | null
         }
         Update: {
+          attempts?: number
           cycle_id?: number
           http_request_id?: number | null
           id?: number
           items_summary?: string | null
+          notified_at?: string | null
           orders_count?: number | null
           push_date?: string
           pushed_at?: string | null
+          status?: string | null
         }
         Relationships: [
           {
@@ -2667,6 +2676,7 @@ export type Database = {
         Returns: number
       }
       alert_cron_failures: { Args: never; Returns: undefined }
+      alert_missing_kitchen_pushes: { Args: never; Returns: undefined }
       approve_attendance_correction: {
         Args: { p_request_id: number }
         Returns: Json

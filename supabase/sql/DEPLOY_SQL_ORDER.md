@@ -17,11 +17,14 @@ CREATE EXTENSION IF NOT EXISTS pg_cron;
 CREATE EXTENSION IF NOT EXISTS pg_net;
 ```
 
-Vault secrets (required for kitchen cutoff push):
+Vault secrets (for the kitchen cutoff push):
 ```sql
 SELECT vault.create_secret('https://<ref>.supabase.co', 'supabase_url');
 SELECT vault.create_secret('<service-role-key>',         'service_role_key');
 ```
+`kitchen_cutoff_push.sql` now falls back to `app_config` for both values if the
+Vault secrets are absent, so provisioning either one is sufficient. An
+unprovisioned Vault no longer silently disables the kitchen push.
 
 ## 1. Schema & core RPCs — run in SQL editor in this order
 
@@ -33,7 +36,7 @@ SELECT vault.create_secret('<service-role-key>',         'service_role_key');
 | 4  | `custom_access_token_hook.sql`                    | Injects `user_role`, `assigned_hub_id`, `branch_id` into JWTs                                              |
 | 5  | `seed_feature_flags.sql`                          | Seven canonical feature flags (ON CONFLICT DO NOTHING)                                                      |
 | 6  | `generate_daily_manifest.sql`                     | Nightly 23:00 IST subscription-order generator + audit log                                                  |
-| 7  | `kitchen_cutoff_push.sql`                         | Kitchen summary push per cycle cutoff (pg_cron every minute)                                                |
+| 7  | `kitchen_cutoff_push.sql`                         | Kitchen summary push per cycle cutoff (pg_cron every minute). At-least-once: `kitchen_push_log` rows are claims, final only once `notified_at` is set, and the tick retries unconfirmed claims until the cycle's `delivery_start` — so a push missed at a 22:30 cutoff is still recovered after IST midnight for the 07:00 delivery. Adds `delivery_cycles_push_after_cutoff` CHECK and the `kitchen-push-missing-alert` cron (every 10 min). **Re-run is safe; regenerate types afterwards** (`kitchen_push_log` gains `notified_at`, `status`, `attempts`). |
 | 8  | `app_settings.sql`                                | Single-row `app_settings` config table (`login_bg_url`, etc.)                                              |
 | 9  | `add_branch_id_columns_mf03.sql`                  | MF-03: adds `branch_id` (FK + index) to 6 tables (`customer_addresses`, `user_subscriptions`, `cancelled_subscription_days`, `staff_leaves`, `staff_salary`, `staff_shifts`) |
 | 10 | `complete_onboarding.sql`                         | First-customer onboarding RPC. MF-03: derives `branch_id` from zone/hub. FT-03: nullable defaults on optional address fields |
