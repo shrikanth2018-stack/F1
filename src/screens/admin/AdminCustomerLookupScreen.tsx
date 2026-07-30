@@ -115,11 +115,12 @@ export function AdminCustomerLookupScreen({ navigation }: AdminScreenProps<'Admi
                 </ThemedText>
                 <DispatchBadge label={item.status ?? ''} variant={orderStatusVariant(item.status)} />
               </View>
-              {/* paid/unpaid is shown for back-office orders only. On the
-                  customer path `paid_at` is not a reliable signal: when
-                  confirm-order wins the race against the webhook it sets
-                  status = 'Confirmed' without stamping paid_at, so a paid
-                  customer order would read "unpaid" here. */}
+              {/* paid/unpaid is shown for back-office orders only, where the
+                  question ("has this invoice been settled?") is the point of
+                  the row. On the customer path the status badge above already
+                  says it, and orders placed before confirm-order started
+                  stamping paid_at (2026-07-30) carry no timestamp even though
+                  they were paid — so showing it there would misread history. */}
               <ThemedText variant="small" color="muted" style={styles.sub}>
                 {item.placed_by
                   ? `Back office · ${item.paid_at ? 'paid' : 'unpaid'}`

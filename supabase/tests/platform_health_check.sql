@@ -17,23 +17,29 @@
 --   G  loyalty — accrual, redemption, over-redeem refusal
 --   H  vendor portal — orders, supply list, payout claim, one-open-claim rule
 --   I  hub operator — commission summary
+--   J  subscription manifest — generation, BF-19 zero-money rows, idempotency
 --
--- Each section is isolated, so one failure reports instead of aborting the run.
--- ═══════════════════════════════════════════════════════════════
-
 -- SAFETY
 --   * Everything runs inside one DO block ending in RAISE EXCEPTION, so the
---     whole run is rolled back. No row survives.
+--     whole run is rolled back. No row survives — verify with a row count
+--     before and after if you want to see it for yourself.
 --   * Orders are dated ~60 days out, so no cron tick, kitchen push or staff
 --     board can see them even mid-run.
---   * DELIBERATELY EXCLUDED: generate_daily_manifest and advance_orders_status
---     with p_status='Ready'. Both call net.http_post, which would send real
---     push notifications to real phones. A rollback does not un-send those.
---   * auth.uid() is simulated with request.jwt.claims so the RPCs that
---     identify their caller can be exercised the way the app calls them.
+--   * PUSH NOTIFICATIONS: generate_daily_manifest (§J) queues customer pushes
+--     through pg_net. That queue is a table, so the rollback discards them
+--     too — but the background worker polls, so a push is theoretically
+--     possible if it fires mid-run. Harmless while the app is on tester
+--     phones; revisit before real customers are on it.
+--   * advance_orders_status is exercised with 'Preparing'/'Packed' only.
+--     'Ready' is the one status that pushes, and it is avoided deliberately.
+--   * auth.uid() is simulated with request.jwt.claims, including the
+--     user_role claim that is_admin()/is_staff_or_admin() actually read —
+--     without it every role-gated RPC refuses and the run reports false
+--     failures.
 --
--- Each test is isolated in its own BEGIN/EXCEPTION so one failure reports
+-- Each section is isolated in its own BEGIN/EXCEPTION so one failure reports
 -- rather than aborting the run.
+-- ═══════════════════════════════════════════════════════════════
 
 DO $$
 DECLARE
@@ -58,6 +64,7 @@ DECLARE
   v_txt           TEXT;
   v_admin         UUID;
   v_staff         UUID;
+  v_cycle         INTEGER;
 BEGIN
   r := r || E'\n════ 1stOne platform health check ════\n';
 
@@ -295,6 +302,42 @@ BEGIN
         CASE WHEN v_json IS NOT NULL THEN 'PASS' ELSE 'FAIL' END, E'\n');
     END IF;
   EXCEPTION WHEN OTHERS THEN r := r || format('I1 ... FAIL (%s)%s', SQLERRM, E'\n'); END;
+
+  -- ══ J. SUBSCRIPTION MANIFEST ════════════════════════════════════════════
+  -- The nightly run that turns active subscriptions into kitchen orders.
+  -- Dated 60 days out so it cannot collide with the real run for today.
+  BEGIN
+    SELECT sp.cycle_id INTO v_cycle
+      FROM user_subscriptions us
+      JOIN subscription_plans sp ON sp.id = us.plan_id
+     WHERE us.is_active AND NOT us.is_paused AND sp.cycle_id IS NOT NULL
+     LIMIT 1;
+    IF v_cycle IS NULL THEN
+      r := r || E'J1 manifest ... SKIPPED (no active subscription)\n';
+    ELSE
+      SELECT generate_daily_manifest(v_future, v_cycle) INTO v_json;
+      SELECT count(*) INTO v_rows FROM orders
+       WHERE dispatch_date = v_future AND cycle_id = v_cycle AND subscription_id IS NOT NULL;
+      r := r || format('J1 manifest for a future date -> %s ... %s%s',
+        v_json, CASE WHEN v_json IS NOT NULL THEN 'PASS' ELSE 'FAIL' END, E'\n');
+
+      -- BF-19: a dispatch row is an operational instruction, not a sale. The
+      -- revenue was booked when the subscription was bought, so every one of
+      -- these rows must carry zero money or the day is counted twice.
+      SELECT count(*) INTO v_n FROM orders
+       WHERE dispatch_date = v_future AND subscription_id IS NOT NULL
+         AND (COALESCE(total_amount,0) <> 0 OR COALESCE(wallet_amount_used,0) <> 0);
+      r := r || format('J2 manifest rows carry zero money (BF-19) ... %s%s',
+        CASE WHEN v_n = 0 THEN 'PASS' ELSE format('FAIL (%s priced rows)', v_n) END, E'\n');
+
+      -- Re-running the same date must not duplicate the day's dispatch.
+      SELECT generate_daily_manifest(v_future, v_cycle) INTO v_json;
+      SELECT count(*) INTO v_n FROM orders
+       WHERE dispatch_date = v_future AND cycle_id = v_cycle AND subscription_id IS NOT NULL;
+      r := r || format('J3 re-run is idempotent (%s rows before, %s after) ... %s%s',
+        v_rows, v_n, CASE WHEN v_n = v_rows THEN 'PASS' ELSE 'FAIL (duplicated)' END, E'\n');
+    END IF;
+  EXCEPTION WHEN OTHERS THEN r := r || format('J ... FAIL (%s)%s', SQLERRM, E'\n'); END;
 
   r := r || E'\n════ rolled back — nothing kept ════';
   RAISE EXCEPTION '%', r;

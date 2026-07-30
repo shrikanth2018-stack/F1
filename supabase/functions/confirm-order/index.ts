@@ -127,9 +127,22 @@ Deno.serve(async (req: Request) => {
     // so sibling-cycle rows aren't stranded in 'Pending' (money taken,
     // item never reaches the kitchen).
     // Idempotent: only transitions Pending → Confirmed.
+    //
+    // paid_at + razorpay_payment_id are stamped HERE as well as in
+    // mark_order_paid. This path usually beats the webhook, and because
+    // mark_order_paid only matches rows still 'Pending', whichever runs
+    // second finds nothing to update. Without these two columns the
+    // winning path left the order with no payment reference and no paid
+    // timestamp at all: nothing to reconcile against Razorpay, and no
+    // payment id to refund with. Both are what the webhook would have
+    // written, so the two paths now converge on the same row state.
     const { error: paidErr } = await supabase
       .from('orders')
-      .update({ status: 'Confirmed' })
+      .update({
+        status: 'Confirmed',
+        paid_at: new Date().toISOString(),
+        razorpay_payment_id,
+      })
       .eq('razorpay_order_id', razorpay_order_id)
       .eq('user_id', user.id)
       .eq('status', 'Pending');

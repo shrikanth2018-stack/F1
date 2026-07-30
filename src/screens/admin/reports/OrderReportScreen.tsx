@@ -19,6 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../../theme';
 import { ThemedText } from '../../../components/ThemedText';
 import { EmptyState } from '../../../components/EmptyState';
+import { ErrorRetry } from '../../../components/ErrorRetry';
 import { printHtml, sharePdf } from '../../../utils/printHtml';
 import { useOrdersDetailReport, type OrderSource } from '../../../hooks/useReports';
 import type { AdminNavProp } from '../../../navigation/types';
@@ -101,7 +102,7 @@ export function OrderReportScreen({ navigation }: { navigation: AdminNavProp }) 
   const [viewMode, setViewMode] = useState<ViewMode>('Cycle wise');
   const [source, setSource] = useState<OrderSource>('all');
   const { start, end } = useMemo(() => getPeriodRange(period, customRange), [period, customRange]);
-  const { data, isLoading } = useOrdersDetailReport(start, end, source);
+  const { data, isLoading, isError, refetch } = useOrdersDetailReport(start, end, source);
 
   const cycleRows = useMemo(() => data?.cycleRows ?? [], [data]);
   const menuRows = useMemo(() => data?.menuRows ?? [], [data]);
@@ -177,7 +178,14 @@ export function OrderReportScreen({ navigation }: { navigation: AdminNavProp }) 
 
       {/* Rows */}
       <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
-        {!isLoading && !hasData && <EmptyState title="No data for this period" />}
+        {/* A failed fetch is not an empty period. Rendering the empty state
+            here would report a real zero for order figures that were
+            never actually loaded. */}
+        {isError ? (
+          <ErrorRetry message="Could not load this report" onRetry={refetch} />
+        ) : (
+          !isLoading && !hasData && <EmptyState title="No data for this period" />
+        )}
 
         {viewMode === 'Cycle wise'
           ? cycleRows.map((r, idx) => (

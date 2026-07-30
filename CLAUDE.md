@@ -2,7 +2,9 @@
 
 Expo/React Native app + Supabase backend for a home-kitchen food & essentials delivery business (single region, IST). One binary serves customer, staff, driver, hub-operator, vendor and admin personas, routed by JWT claims + table lookups.
 
-> **Provenance.** Sections 1–9 were re-derived directly from source on 2026-07-30 (HEAD `3304a5d`), not from `docs/`. Where the older docs disagree with code, code wins. `docs/CODEBASE_MAP.md` predates the vendor network and is stale on that subject.
+> **Provenance.** Sections 1–9 were re-derived directly from source on 2026-07-30, verified against the live database, not from `docs/`. Where anything disagrees with the code, the code wins.
+>
+> The superseded doc set (`01`–`05`, `CODEBASE_MAP`, `DEEP_DIVE_2026-07-27`) was deleted the same day — all of it predated the vendor network and described four personas rather than six. Recover from git history if ever needed. What remains in `docs/` is still current: `06-ops-and-maintenance-runbook.md`, `07-incident-playbooks.md`, `PHASE_2_PLAN.md` (branch 2 + reverse supply chain, not started), `VENDOR_ONBOARDING_QUESTIONS.md` (decisions record), `HEALTH_REPORT.md` (polish backlog — partly overtaken by §9 below).
 
 ## Stack
 Expo SDK 54 · RN 0.81.5 · React 19.1 · TypeScript 5.9 · React Navigation 7 · TanStack Query 5 · Zustand 5 · Supabase (Postgres + RLS + 15 Deno edge functions + pg_cron) · Razorpay · Expo Push · Sentry · PostHog.
@@ -201,22 +203,101 @@ Offline → persisted Zustand queue. On reconnect `useOfflineSync` drains FIFO w
 - No hardcoded business values or colors: business rules live in `store_config`/`feature_flags`, styling in `src/theme/`.
 - Code comments carry audit tags (D#, G#, BF-#, MF-#, O#, FT-#) referencing past audit rounds — keep them when editing nearby code; match the existing header-comment style in every file.
 
-# 9. Known gaps — verified 2026-07-30, not yet fixed
+# 9. Audit state — July 2026 stable
 
-Findings from a read of the code as it stands. Nothing here has been changed.
+Full audit 2026-07-30, verified against the live database. Everything below is
+the state **after** the fixes of that date.
 
-1. **The pre-push gate is red on this machine.** `src/__tests__/walletNudge.test.ts:131` fails under `TZ=America/Los_Angeles` (this machine's zone) and passes under `Asia/Kolkata`/`UTC`. Cause: the test re-implements the hook's logic locally and mixes UTC parsing (`new Date("YYYY-MM-DD")`) with local-time `setDate`, losing a day in any zone behind UTC. Two consequences — `npm run check` blocks pushes here, and because the test mirrors rather than imports `useWalletNudge`, the real hook (which correctly uses the IST string helpers) has **zero coverage** and the mirror has already drifted from it.
-2. **`essentials_catalog.vendor_cost` has no write path.** It is read by the credit trigger and selected by `useMyVendorItems`, but no screen, hook or RPC ever writes it (`admin_set_vendor_terms` sets commission/model/mode/policy only; `useSaveVendorItem` omits it). `AdminVendorOnboardScreen.tsx:205` promises house-brand vendors "an agreed rate set per item". Result: **every delivered sale for a `house_brand` vendor credits ₹0**, records a `vendor_earnings` row with `net_amount = 0`, and raises only a Postgres `WARNING` nobody reads.
-3. **PostHog is dead in every EAS build.** `EXPO_PUBLIC_POSTHOG_KEY` exists in `.env` but `.env` is excluded from build archives (`.easignore`) and no `eas.json` profile defines it, so `initAnalytics()` returns early and all 12 funnel events silently no-op in production.
-4. **Production still ships the Razorpay test key.** `eas.json` production `EXPO_PUBLIC_RAZORPAY_KEY_ID = rzp_test_…`. Live payments cannot work until this and the server-side secret are switched together.
-5. **`expense_claims_category_check` may block payout claims.** The `schema.sql` snapshot constrains `category` to `Grocery|Vegetable|Stationery|Fuel|Expense`, but `hub_commission_claims.sql` inserts `'Hub Commission'` and `vendors_portal.sql:117` inserts `'Vendor Payout'` — and **neither file ever alters the constraint**. Either the live DB was widened by hand (undocumented, and a rebuild from `schema.sql` would regress it) or both claim paths fail on insert. Verify against the live DB before testing vendor payouts.
-6. **`eas.json` preview/development profiles are incomplete.** `development` has no `EXPO_PUBLIC_SUPABASE_ANON_KEY` and no Maps key; `preview` has no Sentry DSN. Dev-client builds survive because Metro serves the local `.env`; a standalone build from these profiles would not.
-7. **iOS submit config is placeholders** — `eas.json` submit → `REPLACE_WITH_APPLE_ID` / `REPLACE_WITH_ASC_APP_ID` / `REPLACE_WITH_TEAM_ID`.
-8. **`vendor_supply_list()` is deployed but unreachable.** The RPC (`vendors_portal.sql:29`) and its hook `useVendorSupplyList` (`useMyVendor.ts:173`) are complete, but `VendorDashboardScreen`'s "Supply" tab renders `useVendorOrders` instead. Knip flags the hook as an unused export. `useVendorNames` (`useEssentials.ts:31`) is likewise unused.
-9. **One wallet per person, including vendors.** `VendorDashboardScreen.tsx:314` labels the raw wallet balance "Available to claim", and `create_vendor_payout_claim` claims the *entire* balance. For someone who is both a vendor and a customer, a Razorpay top-up made as a customer becomes claimable as a business payout, and earnings spent on food reduce what's claimable. The shared wallet is a stated design decision (`vendors_schema.sql:153-156`); this consequence appears not to be handled anywhere.
-10. **Stale header comments.** `StaffDashboard.tsx:5,16` still document a "Kitchen | Packing | Delivery" three-tab layout; the Delivery tab moved to `DriverDashboardScreen` + admin Delivery Manager (acknowledged at `:146-147`). `docs/CODEBASE_MAP.md` predates the whole vendor network and describes four personas, not six.
-11. **`'Paid'` is a dead order status** still referenced defensively in `cancel-order:34`, `OrderDetailScreen.tsx:34`, `confirm-order:98`, `kitchen_cutoff_push.sql:163` and the `orders_status_allowed` CHECK. `mark_order_paid` writes `'Confirmed'` (BF-32a) and `orders_status_drop_paid.sql` exists to remove it. Harmless today; it is absent from `ORDER_STATUS_FLOW`, so anything that ever *did* write it would fall outside the offline no-regress guard.
-12. **Single environment, no staging.** One Supabase project (`wcvqxzqqwcxlcgrjyunf`) serves dev, preview and production. The service-role key lives in three places (function env, Vault, `app_config`) — rotation must touch all three.
+## Closed
+
+- **`expense_claims` categories.** The CHECK had never been widened past its
+  original five values, so staff `Others` expenses, `Hub Commission` and
+  `Vendor Payout` were all rejected at insert — the latter two dead since the
+  day they shipped. Widened, applied to production, recorded in
+  `DEPLOY_SQL_ORDER.md` §17. **Rule: add the value in the same file that
+  introduces a new claim category.**
+- **Vendor items filed under a non-essentials cycle.** `buildSections` drops
+  any item whose cycle isn't in the essentials list, so a vendor could file
+  one under Snacks and have it fetched then silently discarded. The vendor's
+  picker now offers only cycles that can render.
+- **House-brand vendors credited ₹0.** `essentials_catalog.vendor_cost` had no
+  write path, so `credit_vendor_earnings_for_order` COALESCEd it to 0 on every
+  delivered sale, with a Postgres `WARNING` as the only trace. The option is
+  now withheld from both vendor screens until house brand has its own
+  onboarding, agreed buying price and wallet treatment (see `PHASE_2_PLAN.md`).
+  Column and trigger still handle both models.
+- **Invisible vendors.** An approved vendor with no granted zone or hub reaches
+  nobody and looks identical to one selling normally. My Store now names its
+  areas or warns it has none, the admin vendor page warns when none is granted,
+  and onboarding can set them — it never asked before.
+- **Stale essentials list.** A vendor adding an item is a change on another
+  device, so the customer's cache held a stale list for up to two minutes. The
+  essentials query now re-reads on mount and on foreground. (Live-while-watching
+  would need a Realtime subscription; deliberately not added.)
+- **In-app payments left no reference.** `confirm-order` usually beats the
+  webhook, and `mark_order_paid` only matches rows still `Pending`, so whichever
+  ran second found nothing — the order ended up with no `paid_at` and no
+  `razorpay_payment_id`. Nothing to reconcile against Razorpay, no payment id to
+  refund with. Both paths now write the same row state. Orders placed before
+  2026-07-30 still carry neither.
+- **Reports read a failed fetch as zero.** Four report screens destructured only
+  `data`/`isLoading` and rendered "no data for this period" when the query
+  errored — a real zero, in a screen used to make decisions. All four now
+  distinguish an error from an empty period.
+- **Timezone-dependent test suite.** `walletNudge.test.ts` built dates as UTC and
+  stepped them in local time, so `npm run check` was green in IST and red on any
+  machine behind UTC. It now uses the same `istDate` helpers as the hook.
+- **Shared wallet for vendor-customers** — reviewed and confirmed intended.
+  One person, one wallet: they spend as a customer and claim as a vendor.
+
+## Open
+
+1. **Production still ships the Razorpay test key.** `eas.json` production
+   `EXPO_PUBLIC_RAZORPAY_KEY_ID = rzp_test_…`. Live payments cannot work until
+   this and the server-side secret are switched together. **Blocks going live.**
+2. **PostHog has never been configured.** `EXPO_PUBLIC_POSTHOG_KEY` is empty in
+   `.env` and absent from every `eas.json` profile, so `initAnalytics()` returns
+   early everywhere — all 12 funnel events have always been no-ops. Needs a key
+   from a PostHog project; there is nothing to fix in code.
+3. **`eas.json` preview/development profiles are incomplete.** `development` has
+   no `EXPO_PUBLIC_SUPABASE_ANON_KEY` and no Maps key; `preview` has no Sentry
+   DSN. Dev-client builds survive because Metro serves the local `.env`; a
+   standalone build from these profiles would not.
+4. **iOS submit config is placeholders** — `REPLACE_WITH_APPLE_ID` /
+   `REPLACE_WITH_ASC_APP_ID` / `REPLACE_WITH_TEAM_ID`.
+5. **Rate limiting counts only successful orders.** `place-order` counts
+   `idempotency_keys` rows, which are written only on success, so repeated
+   failures are not throttled. Low impact; left alone because changing it means
+   touching the idempotency contract on the money path.
+6. **`vendor_supply_list()` is deployed but unreachable from the app.** The RPC
+   and its hook `useVendorSupplyList` are complete, but the dashboard's "Supply"
+   tab renders `useVendorOrders` instead. Exercised by the health check (§J).
+7. **`'Paid'` is a dead order status** still referenced defensively in
+   `cancel-order`, `OrderDetailScreen`, `confirm-order`, `kitchen_cutoff_push.sql`
+   and the `orders_status_allowed` CHECK. `mark_order_paid` writes `'Confirmed'`
+   (BF-32a). Harmless today, but it is absent from `ORDER_STATUS_FLOW`, so
+   anything that ever *did* write it would fall outside the offline no-regress guard.
+8. **`StaffDashboard.tsx:5,16`** still documents a "Kitchen | Packing | Delivery"
+   three-tab layout; Delivery moved to `DriverDashboardScreen` + admin Delivery
+   Manager (acknowledged at `:146-147`).
+9. **Single environment, no staging.** One Supabase project serves dev, preview
+   and production. The service-role key lives in three places (function env,
+   Vault, `app_config`) — rotation must touch all three.
+
+## Health check
+
+`supabase/tests/platform_health_check.sql` — 30 assertions across back-office
+customer creation, bulk orders, wallet, staff role gates, vendor
+credit-on-delivery, cancellation, loyalty, the vendor portal, hub commission and
+the subscription manifest. Runs against the live database inside a transaction
+that always rolls back.
+
+```
+supabase db query --linked --file supabase/tests/platform_health_check.sql
+```
+
+It ends in an error by design — that is what rolls it back. Read the report, not
+the exit code. Re-run it after any schema or RPC change.
 
 ## Working agreements (owner preferences)
 - After making edits, **pause for owner review before** running tsc/jest or committing.

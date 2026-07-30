@@ -19,6 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../../theme';
 import { ThemedText } from '../../../components/ThemedText';
 import { EmptyState } from '../../../components/EmptyState';
+import { ErrorRetry } from '../../../components/ErrorRetry';
 import { printHtml, sharePdf } from '../../../utils/printHtml';
 import { useSubscriptionReport, useSubscriptionPlanReport } from '../../../hooks/useReports';
 import type { AdminNavProp } from '../../../navigation/types';
@@ -65,7 +66,7 @@ async function handleDownload(html: string) {
 }
 
 export function SubscriptionReportScreen({ navigation }: { navigation: AdminNavProp }) {
-  const { data: overview, isLoading } = useSubscriptionReport();
+  const { data: overview, isLoading, isError, refetch } = useSubscriptionReport();
   const { data: plans = [] } = useSubscriptionPlanReport();
 
   const hasData = (overview?.total ?? 0) > 0;
@@ -87,7 +88,14 @@ export function SubscriptionReportScreen({ navigation }: { navigation: AdminNavP
       </View>
 
       <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
-        {!isLoading && !hasData && <EmptyState title="No subscription data" />}
+        {/* A failed fetch is not an empty period. Rendering the empty state
+            here would report a real zero for subscription figures that were
+            never actually loaded. */}
+        {isError ? (
+          <ErrorRetry message="Could not load this report" onRetry={refetch} />
+        ) : (
+          !isLoading && !hasData && <EmptyState title="No subscription data" />
+        )}
 
         {/* Overview rows */}
         {hasData && (

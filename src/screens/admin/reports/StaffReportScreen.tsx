@@ -19,6 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../../theme';
 import { ThemedText } from '../../../components/ThemedText';
 import { EmptyState } from '../../../components/EmptyState';
+import { ErrorRetry } from '../../../components/ErrorRetry';
 import { printHtml, sharePdf } from '../../../utils/printHtml';
 import { useStaffAttendanceReport } from '../../../hooks/useReports';
 import type { AdminNavProp } from '../../../navigation/types';
@@ -73,7 +74,7 @@ export function StaffReportScreen({ navigation }: { navigation: AdminNavProp }) 
   const [period, setPeriod] = useState<Period>('Monthly');
   const [customRange, setCustomRange] = useState<DateRange>(defaultCustomRange);
   const { start, end } = useMemo(() => getPeriodRange(period, customRange), [period, customRange]);
-  const { data, isLoading } = useStaffAttendanceReport(start, end);
+  const { data, isLoading, isError, refetch } = useStaffAttendanceReport(start, end);
 
   const staffSummary = useMemo(() => data?.staffSummary ?? [], [data]);
   const hasData = staffSummary.length > 0;
@@ -111,7 +112,14 @@ export function StaffReportScreen({ navigation }: { navigation: AdminNavProp }) 
 
       {/* Rows */}
       <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
-        {!isLoading && !hasData && <EmptyState title="No attendance data for this period" />}
+        {/* A failed fetch is not an empty period. Rendering the empty state
+            here would report a real zero for attendance figures that were
+            never actually loaded. */}
+        {isError ? (
+          <ErrorRetry message="Could not load this report" onRetry={refetch} />
+        ) : (
+          !isLoading && !hasData && <EmptyState title="No attendance data for this period" />
+        )}
 
         {staffSummary.map((s) => (
           <View key={s.staffId} style={styles.dataRow}>

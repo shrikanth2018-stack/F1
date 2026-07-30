@@ -23,6 +23,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../../theme';
 import { ThemedText } from '../../../components/ThemedText';
 import { EmptyState } from '../../../components/EmptyState';
+import { ErrorRetry } from '../../../components/ErrorRetry';
 import { printHtml, sharePdf } from '../../../utils/printHtml';
 import { useRevenueDetailReport, type OrderSource } from '../../../hooks/useReports';
 import type { AdminNavProp } from '../../../navigation/types';
@@ -94,7 +95,7 @@ export function RevenueReportScreen({ navigation }: { navigation: AdminNavProp }
   const [customRange, setCustomRange] = useState<DateRange>(defaultCustomRange);
   const [source, setSource] = useState<OrderSource>('all');
   const { start, end } = useMemo(() => getPeriodRange(period, customRange), [period, customRange]);
-  const { data, isLoading } = useRevenueDetailReport(start, end, source);
+  const { data, isLoading, isError, refetch } = useRevenueDetailReport(start, end, source);
 
   const rows = useMemo(() => data?.rows ?? [], [data]);
   const totals = useMemo(() => data?.totals ?? { orders: 0, revenue: 0, tax: 0 }, [data]);
@@ -151,7 +152,14 @@ export function RevenueReportScreen({ navigation }: { navigation: AdminNavProp }
 
       {/* Rows */}
       <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
-        {!isLoading && !hasData && <EmptyState title="No revenue data for this period" />}
+        {/* A failed fetch is not an empty period. Rendering the empty state
+            here would report a real zero for revenue figures that were
+            never actually loaded. */}
+        {isError ? (
+          <ErrorRetry message="Could not load this report" onRetry={refetch} />
+        ) : (
+          !isLoading && !hasData && <EmptyState title="No revenue data for this period" />
+        )}
 
         {rows.map((row) => (
           <View key={row.date} style={styles.dataRow}>
