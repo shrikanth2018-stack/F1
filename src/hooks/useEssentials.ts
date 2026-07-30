@@ -68,6 +68,16 @@ export function useEssentialsCatalog(cycleId?: number) {
     },
     {
       staleTime: QUERY_STALE_TIME,
+      // A vendor adding an item is a change on ANOTHER device, so the local
+      // cache has no way to know about it — the customer kept seeing the old
+      // list for up to QUERY_STALE_TIME and the item looked like it had never
+      // been created. 'always' overrides the stale window for these two
+      // triggers only, so the list is re-read whenever the customer opens the
+      // storefront or brings the app back to the foreground. (A live update
+      // while they sit on the screen would need a Realtime subscription; this
+      // deliberately stops short of that.)
+      refetchOnMount: 'always',
+      refetchOnWindowFocus: 'always',
       // Vendor items carry no name of their own — attach the trading name so
       // the row can say who the customer is actually buying from. Which items
       // are visible at all is decided by RLS, not here.

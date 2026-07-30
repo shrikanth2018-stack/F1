@@ -59,7 +59,21 @@ const STATUS_VARIANT: Record<VendorStatus, 'success' | 'warning' | 'info' | 'err
   rejected: 'error',
 };
 
-const MODELS: SellingModel[] = ['own_brand', 'house_brand'];
+/**
+ * Commission ('own_brand') only, deliberately.
+ *
+ * 'house_brand' — where 1stOne BUYS at an agreed per-item rate rather than
+ * taking a cut — is a different arrangement end to end: its own onboarding,
+ * an agreed buying price per item, and a different wallet treatment. None of
+ * that is built. While it was merely selectable, picking it silently credited
+ * the vendor ZERO on every delivered sale, because
+ * credit_vendor_earnings_for_order reads essentials_catalog.vendor_cost and
+ * COALESCEs an unset value to 0.
+ *
+ * The database still accepts both values and the trigger still handles both —
+ * only the choice is withheld until the rest of it exists.
+ */
+const MODELS: SellingModel[] = ['own_brand'];
 const MODES: SupplyMode[] = ['at_hub', 'we_collect', 'they_drop'];
 
 export function AdminVendorDetailScreen({ navigation, route }: AdminScreenProps<'AdminVendorDetail'>) {
@@ -191,6 +205,16 @@ export function AdminVendorDetailScreen({ navigation, route }: AdminScreenProps<
 
         {/* Negotiated terms */}
         <ThemedText variant="small" color="muted" style={styles.sectionLabel}>AGREED TERMS</ThemedText>
+        {/* Defensive: no vendor is on house_brand today and the option is no
+            longer offered, but a pre-existing one must not be silently shown
+            as commission-based when the credit trigger will treat it otherwise. */}
+        {vendor.selling_model === 'house_brand' && (
+          <ThemedText variant="small" color="warning" style={styles.hint}>
+            This vendor is set to house brand, which is not supported yet — they are
+            currently credited ₹0 per sale. Switch them to commission below, or leave
+            them suspended until house brand is available.
+          </ThemedText>
+        )}
         {MODELS.map((m) => (
           <TouchableOpacity
             key={m}
@@ -207,7 +231,6 @@ export function AdminVendorDetailScreen({ navigation, route }: AdminScreenProps<
           value={commission}
           onChangeText={setCommission}
           keyboardType="numeric"
-          editable={sellingModel === 'own_brand'}
           placeholder="0"
           placeholderTextColor={Theme.colors.text.muted}
         />
@@ -235,6 +258,14 @@ export function AdminVendorDetailScreen({ navigation, route }: AdminScreenProps<
         <ThemedText variant="small" color="muted" style={styles.hint}>
           Only customers whose address falls in a granted area will see their items.
         </ThemedText>
+        {/* An approved vendor with no area is invisible to every customer and
+            looks, from every other screen, exactly like one that is selling
+            normally. Say so here, where the areas are actually granted. */}
+        {zones.length === 0 && (
+          <ThemedText variant="small" color="warning" style={styles.hint}>
+            No area granted — nobody can see this vendor's items. Pick at least one below.
+          </ThemedText>
+        )}
         <View style={styles.pillWrap}>
           {allZones.filter((z: any) => z.is_active).map((z: any) => {
             const on = hasZone('zone', z.id);

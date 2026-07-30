@@ -9,6 +9,8 @@
  *   - showNudge only when shortfall > 0
  */
 
+import { todayIST, istDateWithOffset, addDaysToISODate } from '../utils/istDate';
+
 const NUDGE_DAYS_AHEAD = 3;
 
 interface MockSub {
@@ -27,29 +29,38 @@ interface WalletData {
   balance: number;
 }
 
-/** YYYY-MM-DD string for a date offset by `days` from today */
+/**
+ * YYYY-MM-DD for a date offset from today, in IST.
+ *
+ * Uses the same helper the hook does. The previous version built dates with
+ * `new Date().toISOString()` (a UTC calendar date) and then stepped them with
+ * `setDate` (local time). In any zone behind UTC those two disagree by a day,
+ * so the boundary cases passed in IST/UTC and failed on a machine set to, say,
+ * US Pacific — the suite was green or red depending on where it ran.
+ */
 function dateOffset(days: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() + days);
-  return d.toISOString().split('T')[0];
+  return istDateWithOffset(days);
 }
 
-/** Mirror of useWalletNudge's useMemo body */
+/**
+ * Mirror of useWalletNudge's useMemo body.
+ *
+ * Deliberately uses the SAME istDate helpers as the hook rather than
+ * re-deriving the arithmetic with raw Date maths. The old copy had drifted
+ * from the implementation it claimed to mirror, so it could pass while the
+ * real logic was wrong, and fail while the real logic was right.
+ */
 function computeNudge(subs: MockSub[], wallet: WalletData) {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const cutoff = new Date(today);
-  cutoff.setDate(cutoff.getDate() + NUDGE_DAYS_AHEAD);
+  const todayStr = todayIST();
+  const cutoffStr = istDateWithOffset(NUDGE_DAYS_AHEAD);
 
   const urgentSub = subs.find((s) => {
     if (!s.is_active || s.is_paused) return false;
     if (s.payment_method !== 'wallet') return false;
     const plan = s.subscription_plans;
     if (!plan) return false;
-    const endDate = new Date(s.start_date);
-    endDate.setDate(endDate.getDate() + (plan.duration_days ?? 0));
-    endDate.setHours(0, 0, 0, 0);
-    return endDate >= today && endDate <= cutoff;
+    const endStr = addDaysToISODate(s.start_date, plan.duration_days ?? 0);
+    return endStr >= todayStr && endStr <= cutoffStr;
   });
 
   if (!urgentSub) return { showNudge: false, shortfall: 0 };

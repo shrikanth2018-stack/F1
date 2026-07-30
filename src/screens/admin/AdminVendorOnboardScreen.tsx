@@ -35,8 +35,11 @@ import { Divider } from '../../components/Divider';
 import { infoDialog, confirmDialog } from '../../utils/confirmDialog';
 import { formatPriceShort, getErrorMessage } from '../../utils/formatters';
 import { useCustomerByPhone } from '../../hooks/useAdminOrderEntry';
+import { useDeliveryZones } from '../../hooks/useDeliveryZones';
+import { useDeliveryHubs } from '../../hooks/useDeliveryHubs';
 import {
   useOnboardVendor,
+  useSetVendorZone,
   SELLING_MODEL_LABEL,
   SUPPLY_MODE_LABEL,
   type SellingModel,
@@ -47,7 +50,14 @@ import type { AdminScreenProps } from '../../navigation/types';
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
 
-const MODELS: SellingModel[] = ['own_brand', 'house_brand'];
+/**
+ * Commission ('own_brand') only, deliberately — see the same note in
+ * AdminVendorDetailScreen. 'house_brand' needs its own onboarding, an agreed
+ * buying price per item and a different wallet treatment, none of which is
+ * built; while it was merely selectable it silently paid the vendor ZERO on
+ * every delivered sale.
+ */
+const MODELS: SellingModel[] = ['own_brand'];
 const MODES: SupplyMode[] = ['at_hub', 'we_collect', 'they_drop'];
 
 export function AdminVendorOnboardScreen({ navigation }: AdminScreenProps<'AdminVendorOnboard'>) {
@@ -57,8 +67,17 @@ export function AdminVendorOnboardScreen({ navigation }: AdminScreenProps<'Admin
   const [supplyMode, setSupplyMode] = useState<SupplyMode>('they_drop');
   const [commission, setCommission] = useState('');
 
+  // Selling areas, chosen here rather than only on the detail screen. Onboarding
+  // never asked for them, so a vendor was created reaching nobody and the gap
+  // was invisible until someone noticed their items missing from the storefront.
+  const [pickedZones, setPickedZones] = useState<number[]>([]);
+  const [pickedHubs, setPickedHubs] = useState<number[]>([]);
+
   const { data: found, isFetching: lookingUp } = useCustomerByPhone(phone);
+  const { data: allZones = [] } = useDeliveryZones();
+  const { data: allHubs = [] } = useDeliveryHubs();
   const onboard = useOnboardVendor();
+  const setZone = useSetVendorZone();
 
   const phoneComplete = phone.replace(/\D/g, '').length >= 10;
   const canSubmit = !!found && businessName.trim().length > 0;
@@ -86,8 +105,17 @@ export function AdminVendorOnboardScreen({ navigation }: AdminScreenProps<'Admin
       if (!ok) return;
     }
 
+    if (pickedZones.length === 0 && pickedHubs.length === 0) {
+      const ok = await confirmDialog({
+        title: 'No selling area?',
+        message: 'Nobody will be able to see this vendor\'s items until an area is granted. You can set it later on their vendor page. Continue anyway?',
+        confirmLabel: 'Continue',
+      });
+      if (!ok) return;
+    }
+
     try {
-      await onboard.mutateAsync({
+      const newVendorId = await onboard.mutateAsync({
         userId: found.id,
         businessName: businessName.trim(),
         contactPhone: found.phone_number ?? undefined,
@@ -95,12 +123,34 @@ export function AdminVendorOnboardScreen({ navigation }: AdminScreenProps<'Admin
         supplyMode,
         commissionPercent: pct,
       });
+
+      // Areas are separate rows, so they can only be written once the vendor
+      // exists. A failure here must not read as a failed onboarding — the
+      // vendor IS created, and the areas remain editable on their page.
+      const areaFailures: string[] = [];
+      for (const zoneId of pickedZones) {
+        try {
+          await setZone.mutateAsync({ vendorId: newVendorId, zoneId });
+        } catch {
+          areaFailures.push(allZones.find((z: any) => z.id === zoneId)?.zone_name ?? `zone ${zoneId}`);
+        }
+      }
+      for (const hubId of pickedHubs) {
+        try {
+          await setZone.mutateAsync({ vendorId: newVendorId, hubId });
+        } catch {
+          areaFailures.push(allHubs.find((h: any) => h.id === hubId)?.hub_name ?? `hub ${hubId}`);
+        }
+      }
+
       navigation.goBack();
       setTimeout(
         () =>
           infoDialog(
             'Vendor invited',
-            `${businessName.trim()} can now complete their registration from their profile menu. Verify and approve them once they have.`,
+            areaFailures.length > 0
+              ? `${businessName.trim()} was created, but these areas could not be granted: ${areaFailures.join(', ')}. Set them on their vendor page.`
+              : `${businessName.trim()} can now complete their registration from their profile menu. Verify and approve them once they have.`,
           ),
         450,
       );
@@ -181,16 +231,12 @@ export function AdminVendorOnboardScreen({ navigation }: AdminScreenProps<'Admin
               {SELLING_MODEL_LABEL[m]}
             </ThemedText>
             <ThemedText variant="small" color="muted">
-              {m === 'own_brand'
-                ? 'Their GSTIN on the invoice. They keep the sale less your commission.'
-                : 'Your GSTIN, brand and FSSAI. You pay their agreed rate per item and keep the spread.'}
+              Their GSTIN on the invoice. They keep the sale less your commission.
             </ThemedText>
           </TouchableOpacity>
         ))}
 
-        <ThemedText variant="small" color="muted" style={styles.sectionLabel}>
-          COMMISSION {sellingModel === 'house_brand' ? '· not used for house brand' : ''}
-        </ThemedText>
+        <ThemedText variant="small" color="muted" style={styles.sectionLabel}>COMMISSION</ThemedText>
         <TextInput
           style={styles.input}
           placeholder="% you keep on each sale"
@@ -198,13 +244,7 @@ export function AdminVendorOnboardScreen({ navigation }: AdminScreenProps<'Admin
           value={commission}
           onChangeText={setCommission}
           keyboardType="numeric"
-          editable={sellingModel === 'own_brand'}
         />
-        {sellingModel === 'house_brand' && (
-          <ThemedText variant="small" color="muted" style={styles.hint}>
-            House-brand vendors are paid an agreed rate set per item, not a commission.
-          </ThemedText>
-        )}
 
         <Divider />
 
@@ -226,6 +266,55 @@ export function AdminVendorOnboardScreen({ navigation }: AdminScreenProps<'Admin
             </ThemedText>
           </TouchableOpacity>
         ))}
+
+        <Divider />
+
+        <ThemedText variant="small" color="muted" style={styles.sectionLabel}>WHERE THEY MAY SELL</ThemedText>
+        <ThemedText variant="small" color="muted" style={styles.hint}>
+          Only customers whose address falls in a granted area will see their items.
+          A vendor granted a hub does NOT reach direct-delivery customers in the
+          same zone — pick both if they should. Editable later on their vendor page.
+        </ThemedText>
+        <View style={styles.pillWrap}>
+          {allZones.filter((z: any) => z.is_active).map((z: any) => {
+            const on = pickedZones.includes(z.id);
+            return (
+              <TouchableOpacity
+                key={`z${z.id}`}
+                style={[styles.pill, on && styles.pillActive]}
+                activeOpacity={0.7}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: on }}
+                onPress={() =>
+                  setPickedZones((prev) =>
+                    on ? prev.filter((id) => id !== z.id) : [...prev, z.id],
+                  )
+                }
+              >
+                <ThemedText variant="small" color={on ? 'mint' : 'muted'}>{z.zone_name}</ThemedText>
+              </TouchableOpacity>
+            );
+          })}
+          {allHubs.filter((h: any) => h.is_active).map((h: any) => {
+            const on = pickedHubs.includes(h.id);
+            return (
+              <TouchableOpacity
+                key={`h${h.id}`}
+                style={[styles.pill, on && styles.pillActive]}
+                activeOpacity={0.7}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: on }}
+                onPress={() =>
+                  setPickedHubs((prev) =>
+                    on ? prev.filter((id) => id !== h.id) : [...prev, h.id],
+                  )
+                }
+              >
+                <ThemedText variant="small" color={on ? 'mint' : 'muted'}>{h.hub_name} (hub)</ThemedText>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
       </ScrollView>
 
       <TouchableOpacity
@@ -259,6 +348,19 @@ const styles = StyleSheet.create({
 
   scroll: { paddingHorizontal: Theme.spacing.md, paddingBottom: Theme.spacing.xl * 2 },
   sectionLabel: { fontSize: S, letterSpacing: 1, marginTop: Theme.spacing.md, marginBottom: Theme.spacing.xs },
+
+  pillWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: Theme.spacing.sm, marginBottom: Theme.spacing.sm },
+  pill: {
+    paddingHorizontal: 12,
+    paddingVertical: Theme.spacing.xs,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Theme.colors.layout.divider,
+  },
+  pillActive: {
+    borderColor: Theme.colors.text.mint,
+    backgroundColor: Theme.colors.text.mint + '15',
+  },
   hint: { fontSize: S, marginTop: 2, marginBottom: Theme.spacing.xs },
   loader: { alignSelf: 'flex-start', marginVertical: Theme.spacing.xs },
   inlineRow: { flexDirection: 'row', alignItems: 'center', gap: Theme.spacing.sm },

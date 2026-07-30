@@ -469,3 +469,35 @@ types, deploy the functions, then OTA.
 **Rollback:** drop the four tables (`vendor_order_fulfilment`,
 `vendor_earnings`, `vendor_zones`, `vendors`) with CASCADE, drop the added
 columns, drop both triggers, redeploy the three functions from git.
+
+---
+
+## 17. expense_claims category fix (2026-07-30)
+
+**Applied to production 2026-07-30 and verified.**
+
+`expense_claims_category_check` had never been widened past its original five
+staff-expense values, so three separate write paths were failing at INSERT —
+silently, because each surfaced only as a generic "could not save":
+
+| Category | Written by | Live since |
+|---|---|---|
+| `Others` | `StaffExpensesScreen` (CATEGORIES list) | always |
+| `Hub Commission` | `hub_commission_claims.sql` | that file's deploy |
+| `Vendor Payout` | `vendors_portal.sql` | vendor network phase 1 |
+
+Neither `hub_commission_claims.sql` nor `vendors_portal.sql` altered the
+constraint, so hub commission and vendor payout claims were **dead on arrival**.
+The `Others` case is older still: the app has always offered it, but the
+constraint's fifth value is `Expense`.
+
+| # | File | What it does |
+|---|------|--------------|
+| 1 | `expense_claims_categories_widen.sql` | Widens the CHECK to all eight values. `Expense` is kept so any legacy row stays valid. Idempotent. |
+
+**Rule going forward:** add the value to this constraint in the SAME file that
+introduces a new claim category. Three features have now shipped without it.
+
+**Rollback:** re-add the constraint with the original five values
+(`Grocery, Vegetable, Stationery, Fuel, Expense`) — only safe if no row is
+carrying one of the new categories.

@@ -44,6 +44,7 @@ import { istTimeLabel } from '../../utils/istDate';
 import { essentialsCycleLabel } from '../../utils/cycleLabels';
 import { useDeliveryCycles } from '../../hooks/useDeliveryCycles';
 import { useWalletBalance } from '../../hooks/useWallet';
+import { useVendorZones } from '../../hooks/useVendors';
 import {
   useMyVendor,
   useMyVendorItems,
@@ -75,7 +76,18 @@ export function VendorDashboardScreen({ navigation }: CustomerScreenProps<'Vendo
   const earnings = useMyVendorEarnings(vendorId);
   const payouts = useMyVendorPayouts();
   const { data: wallet } = useWalletBalance();
-  const { data: cycles = [] } = useDeliveryCycles();
+  // Only cycles flagged is_essentials can ever render on the customer's
+  // Essentials page — HomeScreen builds its sections from that list and
+  // buildSections silently DROPS any item whose cycle isn't in it. Offering
+  // the full cycle list here let a vendor file an item under Snacks, where it
+  // was fetched and then thrown away with nothing said to anyone.
+  const { data: allCycles = [] } = useDeliveryCycles();
+  const cycles = allCycles.filter((c) => c.is_essentials);
+  // Where this vendor's goods actually reach. Admin-granted, never the
+  // vendor's to choose — but they must be able to SEE it, because an item
+  // with no area is invisible to every customer and looks identical to one
+  // that is selling fine.
+  const { data: sellingAreas = [] } = useVendorZones(vendorId);
 
   const saveItem = useSaveVendorItem();
   const toggleItem = useToggleVendorItem();
@@ -252,6 +264,24 @@ export function VendorDashboardScreen({ navigation }: CustomerScreenProps<'Vendo
       {/* ── Items ── */}
       {tab === 'Items' && (
         <ScrollView contentContainerStyle={styles.list} keyboardShouldPersistTaps="handled">
+          {/* Which customers can actually see these items. Without this an
+              unlisted vendor sees a healthy-looking catalogue and no sales,
+              with nothing anywhere explaining why. */}
+          {sellingAreas.length === 0 ? (
+            <ThemedText variant="small" color="warning" style={styles.hint}>
+              Your items are not visible to any customer yet — we still need to set
+              your delivery areas. Please get in touch and we will switch them on.
+            </ThemedText>
+          ) : (
+            <ThemedText variant="small" color="muted" style={styles.hint}>
+              Listed for customers in{' '}
+              {sellingAreas
+                .map((a) => a.delivery_hubs?.hub_name ?? a.delivery_zones?.zone_name ?? '—')
+                .join(', ')}
+              . Customers outside these areas will not see your items.
+            </ThemedText>
+          )}
+
           {(items.data ?? []).map((it: VendorItem) => (
             <View key={it.id} style={styles.row}>
               <View style={styles.flex1}>
