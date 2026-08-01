@@ -194,3 +194,81 @@ These are deliberate: the customer-facing action (cancel/charge) always complete
 ---
 
 *End of Doc 4. Companion docs: Doc 1 (Architecture & Data Model), Doc 2 (Business Logic & Flows), Doc 3 (Screen-by-Screen), **Doc 07 (Incident Playbooks & Recovery — outages, OTA rollback, key rotation, DR)**.*
+
+---
+
+## Web app deployment — Cloudflare Pages (recorded 2026-08-01)
+
+Written down because none of it was, and recovering it cost most of an
+afternoon and one unnecessary production rollback.
+
+### The facts
+
+| | |
+|---|---|
+| Cloudflare account | `1st0nedotin@gmail.com` — id `d1b44fb6bd0fd362241453b43c68d200` |
+| Pages project | **`1stone-app`** (NOT `1stone-f1`, and not the `f1` project, which is separate) |
+| Domains | `app.1stone.in` and `1stone-app.pages.dev` |
+| Deploys from | `main`, automatically, on every push |
+| Preview deploys | enabled, on every branch push |
+| Repo | `github.com/shrikanth2018-stack/F1` |
+| Dashboard | `https://dash.cloudflare.com/d1b44fb6bd0fd362241453b43c68d200/pages/view/1stone-app` |
+
+**Pushing to `main` deploys the web app.** It is not just version control.
+`eas update` does NOT touch web, and pushing does NOT touch mobile — the two
+surfaces ship independently and drift apart unless both are done.
+
+Every deployment keeps a permanent URL of the form
+`https://<id>.1stone-app.pages.dev`, listed on the Deployments tab. Those are
+the way to test a build without touching production, and the way to check
+whether a past deploy was really broken. Use them before rolling anything back.
+
+### Two traps found the hard way
+
+**1. A missing asset returns HTTP 200 with `text/html`.** The project serves
+an SPA fallback, so any path that does not exist resolves to `index.html`:
+
+```bash
+curl -sI https://app.1stone.in/_expo/static/js/web/AppEntry-DOESNOTEXIST.js
+# HTTP/2 200 ; content-type: text/html
+```
+
+If `index.html` ever references a bundle an edge node has not got yet, the
+browser is handed HTML where it expects JavaScript, throws a syntax error
+before React mounts, and shows a blank white page with nothing in the console
+to explain it. Judge a deploy only after a hard refresh a couple of minutes
+in — an immediate blank page may just be propagation.
+
+**2. Preview deployments have NO environment variables.** Cloudflare keeps
+Production and Preview env vars separate, and only Production was ever filled
+in. So every preview build fails at boot with:
+
+```
+Error: supabaseUrl is required.
+```
+
+That is a config gap, not a code fault, and it makes previews useless for
+testing until someone adds the same variables to the Preview environment
+(Settings → Environment variables). Worth doing — a preview is the only safe
+way to test a web change.
+
+### Do not mistake `dist/` for the deployed build
+
+`dist/` is gitignored and is written by whatever you last ran locally.
+`eas update` exports there too, so it often holds a NATIVE export (recognisable
+by `assetmap.json` and flat hashed asset names). A web-only
+`expo export --platform web` produces nested asset paths and no `assetmap.json`.
+Comparing the two proves nothing about what Cloudflare built.
+
+### Verifying a web deploy
+
+```bash
+# which bundle is live
+curl -s https://app.1stone.in/ | grep -oE 'AppEntry-[a-f0-9]+\.js'
+
+# the same build, at its permanent deployment URL (safe, no production impact)
+curl -s https://<deployment-id>.1stone-app.pages.dev/ | grep -oE 'AppEntry-[a-f0-9]+\.js'
+```
+
+A blank page is almost always a boot-time throw. Read the console at the
+deployment URL, not at `app.1stone.in` — same bundle, no production risk.
