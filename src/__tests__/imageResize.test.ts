@@ -16,7 +16,11 @@
 
 import { resizeForUpload } from '@/utils/imageResize';
 
-const photo = { uri: 'blob:http://localhost/abc', base64: 'AAECAwQF' };
+const photo = {
+  uri: 'blob:http://localhost/abc',
+  base64: 'AAECAwQF',
+  mimeType: 'image/jpeg',
+};
 
 describe('resizeForUpload', () => {
   it('always resolves to a usable photo', async () => {
@@ -35,7 +39,15 @@ describe('resizeForUpload', () => {
   });
 
   it('does not throw on a photo it cannot decode', async () => {
-    const junk = { uri: 'not-a-url', base64: '!!!' };
+    const junk = { uri: 'not-a-url', base64: '!!!', mimeType: 'image/png' };
     await expect(resizeForUpload(junk)).resolves.toBeTruthy();
+  });
+
+  it('preserves the content type when it does not re-encode', async () => {
+    // Whatever comes back is what gets DECLARED to storage. A pass-through
+    // that dropped or invented a type would put the wrong content type on the
+    // object — which is the bug the mimeType field exists to prevent.
+    const png = { ...photo, mimeType: 'image/png' };
+    await expect(resizeForUpload(png)).resolves.toMatchObject({ mimeType: 'image/png' });
   });
 });

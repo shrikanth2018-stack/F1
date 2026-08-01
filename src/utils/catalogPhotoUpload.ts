@@ -1,11 +1,12 @@
 /**
  * 1stOne F1 — Catalogue photo picking + upload
  *
- * Shared by every admin surface that sets a picture, across both catalogues:
+ * Shared by every surface that sets a picture, across both catalogues:
  * CreateMenuScreen and MenuManageScreen for food, CreateEssentialScreen and
- * EssentialsCatalogManageScreen for essentials. All of them go through here
- * so the compression settings and — more importantly — the replace-in-place
- * rule can only be defined once.
+ * EssentialsCatalogManageScreen for essentials, and VendorDashboardScreen for
+ * a vendor's own items. All of them go through here so the compression
+ * settings and — more importantly — the replace-in-place rule can only be
+ * defined once.
  *
  * REPLACE, NEVER ACCUMULATE. The object key is the item id with a fixed
  * `.jpg` extension, uploaded with `upsert: true`. A second upload overwrites
@@ -15,32 +16,47 @@
  * timestamped filename and then best-effort delete the previous one — that
  * pattern needs the delete to succeed to stay clean; this one cannot leak.
  *
+ * The `.jpg` in the key is a SLOT NAME, not a claim about the format. What is
+ * actually served comes from the content type recorded on the object, which
+ * is now whatever was really picked (see PickedPhoto.mimeType). Keeping the
+ * extension fixed is what makes replacement atomic; a varying one would leave
+ * `12.jpg` AND `12.webp` behind on a format change.
+ *
  * The trade-off a fixed key buys us is CDN staleness, handled by stamping
  * `image_updated_at` and appending it as `?v=` at render (catalogPhoto.ts).
  *
- * COMPRESSION. `quality` on the picker re-encodes but does NOT resize —
- * resizing needs expo-image-manipulator, a native module, which would cost a
- * store release and cannot ship over the air. Originals therefore land around
- * 1-2 MB. That is acceptable precisely because customers never fetch them:
- * the storage render endpoint serves a ~6 KB thumbnail. Revisit at the next
- * native build.
+ * BOTH WRITES ARE VERIFIED. An UPDATE that RLS rejects is not an error — it
+ * matches zero rows and returns success. Every row write here therefore asks
+ * for the affected id back and treats an empty result as a failure. Without
+ * that, an admin editing an item outside their branch uploaded the file, saw
+ * no error, and watched nothing happen; and "remove photo" reported success
+ * while the picture stayed on the customer menu.
  *
- * Uploads are admin-only at the database level (menu_item_photos.sql,
- * essentials_photos.sql), so a non-admin reaching this code fails at the
- * storage policy rather than on trust in the UI hiding the button. When the
- * vendor listing gate lands, vendor writes go to a SEPARATE private bucket
- * and must not be added here — this path writes straight to the live,
- * publicly readable object.
+ * WHO MAY WRITE is decided by the database, not by this file or by which
+ * buttons a screen renders — see catalog_photo_policies.sql, which gates the
+ * bucket on the same branch test the catalogue tables use, plus ownership for
+ * a vendor writing their own item's photo.
  */
 
 import * as ImagePicker from 'expo-image-picker';
 import { decode } from 'base64-arraybuffer';
 import { supabase } from '../api/supabaseClient';
-import { photoPath, objectKeyFromPath, type PhotoBucket } from './catalogPhoto';
+import { captureError } from './sentry';
+import {
+  photoPath,
+  objectKeyFromPath,
+  ALLOWED_PHOTO_MIME,
+  MAX_PHOTO_BYTES,
+  base64ByteLength,
+  type PhotoBucket,
+  type PickedPhoto,
+} from './catalogPhoto';
 // Platform-split (imageResize.ts = web, imageResize.native.ts = native).
 // Web downscales via canvas because the picker ignores `quality` there;
 // native is a pass-through. See either file for the full reasoning.
 import { resizeForUpload } from './imageResize';
+
+export type { PickedPhoto } from './catalogPhoto';
 
 /**
  * Cache lifetime sent with the object, in seconds (30 days).
@@ -65,12 +81,54 @@ const TABLE_FOR_BUCKET: Record<PhotoBucket, 'menu_items' | 'essentials_catalog'>
   'essentials-photos': 'essentials_catalog',
 };
 
-/** A picked-but-not-yet-uploaded photo. Held in state until the row exists. */
-export interface PickedPhoto {
-  /** Local file URI — for previewing before upload. */
-  uri: string;
-  /** Base64 payload, required because RN has no File/Blob to hand Supabase. */
-  base64: string;
+/**
+ * Shown when a row write affects nothing.
+ *
+ * Deliberately does not guess WHY — the policy could have refused on branch,
+ * on vendor ownership, or the row could have been deleted underneath us. What
+ * matters to whoever is standing there is that nothing changed.
+ */
+const NO_ROW_MESSAGE =
+  'That item could not be updated — it may belong to a different branch, or to someone else. Nothing on the customer menu has changed.';
+
+/** Friendly name for a format we cannot accept, for the message below. */
+function describeFormat(mimeType: string): string {
+  const known: Record<string, string> = {
+    'image/heic': 'HEIC',
+    'image/heif': 'HEIF',
+    'image/avif': 'AVIF',
+    'image/gif': 'GIF',
+    'image/svg+xml': 'SVG',
+  };
+  return known[mimeType] ?? mimeType.replace(/^image\//, '').toUpperCase();
+}
+
+function formatMb(bytes: number): string {
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/**
+ * Refuse a photo the bucket would refuse anyway, with a sentence that says
+ * what to do about it.
+ *
+ * Checked after the resize, not before: on web the canvas re-encodes to JPEG,
+ * so a HEIC that Safari can decode passes here even though the picked file
+ * could not. Browsers that cannot decode it fall through and get the message.
+ */
+export function assertUploadablePhoto(photo: PickedPhoto): void {
+  if (!ALLOWED_PHOTO_MIME.includes(photo.mimeType)) {
+    throw new Error(
+      `${describeFormat(photo.mimeType)} pictures cannot be uploaded. Please choose a JPG, PNG or WebP. ` +
+        'On an iPhone, Settings → Camera → Formats → Most Compatible saves new photos as JPG.',
+    );
+  }
+
+  const bytes = base64ByteLength(photo.base64);
+  if (bytes > MAX_PHOTO_BYTES) {
+    throw new Error(
+      `That picture is ${formatMb(bytes)}, and the limit is ${formatMb(MAX_PHOTO_BYTES)}. Please choose a smaller one.`,
+    );
+  }
 }
 
 /**
@@ -78,6 +136,10 @@ export interface PickedPhoto {
  *
  * Returns null if permission is refused or the picker is cancelled — both are
  * ordinary outcomes, not errors, and callers should simply do nothing.
+ *
+ * THROWS for a picture we cannot use (wrong format, too large). That is a real
+ * outcome the admin needs told about, so callers must keep this inside the
+ * same try/catch as the upload.
  *
  * Square crop is forced here rather than at render: `resize=cover` would crop
  * a landscape shot to a square anyway, and letting the admin choose WHICH
@@ -100,26 +162,35 @@ export async function pickCatalogPhoto(): Promise<PickedPhoto | null> {
     quality: 0.6,
     base64: true,
   });
-  if (result.canceled || !result.assets?.[0]?.base64) return null;
 
-  return resizeForUpload({
-    uri: result.assets[0].uri,
-    base64: result.assets[0].base64,
+  const asset = result.assets?.[0];
+  if (result.canceled || !asset?.base64) return null;
+
+  const photo = await resizeForUpload({
+    uri: asset.uri,
+    base64: asset.base64,
+    // The web picker reports the file's real type; native reports the type it
+    // re-encoded to. Falling back to JPEG only when neither said anything.
+    mimeType: asset.mimeType || 'image/jpeg',
   });
+
+  assertUploadablePhoto(photo);
+  return photo;
 }
 
 /**
  * Upload `photo` as the picture for `itemId` and record it on the row.
  *
  * Ordering matters: the object is written first, the row second. If the row
- * update fails, the bucket holds an object no row points at — invisible, and
- * overwritten by the next upload for that item. The reverse order would point
- * a row at an object that does not exist, which is a visibly broken tile.
+ * update fails we say so and stop; the bucket is left holding an object no row
+ * points at — invisible, and overwritten by the next upload for that item. The
+ * reverse order would point a row at an object that does not exist, which is a
+ * visibly broken tile.
  *
  * Always writes `image_updated_at`; without it the CDN would keep serving the
  * previous photo from the unchanged URL.
  *
- * Throws on failure so callers can surface a message — this is an admin
+ * Throws on failure so callers can surface a message — this is a deliberate
  * action with a visible result, not something to fail silently.
  */
 export async function uploadCatalogPhoto(
@@ -127,44 +198,85 @@ export async function uploadCatalogPhoto(
   itemId: number,
   photo: PickedPhoto,
 ): Promise<void> {
+  // Re-checked here rather than trusted from the pick: CreateMenuScreen and
+  // CreateEssentialScreen hold a picked photo in state across a save, so the
+  // two calls can be a long way apart.
+  assertUploadablePhoto(photo);
+
   const key = objectKeyFromPath(bucket, photoPath(bucket, itemId));
 
   const { error: uploadError } = await supabase.storage
     .from(bucket)
     .upload(key, decode(photo.base64), {
-      contentType: 'image/jpeg',
+      contentType: photo.mimeType,
       upsert: true,
       cacheControl: String(PHOTO_CACHE_SECONDS),
     });
   if (uploadError) throw new Error(uploadError.message);
 
-  const { error: rowError } = await supabase
+  const { data, error: rowError } = await supabase
     .from(TABLE_FOR_BUCKET[bucket])
     .update({
       image_path: photoPath(bucket, itemId),
       image_updated_at: new Date().toISOString(),
     })
-    .eq('id', itemId);
+    .eq('id', itemId)
+    .select('id');
   if (rowError) throw new Error(rowError.message);
+  // Zero rows means RLS refused the write. PostgREST reports that as success,
+  // so without this the picture uploads and the item silently keeps the old
+  // one (or none at all).
+  if (!data?.length) throw new Error(NO_ROW_MESSAGE);
+}
+
+/** What actually happened when a photo was removed. */
+export interface PhotoRemoval {
+  /**
+   * FALSE when the row was cleared but the image file itself could not be
+   * deleted. The item stops showing a picture either way; the file is left
+   * behind, unreferenced, and the next upload for this item overwrites it.
+   */
+  fileRemoved: boolean;
 }
 
 /**
- * Remove an item's photo — object first, then the row's pointer.
+ * Remove an item's photo — the row's pointer first, then the object.
  *
- * The row is cleared even if the object delete failed: a row pointing at a
- * missing object renders a broken tile, whereas an orphaned object is
- * invisible and gets overwritten by the next upload for that id.
+ * ROW FIRST, deliberately. The row write is the one RLS can refuse, so doing
+ * it first means a refusal changes nothing at all; the caller gets an error
+ * and the picture is still there to try again. The old order deleted the file
+ * before discovering it was not allowed to clear the row, which left the item
+ * pointing at nothing.
+ *
+ * A failed file delete is reported rather than swallowed. It used to be
+ * discarded twice over — `.catch()` on a call that resolves with an `error`
+ * field instead of rejecting, so the handler never even ran. These buckets are
+ * public and the keys are guessable, so a file left behind stays fetchable by
+ * anyone who knows the item id; that is worth knowing about.
  */
 export async function removeCatalogPhoto(
   bucket: PhotoBucket,
   itemId: number,
-): Promise<void> {
+): Promise<PhotoRemoval> {
   const key = objectKeyFromPath(bucket, photoPath(bucket, itemId));
-  await supabase.storage.from(bucket).remove([key]).catch(() => null);
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from(TABLE_FOR_BUCKET[bucket])
     .update({ image_path: null, image_updated_at: null })
-    .eq('id', itemId);
+    .eq('id', itemId)
+    .select('id');
   if (error) throw new Error(error.message);
+  if (!data?.length) throw new Error(NO_ROW_MESSAGE);
+
+  const { error: fileError } = await supabase.storage.from(bucket).remove([key]);
+  if (fileError) {
+    captureError(new Error(`catalogue photo file not deleted: ${fileError.message}`), {
+      bucket,
+      key,
+      itemId,
+    });
+    return { fileRemoved: false };
+  }
+
+  return { fileRemoved: true };
 }

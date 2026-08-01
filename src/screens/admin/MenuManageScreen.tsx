@@ -20,11 +20,16 @@ import {
   TextInput,
   Switch,
   StyleSheet,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
 import { QUERY_KEYS } from '../../utils/constants';
+// Alert.alert is a no-op in react-native-web, so every message this screen
+// showed was invisible in the browser — including the one explaining why a
+// photo would not save, and the confirm that gates removing one (which made
+// removal impossible on web rather than merely silent).
+import { confirmDialog, infoDialog } from '../../utils/confirmDialog';
+import { getErrorMessage } from '../../utils/formatters';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { EmptyState } from '../../components/EmptyState';
@@ -120,6 +125,12 @@ export function MenuManageScreen({ navigation }: { navigation: AdminNavProp }) {
     setEditingId(null);
   };
 
+  /** Refresh the admin list and the customer-facing menu together. */
+  const refreshLists = async () => {
+    await queryClient.invalidateQueries({ queryKey: ['admin_menu_items'] });
+    await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.MENU_ITEMS });
+  };
+
   /**
    * Set or replace a row's photo.
    *
@@ -127,61 +138,66 @@ export function MenuManageScreen({ navigation }: { navigation: AdminNavProp }) {
    * never a second picture to clean up. React Query invalidation is what
    * refreshes the tile — image_updated_at changes, which changes the ?v= on
    * the URL, which is what gets past the CDN.
+   *
+   * The pick sits INSIDE the try: it now rejects a format or size the bucket
+   * would refuse, and that message is the whole point of checking early.
    */
   const handlePhoto = async (item: MenuItem) => {
-    const photo = await pickCatalogPhoto();
-    if (!photo) return;
     setBusyPhotoId(item.id);
     try {
+      const photo = await pickCatalogPhoto();
+      // Cancelled, or permission refused. Ordinary — say nothing.
+      if (!photo) return;
       await uploadCatalogPhoto(PHOTO_BUCKET.menu, item.id, photo);
-      await queryClient.invalidateQueries({ queryKey: ['admin_menu_items'] });
-      await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.MENU_ITEMS });
+      await refreshLists();
     } catch (e) {
-      Alert.alert('Upload failed', e instanceof Error ? e.message : 'Unknown error');
+      infoDialog('Could not set the photo', getErrorMessage(e));
     } finally {
       setBusyPhotoId(null);
     }
   };
 
-  const confirmRemovePhoto = (item: MenuItem) => {
-    Alert.alert(
-      'Remove photo?',
-      `${item.name} will show the default icon on the customer menu.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: async () => {
-            setBusyPhotoId(item.id);
-            try {
-              await removeCatalogPhoto(PHOTO_BUCKET.menu, item.id);
-              await queryClient.invalidateQueries({ queryKey: ['admin_menu_items'] });
-              await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.MENU_ITEMS });
-            } catch (e) {
-              Alert.alert('Could not remove', e instanceof Error ? e.message : 'Unknown error');
-            } finally {
-              setBusyPhotoId(null);
-            }
-          },
-        },
-      ],
-    );
+  const confirmRemovePhoto = async (item: MenuItem) => {
+    const ok = await confirmDialog({
+      title: 'Remove photo?',
+      message: `${item.name} will show the default icon on the customer menu.`,
+      confirmLabel: 'Remove',
+      destructive: true,
+    });
+    if (!ok) return;
+
+    setBusyPhotoId(item.id);
+    try {
+      const { fileRemoved } = await removeCatalogPhoto(PHOTO_BUCKET.menu, item.id);
+      await refreshLists();
+      // The item is right either way — this is about the file left in storage,
+      // which stays reachable by anyone who knows the URL until it is
+      // overwritten. Worth saying plainly rather than reporting a clean success.
+      if (!fileRemoved) {
+        infoDialog(
+          'Photo removed',
+          `${item.name} no longer shows a picture. The image file itself could not be deleted — it is not shown anywhere, and setting a new photo for this item will replace it.`,
+        );
+      }
+    } catch (e) {
+      infoDialog('Could not remove', getErrorMessage(e));
+    } finally {
+      setBusyPhotoId(null);
+    }
   };
 
-  const handleToggle = (id: number, current: boolean) => {
-    if (current) {
-      Alert.alert(
-        'Disable Menu Item?',
-        'This item will no longer appear on the customer menu.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Disable', style: 'destructive', onPress: () => toggleItem.mutate({ id, is_active: false }) },
-        ]
-      );
-    } else {
+  const handleToggle = async (id: number, current: boolean) => {
+    if (!current) {
       toggleItem.mutate({ id, is_active: true });
+      return;
     }
+    const ok = await confirmDialog({
+      title: 'Disable menu item?',
+      message: 'This item will no longer appear on the customer menu.',
+      confirmLabel: 'Disable',
+      destructive: true,
+    });
+    if (ok) toggleItem.mutate({ id, is_active: false });
   };
 
   const renderItem = ({ item }: { item: MenuItem }) => {

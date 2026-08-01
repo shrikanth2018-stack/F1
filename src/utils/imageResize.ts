@@ -24,7 +24,7 @@
  * pushing megabytes into the bucket for no reason.
  */
 
-import type { PickedPhoto } from './catalogPhotoUpload';
+import { ALLOWED_PHOTO_MIME, type PickedPhoto } from './catalogPhoto';
 
 /**
  * Longest edge, in pixels, after downscaling.
@@ -78,9 +78,18 @@ export async function resizeForUpload(photo: PickedPhoto): Promise<PickedPhoto> 
     // Never hand back something LARGER than what we were given. Re-encoding a
     // small, already-optimised JPEG can inflate it; in that case the original
     // is the better upload.
-    if (base64.length >= photo.base64.length) return photo;
+    //
+    // Unless the original is a format the bucket will not accept. A HEIC that
+    // this browser managed to decode is exactly that case: the re-encode may
+    // well be bigger, but it is the only version that can be uploaded at all,
+    // so size stops being the deciding factor.
+    const originalIsUploadable = ALLOWED_PHOTO_MIME.includes(photo.mimeType);
+    if (originalIsUploadable && base64.length >= photo.base64.length) return photo;
 
-    return { uri: dataUrl, base64 };
+    // The canvas always encodes to JPEG here, whatever went in — so this is
+    // the one place the type genuinely changes, and it has to be recorded or
+    // the upload would declare the ORIGINAL type for re-encoded bytes.
+    return { uri: dataUrl, base64, mimeType: 'image/jpeg' };
   } catch {
     return photo;
   }

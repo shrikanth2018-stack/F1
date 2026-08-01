@@ -18,11 +18,15 @@ import {
   TextInput,
   Switch,
   StyleSheet,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
 import { QUERY_KEYS } from '../../utils/constants';
+// Alert.alert is a no-op in react-native-web — see the note in
+// MenuManageScreen. These two screens share the same photo controls, so they
+// have to share the same dialogs or the web admin loses half of them.
+import { confirmDialog, infoDialog } from '../../utils/confirmDialog';
+import { getErrorMessage } from '../../utils/formatters';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { EmptyState } from '../../components/EmptyState';
@@ -79,42 +83,46 @@ export function EssentialsCatalogManageScreen({ navigation }: { navigation: Admi
    * gets past the CDN.
    */
   const handlePhoto = async (item: EssentialItem) => {
-    const photo = await pickCatalogPhoto();
-    if (!photo) return;
     setBusyPhotoId(item.id);
     try {
+      const photo = await pickCatalogPhoto();
+      // Cancelled, or permission refused. Ordinary — say nothing.
+      if (!photo) return;
       await uploadCatalogPhoto(PHOTO_BUCKET.essentials, item.id, photo);
       await refreshLists();
     } catch (e) {
-      Alert.alert('Upload failed', e instanceof Error ? e.message : 'Unknown error');
+      infoDialog('Could not set the photo', getErrorMessage(e));
     } finally {
       setBusyPhotoId(null);
     }
   };
 
-  const confirmRemovePhoto = (item: EssentialItem) => {
-    Alert.alert(
-      'Remove photo?',
-      `${item.name} will show the default icon on the customer menu.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: async () => {
-            setBusyPhotoId(item.id);
-            try {
-              await removeCatalogPhoto(PHOTO_BUCKET.essentials, item.id);
-              await refreshLists();
-            } catch (e) {
-              Alert.alert('Could not remove', e instanceof Error ? e.message : 'Unknown error');
-            } finally {
-              setBusyPhotoId(null);
-            }
-          },
-        },
-      ],
-    );
+  const confirmRemovePhoto = async (item: EssentialItem) => {
+    const ok = await confirmDialog({
+      title: 'Remove photo?',
+      message: item.vendor_id
+        ? `${item.name} belongs to a vendor. Removing the picture takes it off the customer menu straight away.`
+        : `${item.name} will show the default icon on the customer menu.`,
+      confirmLabel: 'Remove',
+      destructive: true,
+    });
+    if (!ok) return;
+
+    setBusyPhotoId(item.id);
+    try {
+      const { fileRemoved } = await removeCatalogPhoto(PHOTO_BUCKET.essentials, item.id);
+      await refreshLists();
+      if (!fileRemoved) {
+        infoDialog(
+          'Photo removed',
+          `${item.name} no longer shows a picture. The image file itself could not be deleted — it is not shown anywhere, and setting a new photo for this item will replace it.`,
+        );
+      }
+    } catch (e) {
+      infoDialog('Could not remove', getErrorMessage(e));
+    } finally {
+      setBusyPhotoId(null);
+    }
   };
 
   const selectedCycle = cycles[cycleIdx] as any;
@@ -148,26 +156,25 @@ export function EssentialsCatalogManageScreen({ navigation }: { navigation: Admi
     return (
       <View style={[styles.row, !item.is_active && styles.rowDim]}>
         {/* Photo tile — tap to set or replace, long-press to remove.
-            Vendor-owned rows are excluded: their pictures must come from the
-            vendor through the review gate, not be published by us on their
-            behalf. Until that ships they show the fallback icon. */}
-        {!item.vendor_id && (
-          <TouchableOpacity
-            onPress={() => handlePhoto(item)}
-            onLongPress={() => item.image_path && confirmRemovePhoto(item)}
-            disabled={busyPhotoId === item.id}
-            activeOpacity={0.7}
-            style={[styles.thumbWrap, busyPhotoId === item.id && styles.thumbBusy]}
-          >
-            <CatalogPhotoThumb
-              bucket={PHOTO_BUCKET.essentials}
-              item={item}
-              size={THUMB}
-              requestPx={PHOTO_PX.admin}
-              fallbackIcon="camera-outline"
-            />
-          </TouchableOpacity>
-        )}
+            Vendor-owned rows are INCLUDED. Vendors set their own pictures from
+            My Store and those go live immediately, so this is the only place
+            the team can see what a vendor published and take a bad one down.
+            Hiding the tile here meant their photos were invisible to us. */}
+        <TouchableOpacity
+          onPress={() => handlePhoto(item)}
+          onLongPress={() => item.image_path && confirmRemovePhoto(item)}
+          disabled={busyPhotoId === item.id}
+          activeOpacity={0.7}
+          style={[styles.thumbWrap, busyPhotoId === item.id && styles.thumbBusy]}
+        >
+          <CatalogPhotoThumb
+            bucket={PHOTO_BUCKET.essentials}
+            item={item}
+            size={THUMB}
+            requestPx={PHOTO_PX.admin}
+            fallbackIcon="camera-outline"
+          />
+        </TouchableOpacity>
 
         <View style={styles.rowLeft}>
           <ThemedText variant="body" color="primary" style={styles.rowText} numberOfLines={1}>

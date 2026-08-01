@@ -33,6 +33,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { infoDialog } from '../../utils/confirmDialog';
+import { getErrorMessage } from '../../utils/formatters';
 import {
   pickCatalogPhoto,
   uploadCatalogPhoto,
@@ -106,10 +107,16 @@ export function CreateMenuScreen({ navigation, route }: AdminScreenProps<'Create
   );
 
   const handlePickPhoto = async () => {
-    const p = await pickCatalogPhoto();
-    // null = permission refused or cancelled. Both are ordinary; keep any
-    // photo already chosen rather than clearing it.
-    if (p) setPhoto(p);
+    try {
+      const p = await pickCatalogPhoto();
+      // null = permission refused or cancelled. Both are ordinary; keep any
+      // photo already chosen rather than clearing it.
+      if (p) setPhoto(p);
+    } catch (e) {
+      // A format or size the bucket will not take. Better said now than at
+      // Save, when the menu item has already been created.
+      infoDialog('Cannot use that picture', getErrorMessage(e));
+    }
   };
 
   const handleCycleToggle = () => {
@@ -200,11 +207,13 @@ export function CreateMenuScreen({ navigation, route }: AdminScreenProps<'Create
               // The menu item itself saved — say so, and say what did not, so
               // the admin knows to retry the photo from Menu Manager rather
               // than creating the item a second time.
-              infoDialog(
+              //
+              // Awaited: the goBack() below pops this screen, and an
+              // un-awaited dialog raced that pop — the message could appear
+              // and vanish before it was read.
+              await infoDialog(
                 'Menu item saved, photo failed',
-                `${name} was created without its picture. Add it from Menu Manager.\n\n${
-                  e instanceof Error ? e.message : 'Unknown error'
-                }`,
+                `${name} was created without its picture. Add it from Menu Manager.\n\n${getErrorMessage(e)}`,
               );
             } finally {
               setUploading(false);

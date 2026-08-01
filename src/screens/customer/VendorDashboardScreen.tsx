@@ -27,6 +27,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useQueryClient } from '@tanstack/react-query';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { Divider } from '../../components/Divider';
@@ -34,6 +35,14 @@ import { EmptyState } from '../../components/EmptyState';
 import { ErrorRetry } from '../../components/ErrorRetry';
 import { SegmentedControl } from '../../components/SegmentedControl';
 import { DispatchBadge } from '../../components/DispatchBadge';
+import { CatalogPhotoThumb } from '../../components/CatalogPhotoThumb';
+import { QUERY_KEYS } from '../../utils/constants';
+import { PHOTO_BUCKET, PHOTO_PX } from '../../utils/catalogPhoto';
+import {
+  pickCatalogPhoto,
+  uploadCatalogPhoto,
+  removeCatalogPhoto,
+} from '../../utils/catalogPhotoUpload';
 import { infoDialog, confirmDialog } from '../../utils/confirmDialog';
 import { formatPriceShort, formatDateShort, getErrorMessage } from '../../utils/formatters';
 import { istTimeLabel } from '../../utils/istDate';
@@ -62,6 +71,8 @@ import type { CustomerScreenProps } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
+/** Item photo tile, in points. Same 48 the admin catalogue managers use. */
+const THUMB = 48;
 
 type Tab = 'Supply' | 'Items' | 'Earnings';
 
@@ -99,6 +110,9 @@ export function VendorDashboardScreen({ navigation }: CustomerScreenProps<'Vendo
   const [unit, setUnit] = useState('');
   const [cap, setCap] = useState('');
   const [cycleIdx, setCycleIdx] = useState(0);
+  const [busyPhotoId, setBusyPhotoId] = useState<number | null>(null);
+
+  const queryClient = useQueryClient();
 
   if (isLoading || !vendor) {
     return (
@@ -129,6 +143,66 @@ export function VendorDashboardScreen({ navigation }: CustomerScreenProps<'Vendo
       setName(''); setPrice(''); setUnit(''); setCap('');
     } catch (e) {
       infoDialog('Could not save', getErrorMessage(e));
+    }
+  };
+
+  /** Refresh this vendor's own list and the customer-facing essentials list. */
+  const refreshItems = async () => {
+    await queryClient.invalidateQueries({ queryKey: ['my_vendor_items'] });
+    await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.ESSENTIALS });
+  };
+
+  /**
+   * Set or replace an item's picture.
+   *
+   * Goes through the same uploader the admin screens use, so a vendor photo
+   * gets the same fixed-key replace rule, the same compression and the same
+   * size and format checks — there is no second code path to keep in step.
+   * What a vendor may write is decided by the storage policy
+   * (catalog_photo_policies.sql), which allows an approved vendor their OWN
+   * items and nothing else; hiding or showing this control is not the gate.
+   *
+   * The picture reaches customers as soon as it uploads. Review is coming with
+   * the full listing-approval flow, not bolted onto photos alone.
+   */
+  const handleItemPhoto = async (item: VendorItem) => {
+    setBusyPhotoId(item.id);
+    try {
+      const photo = await pickCatalogPhoto();
+      // Cancelled, or permission refused. Ordinary — say nothing.
+      if (!photo) return;
+      await uploadCatalogPhoto(PHOTO_BUCKET.essentials, item.id, photo);
+      await refreshItems();
+    } catch (e) {
+      infoDialog('Could not set the photo', getErrorMessage(e));
+    } finally {
+      setBusyPhotoId(null);
+    }
+  };
+
+  const handleRemoveItemPhoto = async (item: VendorItem) => {
+    const ok = await confirmDialog({
+      title: 'Remove photo?',
+      message: `${item.name} will show a plain icon to customers instead.`,
+      confirmLabel: 'Remove',
+      destructive: true,
+    });
+    if (!ok) return;
+
+    setBusyPhotoId(item.id);
+    try {
+      const { fileRemoved } = await removeCatalogPhoto(PHOTO_BUCKET.essentials, item.id);
+      await refreshItems();
+      if (!fileRemoved) {
+        infoDialog(
+          'Photo removed',
+          `${item.name} no longer shows a picture to customers. The image file could not be deleted — setting a new photo for this item will replace it.`,
+        );
+      }
+    } catch (e) {
+      infoDialog('Could not remove', getErrorMessage(e));
+    } finally {
+      setBusyPhotoId(null);
     }
   };
 
@@ -282,8 +356,33 @@ export function VendorDashboardScreen({ navigation }: CustomerScreenProps<'Vendo
             </ThemedText>
           )}
 
+          {/* Long-press is a phone gesture and this screen is used in a
+              browser too, so the affordance is spelled out rather than left
+              to be discovered. */}
+          {(items.data ?? []).length > 0 && !suspended ? (
+            <ThemedText variant="small" color="muted" style={styles.hint}>
+              Tap a picture to add or change it. Press and hold to remove it. A clear,
+              square photo of the actual product sells best.
+            </ThemedText>
+          ) : null}
+
           {(items.data ?? []).map((it: VendorItem) => (
             <View key={it.id} style={styles.row}>
+              <TouchableOpacity
+                onPress={() => handleItemPhoto(it)}
+                onLongPress={() => it.image_path && handleRemoveItemPhoto(it)}
+                disabled={suspended || busyPhotoId === it.id}
+                activeOpacity={0.7}
+                style={[styles.thumbWrap, busyPhotoId === it.id && styles.thumbBusy]}
+              >
+                <CatalogPhotoThumb
+                  bucket={PHOTO_BUCKET.essentials}
+                  item={it}
+                  size={THUMB}
+                  requestPx={PHOTO_PX.admin}
+                  fallbackIcon="camera-outline"
+                />
+              </TouchableOpacity>
               <View style={styles.flex1}>
                 <ThemedText variant="body" color={it.is_active ? 'primary' : 'muted'} style={styles.txt}>
                   {it.name}
@@ -420,6 +519,10 @@ const styles = StyleSheet.create({
   row2: { flexDirection: 'row', gap: Theme.spacing.sm },
   flex1: { flex: 1 },
   sub: { fontSize: S, marginTop: 2 },
+  // Matches the admin managers' item tile, so a vendor and the team are
+  // looking at the same thing at the same size when discussing a photo.
+  thumbWrap: { flexShrink: 0 },
+  thumbBusy: { opacity: 0.4 },
   qty: { fontSize: B + 2 },
   orderRow: {
     paddingVertical: Theme.spacing.sm,

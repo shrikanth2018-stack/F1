@@ -82,6 +82,15 @@ export interface VendorItem {
   vendor_cost: number | null;
   vendor_id: number | null;
   branch_id: number | null;
+  /**
+   * Storage path of the item's one photo — `essentials-photos/{id}.jpg`.
+   * A vendor sets this themselves from My Store and it reaches customers
+   * immediately; the approval step will come with the full listing review.
+   * Build a URL with `photoUrl` (src/utils/catalogPhoto.ts).
+   */
+  image_path?: string | null;
+  /** Stamped on every photo upload; used to bust the CDN cache. */
+  image_updated_at?: string | null;
 }
 
 /** This vendor's own catalogue rows. */
@@ -91,7 +100,12 @@ export function useMyVendorItems(vendorId?: number) {
     queryFn: async (): Promise<VendorItem[]> => {
       const { data, error } = await supabase
         .from('essentials_catalog')
-        .select('id, name, price, unit, cycle_id, is_active, daily_cap, vendor_cost, vendor_id, branch_id')
+        // Explicit column list, so the photo columns have to be named here to
+        // reach the screen — the tile silently renders its fallback icon for
+        // a row whose image_path was simply never selected.
+        .select(
+          'id, name, price, unit, cycle_id, is_active, daily_cap, vendor_cost, vendor_id, branch_id, image_path, image_updated_at',
+        )
         .eq('vendor_id', vendorId!)
         .order('name');
       if (error) throw new Error(error.message);

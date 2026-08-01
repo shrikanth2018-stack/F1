@@ -25,7 +25,7 @@
  * mean SectionList windowing, deliberately not done at this catalogue size).
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Image, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Theme } from '../theme';
@@ -53,7 +53,16 @@ export function CatalogPhotoThumb({
   // A broken URL must degrade to the icon, not to an empty box — the photo is
   // decoration, the row still has to be orderable.
   const [failed, setFailed] = useState(false);
-  const uri = failed ? null : photoUrl(bucket, item, requestPx);
+  const url = photoUrl(bucket, item, requestPx);
+
+  // Forget an earlier failure whenever the URL changes. Without this one bad
+  // load pinned the tile to the fallback icon for as long as the component
+  // lived — including after the admin replaced the photo with a good one (the
+  // ?v= stamp changes, so it IS a different URL), and for whatever item took
+  // this slot next when the list re-rendered with different data.
+  useEffect(() => setFailed(false), [url]);
+
+  const uri = failed ? null : url;
 
   const box = [styles.tile, { width: size, height: size }];
 

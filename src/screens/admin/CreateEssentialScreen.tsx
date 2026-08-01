@@ -14,11 +14,14 @@ import {
   TouchableOpacity,
   TextInput,
   StyleSheet,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
+// Alert.alert is a no-op in react-native-web, so on app.1stone.in this screen
+// silently ignored an empty name, an invalid price and a failed photo upload.
+import { infoDialog } from '../../utils/confirmDialog';
+import { getErrorMessage } from '../../utils/formatters';
 import {
   pickCatalogPhoto,
   uploadCatalogPhoto,
@@ -50,10 +53,16 @@ export function CreateEssentialScreen({ navigation, route }: AdminScreenProps<'C
   const [uploading, setUploading] = useState(false);
 
   const handlePickPhoto = async () => {
-    const p = await pickCatalogPhoto();
-    // null = permission refused or cancelled. Both are ordinary; keep any
-    // photo already chosen rather than clearing it.
-    if (p) setPhoto(p);
+    try {
+      const p = await pickCatalogPhoto();
+      // null = permission refused or cancelled. Both are ordinary; keep any
+      // photo already chosen rather than clearing it.
+      if (p) setPhoto(p);
+    } catch (e) {
+      // A format or size the bucket will not take. Better said now than at
+      // Save, when the item has already been created.
+      infoDialog('Cannot use that picture', getErrorMessage(e));
+    }
   };
 
   // Sync to cycle passed from parent screen
@@ -75,10 +84,10 @@ export function CreateEssentialScreen({ navigation, route }: AdminScreenProps<'C
   };
 
   const handleSave = () => {
-    if (!name.trim()) { Alert.alert('Error', 'Enter an item name'); return; }
+    if (!name.trim()) { infoDialog('Name required', 'Enter an item name.'); return; }
     const numPrice = parseFloat(price);
-    if (isNaN(numPrice) || numPrice < 0) { Alert.alert('Error', 'Enter a valid price'); return; }
-    if (!selectedCycle) { Alert.alert('Error', 'No delivery cycles available'); return; }
+    if (isNaN(numPrice) || numPrice < 0) { infoDialog('Price required', 'Enter a valid price.'); return; }
+    if (!selectedCycle) { infoDialog('No cycle', 'No delivery cycles available.'); return; }
     addEssential.mutate(
       {
         name: name.trim(),
@@ -98,11 +107,11 @@ export function CreateEssentialScreen({ navigation, route }: AdminScreenProps<'C
             } catch (e) {
               // The item itself saved — say so, and say what did not, so the
               // admin retries the photo rather than creating a duplicate item.
-              Alert.alert(
+              // Awaited so the goBack() below cannot pop the message away
+              // before it has been read.
+              await infoDialog(
                 'Item saved, photo failed',
-                `${name.trim()} was created without its picture. Add it from Essentials Manager.\n\n${
-                  e instanceof Error ? e.message : 'Unknown error'
-                }`,
+                `${name.trim()} was created without its picture. Add it from Essentials Manager.\n\n${getErrorMessage(e)}`,
               );
             } finally {
               setUploading(false);

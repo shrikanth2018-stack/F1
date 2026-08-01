@@ -72,6 +72,17 @@ ON CONFLICT (id) DO UPDATE
       allowed_mime_types = EXCLUDED.allowed_mime_types;
 
 -- ── 3. Storage policies ────────────────────────────────────────
+-- ⚠ THE WRITE POLICIES BELOW ARE SUPERSEDED by
+--   catalog_photo_policies.sql (2026-08-01), which reuses these exact policy
+--   names. Two things changed: writes are now branch-scoped to match the
+--   essentials_catalog table policy, and an APPROVED VENDOR may write photos
+--   for their own items (the scope note above no longer holds — see that
+--   file's header for the decision).
+--
+--   RE-RUNNING THIS FILE REOPENS THE BRANCH GAP AND BREAKS VENDOR PHOTO
+--   UPLOAD. Apply catalog_photo_policies.sql again straight afterwards.
+--   Everything above §3 is still current.
+--
 -- Read: everyone. Write: admins only (see the scope note above).
 --
 -- INSERT *and* UPDATE are both required — the storage API's upsert path
@@ -100,12 +111,18 @@ CREATE POLICY essentials_photos_admin_delete ON storage.objects
   FOR DELETE TO authenticated
   USING (bucket_id = 'essentials-photos' AND public.is_admin());
 
--- NOTE for whoever builds the vendor gate: do NOT add a vendor branch to the
--- policies above. Vendor uploads belong in a private pending bucket, and the
--- ownership test must live in a SECURITY DEFINER function (mirroring
--- vendor_ids_visible_to_me) — an inline EXISTS over `vendors` in a policy is
--- evaluated as the calling user and is exactly what silently denied every
--- customer in the July 2026 vendor-visibility outage.
+-- NOTE: the vendor path now EXISTS, in catalog_photo_policies.sql. It landed
+-- differently from what was sketched here — vendors write straight to this
+-- public bucket and their photos reach customers immediately, because the
+-- agreed design is to review a whole vendor LISTING rather than the picture on
+-- its own. The private pending bucket is not built and should not be, unless
+-- that decision changes.
+--
+-- The half of this note that still stands: the ownership test lives in a
+-- SECURITY DEFINER function (mirroring vendor_ids_visible_to_me), never an
+-- inline EXISTS over `vendors` — a policy expression is evaluated as the
+-- calling user and is exactly what silently denied every customer in the July
+-- 2026 vendor-visibility outage.
 
 -- ── Rollback ───────────────────────────────────────────────────
 -- DROP POLICY IF EXISTS essentials_photos_public_read   ON storage.objects;

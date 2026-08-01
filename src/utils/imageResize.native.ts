@@ -22,9 +22,14 @@
  * implement this properly, matching the web constants (1000px longest edge,
  * JPEG quality 0.7). Until then the honest thing is to do nothing rather than
  * pretend — a silently-ineffective resize would be worse than none.
+ *
+ * Passing the photo through unchanged includes its `mimeType`. That is
+ * correct here and not an oversight: nothing in this file re-encodes, so
+ * whatever the picker reported is still what the bytes are. The web build,
+ * which does re-encode, is the one that has to restamp it.
  */
 
-import type { PickedPhoto } from './catalogPhotoUpload';
+import type { PickedPhoto } from './catalogPhoto';
 
 export async function resizeForUpload(photo: PickedPhoto): Promise<PickedPhoto> {
   return photo;

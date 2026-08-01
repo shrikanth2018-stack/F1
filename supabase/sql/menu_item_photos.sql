@@ -103,6 +103,15 @@ ON CONFLICT (id) DO UPDATE
       allowed_mime_types = EXCLUDED.allowed_mime_types;
 
 -- ── 3. Storage policies ────────────────────────────────────────
+-- ⚠ THE WRITE POLICIES BELOW ARE SUPERSEDED by
+--   catalog_photo_policies.sql (2026-08-01), which reuses these exact policy
+--   names. is_admin() alone was looser than the menu_items table policy
+--   (which also tests has_branch_access), so a branch-scoped admin could
+--   write the file and then silently fail to update the row.
+--
+--   RE-RUNNING THIS FILE REOPENS THAT GAP. Apply catalog_photo_policies.sql
+--   again straight afterwards. Everything above §3 is still current.
+--
 -- Read: everyone. Write: admins only, via the app's existing is_admin().
 --
 -- INSERT *and* UPDATE are both required — the storage API's upsert path
