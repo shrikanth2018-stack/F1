@@ -541,3 +541,144 @@ RESET ROLE;
 
 **Rollback:** restore the policy body from `vendors_visibility.sql` §2 — but
 that restores the bug.
+
+---
+
+## 19. Menu item photos (2026-08-01)
+
+**Applied to production 2026-08-01 and verified.**
+
+One photo per customer-facing menu item, uploaded from the menu builder
+(`CreateMenuScreen` on add, `MenuManageScreen` row on edit) and rendered on
+the customer Home row as a 76pt tile.
+
+| # | File | What it does |
+|---|------|--------------|
+| 1 | `menu_item_photos.sql` | Adds `image_path`, `image_updated_at`, `description` to `menu_items`; creates the `menu-photos` bucket (public read, 8 MB cap, image MIME allowlist); four storage policies gating writes on `public.is_admin()`. |
+
+**One photo per item is enforced by the object key,** not by remembering to
+delete: the path is `menu-photos/{id}.jpg` with a FIXED extension, written
+with upsert. A varying extension would leave `{id}.jpg` and `{id}.webp` behind
+on a format change. Replacement is therefore the same object being overwritten
+and cannot leak an orphan.
+
+**The cost of a fixed key is CDN staleness** — same URL, new bytes. Handled by
+stamping `image_updated_at` on every upload and appending it as `?v=` at
+render (`src/utils/menuImage.ts`). Both halves are required; changing one
+without the other serves customers a stale picture for up to the cache
+lifetime.
+
+**Cache-Control must be set on upload.** Supabase defaults an object to
+`no-cache`, which propagates to the render endpoint — the first batch of
+photos was re-fetched on every launch. The uploader now sends
+`cacheControl: 2592000` (30 days). 30 rather than 365 so that a row which
+somehow ends up with a photo but no stamp self-heals in a month.
+
+**Delivery goes through the render endpoint,** not the raw object:
+`?width=240&height=240&resize=cover&quality=70`. Measured on production: a
+48 KB source is served as 6.4 KB WebP. Image transformation is a paid-plan
+feature — if the plan ever lapses, dropping the transform params falls back to
+the original object.
+
+`description` and `image_path` replace a `MenuItem.image_url` that
+`src/types/catalog.ts` had declared since the two-stage builder shipped.
+Neither column ever existed, so the description branch in `ItemRows.tsx` had
+never once rendered.
+
+**Verification:**
+
+```sql
+SELECT id, name, image_path, image_updated_at IS NOT NULL AS stamped
+FROM menu_items WHERE is_customer_visible AND is_active ORDER BY id;
+```
+
+```bash
+# must be 200 + content-type: image/webp + cache-control: public, max-age=...
+curl -sD- -o /dev/null -H 'Accept: image/webp,*/*' \
+  "$URL/storage/v1/render/image/public/menu-photos/2.jpg?width=240&height=240&resize=cover&quality=70"
+```
+
+**Rollback:** see the commented block at the bottom of the SQL file.
+
+---
+
+## 20. `assets` bucket lockdown (2026-08-01)
+
+**Applied to production 2026-08-01 and verified with the anon key.**
+
+Pre-existing hole, unrelated to §19 but found while building it. The `assets`
+bucket carried four dashboard-generated policies (`general 1bqp9qb_0..3`)
+granting SELECT/INSERT/UPDATE/DELETE to the Postgres role `public` — which
+includes `anon`, whose key ships inside the APK.
+
+| # | File | What it does |
+|---|------|--------------|
+| 1 | `assets_bucket_lockdown.sql` | Drops the four open policies; keeps SELECT public; gates INSERT/UPDATE/DELETE on `public.is_admin()`. |
+
+Anonymous **read must stay** — the login screen renders its background before
+anyone signs in, and 1stone.in fetches the landing hero unauthenticated.
+
+**Verified before:** anon PUT → 200, anon DELETE → 200.
+**Verified after:** anon PUT → 400, anon DELETE of `logo.png` → 400, public
+read → 200.
+
+```bash
+# must be 400 (and the object must survive)
+curl -s -o /dev/null -w '%{http_code}\n' -X DELETE \
+  -H "apikey: $ANON" -H "Authorization: Bearer $ANON" \
+  "$URL/storage/v1/object/assets/logo.png"
+```
+
+**After applying, re-test in the app:** Manage → Marketing → Banners &
+Backgrounds must still upload as an admin. A failure there means the JWT lacks
+the `user_role` claim — re-login refreshes it.
+
+**Rollback:** commented block at the bottom of the SQL file. It restores the
+hole; only for an emergency where a banner must go out and admin upload is
+broken.
+
+---
+
+## 21. Essentials photos (2026-08-01)
+
+**Applied to production 2026-08-01 and verified.**
+
+The essentials half of the catalogue photo work. Mirrors §19 — same three
+columns, same fixed-path replace rule, same render-endpoint delivery.
+
+| # | File | What it does |
+|---|------|--------------|
+| 1 | `essentials_photos.sql` | Adds `image_path`, `image_updated_at`, `description` to `essentials_catalog`; creates the `essentials-photos` bucket; four storage policies gating writes on `public.is_admin()`. |
+
+**Admin-only writes, deliberately.** A row here may be vendor-owned, and
+vendors are customer-role profiles. The agreed design is a review gate: vendor
+uploads land in a SEPARATE PRIVATE bucket and only move to this public one on
+admin approval. That work is not in this file. **Do not add a vendor branch to
+these policies** — the ownership test must live in a SECURITY DEFINER function
+mirroring `vendor_ids_visible_to_me`, because an inline EXISTS over `vendors`
+in a policy is evaluated as the calling user and is exactly what silently
+denied every customer in the July 2026 vendor-visibility outage.
+
+`description` fixes a second phantom field: `EssentialItem.description` had
+been declared in `src/types/catalog.ts` and rendered by `ItemRows.tsx` since
+the essentials module shipped, but the column never existed.
+
+**Client code was generalised in the same change,** not copied:
+`menuImage.ts` → `catalogPhoto.ts`, `menuPhotoUpload.ts` →
+`catalogPhotoUpload.ts`, `MenuItemThumb` → `CatalogPhotoThumb`. All take a
+bucket. The vendor gate must reuse these rather than forking a third copy.
+
+**Verification:**
+
+```sql
+SELECT id, name, image_path, vendor_id FROM essentials_catalog
+WHERE is_active ORDER BY id;
+```
+
+```bash
+# 200 + image/webp + cache-control: public, max-age=2592000
+curl -sD- -o /dev/null -H 'Accept: image/webp,*/*' \
+  "$URL/storage/v1/render/image/public/essentials-photos/1.jpg?width=240&height=240&resize=cover&quality=70"
+```
+
+**Rollback:** commented block at the bottom of the SQL file.

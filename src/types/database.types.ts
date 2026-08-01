@@ -703,7 +703,10 @@ export type Database = {
           created_at: string | null
           cycle_id: number | null
           daily_cap: number | null
+          description: string | null
           id: number
+          image_path: string | null
+          image_updated_at: string | null
           is_active: boolean | null
           name: string
           price: number
@@ -718,7 +721,10 @@ export type Database = {
           created_at?: string | null
           cycle_id?: number | null
           daily_cap?: number | null
+          description?: string | null
           id?: number
+          image_path?: string | null
+          image_updated_at?: string | null
           is_active?: boolean | null
           name: string
           price: number
@@ -733,7 +739,10 @@ export type Database = {
           created_at?: string | null
           cycle_id?: number | null
           daily_cap?: number | null
+          description?: string | null
           id?: number
+          image_path?: string | null
+          image_updated_at?: string | null
           is_active?: boolean | null
           name?: string
           price?: number
@@ -1034,7 +1043,10 @@ export type Database = {
           branch_id: number | null
           created_at: string | null
           cycle_id: number | null
+          description: string | null
           id: number
+          image_path: string | null
+          image_updated_at: string | null
           ingredients: string | null
           is_active: boolean | null
           is_customer_visible: boolean
@@ -1047,7 +1059,10 @@ export type Database = {
           branch_id?: number | null
           created_at?: string | null
           cycle_id?: number | null
+          description?: string | null
           id?: number
+          image_path?: string | null
+          image_updated_at?: string | null
           ingredients?: string | null
           is_active?: boolean | null
           is_customer_visible?: boolean
@@ -1060,7 +1075,10 @@ export type Database = {
           branch_id?: number | null
           created_at?: string | null
           cycle_id?: number | null
+          description?: string | null
           id?: number
+          image_path?: string | null
+          image_updated_at?: string | null
           ingredients?: string | null
           is_active?: boolean | null
           is_customer_visible?: boolean
@@ -2902,6 +2920,12 @@ export type Database = {
       }
       vendor_ids_for_address: {
         Args: { p_address_id: number }
+        Returns: {
+          vendor_id: number
+        }[]
+      }
+      vendor_ids_visible_to_me: {
+        Args: never
         Returns: {
           vendor_id: number
         }[]
