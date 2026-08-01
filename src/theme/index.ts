@@ -31,16 +31,6 @@ export const Theme = {
     },
     layout: {
       divider: 'rgba(255, 255, 255, 0.1)',
-      /**
-       * Edge of a photo tile. Brighter than `divider` on purpose: a photo sits
-       * on the near-black background as a block of its own, and the standard
-       * hairline is too faint to separate it. A drop shadow is the usual tool
-       * for this and does almost nothing at #151515 — there is nothing for a
-       * dark shadow to darken — while a light outer glow only renders on iOS
-       * (Android elevation draws dark shadows only). A brighter border is the
-       * one treatment that reads identically on both platforms.
-       */
-      photoEdge: 'rgba(255, 255, 255, 0.25)',
       overlayLight: 'rgba(0,0,0,0.4)',
       overlayLightMid: 'rgba(0,0,0,0.45)',
       overlayMedium: 'rgba(0,0,0,0.5)',

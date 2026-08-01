@@ -8,20 +8,11 @@
 
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { Theme } from '../../../theme';
 import { formatPriceShort } from '../../../utils/formatters';
 import type { MenuItem, EssentialItem } from '../../../types';
-import { CatalogPhotoThumb } from '../../../components/CatalogPhotoThumb';
-import { PHOTO_BUCKET, PHOTO_PX } from '../../../utils/catalogPhoto';
 import { GradientSep } from './GradientSep';
-
-/**
- * Row photo tile, in points. 76 is the size at which the supplied dish and
- * product renders stay identifiable (a thali at 44 is a smudge) without
- * dropping the list below ~6 items a screen. Both catalogues use the same
- * value so Food and Essentials scroll at the same rhythm.
- */
-const THUMB = 76;
 
 interface FoodRowProps {
   item: MenuItem;
@@ -36,23 +27,11 @@ interface FoodRowProps {
 export function FoodRow({ item, qty, dispatchLabel, isLast, onAdd, onIncrement, onDecrement }: FoodRowProps) {
   return (
     <>
-      <View style={styles.foodRow}>
-        <CatalogPhotoThumb
-          bucket={PHOTO_BUCKET.menu}
-          item={item}
-          size={THUMB}
-          requestPx={PHOTO_PX.row}
-          fallbackIcon="restaurant-outline"
-        />
-        <View style={styles.foodMeta}>
+      <View style={styles.itemRow}>
+        <Ionicons name="restaurant-outline" size={17} color={Theme.colors.text.mint} style={styles.rowIcon} />
+        <View style={styles.itemMeta}>
           <Text style={styles.itemName}>{item.name}</Text>
-          {/* Description first — it is what the customer is choosing between.
-              The dispatch label stays below it, still the last word before
-              they add to cart. */}
-          {item.description ? (
-            <Text style={styles.itemSub} numberOfLines={2}>{item.description}</Text>
-          ) : null}
-          {dispatchLabel ? <Text style={styles.itemDispatch}>{dispatchLabel}</Text> : null}
+          {dispatchLabel ? <Text style={styles.itemSub}>{dispatchLabel}</Text> : null}
         </View>
         <Text style={styles.itemPrice}>{formatPriceShort(item.price)}</Text>
         {qty === 0 ? (
@@ -88,26 +67,16 @@ interface EssentialRowProps {
 export function EssentialRow({ item, qty, isLast, onAdd, onIncrement, onDecrement }: EssentialRowProps) {
   return (
     <>
-      <View style={styles.foodRow}>
-        <CatalogPhotoThumb
-          bucket={PHOTO_BUCKET.essentials}
-          item={item}
-          size={THUMB}
-          requestPx={PHOTO_PX.row}
-          fallbackIcon="basket-outline"
-        />
-        <View style={styles.foodMeta}>
+      <View style={styles.itemRow}>
+        <Ionicons name="basket-outline" size={17} color={Theme.colors.text.mint} style={styles.rowIcon} />
+        <View style={styles.itemMeta}>
           <Text style={styles.itemName}>{item.name}</Text>
-          {item.description ? (
-            <Text style={styles.itemSub} numberOfLines={2}>{item.description}</Text>
-          ) : null}
           {/* Attribution is the safeguard that makes third-party selling
-              honest — the customer should know who they are buying from. It
-              now sits on its own line rather than replacing the description:
-              with a photo present, "what is it" and "who sells it" are
-              different questions and the row has room for both. */}
+              honest — the customer should know who they are buying from. */}
           {item.vendor_name ? (
-            <Text style={styles.itemDispatch}>Sold by {item.vendor_name}</Text>
+            <Text style={styles.itemSub}>Sold by {item.vendor_name}</Text>
+          ) : item.description ? (
+            <Text style={styles.itemSub}>{item.description}</Text>
           ) : null}
         </View>
         <Text style={styles.itemPrice}>{formatPriceShort(item.price)}</Text>
@@ -139,19 +108,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: Theme.spacing.xs,
     paddingVertical: 11,
   },
-  // Food rows carry a 76pt tile, so they breathe more than the compact
-  // essentials row and align to the top of the text block rather than centre.
-  foodRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Theme.spacing.xs,
-    paddingVertical: Theme.spacing.sm + 2,
-  },
-  foodMeta: {
-    flex: 1,
-    marginLeft: Theme.spacing.md,
-    marginRight: Theme.spacing.sm,
-  },
   rowIcon: {
     marginRight: Theme.spacing.sm,
     flexShrink: 0,
@@ -168,14 +124,6 @@ const styles = StyleSheet.create({
     fontSize: Theme.typography.sizes.small + 2,
     color: Theme.colors.text.muted,
     marginTop: 2,
-  },
-  // Dispatch timing is operational, not descriptive — held apart from the
-  // description in mint so it still reads as the actionable line.
-  itemDispatch: {
-    fontFamily: Theme.typography.fontFamily,
-    fontSize: Theme.typography.sizes.small,
-    color: Theme.colors.text.mint,
-    marginTop: 3,
   },
   itemPrice: {
     fontFamily: Theme.typography.fontFamily,

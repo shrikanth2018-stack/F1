@@ -12,7 +12,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../api/supabaseClient';
-import { QUERY_KEYS, QUERY_STALE_TIME } from '../utils/constants';
+import { QUERY_STALE_TIME } from '../utils/constants';
 import { useBranchFilter, requireWriteBranch } from './useBranchFilter';
 
 /** Friendly display labels for meal cycles when shown in Essentials context */
@@ -30,13 +30,6 @@ export interface EssentialItem {
   price: number;
   is_active: boolean;
   branch_id: number | null;
-  /** NULL = 1stOne's own item. Set = sold by a third-party vendor. */
-  vendor_id?: number | null;
-  /** Storage path of the item's one photo — `essentials-photos/{id}.jpg`. */
-  image_path?: string | null;
-  /** Stamped on every photo upload; used to bust the CDN cache. */
-  image_updated_at?: string | null;
-  description?: string | null;
 }
 
 export function useAllEssentials(cycleId?: number) {
@@ -61,42 +54,21 @@ export function useAllEssentials(cycleId?: number) {
   });
 }
 
-/**
- * Add an essentials item.
- *
- * Returns the inserted row's id. A photo is stored at a path keyed by that id
- * (`essentials-photos/{id}.jpg`), so it cannot be uploaded until the row
- * exists — CreateEssentialScreen holds the picked image and attaches it in
- * the onSuccess callback.
- */
 export function useAddEssential() {
   const queryClient = useQueryClient();
   const bf = useBranchFilter();
   return useMutation({
-    mutationFn: async (item: {
-      name: string;
-      cycle_id: number;
-      price: number;
-      description?: string;
-    }) => {
-      const { data, error } = await supabase
+    mutationFn: async (item: { name: string; cycle_id: number; price: number }) => {
+      const { error } = await supabase
         .from('essentials_catalog')
         .insert({
           ...item,
           is_active: true,
           branch_id: requireWriteBranch(bf),
-        })
-        .select('id')
-        .single();
+        });
       if (error) throw new Error(error.message);
-      return data;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin_essentials'] });
-      // The customer-facing list is a different key — without this a newly
-      // added item stays invisible on Home for up to the stale window.
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.ESSENTIALS });
-    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin_essentials'] }),
   });
 }
 

@@ -18,21 +18,11 @@ import {
   TextInput,
   Switch,
   StyleSheet,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useQueryClient } from '@tanstack/react-query';
-import { QUERY_KEYS } from '../../utils/constants';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { EmptyState } from '../../components/EmptyState';
-import { CatalogPhotoThumb } from '../../components/CatalogPhotoThumb';
-import { PHOTO_BUCKET, PHOTO_PX } from '../../utils/catalogPhoto';
-import {
-  pickCatalogPhoto,
-  uploadCatalogPhoto,
-  removeCatalogPhoto,
-} from '../../utils/catalogPhotoUpload';
 import {
   useAllEssentials,
   useUpdateEssentialPrice,
@@ -44,7 +34,6 @@ import type { AdminNavProp } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
 const P = Theme.typography.sizes.body + 4;
-const THUMB = 48;                            // admin row tile, points
 
 export function EssentialsCatalogManageScreen({ navigation }: { navigation: AdminNavProp }) {
   const { data: rawCycles = [] } = useAllDeliveryCycles();
@@ -58,64 +47,9 @@ export function EssentialsCatalogManageScreen({ navigation }: { navigation: Admi
   const [cycleIdx, setCycleIdx] = useState(0);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [priceInput, setPriceInput] = useState('');
-  const [busyPhotoId, setBusyPhotoId] = useState<number | null>(null);
 
-  const queryClient = useQueryClient();
   const updatePrice = useUpdateEssentialPrice();
   const toggleItem = useToggleEssential();
-
-  /** Invalidate both the admin list and the customer-facing essentials list. */
-  const refreshLists = async () => {
-    await queryClient.invalidateQueries({ queryKey: ['admin_essentials'] });
-    await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.ESSENTIALS });
-  };
-
-  /**
-   * Set or replace a row's photo.
-   *
-   * The upload overwrites the object at `essentials-photos/{id}.jpg`, so
-   * there is never a second picture to clean up. The tile refreshes because
-   * image_updated_at changes, which changes the ?v= on the URL — that is what
-   * gets past the CDN.
-   */
-  const handlePhoto = async (item: EssentialItem) => {
-    const photo = await pickCatalogPhoto();
-    if (!photo) return;
-    setBusyPhotoId(item.id);
-    try {
-      await uploadCatalogPhoto(PHOTO_BUCKET.essentials, item.id, photo);
-      await refreshLists();
-    } catch (e) {
-      Alert.alert('Upload failed', e instanceof Error ? e.message : 'Unknown error');
-    } finally {
-      setBusyPhotoId(null);
-    }
-  };
-
-  const confirmRemovePhoto = (item: EssentialItem) => {
-    Alert.alert(
-      'Remove photo?',
-      `${item.name} will show the default icon on the customer menu.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: async () => {
-            setBusyPhotoId(item.id);
-            try {
-              await removeCatalogPhoto(PHOTO_BUCKET.essentials, item.id);
-              await refreshLists();
-            } catch (e) {
-              Alert.alert('Could not remove', e instanceof Error ? e.message : 'Unknown error');
-            } finally {
-              setBusyPhotoId(null);
-            }
-          },
-        },
-      ],
-    );
-  };
 
   const selectedCycle = cycles[cycleIdx] as any;
   const { data: items = [], isLoading } = useAllEssentials(selectedCycle?.id);
@@ -147,28 +81,6 @@ export function EssentialsCatalogManageScreen({ navigation }: { navigation: Admi
     const isEditingPrice = editingId === item.id;
     return (
       <View style={[styles.row, !item.is_active && styles.rowDim]}>
-        {/* Photo tile — tap to set or replace, long-press to remove.
-            Vendor-owned rows are excluded: their pictures must come from the
-            vendor through the review gate, not be published by us on their
-            behalf. Until that ships they show the fallback icon. */}
-        {!item.vendor_id && (
-          <TouchableOpacity
-            onPress={() => handlePhoto(item)}
-            onLongPress={() => item.image_path && confirmRemovePhoto(item)}
-            disabled={busyPhotoId === item.id}
-            activeOpacity={0.7}
-            style={[styles.thumbWrap, busyPhotoId === item.id && styles.thumbBusy]}
-          >
-            <CatalogPhotoThumb
-              bucket={PHOTO_BUCKET.essentials}
-              item={item}
-              size={THUMB}
-              requestPx={PHOTO_PX.admin}
-              fallbackIcon="camera-outline"
-            />
-          </TouchableOpacity>
-        )}
-
         <View style={styles.rowLeft}>
           <ThemedText variant="body" color="primary" style={styles.rowText} numberOfLines={1}>
             {item.name}
@@ -299,8 +211,6 @@ const styles = StyleSheet.create({
     borderBottomColor: Theme.colors.layout.divider,
   },
   rowDim: { opacity: 0.45 },
-  thumbWrap: { marginRight: Theme.spacing.md },
-  thumbBusy: { opacity: 0.4 },
   rowLeft: { flex: 1, marginRight: Theme.spacing.sm },
   rowText: { fontSize: B },
   price: { fontSize: P, marginTop: 6 },

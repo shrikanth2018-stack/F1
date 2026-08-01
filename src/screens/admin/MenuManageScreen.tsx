@@ -23,18 +23,9 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useQueryClient } from '@tanstack/react-query';
-import { QUERY_KEYS } from '../../utils/constants';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { EmptyState } from '../../components/EmptyState';
-import { CatalogPhotoThumb } from '../../components/CatalogPhotoThumb';
-import { PHOTO_BUCKET, PHOTO_PX } from '../../utils/catalogPhoto';
-import {
-  pickCatalogPhoto,
-  uploadCatalogPhoto,
-  removeCatalogPhoto,
-} from '../../utils/catalogPhotoUpload';
 import {
   useAllMenuItems,
   useUpdateMenuItem,
@@ -47,7 +38,6 @@ import type { AdminNavProp } from '../../navigation/types';
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
 const P = Theme.typography.sizes.body + 4;   // price text
-const THUMB = 48;                            // admin row tile, points
 
 /**
  * Parse a menu item's components from `ingredients`.
@@ -92,9 +82,7 @@ export function MenuManageScreen({ navigation }: { navigation: AdminNavProp }) {
   const [cycleIdx, setCycleIdx] = useState(0);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [priceInput, setPriceInput] = useState('');
-  const [busyPhotoId, setBusyPhotoId] = useState<number | null>(null);
 
-  const queryClient = useQueryClient();
   const updateItem = useUpdateMenuItem();
   const toggleItem = useToggleMenuItem();
 
@@ -120,55 +108,6 @@ export function MenuManageScreen({ navigation }: { navigation: AdminNavProp }) {
     setEditingId(null);
   };
 
-  /**
-   * Set or replace a row's photo.
-   *
-   * The upload overwrites the object at `menu-photos/{id}.jpg`, so there is
-   * never a second picture to clean up. React Query invalidation is what
-   * refreshes the tile — image_updated_at changes, which changes the ?v= on
-   * the URL, which is what gets past the CDN.
-   */
-  const handlePhoto = async (item: MenuItem) => {
-    const photo = await pickCatalogPhoto();
-    if (!photo) return;
-    setBusyPhotoId(item.id);
-    try {
-      await uploadCatalogPhoto(PHOTO_BUCKET.menu, item.id, photo);
-      await queryClient.invalidateQueries({ queryKey: ['admin_menu_items'] });
-      await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.MENU_ITEMS });
-    } catch (e) {
-      Alert.alert('Upload failed', e instanceof Error ? e.message : 'Unknown error');
-    } finally {
-      setBusyPhotoId(null);
-    }
-  };
-
-  const confirmRemovePhoto = (item: MenuItem) => {
-    Alert.alert(
-      'Remove photo?',
-      `${item.name} will show the default icon on the customer menu.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: async () => {
-            setBusyPhotoId(item.id);
-            try {
-              await removeCatalogPhoto(PHOTO_BUCKET.menu, item.id);
-              await queryClient.invalidateQueries({ queryKey: ['admin_menu_items'] });
-              await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.MENU_ITEMS });
-            } catch (e) {
-              Alert.alert('Could not remove', e instanceof Error ? e.message : 'Unknown error');
-            } finally {
-              setBusyPhotoId(null);
-            }
-          },
-        },
-      ],
-    );
-  };
-
   const handleToggle = (id: number, current: boolean) => {
     if (current) {
       Alert.alert(
@@ -190,28 +129,6 @@ export function MenuManageScreen({ navigation }: { navigation: AdminNavProp }) {
 
     return (
       <View style={[styles.row, !item.is_active && styles.rowDim]}>
-        {/* Photo tile — customer-facing MENU ITEMS only. This list also holds
-            stage-1 building blocks (is_customer_visible = false), which never
-            reach the customer menu, so a picture on one would be effort that
-            nobody ever sees. Tap to set or replace, long-press to remove. */}
-        {item.is_customer_visible && (
-          <TouchableOpacity
-            onPress={() => handlePhoto(item)}
-            onLongPress={() => item.image_path && confirmRemovePhoto(item)}
-            disabled={busyPhotoId === item.id}
-            activeOpacity={0.7}
-            style={[styles.thumbWrap, busyPhotoId === item.id && styles.thumbBusy]}
-          >
-            <CatalogPhotoThumb
-              bucket={PHOTO_BUCKET.menu}
-              item={item}
-              size={THUMB}
-              requestPx={PHOTO_PX.admin}
-              fallbackIcon="camera-outline"
-            />
-          </TouchableOpacity>
-        )}
-
         <View style={styles.rowLeft}>
           <ThemedText variant="body" color="primary" style={styles.rowText} numberOfLines={1}>
             {item.name}
@@ -367,8 +284,6 @@ const styles = StyleSheet.create({
     borderBottomColor: Theme.colors.layout.divider,
   },
   rowDim: { opacity: 0.45 },
-  thumbWrap: { marginRight: Theme.spacing.md },
-  thumbBusy: { opacity: 0.4 },
   rowLeft: { flex: 1, marginRight: Theme.spacing.sm },
   rowText: { fontSize: B },
   components: { fontSize: S, marginTop: 2 },

@@ -23,7 +23,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
-  Image,
   ScrollView,
   TouchableOpacity,
   TextInput,
@@ -33,12 +32,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { infoDialog } from '../../utils/confirmDialog';
-import {
-  pickCatalogPhoto,
-  uploadCatalogPhoto,
-  type PickedPhoto,
-} from '../../utils/catalogPhotoUpload';
-import { PHOTO_BUCKET } from '../../utils/catalogPhoto';
 import {
   useAddMenuItem,
   useAllMenuItems,
@@ -65,11 +58,6 @@ export function CreateMenuScreen({ navigation, route }: AdminScreenProps<'Create
   const [menuName, setMenuName] = useState('');
   const [menuPrice, setMenuPrice] = useState('');
   const [picked, setPicked] = useState<PickedItem[]>([]);
-  const [description, setDescription] = useState('');
-  // Held locally until Save: the storage path is keyed by the row id, which
-  // does not exist yet.
-  const [photo, setPhoto] = useState<PickedPhoto | null>(null);
-  const [uploading, setUploading] = useState(false);
 
   // Sync initial cycle from navigation param once cycles load
   useEffect(() => {
@@ -104,13 +92,6 @@ export function CreateMenuScreen({ navigation, route }: AdminScreenProps<'Create
     () => picked.reduce((sum, p) => sum + p.price * (parseInt(p.qty, 10) || 0), 0),
     [picked],
   );
-
-  const handlePickPhoto = async () => {
-    const p = await pickCatalogPhoto();
-    // null = permission refused or cancelled. Both are ordinary; keep any
-    // photo already chosen rather than clearing it.
-    if (p) setPhoto(p);
-  };
 
   const handleCycleToggle = () => {
     if (!cycles.length) return;
@@ -184,35 +165,8 @@ export function CreateMenuScreen({ navigation, route }: AdminScreenProps<'Create
         ingredients: recipe || undefined,
         // Stage 2 always produces a customer-facing row.
         is_customer_visible: true,
-        description: description.trim() || undefined,
       },
-      {
-        // The photo lives at a path keyed by the row id, so it can only be
-        // uploaded once the insert has returned one. Two steps behind one
-        // button press.
-        onSuccess: async (created) => {
-          const row = Array.isArray(created) ? created[0] : created;
-          if (photo && row?.id) {
-            setUploading(true);
-            try {
-              await uploadCatalogPhoto(PHOTO_BUCKET.menu, row.id, photo);
-            } catch (e) {
-              // The menu item itself saved — say so, and say what did not, so
-              // the admin knows to retry the photo from Menu Manager rather
-              // than creating the item a second time.
-              infoDialog(
-                'Menu item saved, photo failed',
-                `${name} was created without its picture. Add it from Menu Manager.\n\n${
-                  e instanceof Error ? e.message : 'Unknown error'
-                }`,
-              );
-            } finally {
-              setUploading(false);
-            }
-          }
-          navigation.goBack();
-        },
-      },
+      { onSuccess: () => navigation.goBack() },
     );
   };
 
@@ -250,49 +204,6 @@ export function CreateMenuScreen({ navigation, route }: AdminScreenProps<'Create
           onChangeText={setMenuName}
           returnKeyType="next"
         />
-
-        {/* Description — the line under the name on the customer's Home
-            screen. Optional; the row simply omits it when blank. */}
-        <TextInput
-          style={styles.input}
-          placeholder="Description  (shown to customers, optional)"
-          placeholderTextColor={Theme.colors.text.muted}
-          value={description}
-          onChangeText={setDescription}
-          returnKeyType="next"
-          multiline
-        />
-
-        {/* Photo — picked now, uploaded after Save returns the row id. */}
-        <View style={styles.photoRow}>
-          <TouchableOpacity onPress={handlePickPhoto} activeOpacity={0.75}>
-            {photo ? (
-              <Image source={{ uri: photo.uri }} style={styles.photoTile} resizeMode="cover" />
-            ) : (
-              <View style={[styles.photoTile, styles.photoEmpty]}>
-                <ThemedText variant="small" color="muted">Add photo</ThemedText>
-              </View>
-            )}
-          </TouchableOpacity>
-          <View style={styles.photoMeta}>
-            <TouchableOpacity onPress={handlePickPhoto} activeOpacity={0.7}>
-              <ThemedText variant="body" color="mint" style={styles.txt}>
-                {photo ? 'Change photo  ›' : 'Choose photo  ›'}
-              </ThemedText>
-            </TouchableOpacity>
-            {photo ? (
-              <TouchableOpacity onPress={() => setPhoto(null)} activeOpacity={0.7}>
-                <ThemedText variant="small" color="muted" style={styles.photoRemove}>
-                  Remove
-                </ThemedText>
-              </TouchableOpacity>
-            ) : (
-              <ThemedText variant="small" color="muted" style={styles.photoHint}>
-                Square crop. Shown on the customer menu.
-              </ThemedText>
-            )}
-          </View>
-        </View>
 
         {/* Combination price */}
         <TextInput
@@ -382,25 +293,19 @@ export function CreateMenuScreen({ navigation, route }: AdminScreenProps<'Create
         </View>
       </ScrollView>
 
-      {/* Save footer — the photo upload runs after the insert returns, so the
-          button stays busy through both steps rather than appearing done
-          while the picture is still going up. */}
+      {/* Save footer */}
       <TouchableOpacity
         style={styles.footer}
         onPress={handleSave}
-        disabled={addMenuItem.isPending || uploading}
+        disabled={addMenuItem.isPending}
         activeOpacity={0.7}
       >
         <ThemedText
           variant="body"
-          color={addMenuItem.isPending || uploading ? 'muted' : 'mint'}
+          color={addMenuItem.isPending ? 'muted' : 'mint'}
           style={styles.txt}
         >
-          {uploading
-            ? 'Uploading photo...'
-            : addMenuItem.isPending
-              ? 'Saving...'
-              : 'Save Menu  ›'}
+          {addMenuItem.isPending ? 'Saving...' : 'Save Menu  ›'}
         </ThemedText>
       </TouchableOpacity>
     </SafeAreaView>
@@ -434,29 +339,6 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     marginBottom: Theme.spacing.md,
   },
-
-  // ── Photo picker ──
-  photoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: Theme.spacing.md,
-    marginBottom: Theme.spacing.sm,
-  },
-  // Same 76pt tile the customer row uses, so what the admin approves here is
-  // the size they will actually see.
-  photoTile: {
-    width: 76,
-    height: 76,
-    borderRadius: Theme.components.inputRadius,
-    // Matches CatalogPhotoThumb so the admin previews the customer's exact tile.
-    borderWidth: 1,
-    borderColor: Theme.colors.layout.photoEdge,
-    backgroundColor: Theme.colors.background.secondary,
-  },
-  photoEmpty: { alignItems: 'center', justifyContent: 'center' },
-  photoMeta: { flex: 1, marginLeft: Theme.spacing.md },
-  photoHint: { fontSize: S, marginTop: 4 },
-  photoRemove: { fontSize: S, marginTop: 6 },
 
   input: {
     borderBottomWidth: StyleSheet.hairlineWidth,
