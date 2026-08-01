@@ -41,24 +41,37 @@ export function useAllMenuItems(cycleId?: number) {
  *             "Name:qty;Name:qty" recipe in `ingredients`
  * Omitting the flag keeps the DB default (TRUE), so every existing caller
  * behaves exactly as before.
+ *
+ * Returns the inserted row's id. A menu photo is stored at a path keyed by
+ * that id (`menu-photos/{id}.jpg`), so it cannot be uploaded until the row
+ * exists — CreateMenuScreen holds the picked image and attaches it in the
+ * onSuccess callback. Callers that ignore the return value are unaffected.
  */
 export function useAddMenuItem() {
   const bf = useBranchFilter();
-  return useSupabaseMutation<{
-    cycle_id: number;
-    name: string;
-    price: number;
-    ingredients?: string;
-    is_customer_visible?: boolean;
-    sort_order?: number;
-  }>(
+  return useSupabaseMutation<
+    {
+      cycle_id: number;
+      name: string;
+      price: number;
+      ingredients?: string;
+      is_customer_visible?: boolean;
+      sort_order?: number;
+      description?: string;
+    },
+    { id: number }
+  >(
     (item) =>
-      supabase.from('menu_items').insert({
-        ...item,
-        is_active: true,
-        sort_order: item.sort_order ?? 0,
-        branch_id: requireWriteBranch(bf),
-      }),
+      supabase
+        .from('menu_items')
+        .insert({
+          ...item,
+          is_active: true,
+          sort_order: item.sort_order ?? 0,
+          branch_id: requireWriteBranch(bf),
+        })
+        .select('id')
+        .single(),
     MENU_INVALIDATE,
   );
 }

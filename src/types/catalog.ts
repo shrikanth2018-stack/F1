@@ -8,8 +8,22 @@ export interface MenuItem {
    * grammar get_kitchen_aggregate parses. Empty on a building-block item.
    */
   ingredients: string | null;
-  image_url?: string;
-  description?: string;
+  /**
+   * Storage path of the item's one photo — `menu-photos/{id}.jpg`. NULL until
+   * an admin uploads one; the row then renders its Ionicon in the same tile
+   * so a part-photographed menu still lines up. Build a URL with
+   * `photoUrl` (src/utils/catalogPhoto.ts), never by string concatenation —
+   * the path is not a URL and the delivered image is resized on the fly.
+   *
+   * (This field and `description` below replace a declared-but-never-existing
+   * `image_url?: string`. Neither column was ever on the table, so the
+   * description branch in ItemRows.tsx had never once rendered.)
+   */
+  image_path?: string | null;
+  /** Stamped on every photo upload; used to bust the CDN cache. */
+  image_updated_at?: string | null;
+  /** Short customer-facing line under the name on the Home screen. */
+  description?: string | null;
   is_active: boolean;
   /**
    * FALSE = building-block item (a priced part, admin-only — never listed
@@ -30,6 +44,15 @@ export interface EssentialItem {
   description?: string | null;
   price: number;
   unit: string;
+  /**
+   * Storage path of the item's one photo — `essentials-photos/{id}.jpg`.
+   * NULL until an admin uploads one. Vendor-owned rows stay NULL until the
+   * vendor listing review gate ships: we do not publish a picture on a
+   * vendor's behalf. Build a URL with `photoUrl` (src/utils/catalogPhoto.ts).
+   */
+  image_path?: string | null;
+  /** Stamped on every photo upload; used to bust the CDN cache. */
+  image_updated_at?: string | null;
   /** NULL = 1stOne's own item. Set = sold by a third-party vendor. */
   vendor_id?: number | null;
   /** Trading name, attached client-side from the vendor_public view. */
