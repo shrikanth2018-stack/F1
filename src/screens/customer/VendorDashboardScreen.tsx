@@ -41,6 +41,7 @@ import { PHOTO_BUCKET, PHOTO_PX } from '../../utils/catalogPhoto';
 import {
   pickCatalogPhoto,
   uploadCatalogPhoto,
+  uploadPendingCatalogPhoto,
   removeCatalogPhoto,
 } from '../../utils/catalogPhotoUpload';
 import { infoDialog, confirmDialog } from '../../utils/confirmDialog';
@@ -57,7 +58,10 @@ import { useVendorZones } from '../../hooks/useVendors';
 import {
   useMyVendor,
   useMyVendorItems,
-  useSaveVendorItem,
+  useCreateDraftListing,
+  useSubmitListings,
+  useProposeListingChange,
+  useMyListingChanges,
   useToggleVendorItem,
   useVendorOrders,
   useMarkOrderReady,
@@ -100,9 +104,14 @@ export function VendorDashboardScreen({ navigation }: CustomerScreenProps<'Vendo
   // that is selling fine.
   const { data: sellingAreas = [] } = useVendorZones(vendorId);
 
-  const saveItem = useSaveVendorItem();
+  const createDraft = useCreateDraftListing();
+  const submitListings = useSubmitListings();
+  const proposeChange = useProposeListingChange();
   const toggleItem = useToggleVendorItem();
   const claim = useClaimVendorPayout();
+  // Open change requests, so an item already with the team says so rather
+  // than looking like an ordinary live listing.
+  const { data: openChanges = [] } = useMyListingChanges(vendorId);
 
   // New-item form
   const [name, setName] = useState('');
@@ -125,15 +134,29 @@ export function VendorDashboardScreen({ navigation }: CustomerScreenProps<'Vendo
   const suspended = vendor.status === 'suspended';
   const selectedCycle = cycles[cycleIdx];
 
+  const allItems = items.data ?? [];
+  // Rows that have never been sent, or came back. These are the only ones the
+  // "send for approval" action acts on.
+  const draftItems = allItems.filter(
+    (i) => i.listing_status === 'draft' || i.listing_status === 'rejected',
+  );
+  const changeByItem = new Map(openChanges.map((c) => [c.item_id, c]));
+
+  /**
+   * Create the listing as a DRAFT.
+   *
+   * It is not sent anywhere yet, and deliberately so: a photo is compulsory,
+   * and the photo lives at a path keyed by the row id, so the row has to exist
+   * before a picture can be attached to it. The vendor adds the picture, then
+   * sends one or several at once.
+   */
   const handleAddItem = async () => {
     if (!name.trim()) { infoDialog('Name required', 'What is this item called?'); return; }
     const p = parseFloat(price);
     if (!Number.isFinite(p) || p <= 0) { infoDialog('Price required', 'Enter the selling price.'); return; }
     if (!selectedCycle) { infoDialog('No delivery cycle', 'No cycles are available.'); return; }
     try {
-      await saveItem.mutateAsync({
-        vendorId: vendor.id,
-        branchId: vendor.branch_id,
+      await createDraft.mutateAsync({
         name: name.trim(),
         price: p,
         unit: unit.trim() || 'unit',
@@ -141,6 +164,7 @@ export function VendorDashboardScreen({ navigation }: CustomerScreenProps<'Vendo
         dailyCap: cap.trim() ? parseInt(cap, 10) : null,
       });
       setName(''); setPrice(''); setUnit(''); setCap('');
+      infoDialog('Added — now add a photo', 'Tap the tile next to it, then send it for approval.');
     } catch (e) {
       infoDialog('Could not save', getErrorMessage(e));
     }
@@ -165,12 +189,38 @@ export function VendorDashboardScreen({ navigation }: CustomerScreenProps<'Vendo
    * The picture reaches customers as soon as it uploads. Review is coming with
    * the full listing-approval flow, not bolted onto photos alone.
    */
+  /**
+   * Set or change an item's picture.
+   *
+   * Which key it lands on depends on whether the item is already selling. A
+   * draft writes straight to the live key — nobody is looking at it yet. A
+   * listing that IS live gets its proposed photo parked at the pending key and
+   * raised as a change request, so the picture customers are looking at right
+   * now does not change until we approve the new one.
+   */
   const handleItemPhoto = async (item: VendorItem) => {
+    const isLive = item.listing_status === 'approved';
     setBusyPhotoId(item.id);
     try {
       const photo = await pickCatalogPhoto();
       // Cancelled, or permission refused. Ordinary — say nothing.
       if (!photo) return;
+
+      if (isLive) {
+        await uploadPendingCatalogPhoto(item.id, photo);
+        await proposeChange.mutateAsync({
+          itemId: item.id,
+          proposed: {},
+          photoPending: true,
+        });
+        await refreshItems();
+        infoDialog(
+          'Sent for approval',
+          `${item.name} keeps its current picture until the team approves the new one.`,
+        );
+        return;
+      }
+
       await uploadCatalogPhoto(PHOTO_BUCKET.essentials, item.id, photo);
       await refreshItems();
     } catch (e) {
@@ -181,9 +231,20 @@ export function VendorDashboardScreen({ navigation }: CustomerScreenProps<'Vendo
   };
 
   const handleRemoveItemPhoto = async (item: VendorItem) => {
+    // A live listing must always have a picture — that is the rule the submit
+    // and the approval both enforce — so removal is only offered before it
+    // goes live. Changing it is the live-item path, above.
+    if (item.listing_status === 'approved') {
+      infoDialog(
+        'Photo required',
+        `${item.name} is on the customer menu, and every listing there needs a picture. Tap the photo to propose a different one instead.`,
+      );
+      return;
+    }
+
     const ok = await confirmDialog({
       title: 'Remove photo?',
-      message: `${item.name} will show a plain icon to customers instead.`,
+      message: `${item.name} cannot be sent for approval without one.`,
       confirmLabel: 'Remove',
       destructive: true,
     });
@@ -196,13 +257,47 @@ export function VendorDashboardScreen({ navigation }: CustomerScreenProps<'Vendo
       if (!fileRemoved) {
         infoDialog(
           'Photo removed',
-          `${item.name} no longer shows a picture to customers. The image file could not be deleted — setting a new photo for this item will replace it.`,
+          `${item.name} no longer has a picture. The image file could not be deleted — setting a new photo for this item will replace it.`,
         );
       }
     } catch (e) {
       infoDialog('Could not remove', getErrorMessage(e));
     } finally {
       setBusyPhotoId(null);
+    }
+  };
+
+  /** Send every ready draft for approval in one go. */
+  const handleSubmitDrafts = async () => {
+    const ready = draftItems.filter((i) => i.image_path);
+    const missing = draftItems.filter((i) => !i.image_path);
+
+    if (ready.length === 0) {
+      infoDialog(
+        'Add a photo first',
+        'Every listing needs a picture before it can go for approval. Tap the tile next to an item to add one.',
+      );
+      return;
+    }
+
+    const ok = await confirmDialog({
+      title: `Send ${ready.length} ${ready.length === 1 ? 'item' : 'items'} for approval?`,
+      message: missing.length
+        ? `${missing.map((i) => i.name).join(', ')} will stay here — still no photo.`
+        : 'The team will be notified. You will see the result here.',
+      confirmLabel: 'Send',
+    });
+    if (!ok) return;
+
+    try {
+      const n = await submitListings.mutateAsync(ready.map((i) => i.id));
+      await refreshItems();
+      infoDialog(
+        'Sent',
+        `${n} ${n === 1 ? 'item is' : 'items are'} with the team. They go on the customer menu once approved.`,
+      );
+    } catch (e) {
+      infoDialog('Could not send', getErrorMessage(e));
     }
   };
 
@@ -359,48 +454,97 @@ export function VendorDashboardScreen({ navigation }: CustomerScreenProps<'Vendo
           {/* Long-press is a phone gesture and this screen is used in a
               browser too, so the affordance is spelled out rather than left
               to be discovered. */}
-          {(items.data ?? []).length > 0 && !suspended ? (
+          {allItems.length > 0 && !suspended ? (
             <ThemedText variant="small" color="muted" style={styles.hint}>
-              Tap a picture to add or change it. Press and hold to remove it. A clear,
-              square photo of the actual product sells best.
+              Every listing needs a photo — tap a tile to add or change one. New items
+              and changes to live ones are checked by the team before customers see them.
+              Switching an item off is instant.
             </ThemedText>
           ) : null}
 
-          {(items.data ?? []).map((it: VendorItem) => (
-            <View key={it.id} style={styles.row}>
-              <TouchableOpacity
-                onPress={() => handleItemPhoto(it)}
-                onLongPress={() => it.image_path && handleRemoveItemPhoto(it)}
-                disabled={suspended || busyPhotoId === it.id}
-                activeOpacity={0.7}
-                style={[styles.thumbWrap, busyPhotoId === it.id && styles.thumbBusy]}
-              >
-                <CatalogPhotoThumb
-                  bucket={PHOTO_BUCKET.essentials}
-                  item={it}
-                  size={THUMB}
-                  requestPx={PHOTO_PX.admin}
-                  fallbackIcon="camera-outline"
+          {allItems.map((it: VendorItem) => {
+            const status = it.listing_status ?? 'approved';
+            const isLive = status === 'approved';
+            const openChange = changeByItem.get(it.id);
+            return (
+              <View key={it.id} style={styles.row}>
+                <TouchableOpacity
+                  onPress={() => handleItemPhoto(it)}
+                  onLongPress={() => it.image_path && handleRemoveItemPhoto(it)}
+                  disabled={suspended || busyPhotoId === it.id}
+                  activeOpacity={0.7}
+                  style={[styles.thumbWrap, busyPhotoId === it.id && styles.thumbBusy]}
+                >
+                  <CatalogPhotoThumb
+                    bucket={PHOTO_BUCKET.essentials}
+                    item={it}
+                    size={THUMB}
+                    requestPx={PHOTO_PX.admin}
+                    fallbackIcon="camera-outline"
+                  />
+                </TouchableOpacity>
+                <View style={styles.flex1}>
+                  <ThemedText variant="body" color={it.is_active ? 'primary' : 'muted'} style={styles.txt}>
+                    {it.name}
+                  </ThemedText>
+                  <ThemedText variant="small" color="muted" style={styles.sub}>
+                    {formatPriceShort(it.price)}{it.unit ? ` / ${it.unit}` : ''}
+                    {it.daily_cap ? ` · max ${it.daily_cap}/day` : ''}
+                  </ThemedText>
+
+                  {/* Where this listing stands. Silence would leave a vendor
+                      unable to tell "waiting on us" from "sold nothing today". */}
+                  {status === 'draft' ? (
+                    <ThemedText variant="small" color="warning" style={styles.sub}>
+                      {it.image_path ? 'Ready to send' : 'Add a photo to send this'}
+                    </ThemedText>
+                  ) : null}
+                  {status === 'pending' ? (
+                    <ThemedText variant="small" color="warning" style={styles.sub}>
+                      With the team for approval
+                    </ThemedText>
+                  ) : null}
+                  {status === 'rejected' ? (
+                    <ThemedText variant="small" color="warning" style={styles.sub}>
+                      Sent back{it.rejection_reason ? ` — ${it.rejection_reason}` : ''}
+                    </ThemedText>
+                  ) : null}
+                  {isLive && openChange ? (
+                    <ThemedText variant="small" color="warning" style={styles.sub}>
+                      Change waiting for approval — customers still see the current version
+                    </ThemedText>
+                  ) : null}
+                </View>
+
+                {/* On/off stays instant at every status — that is how a vendor
+                    stops taking orders the moment they run out. A listing that
+                    is not approved yet cannot be switched on at all. */}
+                <Switch
+                  value={it.is_active}
+                  disabled={suspended || !isLive}
+                  onValueChange={(v) => toggleItem.mutate({ id: it.id, isActive: v })}
+                  trackColor={{ true: Theme.colors.status.success, false: Theme.colors.background.tertiary }}
+                  thumbColor={Theme.colors.text.primary}
                 />
-              </TouchableOpacity>
-              <View style={styles.flex1}>
-                <ThemedText variant="body" color={it.is_active ? 'primary' : 'muted'} style={styles.txt}>
-                  {it.name}
-                </ThemedText>
-                <ThemedText variant="small" color="muted" style={styles.sub}>
-                  {formatPriceShort(it.price)}{it.unit ? ` / ${it.unit}` : ''}
-                  {it.daily_cap ? ` · max ${it.daily_cap}/day` : ''}
-                </ThemedText>
               </View>
-              <Switch
-                value={it.is_active}
-                disabled={suspended}
-                onValueChange={(v) => toggleItem.mutate({ id: it.id, isActive: v })}
-                trackColor={{ true: Theme.colors.status.success, false: Theme.colors.background.tertiary }}
-                thumbColor={Theme.colors.text.primary}
-              />
-            </View>
-          ))}
+            );
+          })}
+
+          {/* Batch submit — one action for however many are ready. */}
+          {!suspended && draftItems.length > 0 ? (
+            <TouchableOpacity
+              onPress={handleSubmitDrafts}
+              disabled={submitListings.isPending}
+              style={styles.inlineAction}
+              activeOpacity={0.7}
+            >
+              <ThemedText variant="body" color="mint" style={styles.txt}>
+                {submitListings.isPending
+                  ? 'Sending…'
+                  : `Send ${draftItems.length} ${draftItems.length === 1 ? 'item' : 'items'} for approval  ›`}
+              </ThemedText>
+            </TouchableOpacity>
+          ) : null}
           {items.error ? (
             <ErrorRetry message="Could not load your items" onRetry={items.refetch} />
           ) : (items.data ?? []).length === 0 && !items.isLoading ? (
@@ -425,9 +569,9 @@ export function VendorDashboardScreen({ navigation }: CustomerScreenProps<'Vendo
                 <TextInput style={[styles.input, styles.flex1]} placeholder="Unit (kg, litre)" placeholderTextColor={Theme.colors.text.muted} value={unit} onChangeText={setUnit} />
               </View>
               <TextInput style={styles.input} placeholder="Max per day (optional)" placeholderTextColor={Theme.colors.text.muted} value={cap} onChangeText={setCap} keyboardType="numeric" />
-              <TouchableOpacity onPress={handleAddItem} disabled={saveItem.isPending} style={styles.inlineAction}>
+              <TouchableOpacity onPress={handleAddItem} disabled={createDraft.isPending} style={styles.inlineAction}>
                 <ThemedText variant="body" color="mint" style={styles.txt}>
-                  {saveItem.isPending ? 'Saving…' : 'Add item  ›'}
+                  {createDraft.isPending ? 'Saving…' : 'Add item  ›'}
                 </ThemedText>
               </TouchableOpacity>
             </>

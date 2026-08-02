@@ -210,7 +210,7 @@ export async function buildAuthoritativeOrder(args: BuildArgs): Promise<BuildRes
     const ids = essInputs.map((i) => i.item_id);
     const { data: rows, error } = await supabase
       .from('essentials_catalog')
-      .select('id, name, price, is_active, cycle_id, vendor_id, daily_cap')
+      .select('id, name, price, is_active, cycle_id, vendor_id, daily_cap, listing_status')
       .in('id', ids);
     if (error) return { ok: false, status: 500, error: error.message };
     const map = new Map<number, any>((rows ?? []).map((r: any) => [r.id, r]));
@@ -238,6 +238,19 @@ export async function buildAuthoritativeOrder(args: BuildArgs): Promise<BuildRes
     for (const inp of essInputs) {
       const e = map.get(inp.item_id);
       if (!e || !e.is_active) {
+        return { ok: false, status: 400, error: `An item in your cart is no longer available.` };
+      }
+      // A vendor listing reaches customers only once an admin approves it.
+      // RLS hides an unapproved one while BROWSING, but this builder runs with
+      // the service-role key and bypasses RLS entirely — without this a
+      // hand-crafted cart could buy a draft, a listing still awaiting review,
+      // or one we rejected. Same shape as the vendor-zone check above: the
+      // rule exists twice on purpose. Change one, change the other
+      // (vendor_listing_approval.sql).
+      //
+      // COALESCE, not a bare comparison: rows written before that migration —
+      // and every 1stOne row, which is never gated — must keep selling.
+      if ((e.listing_status ?? 'approved') !== 'approved') {
         return { ok: false, status: 400, error: `An item in your cart is no longer available.` };
       }
       if (e.cycle_id == null) {

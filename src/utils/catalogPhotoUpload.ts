@@ -44,7 +44,9 @@ import { supabase } from '../api/supabaseClient';
 import { captureError } from './sentry';
 import {
   photoPath,
+  pendingPhotoPath,
   objectKeyFromPath,
+  PHOTO_BUCKET,
   ALLOWED_PHOTO_MIME,
   MAX_PHOTO_BYTES,
   base64ByteLength,
@@ -55,6 +57,9 @@ import {
 // Web downscales via canvas because the picker ignores `quality` there;
 // native is a pass-through. See either file for the full reasoning.
 import { resizeForUpload } from './imageResize';
+// Square crop. Pass-through on native (the OS cropper already ran); opens the
+// crop dialog on web, where the picker has no crop step at all.
+import { cropToSquare } from './photoCrop';
 
 export type { PickedPhoto } from './catalogPhoto';
 
@@ -166,13 +171,44 @@ export async function pickCatalogPhoto(): Promise<PickedPhoto | null> {
   const asset = result.assets?.[0];
   if (result.canceled || !asset?.base64) return null;
 
-  const photo = await resizeForUpload({
+  // Size is checked HERE, before anything decodes the file, and again at the
+  // end once the crop and resize have had their say.
+  //
+  // The final check is the one that decides what may be uploaded; this one
+  // exists so a 40 MB file is refused in a moment instead of being drawn into
+  // a canvas first. Decoding a file that large is where a browser tab visibly
+  // hangs, and the admin's only clue would be a frozen form.
+  //
+  // The ceiling is generous on purpose: crop and resize normally bring a big
+  // photo well under the limit, so refusing early on the RAW size would reject
+  // pictures that would have been perfectly fine. 4x the bucket cap only
+  // catches files no amount of resizing would rescue.
+  const rawBytes = base64ByteLength(asset.base64);
+  if (rawBytes > MAX_PHOTO_BYTES * 4) {
+    throw new Error(
+      `That picture is ${formatMb(rawBytes)}, which is far too large to work with. ` +
+        'Please choose one under 8 MB, or export it at a smaller size first.',
+    );
+  }
+
+  // ── crop → resize → validate ──
+  //
+  // Crop first, and always to a square. On native the OS cropper has already
+  // run and this is a pass-through; on web it opens PhotoCropHost, because the
+  // web picker ignores allowsEditing entirely. Cropping BEFORE the resize
+  // matters: resizing first would spend quality on pixels about to be
+  // discarded, and would cap the crop's usable resolution.
+  const cropped = await cropToSquare({
     uri: asset.uri,
     base64: asset.base64,
     // The web picker reports the file's real type; native reports the type it
     // re-encoded to. Falling back to JPEG only when neither said anything.
     mimeType: asset.mimeType || 'image/jpeg',
   });
+  // Backed out of the crop. Same as cancelling the picker — say nothing.
+  if (!cropped) return null;
+
+  const photo = await resizeForUpload(cropped);
 
   assertUploadablePhoto(photo);
   return photo;
@@ -227,6 +263,70 @@ export async function uploadCatalogPhoto(
   // so without this the picture uploads and the item silently keeps the old
   // one (or none at all).
   if (!data?.length) throw new Error(NO_ROW_MESSAGE);
+}
+
+/**
+ * Upload a PROPOSED replacement photo for a live listing.
+ *
+ * Writes to `pending/{id}.jpg` and deliberately does NOT touch the row: the
+ * item is still selling with its current picture, and that must not change
+ * until an admin approves. `image_path` already points at the live key, so
+ * there is nothing to update — approval promotes the object instead.
+ */
+export async function uploadPendingCatalogPhoto(
+  itemId: number,
+  photo: PickedPhoto,
+): Promise<void> {
+  assertUploadablePhoto(photo);
+
+  const bucket = PHOTO_BUCKET.essentials;
+  const key = objectKeyFromPath(bucket, pendingPhotoPath(itemId));
+
+  const { error } = await supabase.storage
+    .from(bucket)
+    .upload(key, decode(photo.base64), {
+      contentType: photo.mimeType,
+      upsert: true,
+      cacheControl: String(PHOTO_CACHE_SECONDS),
+    });
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * Move an approved photo from the pending key to the live one.
+ *
+ * Called BEFORE `admin_review_listing_change`, never after. `image_updated_at`
+ * is the CDN cache-buster, so stamping it while the old bytes are still at the
+ * live key publishes a fresh URL pointing at the previous picture — and the
+ * cache then holds that for its full 30-day lifetime. Bytes first, stamp
+ * second.
+ *
+ * `move` rather than copy-then-delete: one call, and it cannot leave both.
+ */
+export async function promotePendingPhoto(itemId: number): Promise<void> {
+  const bucket = PHOTO_BUCKET.essentials;
+  const from = objectKeyFromPath(bucket, pendingPhotoPath(itemId));
+  const to = objectKeyFromPath(bucket, photoPath(bucket, itemId));
+
+  const { error } = await supabase.storage.from(bucket).move(from, to);
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * Throw away a proposed photo that was rejected, or that has been superseded.
+ *
+ * Best-effort and never throws: the decision itself is already recorded, and a
+ * leftover object at the pending key is invisible to customers and overwritten
+ * by the vendor's next proposal. Reported so it is not simply lost.
+ */
+export async function discardPendingPhoto(itemId: number): Promise<void> {
+  const bucket = PHOTO_BUCKET.essentials;
+  const key = objectKeyFromPath(bucket, pendingPhotoPath(itemId));
+
+  const { error } = await supabase.storage.from(bucket).remove([key]);
+  if (error) {
+    captureError(new Error(`pending photo not discarded: ${error.message}`), { itemId, key });
+  }
 }
 
 /** What actually happened when a photo was removed. */

@@ -26,6 +26,7 @@ import { RootNavigator } from './src/navigation/RootNavigator';
 import { OfflineBanner } from './src/components/OfflineBanner';
 import { LoadingOverlay } from './src/components/LoadingOverlay';
 import { DialogHost } from './src/components/DialogHost';
+import { PhotoCropHost } from './src/components/PhotoCropHost';
 import { useUIStore } from './src/store/uiStore';
 import { useOTAUpdates } from './src/hooks/useOTAUpdates';
 import { QUERY_STALE_TIME } from './src/utils/constants';
@@ -104,6 +105,9 @@ function AppContent() {
       <RootNavigator />
       <LoadingOverlay visible={isGlobalLoading} message={globalLoadingMessage} />
       <DialogHost />
+      {/* Square-crop dialog for catalogue photos. Renders nothing on native,
+          where expo-image-picker already runs the OS cropper. */}
+      <PhotoCropHost />
     </>
   );
 }

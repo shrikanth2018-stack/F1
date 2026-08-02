@@ -4,33 +4,87 @@
  * Platform split, same convention as PinMap / ZoneMap: `imageResize.ts` is the
  * web build, this is native.
  *
- * NATIVE DOES NOT RESIZE — deliberately, and this is a pass-through.
+ * This file used to be an honest no-op. `expo-image-picker`'s `quality: 0.6`
+ * re-encodes at pick time but does NOT reduce pixel dimensions, so a phone
+ * photo landed in the bucket at 1–2 MB — and proper resizing needs
+ * `expo-image-manipulator`, a native module that cannot ship over the air.
+ * That module is now a dependency (added in the same change as web cropping,
+ * which is why a store release was worth cutting), so this does the real work.
  *
- * On native, `expo-image-picker` already honours `quality: 0.6`, so the file
- * is re-encoded at pick time; what it does NOT do is reduce pixel dimensions,
- * which is why an upload from a phone lands around 1-2 MB rather than the
- * ~120 KB it could be. Fixing that needs `expo-image-manipulator`, a native
- * module — adding it means a new binary and a Play Store release, and cannot
- * ship over the air. That trade was made deliberately: the customer never
- * downloads the original (the storage render endpoint serves a ~6 KB
- * thumbnail), so the only cost is storage nobody notices at this catalogue
- * size.
+ * WIDTH ONLY, deliberately. Passing both dimensions would stretch anything
+ * that is not already square; passing width alone lets the library derive the
+ * height and preserve the ratio. The OS cropper has already squared the image
+ * by this point — `allowsEditing: true, aspect: [1, 1]` — so in practice the
+ * result IS square, but a resize that only stays correct because of an
+ * assumption elsewhere is a trap for whoever changes the picker next.
  *
- * There is no canvas here, so the web approach does not transfer.
+ * Constants match the web build on purpose. Two platforms producing visibly
+ * different uploads for the same photo is the thing this split exists to
+ * avoid, not to cause.
  *
- * WHEN THE NEXT NATIVE BUILD HAPPENS: add expo-image-manipulator and
- * implement this properly, matching the web constants (1000px longest edge,
- * JPEG quality 0.7). Until then the honest thing is to do nothing rather than
- * pretend — a silently-ineffective resize would be worse than none.
- *
- * Passing the photo through unchanged includes its `mimeType`. That is
- * correct here and not an oversight: nothing in this file re-encodes, so
- * whatever the picker reported is still what the bytes are. The web build,
- * which does re-encode, is the one that has to restamp it.
+ * JPEG, not WebP. The storage render endpoint transcodes to WebP on delivery
+ * regardless of what is stored (verified: a 46 KB JPEG original is served as
+ * 5.3 KB WebP at width=240), so converting here would save bucket space and
+ * change nothing a customer experiences — and `SaveFormat.WEBP` is
+ * Android-only, so it would also make the two platforms diverge for no gain.
  */
 
-import type { PickedPhoto } from './catalogPhoto';
+import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
+import { ALLOWED_PHOTO_MIME, type PickedPhoto } from './photoFormat';
 
+/**
+ * Longest edge, in pixels, after downscaling. Matches imageResize.ts.
+ *
+ * The largest surface that renders a catalogue photo asks the render endpoint
+ * for 240px. 1000 leaves generous headroom for a future larger view without
+ * storing anything near the original.
+ */
+const MAX_EDGE = 1000;
+
+/** JPEG quality for the re-encode. Matches imageResize.ts. */
+const QUALITY = 0.7;
+
+/**
+ * Downscale `photo` to at most MAX_EDGE on its longest side and re-encode.
+ *
+ * Returns the ORIGINAL photo unchanged if anything goes wrong. A failed
+ * resize must never block an admin or a vendor from setting a picture — the
+ * worst case is then the previous behaviour (a larger upload), not a broken
+ * screen. The size ceiling in catalogPhotoUpload still catches anything the
+ * bucket would refuse outright.
+ */
 export async function resizeForUpload(photo: PickedPhoto): Promise<PickedPhoto> {
-  return photo;
+  try {
+    const rendered = await ImageManipulator.manipulate(photo.uri)
+      .resize({ width: MAX_EDGE })
+      .renderAsync();
+
+    const result = await rendered.saveAsync({
+      compress: QUALITY,
+      format: SaveFormat.JPEG,
+      base64: true,
+    });
+
+    if (!result.base64) return photo;
+
+    // Never hand back something LARGER than what we were given. A photo
+    // already smaller than MAX_EDGE is not downscaled, so this re-encode can
+    // inflate an already-optimised file — in that case the original is the
+    // better upload.
+    //
+    // Skipped when the original is a format the bucket will not accept: the
+    // re-encoded JPEG is then the only version that can be uploaded at all,
+    // so size stops being the deciding factor. Same rule as the web build.
+    const originalIsUploadable = ALLOWED_PHOTO_MIME.includes(photo.mimeType);
+    if (originalIsUploadable && result.base64.length >= photo.base64.length) {
+      return photo;
+    }
+
+    // The re-encode is always JPEG here, whatever went in, so the type has to
+    // be restamped — otherwise the upload would declare the ORIGINAL type for
+    // bytes that are no longer in it.
+    return { uri: result.uri, base64: result.base64, mimeType: 'image/jpeg' };
+  } catch {
+    return photo;
+  }
 }

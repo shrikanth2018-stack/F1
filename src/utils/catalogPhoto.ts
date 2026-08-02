@@ -20,11 +20,15 @@
  * stale photo.
  *
  * Delivery goes through the storage RENDER endpoint, not the raw object, so
- * the phone downloads a thumbnail rather than the upload. Measured on this
- * project: a 48 KB source is served as 6.4 KB WebP at width=240. The admin
- * uploader compresses but does not resize (that needs expo-image-manipulator,
- * a native module — see §9), so originals land around 1-2 MB. Customers never
- * fetch them.
+ * the phone downloads a thumbnail rather than the upload. Measured against
+ * production: a 46 KB JPEG original is served as 5.3 KB WebP at width=240,
+ * 2.9 KB at width=150. WebP is automatic — Supabase negotiates on the Accept
+ * header and falls back to JPEG for anything that cannot take it, so there is
+ * no format handling to do here.
+ *
+ * Uploads are cropped square and downscaled to 1000px on BOTH platforms now
+ * (photoCrop.ts + imageResize.*), so stored originals are ~120 KB rather than
+ * the 1-2 MB they used to be.
  *
  * Path, not URL, is what's stored on the row — same reason `assetUrl` exists
  * in ./assets: no project-ref in code or data. It also lets one stored photo
@@ -32,6 +36,16 @@
  */
 
 import { supabase } from '../api/supabaseClient';
+
+// The picked-photo shape and the format/size limits live in a leaf module with
+// no imports, so the resize builds and the crop dialog can use them without
+// dragging in the Supabase client. Re-exported so existing imports still work.
+export {
+  ALLOWED_PHOTO_MIME,
+  MAX_PHOTO_BYTES,
+  base64ByteLength,
+  type PickedPhoto,
+} from './photoFormat';
 
 /**
  * Storage buckets, one per catalogue.
@@ -49,54 +63,23 @@ export const PHOTO_BUCKET = {
 
 export type PhotoBucket = (typeof PHOTO_BUCKET)[keyof typeof PHOTO_BUCKET];
 
-/**
- * A picked-but-not-yet-uploaded photo. Held in state until the row exists.
- *
- * Lives here rather than in catalogPhotoUpload.ts because imageResize.ts needs
- * it too, and that file is imported BY the uploader — declaring it there would
- * make the two modules import each other.
- */
-export interface PickedPhoto {
-  /** Local file URI — for previewing before upload. */
-  uri: string;
-  /** Base64 payload, required because RN has no File/Blob to hand Supabase. */
-  base64: string;
-  /**
-   * Real content type of `base64`.
-   *
-   * Carried from the picker rather than assumed. This used to be hardcoded to
-   * image/jpeg at upload, which was a lie whenever the web canvas re-encode
-   * bailed out and passed the original bytes straight through — a PNG or,
-   * worse, a HEIC would land in the bucket labelled JPEG. The bucket's MIME
-   * allowlist only checks the DECLARED type, so it sailed past, and the render
-   * endpoint then refused to transform it.
-   */
-  mimeType: string;
-}
-
-/**
- * Formats the buckets accept. Mirrors `allowed_mime_types` in
- * menu_item_photos.sql / essentials_photos.sql — the storage layer is the real
- * gate, this copy exists so the admin gets a sentence instead of a 400.
- */
-export const ALLOWED_PHOTO_MIME: readonly string[] = [
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-];
-
-/** Mirrors `file_size_limit` on both buckets (8 MB). Same reason as above. */
-export const MAX_PHOTO_BYTES = 8 * 1024 * 1024;
-
-/** Decoded size of a base64 payload, without allocating it. */
-export function base64ByteLength(base64: string): number {
-  const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0;
-  return Math.max(0, Math.floor((base64.length * 3) / 4) - padding);
-}
-
 /** Storage object key for an item's photo. Fixed extension on purpose. */
 export function photoPath(bucket: PhotoBucket, itemId: number): string {
   return `${bucket}/${itemId}.jpg`;
+}
+
+/**
+ * Where a PROPOSED replacement photo waits while an admin reviews it.
+ *
+ * A vendor editing a live listing must not overwrite the picture customers
+ * are looking at right now — the whole point of gating an edit is that the
+ * current version keeps selling untouched. So a proposed photo goes to a
+ * second key and is moved into place only on approval.
+ *
+ * Essentials only: the food menu has no vendor and no review step.
+ */
+export function pendingPhotoPath(itemId: number): string {
+  return `${PHOTO_BUCKET.essentials}/pending/${itemId}.jpg`;
 }
 
 /**

@@ -32,6 +32,7 @@ import { useRealtimeOrders } from '../../hooks/useRealtimeOrders';
 import { useAdminStats } from '../../hooks/useAdminStats';
 import { useBranchFilter } from '../../hooks/useBranchFilter';
 import { useBranches } from '../../hooks/useBranches';
+import { usePendingListingCount } from '../../hooks/useVendorListingReview';
 import { useBranchStore } from '../../store/branchStore';
 import { confirmDialog } from '../../utils/confirmDialog';
 import { assetUrl } from '../../utils/assets';
@@ -47,6 +48,29 @@ const MS = Theme.typography.sizes.small + 2;   // manage section label
 /** SettingsRow pre-wired with Manage-tab font size */
 function AdminRow(props: React.ComponentProps<typeof SettingsRow>) {
   return <SettingsRow {...props} labelSize={MR} />;
+}
+
+/**
+ * Vendor listings row, carrying its own waiting count.
+ *
+ * The count is the point: a vendor whose goods are sitting unapproved has no
+ * way to chase it, and the push that announced it is long gone from the
+ * notification shade. Without a number here the queue is invisible until
+ * someone thinks to look.
+ *
+ * Silent when empty — a row reading "0 waiting" is noise on a screen that is
+ * already a long list.
+ */
+function VendorListingsRow({ onPress }: { onPress: () => void }) {
+  const waiting = usePendingListingCount();
+  return (
+    <AdminRow
+      label="Vendor Listings"
+      subtitle={waiting > 0 ? `${waiting} waiting for approval` : undefined}
+      showChevron
+      onPress={onPress}
+    />
+  );
 }
 
 // ── Branch Row — settings-style row inside Manage tab ───
@@ -174,6 +198,7 @@ const ALL_MANAGE_ROWS: ManageRowDef[] = [
   { label: 'Add Customer', screen: 'AdminCreateCustomer' },
   { label: 'Customer Lookup', screen: 'AdminCustomerLookup' },
   { label: 'Vendors', screen: 'AdminVendorManager' },
+  { label: 'Vendor Listings', screen: 'AdminVendorListings' },
   { label: 'Create Order (Bulk / B2B)', screen: 'AdminCreateOrder' },
   { label: 'Manage Running Orders', screen: 'AdminOrders' },
   { label: 'Manage Running Subscriptions', screen: 'AdminSubscriptions' },
@@ -254,6 +279,7 @@ function ManageTab() {
           <AdminRow label="Add Customer" showChevron onPress={() => navigation.navigate('AdminCreateCustomer')} />
           <AdminRow label="Customer Lookup" showChevron onPress={() => navigation.navigate('AdminCustomerLookup')} />
           <AdminRow label="Vendors" showChevron onPress={() => navigation.navigate('AdminVendorManager')} />
+          <VendorListingsRow onPress={() => navigation.navigate('AdminVendorListings')} />
 
           <Divider />
 

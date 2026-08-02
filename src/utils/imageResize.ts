@@ -12,19 +12,23 @@
  * 4-8 MB, and the bucket cap is 8 MB — past that the upload fails with a
  * storage error that says nothing useful about size.
  *
- * On web we can fix that with a canvas, which is plain DOM: no native module,
- * so it ships in the ordinary web bundle. That leaves web with BETTER
- * compression than native, where `quality` re-encodes but nothing resizes —
- * proper native resizing needs expo-image-manipulator and a store release
- * (see §9). Worth remembering when that native build eventually happens: the
- * target numbers below are the ones to match.
+ * On web we fix that with a canvas, which is plain DOM: no native module, so
+ * it ships in the ordinary web bundle.
+ *
+ * Native now downscales too, via expo-image-manipulator — the constants in
+ * both files are the same numbers on purpose, so the two platforms cannot
+ * quietly produce different uploads for the same photo. Change one, change the
+ * other.
+ *
+ * This runs AFTER the square crop (photoCrop.ts), so on web the input is
+ * already a cropped square rather than whatever came off disk.
  *
  * The customer never sees this file's output at full size anyway — the
- * storage render endpoint serves a ~6 KB thumbnail. This is purely about not
- * pushing megabytes into the bucket for no reason.
+ * storage render endpoint serves a ~5 KB WebP thumbnail. This is purely about
+ * not pushing megabytes into the bucket for no reason.
  */
 
-import { ALLOWED_PHOTO_MIME, type PickedPhoto } from './catalogPhoto';
+import { ALLOWED_PHOTO_MIME, type PickedPhoto } from './photoFormat';
 
 /**
  * Longest edge, in pixels, after downscaling.

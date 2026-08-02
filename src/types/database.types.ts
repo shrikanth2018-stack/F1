@@ -708,9 +708,14 @@ export type Database = {
           image_path: string | null
           image_updated_at: string | null
           is_active: boolean | null
+          listing_status: string
           name: string
           price: number
+          rejection_reason: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
           sort_order: number | null
+          submitted_at: string | null
           unit: string | null
           updated_at: string | null
           vendor_cost: number | null
@@ -726,9 +731,14 @@ export type Database = {
           image_path?: string | null
           image_updated_at?: string | null
           is_active?: boolean | null
+          listing_status?: string
           name: string
           price: number
+          rejection_reason?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
           sort_order?: number | null
+          submitted_at?: string | null
           unit?: string | null
           updated_at?: string | null
           vendor_cost?: number | null
@@ -744,9 +754,14 @@ export type Database = {
           image_path?: string | null
           image_updated_at?: string | null
           is_active?: boolean | null
+          listing_status?: string
           name?: string
           price?: number
+          rejection_reason?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
           sort_order?: number | null
+          submitted_at?: string | null
           unit?: string | null
           updated_at?: string | null
           vendor_cost?: number | null
@@ -2389,6 +2404,67 @@ export type Database = {
           },
         ]
       }
+      vendor_listing_changes: {
+        Row: {
+          id: number
+          item_id: number
+          photo_pending: boolean
+          proposed: Json
+          rejection_reason: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          submitted_at: string
+          vendor_id: number
+        }
+        Insert: {
+          id?: number
+          item_id: number
+          photo_pending?: boolean
+          proposed: Json
+          rejection_reason?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          submitted_at?: string
+          vendor_id: number
+        }
+        Update: {
+          id?: number
+          item_id?: number
+          photo_pending?: boolean
+          proposed?: Json
+          rejection_reason?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          submitted_at?: string
+          vendor_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vendor_listing_changes_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "essentials_catalog"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vendor_listing_changes_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendor_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vendor_listing_changes_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       vendor_order_fulfilment: {
         Row: {
           created_at: string
@@ -2663,6 +2739,17 @@ export type Database = {
         Args: { p_refund_amount: number; p_subscription_id: number }
         Returns: Json
       }
+      admin_create_essential: {
+        Args: {
+          p_branch_id: number
+          p_cycle_id: number
+          p_description?: string
+          p_name: string
+          p_price: number
+          p_unit?: string
+        }
+        Returns: number
+      }
       admin_onboard_vendor: {
         Args: {
           p_branch_id?: number
@@ -2674,6 +2761,19 @@ export type Database = {
           p_user_id: string
         }
         Returns: number
+      }
+      admin_review_listing: {
+        Args: { p_approve: boolean; p_item_id: number; p_reason?: string }
+        Returns: undefined
+      }
+      admin_review_listing_change: {
+        Args: {
+          p_approve: boolean
+          p_change_id: number
+          p_photo_promoted?: boolean
+          p_reason?: string
+        }
+        Returns: undefined
       }
       admin_set_vendor_status: {
         Args: { p_note?: string; p_status: string; p_vendor_id: number }
@@ -2716,6 +2816,10 @@ export type Database = {
       backfill_dispatch_manifest: {
         Args: { p_end_date: string; p_start_date: string }
         Returns: Json
+      }
+      catalog_photo_writable: {
+        Args: { p_bucket: string; p_key: string }
+        Returns: boolean
       }
       complete_onboarding_atomic: {
         Args: {
@@ -2851,6 +2955,41 @@ export type Database = {
           user_id: string
         }[]
       }
+      my_approved_vendor: {
+        Args: never
+        Returns: {
+          admin_note: string | null
+          approved_at: string | null
+          approved_by: string | null
+          branch_id: number | null
+          business_name: string | null
+          commission_percent: number
+          contact_phone: string | null
+          created_at: string
+          fssai_number: string | null
+          gst_number: string | null
+          id: number
+          invited_by: string | null
+          owner_user_id: string
+          return_policy: string | null
+          selling_model: string
+          status: string
+          submitted_at: string | null
+          supply_mode: string
+          terms_accepted_at: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "vendors"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      notify_admins_listing_submitted: {
+        Args: { p_count: number; p_vendor_name: string }
+        Returns: undefined
+      }
       place_order_atomic: {
         Args: {
           p_branch_id: number
@@ -2918,6 +3057,17 @@ export type Database = {
         Args: { target_id: string; updates: Json }
         Returns: undefined
       }
+      vendor_create_draft_listing: {
+        Args: {
+          p_cycle_id: number
+          p_daily_cap?: number
+          p_description?: string
+          p_name: string
+          p_price: number
+          p_unit: string
+        }
+        Returns: number
+      }
       vendor_ids_for_address: {
         Args: { p_address_id: number }
         Returns: {
@@ -2947,6 +3097,14 @@ export type Database = {
           ready_at: string
           status: string
         }[]
+      }
+      vendor_propose_listing_change: {
+        Args: { p_item_id: number; p_photo_pending?: boolean; p_proposed: Json }
+        Returns: number
+      }
+      vendor_submit_listings: {
+        Args: { p_item_ids: number[] }
+        Returns: number
       }
       vendor_submit_registration: {
         Args: {

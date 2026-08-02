@@ -91,9 +91,30 @@ export interface VendorItem {
   image_path?: string | null;
   /** Stamped on every photo upload; used to bust the CDN cache. */
   image_updated_at?: string | null;
+  /**
+   * Where this listing is in review. `draft` is the vendor still preparing
+   * it, `pending` is with us, `rejected` came back with a reason. Only
+   * `approved` reaches customers — enforced by RLS and again in orderBuild.
+   */
+  listing_status?: ListingStatus | null;
+  rejection_reason?: string | null;
+  submitted_at?: string | null;
 }
 
-/** This vendor's own catalogue rows. */
+export type ListingStatus = 'draft' | 'pending' | 'approved' | 'rejected';
+
+/** A proposed edit to a listing that is already approved and selling. */
+export interface ListingChange {
+  id: number;
+  item_id: number;
+  proposed: Record<string, unknown>;
+  photo_pending: boolean;
+  status: 'pending' | 'approved' | 'rejected';
+  rejection_reason: string | null;
+  submitted_at: string;
+}
+
+/** This vendor's own catalogue rows, at every status. */
 export function useMyVendorItems(vendorId?: number) {
   return useQuery({
     queryKey: ['my_vendor_items', vendorId ?? 'none'],
@@ -104,7 +125,7 @@ export function useMyVendorItems(vendorId?: number) {
         // reach the screen — the tile silently renders its fallback icon for
         // a row whose image_path was simply never selected.
         .select(
-          'id, name, price, unit, cycle_id, is_active, daily_cap, vendor_cost, vendor_id, branch_id, image_path, image_updated_at',
+          'id, name, price, unit, cycle_id, is_active, daily_cap, vendor_cost, vendor_id, branch_id, image_path, image_updated_at, listing_status, rejection_reason, submitted_at',
         )
         .eq('vendor_id', vendorId!)
         .order('name');
@@ -116,39 +137,118 @@ export function useMyVendorItems(vendorId?: number) {
   });
 }
 
-/** Create or update one of the vendor's own items. */
-export function useSaveVendorItem() {
+/**
+ * Create a draft listing and return its id.
+ *
+ * An RPC, not an insert: `essentials_catalog` no longer grants INSERT to
+ * `authenticated` at all, because a vendor must not be able to choose their
+ * own `vendor_id`, `branch_id` or `listing_status`. The server takes those
+ * from the caller's vendor row.
+ *
+ * The id is what matters to the caller — the photo lives at a path keyed by
+ * it, and a picture is compulsory before the listing can be submitted, so the
+ * row has to exist first.
+ */
+export function useCreateDraftListing() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (p: {
-      id?: number;
-      vendorId: number;
-      branchId: number | null;
       name: string;
       price: number;
       unit: string;
       cycleId: number;
+      description?: string | null;
       dailyCap: number | null;
+    }): Promise<number> => {
+      // MF-08 pattern: cast until database.types.ts is regenerated.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase as any).rpc('vendor_create_draft_listing', {
+        p_name: p.name,
+        p_price: p.price,
+        p_unit: p.unit,
+        p_cycle_id: p.cycleId,
+        p_description: p.description ?? null,
+        p_daily_cap: p.dailyCap,
+      });
+      if (error) throw new Error(error.message);
+      return data as number;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['my_vendor_items'] }),
+  });
+}
+
+/**
+ * Send drafts for approval, one or many in a single call.
+ *
+ * The server refuses any item without a photo and names the ones missing it —
+ * with five items in flight, "add a photo" on its own is not actionable.
+ * It also fires the push to the team; the app cannot, because `send-push`
+ * rejects a plain customer-role caller and a vendor is one.
+ */
+export function useSubmitListings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (itemIds: number[]): Promise<number> => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase as any).rpc('vendor_submit_listings', {
+        p_item_ids: itemIds,
+      });
+      if (error) throw new Error(error.message);
+      return (data as number) ?? 0;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['my_vendor_items'] }),
+  });
+}
+
+/**
+ * Propose a change to a listing that is already approved and selling.
+ *
+ * The live row is untouched, so the item keeps selling at its current price
+ * and name while we look. One open request per item — a second proposal
+ * replaces the first rather than queueing behind it.
+ */
+export function useProposeListingChange() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (p: {
+      itemId: number;
+      proposed: Record<string, unknown>;
+      photoPending?: boolean;
     }) => {
-      const row = {
-        name: p.name,
-        price: p.price,
-        unit: p.unit,
-        cycle_id: p.cycleId,
-        daily_cap: p.dailyCap,
-        vendor_id: p.vendorId,
-        branch_id: p.branchId,
-        is_active: true,
-      };
-      const { error } = p.id
-        ? await supabase.from('essentials_catalog').update(row).eq('id', p.id)
-        : await supabase.from('essentials_catalog').insert({ ...row, sort_order: 0 });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error } = await (supabase as any).rpc('vendor_propose_listing_change', {
+        p_item_id: p.itemId,
+        p_proposed: p.proposed,
+        p_photo_pending: p.photoPending ?? false,
+      });
       if (error) throw new Error(error.message);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['my_vendor_items'] });
-      qc.invalidateQueries({ queryKey: QUERY_KEYS.ESSENTIALS });
+      qc.invalidateQueries({ queryKey: ['my_listing_changes'] });
     },
+  });
+}
+
+/** This vendor's own open change requests, so My Store can show "with us". */
+export function useMyListingChanges(vendorId?: number) {
+  return useQuery({
+    queryKey: ['my_listing_changes', vendorId ?? 'none'],
+    queryFn: async (): Promise<ListingChange[]> => {
+      // MF-08 pattern: vendor_listing_changes is newer than
+      // database.types.ts. Regenerate with `npm run supabase:gen-types` once
+      // vendor_listing_approval.sql is applied, then drop the cast.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase as any)
+        .from('vendor_listing_changes')
+        .select('id, item_id, proposed, photo_pending, status, rejection_reason, submitted_at')
+        .eq('vendor_id', vendorId!)
+        .eq('status', 'pending');
+      if (error) throw new Error(error.message);
+      return (data ?? []) as unknown as ListingChange[];
+    },
+    enabled: vendorId != null,
+    staleTime: QUERY_STALE_TIME,
   });
 }
 
