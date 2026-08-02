@@ -159,7 +159,9 @@ describe('aggregateRevenueDetail', () => {
       { dispatch_date: '2026-05-01', total_amount: 50, tax_amount: 2 },
       { dispatch_date: '2026-05-02', total_amount: 80, tax_amount: 4 },
     ]);
-    expect(r.totals).toEqual({ orders: 3, revenue: 230, tax: 11 });
+    // vendorSales joins the shape; the existing figures are untouched, which
+    // is the point — the split must not move any number that already existed.
+    expect(r.totals).toEqual({ orders: 3, revenue: 230, tax: 11, vendorSales: 0 });
     // sorted descending by date
     expect(r.rows.map((x) => x.date)).toEqual(['2026-05-02', '2026-05-01']);
   });
@@ -214,5 +216,59 @@ describe('aggregateHubReport', () => {
   it('skips rows with a null hub_id', () => {
     const r = aggregateHubReport([{ hub_id: null, total_amount: 100, status: 'Delivered' }]);
     expect(r.hubs).toEqual([]);
+  });
+});
+
+describe('aggregateRevenueDetail — vendor split', () => {
+  const orders = [
+    { id: 1, dispatch_date: '2026-08-01', total_amount: 300, tax_amount: 15 },
+    { id: 2, dispatch_date: '2026-08-01', total_amount: 200, tax_amount: 10 },
+  ];
+
+  it('reports gross unchanged when no vendor sold anything', () => {
+    // Every existing period is this case — the split must not disturb it.
+    const r = aggregateRevenueDetail(orders);
+    expect(r.totals.revenue).toBe(500);
+    expect(r.vendor.sales).toBe(0);
+    expect(r.vendor.ownRevenue).toBe(500);
+    expect(r.vendor.netRevenue).toBe(500);
+  });
+
+  it('separates money collected for vendor goods from our own', () => {
+    // Order 1 carried ₹120 of somebody else's goods. Gross collections are
+    // still ₹500 — that IS what customers paid — but only ₹380 of it is ours.
+    const r = aggregateRevenueDetail(orders, {
+      vendorValueByOrder: { 1: 120 },
+      commission: 18,
+    });
+
+    expect(r.totals.revenue).toBe(500);
+    expect(r.vendor.sales).toBe(120);
+    expect(r.vendor.ownRevenue).toBe(380);
+    // What the business actually earned: our own takings plus the commission,
+    // NOT the ₹500 the old report would have called revenue.
+    expect(r.vendor.netRevenue).toBe(398);
+  });
+
+  it('carries the vendor share onto the day row', () => {
+    const r = aggregateRevenueDetail(orders, {
+      vendorValueByOrder: { 1: 120, 2: 50 },
+      commission: 25,
+    });
+    expect(r.rows).toHaveLength(1);
+    expect(r.rows[0].vendorSales).toBe(170);
+  });
+
+  it('counts no commission for vendor orders not yet delivered', () => {
+    // vendor_earnings is written by the credit-on-delivery trigger, so an
+    // undelivered order contributes sales but no commission. Booking it early
+    // would overstate income on an order that can still be cancelled.
+    const r = aggregateRevenueDetail(orders, {
+      vendorValueByOrder: { 1: 120 },
+      commission: 0,
+    });
+    expect(r.vendor.sales).toBe(120);
+    expect(r.vendor.commission).toBe(0);
+    expect(r.vendor.netRevenue).toBe(380);
   });
 });

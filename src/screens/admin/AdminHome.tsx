@@ -51,22 +51,22 @@ function AdminRow(props: React.ComponentProps<typeof SettingsRow>) {
 }
 
 /**
- * Vendor listings row, carrying its own waiting count.
+ * Vendor Manager row, carrying the listings-waiting count.
  *
  * The count is the point: a vendor whose goods are sitting unapproved has no
  * way to chase it, and the push that announced it is long gone from the
- * notification shade. Without a number here the queue is invisible until
- * someone thinks to look.
+ * notification shade. Without a number here, the queue is invisible until
+ * someone thinks to look — and it is now one level deeper, inside Vendor
+ * Manager, so surfacing it here matters more than it did.
  *
- * Silent when empty — a row reading "0 waiting" is noise on a screen that is
- * already a long list.
+ * Silent when empty — a row reading "0 waiting" is noise on a long list.
  */
-function VendorListingsRow({ onPress }: { onPress: () => void }) {
+function VendorManagerRow({ onPress }: { onPress: () => void }) {
   const waiting = usePendingListingCount();
   return (
     <AdminRow
-      label="Vendor Listings"
-      subtitle={waiting > 0 ? `${waiting} waiting for approval` : undefined}
+      label="Vendor Manager"
+      subtitle={waiting > 0 ? `${waiting} listing${waiting === 1 ? '' : 's'} waiting for approval` : undefined}
       showChevron
       onPress={onPress}
     />
@@ -194,18 +194,24 @@ const SUPER_ADMIN_MANAGE_ROWS: ManageRowDef[] = [
   { label: 'Export Customers', screen: 'CustomerExport' },
 ];
 
+// Ordered the way the day runs, not alphabetically: what is touched every
+// day sits at the top, what is touched occasionally sits below it, and
+// configuration sits at the bottom. Search still finds everything, so this
+// ordering only has to serve the person scrolling.
+//
+// Add Customer / Customer Lookup and Vendors / Vendor Listings each collapsed
+// into ONE row. Four rows for two jobs made this page longer without making
+// anything easier to find.
 const ALL_MANAGE_ROWS: ManageRowDef[] = [
-  { label: 'Add Customer', screen: 'AdminCreateCustomer' },
-  { label: 'Customer Lookup', screen: 'AdminCustomerLookup' },
-  { label: 'Vendors', screen: 'AdminVendorManager' },
-  { label: 'Vendor Listings', screen: 'AdminVendorListings' },
-  { label: 'Create Order (Bulk / B2B)', screen: 'AdminCreateOrder' },
   { label: 'Manage Running Orders', screen: 'AdminOrders' },
   { label: 'Manage Running Subscriptions', screen: 'AdminSubscriptions' },
+  { label: 'Create Order (Bulk / B2B)', screen: 'AdminCreateOrder' },
   { label: 'Menu Manager', screen: 'MenuManage' },
   { label: 'Essentials Manager', screen: 'EssentialsCatalogManage' },
   { label: 'Subscriptions Manager', screen: 'PlansManage' },
   { label: 'Delivery Manager', screen: 'DeliveryManage' },
+  { label: 'Customer Manager', screen: 'AdminCustomerManager' },
+  { label: 'Vendor Manager', screen: 'AdminVendorManager' },
   { label: 'Note to Staff', screen: 'PushNotifications' },
   { label: 'Manage Notifications', screen: 'NotificationManager' },
   { label: 'Banners & Backgrounds', screen: 'LoginBg' },
@@ -270,34 +276,23 @@ function ManageTab() {
               Customers live inside Operations Manager → super-admin section) */}
           <BranchRow />
 
-          {/* CUSTOMERS — registration and history. Separate from ORDERS
-              because a B2B account is often set up well before its first
-              order, and because lookup is a support task, not an ordering one. */}
-          <View style={styles.section}>
-            <ThemedText variant="small" color="muted" style={styles.sectionLabel}>CUSTOMERS</ThemedText>
-          </View>
-          <AdminRow label="Add Customer" showChevron onPress={() => navigation.navigate('AdminCreateCustomer')} />
-          <AdminRow label="Customer Lookup" showChevron onPress={() => navigation.navigate('AdminCustomerLookup')} />
-          <AdminRow label="Vendors" showChevron onPress={() => navigation.navigate('AdminVendorManager')} />
-          <VendorListingsRow onPress={() => navigation.navigate('AdminVendorListings')} />
-
-          <Divider />
-
-          {/* ORDERS */}
+          {/* ORDERS — first, because it is the only section touched on a
+              day when nothing else changes. Running orders lead; bulk entry
+              is occasional and sits under them rather than above. */}
           <View style={styles.section}>
             <ThemedText variant="small" color="muted" style={styles.sectionLabel}>ORDERS</ThemedText>
           </View>
-          <AdminRow label="Create Order (Bulk / B2B)" showChevron onPress={() => navigation.navigate('AdminCreateOrder')} />
           <AdminRow label="Manage Running Orders" showChevron onPress={() => navigation.navigate('AdminOrders')} />
           <AdminRow label="Manage Running Subscriptions" showChevron onPress={() => navigation.navigate('AdminSubscriptions')} />
+          <AdminRow label="Create Order (Bulk / B2B)" showChevron onPress={() => navigation.navigate('AdminCreateOrder')} />
 
           <Divider />
 
-          {/* MENU */}
+          {/* CATALOGUE — what is on sale. Edited most days, but only when
+              something actually changes. */}
           <View style={styles.section}>
-            <ThemedText variant="small" color="muted" style={styles.sectionLabel}>MENU</ThemedText>
+            <ThemedText variant="small" color="muted" style={styles.sectionLabel}>CATALOGUE</ThemedText>
           </View>
-
           <AdminRow label="Menu Manager" showChevron onPress={() => navigation.navigate('MenuManage')} />
           <AdminRow label="Essentials Manager" showChevron onPress={() => navigation.navigate('EssentialsCatalogManage')} />
           <AdminRow label="Subscriptions Manager" showChevron onPress={() => navigation.navigate('PlansManage')} />
@@ -309,6 +304,18 @@ function ManageTab() {
             <ThemedText variant="small" color="muted" style={styles.sectionLabel}>DELIVERY</ThemedText>
           </View>
           <AdminRow label="Delivery Manager" showChevron onPress={() => navigation.navigate('DeliveryManage')} />
+
+          <Divider />
+
+          {/* PEOPLE — the two sides of the marketplace, one row each.
+              Below DELIVERY on purpose: registering a customer or verifying a
+              vendor is a weekly job, not a daily one. Both carry a count when
+              something is waiting, so neither needs opening to check. */}
+          <View style={styles.section}>
+            <ThemedText variant="small" color="muted" style={styles.sectionLabel}>PEOPLE</ThemedText>
+          </View>
+          <AdminRow label="Customer Manager" showChevron onPress={() => navigation.navigate('AdminCustomerManager')} />
+          <VendorManagerRow onPress={() => navigation.navigate('AdminVendorManager')} />
 
           <Divider />
 

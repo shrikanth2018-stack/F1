@@ -38,6 +38,7 @@ import { AdminOrderDetailScreen } from '../screens/admin/AdminOrderDetailScreen'
 import { AdminCreateOrderScreen } from '../screens/admin/AdminCreateOrderScreen';
 import { AdminCreateCustomerScreen } from '../screens/admin/AdminCreateCustomerScreen';
 import { AdminCustomerLookupScreen } from '../screens/admin/AdminCustomerLookupScreen';
+import { AdminCustomerManagerScreen } from '../screens/admin/AdminCustomerManagerScreen';
 import { AdminVendorManagerScreen } from '../screens/admin/AdminVendorManagerScreen';
 import { AdminVendorListingsScreen } from '../screens/admin/AdminVendorListingsScreen';
 import { AdminVendorOnboardScreen } from '../screens/admin/AdminVendorOnboardScreen';
@@ -113,6 +114,7 @@ export function AdminNavigator() {
       <Stack.Screen name="AdminCreateOrder" component={AdminCreateOrderScreen} />
       <Stack.Screen name="AdminCreateCustomer" component={AdminCreateCustomerScreen} />
       <Stack.Screen name="AdminCustomerLookup" component={AdminCustomerLookupScreen} />
+      <Stack.Screen name="AdminCustomerManager" component={AdminCustomerManagerScreen} />
       <Stack.Screen name="AdminVendorManager" component={AdminVendorManagerScreen} />
       <Stack.Screen name="AdminVendorOnboard" component={AdminVendorOnboardScreen} />
       <Stack.Screen name="AdminVendorDetail" component={AdminVendorDetailScreen} />

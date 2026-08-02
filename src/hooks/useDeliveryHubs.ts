@@ -5,13 +5,15 @@
  *   - Admin: HubsTab in DeliveryManagerScreen (list + toggle)
  *   - Admin: HubDetailScreen (create / edit)
  *   - ZoneEditorModal (active hubs picker)
+ *   - Hub operator: useMyHub, for naming the hub they actually run
  * Filtered by branch when branch_management_active is on.
  */
 
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../api/supabaseClient';
 import { useSupabaseQuery, useSupabaseMutation } from '../api/useSupabaseQuery';
-import { QUERY_KEYS } from '../utils/constants';
+import { QUERY_KEYS, QUERY_STALE_TIME } from '../utils/constants';
+import { useAuth } from './useAuth';
 import { useBranchFilter, requireWriteBranch } from './useBranchFilter';
 import type { DeliveryHub } from '../types';
 
@@ -31,6 +33,42 @@ export function useDeliveryHubs() {
       return q;
     }
   );
+}
+
+/**
+ * The hub this operator runs, or null if they are not one.
+ *
+ * A hub operator is a customer-role profile with `assigned_hub_id`, so their
+ * hub is a claim on the token rather than anything on their own row. Until
+ * this existed, their dashboard could only say "My Hub" — a person running one
+ * of several hubs had nothing on screen telling them WHICH, which matters the
+ * moment there is more than one.
+ *
+ * Reads `delivery_hubs` directly: it carries public read (catalog block in
+ * rls_policies.sql), so no elevated access is involved and no RPC is needed.
+ * Deliberately NOT `useDeliveryHubs`, which is branch-filtered for admin
+ * screens — an operator has no branch claim and would filter themselves out.
+ */
+export function useMyHub() {
+  const { session } = useAuth();
+  const hubId = session?.assignedHubId ?? null;
+
+  return useQuery({
+    queryKey: ['my_hub', hubId ?? 'none'],
+    queryFn: async (): Promise<{ id: number; hub_name: string } | null> => {
+      const { data, error } = await supabase
+        .from('delivery_hubs')
+        .select('id, hub_name')
+        .eq('id', hubId!)
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      return (data as { id: number; hub_name: string } | null) ?? null;
+    },
+    enabled: hubId != null,
+    // A hub is renamed about never, so there is no reason to re-read it on
+    // every screen focus.
+    staleTime: QUERY_STALE_TIME * 10,
+  });
 }
 
 /** Active hubs (id + name only) — for zone editor hub picker */

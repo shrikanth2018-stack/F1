@@ -38,6 +38,7 @@ import { DeliveryOrderRow } from '../../components/DeliveryOrderRow';
 import { SegmentedControl } from '../../components/SegmentedControl';
 import { useStaffOrders, useUpdateOrderStatus } from '../../hooks/useStaffOrders';
 import { useHubOrderHistory } from '../../hooks/useHubOrderHistory';
+import { useMyHub } from '../../hooks/useDeliveryHubs';
 import {
   useHubCommissionSummary,
   useMyHubCommissionClaims,
@@ -68,6 +69,7 @@ export function HubDashboardScreen({ navigation }: CustomerScreenProps<'HubDashb
   // FlatList only mounts when the History tab is active, so the network
   // request fires once the user taps over).
   const history = useHubOrderHistory();
+  const { data: myHub } = useMyHub();
 
   const handleAdvanceStatus = async (
     orderId: number,
@@ -94,7 +96,14 @@ export function HubDashboardScreen({ navigation }: CustomerScreenProps<'HubDashb
         <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
           <ThemedText variant="body" color="accent">‹ Back</ThemedText>
         </TouchableOpacity>
-        <ThemedText variant="header" color="primary">My Hub</ThemedText>
+        {/* The hub's own name, not just "My Hub". An operator running one of
+            several needs to see WHICH one they are looking at — and it is the
+            first thing they check when an order looks wrong. Falls back to the
+            generic label while the name loads, so the header never jumps
+            between two different heights. */}
+        <ThemedText variant="header" color="primary" numberOfLines={1}>
+          {myHub?.hub_name || 'My Hub'}
+        </ThemedText>
         <View style={styles.spacer} />
       </View>
 

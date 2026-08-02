@@ -30,6 +30,7 @@ import { useStoreConfig } from '../hooks/useStoreConfig';
 import { useWalletBalance } from '../hooks/useWallet';
 import { useFeatureFlag } from '../hooks/useFeatureFlag';
 import { useMyVendor } from '../hooks/useMyVendor';
+import { useMyHub } from '../hooks/useDeliveryHubs';
 import { useUIStore } from '../store/uiStore';
 import { formatPhone, formatPrice } from '../utils/formatters';
 import { assetUrl } from '../utils/assets';
@@ -127,6 +128,8 @@ export function ProfilePopup() {
   const setProfileVisible = useUIStore((s) => s.setProfileVisible);
   const referralEnabled = useFeatureFlag('referral_system', true);
   const isHubManager = session?.role === 'customer' && session?.assignedHubId != null;
+  // Only fetches for an operator — the hook is disabled without the claim.
+  const { data: myHub } = useMyHub();
   const isDriver = session?.isDriver === true;
   // A vendor is a customer-role profile with a vendors row, the same shape a
   // hub operator has. Read from the table rather than a JWT claim: the token
@@ -260,7 +263,12 @@ export function ProfilePopup() {
 
           {isHubManager && (
             <IOSGroup>
-              <IOSRow label="My Hub Dashboard" onPress={() => go('HubDashboard')} />
+              {/* Named, so an operator can confirm at a glance which hub this
+                  account is attached to without opening the dashboard. */}
+              <IOSRow
+                label={myHub?.hub_name ? `My Hub · ${myHub.hub_name}` : 'My Hub Dashboard'}
+                onPress={() => go('HubDashboard')}
+              />
             </IOSGroup>
           )}
 

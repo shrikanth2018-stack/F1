@@ -49,6 +49,8 @@ export type AdminStackParamList = {
   AdminCreateCustomer: { phone?: string; addressId?: number } | undefined;
   /** Order history for a phone number. */
   AdminCustomerLookup: undefined;
+  /** Hub for the two back-office customer jobs: register and look up. */
+  AdminCustomerManager: undefined;
   // Vendors
   AdminVendorManager: undefined;
   AdminVendorOnboard: undefined;

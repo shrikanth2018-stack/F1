@@ -56,7 +56,11 @@ function buildHtml(
   periodTitle: string,
   sourceTitle: string,
   rows: { date: string; orders: number; revenue: number; tax: number }[],
-  totals: { orders: number; revenue: number; tax: number }
+  totals: { orders: number; revenue: number; tax: number },
+  // Printed too, not just shown. A PDF that says "revenue ₹40,000" while the
+  // screen says we earned ₹28,000 is the version that ends up in somebody's
+  // inbox, so the split has to travel with it.
+  vendor?: { sales: number; commission: number; ownRevenue: number; netRevenue: number },
 ): string {
   const rowsHtml = rows
     .map((r) => `<tr><td>${r.date}</td><td>${r.orders}</td><td>₹${r.revenue.toLocaleString('en-IN')}</td><td>₹${r.tax.toFixed(0)}</td></tr>`)
@@ -71,6 +75,18 @@ function buildHtml(
     <tbody>${rowsHtml}</tbody>
     <tfoot><tr><td>Total</td><td>${totals.orders}</td><td>₹${totals.revenue.toLocaleString('en-IN')}</td><td>₹${totals.tax.toFixed(0)}</td></tr></tfoot>
   </table>
+  ${vendor && vendor.sales > 0 ? `
+  <h3 style="margin-top:20px;margin-bottom:4px">Of which</h3>
+  <table>
+    <tbody>
+      <tr><td>Our own sales</td><td>₹${Math.round(vendor.ownRevenue).toLocaleString('en-IN')}</td></tr>
+      <tr><td>Vendor goods (collected, largely passed on)</td><td>₹${Math.round(vendor.sales).toLocaleString('en-IN')}</td></tr>
+      <tr><td>Commission earned</td><td>₹${Math.round(vendor.commission).toLocaleString('en-IN')}</td></tr>
+    </tbody>
+    <tfoot><tr><td>We actually earned</td><td>₹${Math.round(vendor.netRevenue).toLocaleString('en-IN')}</td></tr></tfoot>
+  </table>
+  <p style="margin-top:8px">Commission is credited on delivery, so vendor orders still out for delivery are not counted here yet.</p>
+  ` : ''}
   </body></html>`;
 }
 
@@ -98,12 +114,19 @@ export function RevenueReportScreen({ navigation }: { navigation: AdminNavProp }
   const { data, isLoading, isError, refetch } = useRevenueDetailReport(start, end, source);
 
   const rows = useMemo(() => data?.rows ?? [], [data]);
-  const totals = useMemo(() => data?.totals ?? { orders: 0, revenue: 0, tax: 0 }, [data]);
+  const totals = useMemo(
+    () => data?.totals ?? { orders: 0, revenue: 0, tax: 0, vendorSales: 0 },
+    [data],
+  );
+  // Only shown once a vendor has actually sold something. Until then these are
+  // all zero and the extra block would be noise on every report.
+  const vendor = data?.vendor;
+  const hasVendorSales = (vendor?.sales ?? 0) > 0;
   const hasData = rows.length > 0;
 
   const html = useMemo(
-    () => buildHtml(periodLabel(period, customRange), SOURCE_TITLE[source], rows, totals),
-    [period, customRange, source, rows, totals]
+    () => buildHtml(periodLabel(period, customRange), SOURCE_TITLE[source], rows, totals, vendor),
+    [period, customRange, source, rows, totals, vendor]
   );
 
   return (
@@ -174,6 +197,46 @@ export function RevenueReportScreen({ navigation }: { navigation: AdminNavProp }
           </View>
         ))}
 
+        {/* WHOSE MONEY IS IT. The Revenue column is gross collections — it
+            includes what customers paid for a vendor's goods, which we take
+            and largely pass on. Reading that as income overstates it by the
+            vendor's share, and nothing on the row would look wrong. */}
+        {hasData && hasVendorSales && vendor && (
+          <View style={styles.vendorBox}>
+            <ThemedText variant="small" color="muted" style={styles.vendorLabel}>
+              OF WHICH
+            </ThemedText>
+            <View style={styles.vendorRow}>
+              <ThemedText variant="body" color="subtitle" style={styles.txt}>Our own sales</ThemedText>
+              <ThemedText variant="body" color="primary" style={styles.txt}>
+                ₹{Math.round(vendor.ownRevenue).toLocaleString('en-IN')}
+              </ThemedText>
+            </View>
+            <View style={styles.vendorRow}>
+              <ThemedText variant="body" color="subtitle" style={styles.txt}>Vendor goods (collected)</ThemedText>
+              <ThemedText variant="body" color="primary" style={styles.txt}>
+                ₹{Math.round(vendor.sales).toLocaleString('en-IN')}
+              </ThemedText>
+            </View>
+            <View style={styles.vendorRow}>
+              <ThemedText variant="body" color="subtitle" style={styles.txt}>Commission earned</ThemedText>
+              <ThemedText variant="body" color="mint" style={styles.txt}>
+                ₹{Math.round(vendor.commission).toLocaleString('en-IN')}
+              </ThemedText>
+            </View>
+            <View style={[styles.vendorRow, styles.vendorNet]}>
+              <ThemedText variant="body" color="primary" style={styles.txt}>We actually earned</ThemedText>
+              <ThemedText variant="subtitle" color="mint" style={styles.txt}>
+                ₹{Math.round(vendor.netRevenue).toLocaleString('en-IN')}
+              </ThemedText>
+            </View>
+            <ThemedText variant="small" color="muted" style={styles.vendorNote}>
+              Commission is credited when an order is delivered, so vendor orders
+              still out for delivery are not counted here yet.
+            </ThemedText>
+          </View>
+        )}
+
         {hasData && (
           <View style={[styles.dataRow, styles.totalsRow]}>
             <ThemedText variant="body" color="muted" style={[styles.txt, styles.colDate]}>Total</ThemedText>
@@ -202,6 +265,27 @@ export function RevenueReportScreen({ navigation }: { navigation: AdminNavProp }
 }
 
 const styles = StyleSheet.create({
+  vendorBox: {
+    marginTop: Theme.spacing.md,
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Theme.colors.layout.divider,
+  },
+  vendorLabel: { letterSpacing: 1, marginBottom: Theme.spacing.xs },
+  vendorRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  vendorNet: {
+    marginTop: Theme.spacing.xs,
+    paddingTop: Theme.spacing.xs,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Theme.colors.layout.divider,
+  },
+  vendorNote: { marginTop: Theme.spacing.xs },
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
   header: {
     flexDirection: 'row',

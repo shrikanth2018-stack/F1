@@ -196,23 +196,81 @@ export function aggregateOrdersDetail(orders: any[]) {
 }
 
 // ── Revenue detail report ────────────────────────────────────
-export function aggregateRevenueDetail(orders: any[]) {
-  const dayMap: Record<string, { date: string; orders: number; revenue: number; tax: number }> = {};
+/**
+ * Money a third-party vendor's goods brought in, split out from our own.
+ *
+ * WHY THIS EXISTS. Revenue was `SUM(orders.total_amount)` with no vendor
+ * awareness anywhere in the reporting path, so a vendor's sale counted as OUR
+ * revenue at its full gross value. On a ₹100 vendor sale at 15% commission our
+ * actual income is ₹15 — the report said ₹100. Nothing on screen would have
+ * looked wrong, which is what makes it worth splitting rather than caveating.
+ *
+ * `vendorSales` is money we COLLECT but mostly pass on: it is the customer's
+ * payment for someone else's goods. `vendorCommission` is the part we keep.
+ *
+ * COMMISSION IS REALISED ON DELIVERY, not on order. It comes from
+ * vendor_earnings, written by the credit-on-delivery trigger, so a period
+ * holding vendor orders that have not been delivered yet shows their sales
+ * value but not the commission still to come. That is honest rather than
+ * convenient — booking commission on an order that may still be cancelled
+ * would overstate income, which is the very thing this is fixing.
+ */
+export interface VendorSplitInput {
+  /** order_id → merchandise value of VENDOR-owned lines in that order. */
+  vendorValueByOrder: Record<number, number>;
+  /** Commission credited to us for these orders, from vendor_earnings. */
+  commission: number;
+}
+
+function emptySplit(): VendorSplitInput {
+  return { vendorValueByOrder: {}, commission: 0 };
+}
+
+export function aggregateRevenueDetail(orders: any[], split: VendorSplitInput = emptySplit()) {
+  const dayMap: Record<
+    string,
+    { date: string; orders: number; revenue: number; tax: number; vendorSales: number }
+  > = {};
   for (const o of orders) {
     if (!dayMap[o.dispatch_date])
-      dayMap[o.dispatch_date] = { date: o.dispatch_date, orders: 0, revenue: 0, tax: 0 };
+      dayMap[o.dispatch_date] = {
+        date: o.dispatch_date, orders: 0, revenue: 0, tax: 0, vendorSales: 0,
+      };
     dayMap[o.dispatch_date].orders++;
     dayMap[o.dispatch_date].revenue += o.total_amount ?? 0;
     dayMap[o.dispatch_date].tax += o.tax_amount ?? 0;
+    dayMap[o.dispatch_date].vendorSales += split.vendorValueByOrder[o.id] ?? 0;
   }
 
   const rows = Object.values(dayMap).sort((a, b) => b.date.localeCompare(a.date));
   const totals = rows.reduce(
-    (acc, r) => ({ orders: acc.orders + r.orders, revenue: acc.revenue + r.revenue, tax: acc.tax + r.tax }),
-    { orders: 0, revenue: 0, tax: 0 },
+    (acc, r) => ({
+      orders: acc.orders + r.orders,
+      revenue: acc.revenue + r.revenue,
+      tax: acc.tax + r.tax,
+      vendorSales: acc.vendorSales + r.vendorSales,
+    }),
+    { orders: 0, revenue: 0, tax: 0, vendorSales: 0 },
   );
 
-  return { rows, totals };
+  return {
+    rows,
+    totals,
+    vendor: {
+      /** Customer money taken for vendor goods. Collected, largely passed on. */
+      sales: totals.vendorSales,
+      /** Our cut of the above — realised only once delivered. */
+      commission: split.commission,
+      /** Everything that is not a vendor's goods: our items, fees, tax. */
+      ownRevenue: totals.revenue - totals.vendorSales,
+      /**
+       * What the business actually earned: our own takings plus commission.
+       * This is the number to read as "revenue" once vendors are selling —
+       * `totals.revenue` is gross collections, which is a different question.
+       */
+      netRevenue: totals.revenue - totals.vendorSales + split.commission,
+    },
+  };
 }
 
 // ── Subscription plan-wise report ────────────────────────────

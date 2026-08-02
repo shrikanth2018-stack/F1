@@ -32,6 +32,7 @@ import { EmptyState } from '../../components/EmptyState';
 import { ErrorRetry } from '../../components/ErrorRetry';
 import { DispatchBadge } from '../../components/DispatchBadge';
 import { formatPhone } from '../../utils/formatters';
+import { usePendingListingCount } from '../../hooks/useVendorListingReview';
 import {
   useVendors,
   STATUS_LABEL,
@@ -65,6 +66,7 @@ const STATUS_VARIANT: Record<VendorStatus, 'success' | 'warning' | 'info' | 'err
 export function AdminVendorManagerScreen({ navigation }: AdminScreenProps<'AdminVendorManager'>) {
   const [filter, setFilter] = useState<Filter>('submitted');
   const { data: vendors, isLoading, error, refetch } = useVendors(filter);
+  const pendingListings = usePendingListingCount();
 
   if (error) return <ErrorRetry message="Could not load vendors" onRetry={refetch} />;
 
@@ -94,9 +96,32 @@ export function AdminVendorManagerScreen({ navigation }: AdminScreenProps<'Admin
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <ThemedText variant="body" color="accent" style={styles.txt}>‹ Back</ThemedText>
         </TouchableOpacity>
-        <ThemedText variant="header" color="primary" style={styles.title}>Vendors</ThemedText>
+        <ThemedText variant="header" color="primary" style={styles.title}>Vendor Manager</ThemedText>
         <View style={styles.spacer} />
       </View>
+
+      {/* Listings live here rather than as a second row on the Manage page:
+          who a vendor IS and what they are trying to sell are the same job,
+          and splitting them meant the approval queue was easy to walk past.
+          The count is what makes it visible — a vendor waiting on us has no
+          way to chase it, and the push is long gone from the shade. */}
+      <TouchableOpacity
+        style={styles.listingsRow}
+        onPress={() => navigation.navigate('AdminVendorListings')}
+        activeOpacity={0.7}
+      >
+        <View style={styles.flex1}>
+          <ThemedText variant="body" color="primary" style={styles.txt}>Listings</ThemedText>
+          <ThemedText variant="small" color={pendingListings > 0 ? 'warning' : 'muted'} style={styles.listingsSub}>
+            {pendingListings > 0
+              ? `${pendingListings} waiting for approval`
+              : 'New items and price changes appear here'}
+          </ThemedText>
+        </View>
+        <ThemedText variant="body" color="mint" style={styles.txt}>›</ThemedText>
+      </TouchableOpacity>
+
+      <Divider />
 
       <ScrollView
         horizontal
@@ -152,6 +177,13 @@ export function AdminVendorManagerScreen({ navigation }: AdminScreenProps<'Admin
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
+  listingsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.md,
+  },
+  listingsSub: { marginTop: 2 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

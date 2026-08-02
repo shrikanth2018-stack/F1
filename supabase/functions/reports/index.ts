@@ -82,6 +82,58 @@ Deno.serve(async (req) => {
     const source: 'all' | 'bulk' | 'retail' =
       body?.source === 'bulk' || body?.source === 'retail' ? body.source : 'all';
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    /**
+     * Work out how much of a set of orders was somebody else's goods.
+     *
+     * Three small reads rather than one join, because `order_items.item_id` is
+     * polymorphic — it points at menu_items OR essentials_catalog depending on
+     * `item_type`, so there is no foreign key for PostgREST to embed through.
+     *
+     * Cheap in practice: only essentials lines are fetched, and the vendor-item
+     * id list is the whole vendor catalogue, which is tiny. Returns zeroes for
+     * an empty period rather than issuing pointless queries.
+     */
+    const buildVendorSplit = async (sb: any, orderIds: number[]) => {
+      const empty = { vendorValueByOrder: {} as Record<number, number>, commission: 0 };
+      if (orderIds.length === 0) return empty;
+
+      const { data: vendorItems } = await sb
+        .from('essentials_catalog')
+        .select('id')
+        .not('vendor_id', 'is', null);
+      const vendorItemIds = new Set<number>((vendorItems ?? []).map((r: any) => r.id));
+      // No vendor sells anything yet — skip the rest, the answer is zero.
+      if (vendorItemIds.size === 0) return empty;
+
+      const { data: lines } = await sb
+        .from('order_items')
+        .select('order_id, item_id, quantity, price_at_time')
+        .in('order_id', orderIds)
+        .eq('item_type', 'essentials');
+
+      const vendorValueByOrder: Record<number, number> = {};
+      for (const l of lines ?? []) {
+        if (!vendorItemIds.has(l.item_id)) continue;
+        vendorValueByOrder[l.order_id] =
+          (vendorValueByOrder[l.order_id] ?? 0) +
+          (l.quantity ?? 0) * (l.price_at_time ?? 0);
+      }
+
+      // Commission we actually earned. vendor_earnings is written by the
+      // credit-on-delivery trigger, so this covers delivered orders only —
+      // deliberately, since an undelivered order can still be cancelled.
+      const { data: earnings } = await sb
+        .from('vendor_earnings')
+        .select('commission_amount')
+        .in('order_id', orderIds);
+      const commission = (earnings ?? []).reduce(
+        (s: number, e: any) => s + Number(e.commission_amount ?? 0),
+        0,
+      );
+
+      return { vendorValueByOrder, commission };
+    };
+
     const bySource = (q: any) =>
       source === 'bulk' ? q.not('placed_by', 'is', null)
         : source === 'retail' ? q.is('placed_by', null)
@@ -183,7 +235,9 @@ Deno.serve(async (req) => {
         q = bySource(q);
         const { data, error } = await q;
         if (error) throw error;
-        return json(aggregateRevenueDetail(data ?? []));
+
+        const split = await buildVendorSplit(supabase, (data ?? []).map((o: any) => o.id));
+        return json(aggregateRevenueDetail(data ?? [], split));
       }
 
       case 'subscriptionPlan': {
