@@ -21,7 +21,6 @@ import {
   ScrollView,
   FlatList,
   TouchableOpacity,
-  TextInput,
   Switch,
   StyleSheet,
   ActivityIndicator,
@@ -36,6 +35,7 @@ import { ErrorRetry } from '../../components/ErrorRetry';
 import { SegmentedControl } from '../../components/SegmentedControl';
 import { DispatchBadge } from '../../components/DispatchBadge';
 import { CatalogPhotoThumb } from '../../components/CatalogPhotoThumb';
+import { AddListingModal } from './components/AddListingModal';
 import { QUERY_KEYS } from '../../utils/constants';
 import { PHOTO_BUCKET, PHOTO_PX } from '../../utils/catalogPhoto';
 import {
@@ -47,18 +47,12 @@ import {
 import { infoDialog, confirmDialog } from '../../utils/confirmDialog';
 import { formatPriceShort, formatDateShort, getErrorMessage } from '../../utils/formatters';
 import { istTimeLabel } from '../../utils/istDate';
-// A vendor only ever sells essentials, so every cycle they see must be named
-// the way the customer sees it on the Essentials menu — Morning, not
-// Breakfast. The order rows get this from the server; the picker here has the
-// full cycle row, so it uses the shared helper.
-import { essentialsCycleLabel } from '../../utils/cycleLabels';
 import { useDeliveryCycles } from '../../hooks/useDeliveryCycles';
 import { useWalletBalance } from '../../hooks/useWallet';
 import { useVendorZones } from '../../hooks/useVendors';
 import {
   useMyVendor,
   useMyVendorItems,
-  useCreateDraftListing,
   useSubmitListings,
   useProposeListingChange,
   useMyListingChanges,
@@ -104,7 +98,6 @@ export function VendorDashboardScreen({ navigation }: CustomerScreenProps<'Vendo
   // that is selling fine.
   const { data: sellingAreas = [] } = useVendorZones(vendorId);
 
-  const createDraft = useCreateDraftListing();
   const submitListings = useSubmitListings();
   const proposeChange = useProposeListingChange();
   const toggleItem = useToggleVendorItem();
@@ -113,13 +106,8 @@ export function VendorDashboardScreen({ navigation }: CustomerScreenProps<'Vendo
   // than looking like an ordinary live listing.
   const { data: openChanges = [] } = useMyListingChanges(vendorId);
 
-  // New-item form
-  const [name, setName] = useState('');
-  const [price, setPrice] = useState('');
-  const [unit, setUnit] = useState('');
-  const [cap, setCap] = useState('');
-  const [cycleIdx, setCycleIdx] = useState(0);
   const [busyPhotoId, setBusyPhotoId] = useState<number | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
 
   const queryClient = useQueryClient();
 
@@ -132,7 +120,6 @@ export function VendorDashboardScreen({ navigation }: CustomerScreenProps<'Vendo
   }
 
   const suspended = vendor.status === 'suspended';
-  const selectedCycle = cycles[cycleIdx];
 
   const allItems = items.data ?? [];
   // Rows that have never been sent, or came back. These are the only ones the
@@ -141,34 +128,6 @@ export function VendorDashboardScreen({ navigation }: CustomerScreenProps<'Vendo
     (i) => i.listing_status === 'draft' || i.listing_status === 'rejected',
   );
   const changeByItem = new Map(openChanges.map((c) => [c.item_id, c]));
-
-  /**
-   * Create the listing as a DRAFT.
-   *
-   * It is not sent anywhere yet, and deliberately so: a photo is compulsory,
-   * and the photo lives at a path keyed by the row id, so the row has to exist
-   * before a picture can be attached to it. The vendor adds the picture, then
-   * sends one or several at once.
-   */
-  const handleAddItem = async () => {
-    if (!name.trim()) { infoDialog('Name required', 'What is this item called?'); return; }
-    const p = parseFloat(price);
-    if (!Number.isFinite(p) || p <= 0) { infoDialog('Price required', 'Enter the selling price.'); return; }
-    if (!selectedCycle) { infoDialog('No delivery cycle', 'No cycles are available.'); return; }
-    try {
-      await createDraft.mutateAsync({
-        name: name.trim(),
-        price: p,
-        unit: unit.trim() || 'unit',
-        cycleId: selectedCycle.id,
-        dailyCap: cap.trim() ? parseInt(cap, 10) : null,
-      });
-      setName(''); setPrice(''); setUnit(''); setCap('');
-      infoDialog('Added — now add a photo', 'Tap the tile next to it, then send it for approval.');
-    } catch (e) {
-      infoDialog('Could not save', getErrorMessage(e));
-    }
-  };
 
   /** Refresh this vendor's own list and the customer-facing essentials list. */
   const refreshItems = async () => {
@@ -433,32 +392,14 @@ export function VendorDashboardScreen({ navigation }: CustomerScreenProps<'Vendo
       {/* ── Items ── */}
       {tab === 'Items' && (
         <ScrollView contentContainerStyle={styles.list} keyboardShouldPersistTaps="handled">
-          {/* Which customers can actually see these items. Without this an
-              unlisted vendor sees a healthy-looking catalogue and no sales,
-              with nothing anywhere explaining why. */}
+          {/* Kept even though the zone list moved into the add-item footnote:
+              an approved vendor with no granted area reaches nobody and looks
+              identical to one selling fine. That needs saying on the page, not
+              only inside a form they may never open. */}
           {sellingAreas.length === 0 ? (
             <ThemedText variant="small" color="warning" style={styles.hint}>
               Your items are not visible to any customer yet — we still need to set
               your delivery areas. Please get in touch and we will switch them on.
-            </ThemedText>
-          ) : (
-            <ThemedText variant="small" color="muted" style={styles.hint}>
-              Listed for customers in{' '}
-              {sellingAreas
-                .map((a) => a.delivery_hubs?.hub_name ?? a.delivery_zones?.zone_name ?? '—')
-                .join(', ')}
-              . Customers outside these areas will not see your items.
-            </ThemedText>
-          )}
-
-          {/* Long-press is a phone gesture and this screen is used in a
-              browser too, so the affordance is spelled out rather than left
-              to be discovered. */}
-          {allItems.length > 0 && !suspended ? (
-            <ThemedText variant="small" color="muted" style={styles.hint}>
-              Every listing needs a photo — tap a tile to add or change one. New items
-              and changes to live ones are checked by the team before customers see them.
-              Switching an item off is instant.
             </ThemedText>
           ) : null}
 
@@ -551,33 +492,30 @@ export function VendorDashboardScreen({ navigation }: CustomerScreenProps<'Vendo
             <EmptyState title="No items yet" subtitle="Add your first one below" />
           ) : null}
 
-          {!suspended && (
-            <>
-              <ThemedText variant="small" color="muted" style={styles.sectionLabel}>ADD AN ITEM</ThemedText>
-              <TouchableOpacity
-                style={styles.cycleRow}
-                onPress={() => setCycleIdx((p) => (cycles.length ? (p + 1) % cycles.length : 0))}
-                activeOpacity={0.7}
-              >
-                <ThemedText variant="body" color="mint" style={styles.txt}>
-                  {selectedCycle ? essentialsCycleLabel(selectedCycle) : 'Loading…'}{'  ›'}
-                </ThemedText>
-              </TouchableOpacity>
-              <TextInput style={styles.input} placeholder="Item name" placeholderTextColor={Theme.colors.text.muted} value={name} onChangeText={setName} />
-              <View style={styles.row2}>
-                <TextInput style={[styles.input, styles.flex1]} placeholder="Price ₹" placeholderTextColor={Theme.colors.text.muted} value={price} onChangeText={setPrice} keyboardType="numeric" />
-                <TextInput style={[styles.input, styles.flex1]} placeholder="Unit (kg, litre)" placeholderTextColor={Theme.colors.text.muted} value={unit} onChangeText={setUnit} />
-              </View>
-              <TextInput style={styles.input} placeholder="Max per day (optional)" placeholderTextColor={Theme.colors.text.muted} value={cap} onChangeText={setCap} keyboardType="numeric" />
-              <TouchableOpacity onPress={handleAddItem} disabled={createDraft.isPending} style={styles.inlineAction}>
-                <ThemedText variant="body" color="mint" style={styles.txt}>
-                  {createDraft.isPending ? 'Saving…' : 'Add item  ›'}
-                </ThemedText>
-              </TouchableOpacity>
-            </>
-          )}
         </ScrollView>
       )}
+
+      {/* Add item is a pinned footer, not a form at the bottom of the list —
+          it stays reachable however long the catalogue gets. */}
+      {tab === 'Items' && !suspended ? (
+        <TouchableOpacity
+          style={styles.addFooter}
+          activeOpacity={0.7}
+          onPress={() => setAddOpen(true)}
+        >
+          <ThemedText variant="body" color="mint" style={styles.txt}>+ Add item  ›</ThemedText>
+        </TouchableOpacity>
+      ) : null}
+
+      <AddListingModal
+        visible={addOpen}
+        onClose={() => setAddOpen(false)}
+        cycles={cycles}
+        areaNames={sellingAreas.map(
+          (a) => a.delivery_hubs?.hub_name ?? a.delivery_zones?.zone_name ?? '—',
+        )}
+        onChanged={refreshItems}
+      />
 
       {/* ── Earnings ── */}
       {tab === 'Earnings' && (
@@ -665,6 +603,12 @@ const styles = StyleSheet.create({
   sub: { fontSize: S, marginTop: 2 },
   // Matches the admin managers' item tile, so a vendor and the team are
   // looking at the same thing at the same size when discussing a photo.
+  addFooter: {
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.sm + 2,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Theme.colors.text.mint,
+  },
   thumbWrap: { flexShrink: 0 },
   thumbBusy: { opacity: 0.4 },
   qty: { fontSize: B + 2 },
