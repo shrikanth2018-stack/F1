@@ -51,6 +51,13 @@ import { essentialsCycleLabel } from '../../../utils/cycleLabels';
 import { useCreateDraftListing, useSubmitListings } from '../../../hooks/useMyVendor';
 import type { DeliveryCycle } from '../../../types';
 
+/** Why an item the vendor already had was not part of this submission. */
+function reasonNotSent(item: { image_path?: string | null; listing_status?: string | null }): string {
+  if (!item.image_path) return 'still needs a photo';
+  if (item.listing_status === 'rejected') return 'was sent back and needs a change first';
+  return 'was not added in this session';
+}
+
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
 
@@ -63,9 +70,28 @@ interface Props {
   areaNames: string[];
   /** Called after anything is created, so the list behind refreshes. */
   onChanged: () => Promise<void> | void;
+  /**
+   * Drafts and sent-back items the vendor already had. Submit does NOT send
+   * these — only what was added in this sitting — so they are named on the way
+   * out with the reason. Leaving them out silently is how a vendor ends up
+   * believing everything went in.
+   */
+  otherUnsent: {
+    id: number;
+    name: string;
+    image_path?: string | null;
+    listing_status?: string | null;
+  }[];
 }
 
-export function AddListingModal({ visible, onClose, cycles, areaNames, onChanged }: Props) {
+export function AddListingModal({
+  visible,
+  onClose,
+  cycles,
+  areaNames,
+  onChanged,
+  otherUnsent,
+}: Props) {
   const createDraft = useCreateDraftListing();
   const submitListings = useSubmitListings();
 
@@ -150,9 +176,19 @@ export function AddListingModal({ visible, onClose, cycles, areaNames, onChanged
       const n = await submitListings.mutateAsync(ids);
       await onChanged();
       closeAll();
+
+      // Anything the vendor already had that did NOT go, and why. Without
+      // this they close the dialog believing the whole shelf is with us.
+      const leftBehind = otherUnsent
+        .filter((i) => !ids.includes(i.id))
+        .map((i) => `${i.name} — ${reasonNotSent(i)}`);
+
       infoDialog(
         'Sent for approval',
-        `${n} ${n === 1 ? 'item is' : 'items are'} with the team. They appear for customers once approved.`,
+        `${n} ${n === 1 ? 'item is' : 'items are'} with the team. They appear for customers once approved.` +
+          (leftBehind.length
+            ? `\n\nNot sent:\n${leftBehind.join('\n')}\n\nFix these on the list, then use "Send for approval" there.`
+            : ''),
       );
     } catch (e) {
       infoDialog('Could not send', getErrorMessage(e));

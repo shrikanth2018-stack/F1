@@ -515,6 +515,7 @@ export function VendorDashboardScreen({ navigation }: CustomerScreenProps<'Vendo
           (a) => a.delivery_hubs?.hub_name ?? a.delivery_zones?.zone_name ?? '—',
         )}
         onChanged={refreshItems}
+        otherUnsent={draftItems}
       />
 
       {/* ── Earnings ── */}
