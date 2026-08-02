@@ -27,7 +27,9 @@
         "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndjdnF4enFxd2N4bGNncmp5dW5mIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU0NDYyODIsImV4cCI6MjA5MTAyMjI4Mn0.mNt5MgBdB-LW-YvE6baD-WWAuWZ5tHuYflXdOrav1Yg",
         "EXPO_PUBLIC_RAZORPAY_KEY_ID": "rzp_test_SaAGRu9UhPaeqz",
         "EXPO_PUBLIC_GOOGLE_MAPS_KEY": "AIzaSyBbLvg0qxSVbhrJCl2I4qjk_F-hs9epvvk",
-        "EXPO_PUBLIC_SENTRY_DSN": "https://0bc1bf1484ba8c07a9278101bf2c74f2@o4511278945533952.ingest.us.sentry.io/4511278950514688"
+        "EXPO_PUBLIC_SENTRY_DSN": "https://7b51a4707a4bd30d821c3ebc7a27af72@o4511278945533952.ingest.us.sentry.io/4511278971617280",
+        "SENTRY_ORG": "1stonein",
+        "SENTRY_PROJECT": "javascript-react"
       }
     },
     "production": {
@@ -38,7 +40,9 @@
         "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndjdnF4enFxd2N4bGNncmp5dW5mIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU0NDYyODIsImV4cCI6MjA5MTAyMjI4Mn0.mNt5MgBdB-LW-YvE6baD-WWAuWZ5tHuYflXdOrav1Yg",
         "EXPO_PUBLIC_RAZORPAY_KEY_ID": "rzp_test_SaAGRu9UhPaeqz",
         "EXPO_PUBLIC_GOOGLE_MAPS_KEY": "AIzaSyBbLvg0qxSVbhrJCl2I4qjk_F-hs9epvvk",
-        "EXPO_PUBLIC_SENTRY_DSN": "https://0bc1bf1484ba8c07a9278101bf2c74f2@o4511278945533952.ingest.us.sentry.io/4511278950514688"
+        "EXPO_PUBLIC_SENTRY_DSN": "https://7b51a4707a4bd30d821c3ebc7a27af72@o4511278945533952.ingest.us.sentry.io/4511278971617280",
+        "SENTRY_ORG": "1stonein",
+        "SENTRY_PROJECT": "javascript-react"
       }
     }
   },
