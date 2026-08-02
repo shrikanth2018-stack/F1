@@ -326,3 +326,28 @@ the exit code. Re-run it after any schema or RPC change.
 - During polish sessions, bank changes locally — one commit + OTA per slice, not per fix.
 - Owner-facing flows must be tested by actually opening every screen (no symbolic testing); prefer AskUserQuestion options over free-text during device tests.
 - Commit/push only when asked.
+
+## Release practice (agreed 2026-08-02)
+
+**Web ships with every release.** `eas update` or a Play release is followed by
+`git push` in the same sitting — all four surfaces on one commit. (Not the same
+minute: web ~2 min, OTA on next launch, Play after review.)
+
+**Dummy flow before anything a customer can reach** — release, OTA, web push.
+Not before every commit; the pre-push gate covers those. Two halves, and one
+proves nothing about the other:
+
+- **Server** — the real RPCs as the REAL roles (`request.jwt.claims` **plus**
+  `set_config('role','authenticated')`), inside `BEGIN … ROLLBACK`. Not
+  "delete later" — a half-failed run leaves rows in production, a rollback
+  cannot, and it discards queued pg_net pushes so a test can't notify real
+  admins.
+- **Screen** — open it on device or web. SQL cannot see a screen: the vendor
+  listing backend passed 7/7 while the add-item popup had never been run.
+
+Two traps, both hit on 2026-08-02: never check an RLS rule as superuser, and
+make sure the *subject* could pass — a customer with no address sees zero
+vendor items whether or not the gate works.
+
+These are a floor, not the goal. They exist because these specific things bit;
+they don't replace judgement about what else deserves checking.
