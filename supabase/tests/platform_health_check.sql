@@ -18,6 +18,17 @@
 --   H  vendor portal — orders, supply list, payout claim, one-open-claim rule
 --   I  hub operator — commission summary
 --   J  subscription manifest — generation, BF-19 zero-money rows, idempotency
+--   K  vendor listing approval — the gate, and the vendor column lockdown
+--
+-- A KNOWN LIMIT, worth reading before trusting a PASS. Sections A–J set
+-- request.jwt.claims but stay on the PRIVILEGED role, so RLS and column
+-- GRANTs are bypassed throughout. Their assertions are still real where the
+-- rule lives inside a SECURITY DEFINER function (D0, F0), but nothing
+-- enforced by a POLICY or a GRANT is covered by them — which is precisely the
+-- bug class that took the vendor network offline in July 2026. Section K
+-- switches role properly and is the only part of this file that tests RLS.
+-- Extending that to A–J means rewriting their privileged fixtures; worth
+-- doing, deliberately not smuggled into an unrelated change.
 --
 -- SAFETY
 --   * Everything runs inside one DO block ending in RAISE EXCEPTION, so the
@@ -338,6 +349,135 @@ BEGIN
         v_rows, v_n, CASE WHEN v_n = v_rows THEN 'PASS' ELSE 'FAIL (duplicated)' END, E'\n');
     END IF;
   EXCEPTION WHEN OTHERS THEN r := r || format('J ... FAIL (%s)%s', SQLERRM, E'\n'); END;
+
+  -- ══ K. VENDOR LISTING APPROVAL (as REAL ROLES) ══════════════════════════
+  --
+  -- THE ONLY SECTION THAT SWITCHES ROLE, AND THAT IS THE POINT.
+  --
+  -- Every section above sets request.jwt.claims but stays on the privileged
+  -- role, so RLS and column GRANTs are bypassed for all of them. That is fine
+  -- where the rule being tested lives INSIDE a SECURITY DEFINER function —
+  -- D0 and F0 genuinely work, because those RPCs read the claim and refuse.
+  -- But it means nothing enforced by RLS or by a GRANT is covered anywhere in
+  -- this file, and that is exactly the class of bug that took the whole
+  -- vendor network offline in July 2026: a policy verified with a superuser
+  -- query, confirming a rule that in fact denied everyone.
+  --
+  -- So this section runs `set_config('role', ...)` and checks what an actual
+  -- customer and an actual vendor can see and write.
+  --
+  -- Retrofitting that onto A–J is NOT a small change: they depend on
+  -- privileged fixture inserts and would need rewriting to run unprivileged.
+  -- Worth doing; not worth doing quietly inside an unrelated commit.
+  BEGIN
+    DECLARE
+      v_listing INT;
+      v_seen    INT;
+      v_cust    UUID;
+    BEGIN
+      -- A customer who can genuinely SEE this vendor — one whose active
+      -- address falls in an area the vendor was granted. Using anybody else
+      -- makes every assertion below pass for the wrong reason: they would see
+      -- zero vendor items whether or not the approval gate works.
+      SELECT ca.user_id INTO v_cust
+        FROM customer_addresses ca
+        JOIN vendor_zones vz
+          ON (vz.zone_id = ca.zone_id OR vz.hub_id = ca.hub_id)
+       WHERE ca.is_active AND vz.vendor_id = v_vendor.id
+         AND ca.user_id <> v_vendor.owner_user_id
+       LIMIT 1;
+
+      IF v_cust IS NULL THEN
+        r := r || E'K  listing gate ... SKIPPED (no customer in this vendor''s area)\n';
+      ELSE
+        -- ── as the vendor ──
+        PERFORM set_config('request.jwt.claims',
+          json_build_object('sub', v_vendor.owner_user_id, 'role','authenticated',
+                            'user_role','customer')::text, true);
+        PERFORM set_config('role', 'authenticated', true);
+
+        SELECT vendor_create_draft_listing('HEALTHCHECK item', 99, 'unit',
+                 (SELECT id FROM delivery_cycles WHERE is_essentials AND is_active LIMIT 1),
+                 NULL, NULL) INTO v_listing;
+
+        BEGIN
+          PERFORM vendor_submit_listings(ARRAY[v_listing]);
+          r := r || E'K1 submit without a photo refused ... FAIL (allowed)\n';
+        EXCEPTION WHEN OTHERS THEN
+          r := r || format('K1 submit without a photo refused ... %s%s',
+            CASE WHEN SQLERRM LIKE '%HEALTHCHECK item%' THEN 'PASS'
+                 ELSE 'PASS (but item not named)' END, E'\n');
+        END;
+
+        -- The platform's own columns must be unreachable, even on their row.
+        BEGIN
+          UPDATE essentials_catalog SET vendor_cost = 1 WHERE id = v_listing;
+          r := r || E'K2 vendor cannot write vendor_cost ... FAIL (allowed)\n';
+        EXCEPTION WHEN insufficient_privilege THEN
+          r := r || E'K2 vendor cannot write vendor_cost ... PASS\n';
+        END;
+
+        BEGIN
+          UPDATE essentials_catalog SET listing_status = 'approved' WHERE id = v_listing;
+          r := r || E'K3 vendor cannot approve themselves ... FAIL (allowed)\n';
+        EXCEPTION WHEN insufficient_privilege THEN
+          r := r || E'K3 vendor cannot approve themselves ... PASS\n';
+        END;
+
+        -- Availability is deliberately NOT gated: a vendor who has run out
+        -- must be able to stop selling without waiting for us.
+        BEGIN
+          UPDATE essentials_catalog SET is_active = FALSE WHERE id = v_listing;
+          r := r || E'K4 vendor CAN still switch an item off ... PASS\n';
+        EXCEPTION WHEN insufficient_privilege THEN
+          r := r || E'K4 vendor CAN still switch an item off ... FAIL (blocked)\n';
+        END;
+
+        UPDATE essentials_catalog
+           SET image_path = 'essentials-photos/' || id || '.jpg'
+         WHERE id = v_listing;
+        PERFORM vendor_submit_listings(ARRAY[v_listing]);
+
+        -- ── as the customer ──
+        PERFORM set_config('role', 'none', true);
+        PERFORM set_config('request.jwt.claims',
+          json_build_object('sub', v_cust, 'role','authenticated',
+                            'user_role','customer')::text, true);
+        PERFORM set_config('role', 'authenticated', true);
+
+        SELECT count(*) INTO v_n FROM vendor_ids_visible_to_me() f
+         WHERE f.vendor_id = v_vendor.id;
+        r := r || format('K5 test customer can see this vendor at all ... %s%s',
+          CASE WHEN v_n > 0 THEN 'PASS' ELSE 'FAIL (K6 would be meaningless)' END, E'\n');
+
+        SELECT count(*) INTO v_seen FROM essentials_catalog WHERE id = v_listing;
+        r := r || format('K6 pending listing hidden from customer ... %s%s',
+          CASE WHEN v_seen = 0 THEN 'PASS' ELSE 'FAIL (visible unapproved)' END, E'\n');
+
+        -- ── as the admin ──
+        PERFORM set_config('role', 'none', true);
+        PERFORM set_config('request.jwt.claims',
+          json_build_object('sub', v_vendor.owner_user_id, 'role','authenticated',
+                            'user_role','admin')::text, true);
+        PERFORM admin_review_listing(v_listing, TRUE);
+
+        PERFORM set_config('request.jwt.claims',
+          json_build_object('sub', v_cust, 'role','authenticated',
+                            'user_role','customer')::text, true);
+        PERFORM set_config('role', 'authenticated', true);
+        SELECT count(*) INTO v_seen FROM essentials_catalog WHERE id = v_listing;
+        r := r || format('K7 approved listing now visible ... %s%s',
+          CASE WHEN v_seen = 1 THEN 'PASS' ELSE 'FAIL (still hidden)' END, E'\n');
+
+        PERFORM set_config('role', 'none', true);
+      END IF;
+    END;
+  EXCEPTION WHEN OTHERS THEN
+    -- Reset the role, or every later statement runs unprivileged and the
+    -- rollback itself could fail in a confusing way.
+    PERFORM set_config('role', 'none', true);
+    r := r || format('K ... FAIL (%s)%s', SQLERRM, E'\n');
+  END;
 
   r := r || E'\n════ rolled back — nothing kept ════';
   RAISE EXCEPTION '%', r;

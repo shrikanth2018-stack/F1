@@ -16,6 +16,20 @@
 
 import { resizeForUpload } from '@/utils/imageResize';
 
+/**
+ * Make the native module unavailable, exactly as it is on a phone whose store
+ * build predates it.
+ *
+ * This is not a contrived case. JS ships over the air and native modules do
+ * not, so an `eas update` reaches binaries without expo-image-manipulator —
+ * and a top-level import there throws during module evaluation, before any
+ * try/catch runs, and the app never starts. Requiring it inside the try is
+ * what makes every assertion below still hold in that situation.
+ */
+jest.mock('expo-image-manipulator', () => {
+  throw new Error("Cannot find native module 'ExpoImageManipulator'");
+});
+
 const photo = {
   uri: 'blob:http://localhost/abc',
   base64: 'AAECAwQF',
@@ -33,9 +47,17 @@ describe('resizeForUpload', () => {
   });
 
   it('falls back to the original when it cannot resize', async () => {
-    // No canvas in this environment, so this is the degraded path — the one
-    // that must not lose the admin's picked image.
+    // The degraded path — the one that must not lose the picked image. Here
+    // it is reached because the native module is missing (see the mock
+    // above); on web it is reached when there is no canvas.
     await expect(resizeForUpload(photo)).resolves.toEqual(photo);
+  });
+
+  it('does not throw when the native module is missing', async () => {
+    // The assertion that matters most in this file: a missing native module
+    // must degrade to "uploads stay full-size until the next store release",
+    // never to an app that will not launch.
+    await expect(resizeForUpload(photo)).resolves.toBeTruthy();
   });
 
   it('does not throw on a photo it cannot decode', async () => {

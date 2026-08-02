@@ -29,6 +29,48 @@ const withGoogleMapsAndroid = (config) => {
   });
 };
 
+/**
+ * Sentry source-map upload — added ONLY when it is actually configured.
+ *
+ * Without it Sentry still receives every crash (the DSN is set in eas.json),
+ * but each one points at a minified position like
+ * `index.android.bundle:1:428931` instead of a file and line, which is close
+ * to unactionable.
+ *
+ * Conditional rather than hardcoded, deliberately: wrong org/project slugs
+ * make the upload step fail during a build, and a release build failing over
+ * a telemetry detail is a bad trade. Absent config, this is simply omitted and
+ * builds behave exactly as they did before.
+ *
+ * TO TURN IT ON — the slugs are NOT derivable from the DSN, which carries only
+ * numeric ids (org 4511278945533952, project 4511278950514688). Read both from
+ * Sentry → Settings, then:
+ *
+ *   eas secret:create --scope project --name SENTRY_ORG          --value <org-slug>
+ *   eas secret:create --scope project --name SENTRY_PROJECT      --value <project-slug>
+ *   eas secret:create --scope project --name SENTRY_AUTH_TOKEN   --value <token>
+ *
+ * SENTRY_AUTH_TOKEN needs the `project:releases` scope. It is a WRITE
+ * credential, which is why all three are EAS secrets rather than entries in
+ * eas.json — that file is committed.
+ *
+ * After the first build with these set, open a release in Sentry and confirm a
+ * stack trace shows real filenames. The upload step does not fail the build if
+ * the token is missing, so the only way to know it worked is to look.
+ */
+const sentryPlugin =
+  process.env.SENTRY_ORG && process.env.SENTRY_PROJECT
+    ? [
+        [
+          '@sentry/react-native/expo',
+          {
+            organization: process.env.SENTRY_ORG,
+            project: process.env.SENTRY_PROJECT,
+          },
+        ],
+      ]
+    : [];
+
 export default ({ config }) => {
   const appConfig = {
     ...config,
@@ -98,9 +140,11 @@ export default ({ config }) => {
       [
         'expo-image-picker',
         {
-          photosPermission: '1stOne needs photo library access to upload offer banners.',
+          photosPermission:
+            '1stOne needs photo library access to upload menu and product photos.',
         },
       ],
+      ...sentryPlugin,
       withGoogleMapsAndroid,
     ],
     extra: {

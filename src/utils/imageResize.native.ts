@@ -29,8 +29,28 @@
  * Android-only, so it would also make the two platforms diverge for no gain.
  */
 
-import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { ALLOWED_PHOTO_MIME, type PickedPhoto } from './photoFormat';
+
+/**
+ * REQUIRED LAZILY, AND THAT IS NOT A STYLE CHOICE.
+ *
+ * `expo-image-manipulator` resolves its native module at IMPORT time, so a
+ * top-level import throws during module evaluation on any binary that does not
+ * contain it — before any try/catch in this file can run. It surfaces as
+ * `[runtime not ready]: Cannot find native module 'ExpoImageManipulator'` and
+ * the app does not start at all.
+ *
+ * That matters far beyond a stale simulator. JS ships over the air, native
+ * modules do not: an `eas update` carrying this file would reach phones
+ * running a store build that predates the module, and every one of them would
+ * crash on launch. A require inside the try turns that into "photos upload at
+ * their original size until the next store release", which is the old
+ * behaviour and harmless.
+ *
+ * Rule for anything added here later: a native module must never be imported
+ * at the top level of a file the app loads at startup.
+ */
+type ManipulatorModule = typeof import('expo-image-manipulator');
 
 /**
  * Longest edge, in pixels, after downscaling. Matches imageResize.ts.
@@ -55,6 +75,12 @@ const QUALITY = 0.7;
  */
 export async function resizeForUpload(photo: PickedPhoto): Promise<PickedPhoto> {
   try {
+    // Inside the try on purpose — see the note above the type alias. On a
+    // binary without the module this throws here and is caught, instead of
+    // taking the whole app down at startup.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { ImageManipulator, SaveFormat }: ManipulatorModule = require('expo-image-manipulator');
+
     const rendered = await ImageManipulator.manipulate(photo.uri)
       .resize({ width: MAX_EDGE })
       .renderAsync();
