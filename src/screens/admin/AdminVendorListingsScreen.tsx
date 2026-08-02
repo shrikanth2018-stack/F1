@@ -67,7 +67,7 @@ async function askReason(what: string): Promise<string | null> {
   return ok ? '' : null;
 }
 
-export function AdminVendorListingsScreen({ navigation }: { navigation: AdminNavProp }) {
+export function VendorListingsQueue() {
   const listings = usePendingListings();
   const changes = usePendingListingChanges();
   const reviewListing = useReviewListing();
@@ -219,6 +219,163 @@ export function AdminVendorListingsScreen({ navigation }: { navigation: AdminNav
   const pendingCount = (listings.data?.length ?? 0) + (changes.data?.length ?? 0);
 
   return (
+    <ScrollView contentContainerStyle={styles.list} keyboardShouldPersistTaps="handled">
+      {listings.error ? (
+        <ErrorRetry message="Could not load new listings" onRetry={listings.refetch} />
+      ) : null}
+      {changes.error ? (
+        <ErrorRetry message="Could not load proposed changes" onRetry={changes.refetch} />
+      ) : null}
+
+      {pendingCount === 0 && !listings.isLoading && !changes.isLoading ? (
+        <EmptyState
+          title="Nothing waiting"
+          subtitle="New vendor listings and price changes land here for approval."
+        />
+      ) : null}
+
+      {/* ── New listings ── */}
+      {(listings.data ?? []).length > 0 && (
+        <ThemedText variant="small" color="muted" style={styles.sectionLabel}>
+          NEW LISTINGS
+        </ThemedText>
+      )}
+      {(listings.data ?? []).map((item) => (
+        <View key={`L${item.id}`} style={styles.card}>
+          <View style={styles.cardTop}>
+            <CatalogPhotoThumb
+              bucket={PHOTO_BUCKET.essentials}
+              item={item}
+              size={THUMB}
+              requestPx={PHOTO_PX.admin}
+              fallbackIcon="camera-outline"
+            />
+            <View style={styles.cardMeta}>
+              <ThemedText variant="body" color="primary" style={styles.txt}>{item.name}</ThemedText>
+              <ThemedText variant="small" color="muted" style={styles.sub}>
+                {formatPriceShort(item.price)}{item.unit ? ` / ${item.unit}` : ''} · {cycleName(item.cycle_id)}
+              </ThemedText>
+              <ThemedText variant="small" color="mint" style={styles.sub}>
+                {vendorName(item.vendor_id)}
+              </ThemedText>
+              {item.description ? (
+                <ThemedText variant="small" color="muted" style={styles.sub} numberOfLines={2}>
+                  {item.description}
+                </ThemedText>
+              ) : null}
+            </View>
+          </View>
+
+          {renderReason(`L${item.id}`, () => decideListing(item, false))}
+
+          {reasonFor !== `L${item.id}` && (
+            <View style={styles.actions}>
+              <TouchableOpacity
+                disabled={busyId === `L${item.id}`}
+                onPress={() => decideListing(item, false)}
+              >
+                <ThemedText variant="body" color="muted" style={styles.txt}>Send back</ThemedText>
+              </TouchableOpacity>
+              <TouchableOpacity
+                disabled={busyId === `L${item.id}`}
+                onPress={() => decideListing(item, true)}
+              >
+                <ThemedText variant="body" color="mint" style={styles.txt}>
+                  {busyId === `L${item.id}` ? 'Working…' : 'Approve  ›'}
+                </ThemedText>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      ))}
+
+      {(listings.data ?? []).length > 0 && (changes.data ?? []).length > 0 ? <Divider /> : null}
+
+      {/* ── Proposed changes ── */}
+      {(changes.data ?? []).length > 0 && (
+        <ThemedText variant="small" color="muted" style={styles.sectionLabel}>
+          CHANGES TO LIVE LISTINGS
+        </ThemedText>
+      )}
+      {(changes.data ?? []).map((ch) => {
+        const fields = changedFields(ch);
+        return (
+          <View key={`C${ch.id}`} style={styles.card}>
+            <View style={styles.cardTop}>
+              {/* The picture customers see right now. A proposed replacement
+                  is flagged below rather than shown here — it lives at the
+                  pending key and is not public until approved. */}
+              <CatalogPhotoThumb
+                bucket={PHOTO_BUCKET.essentials}
+                item={ch.current ?? {}}
+                size={THUMB}
+                requestPx={PHOTO_PX.admin}
+                fallbackIcon="camera-outline"
+              />
+              <View style={styles.cardMeta}>
+                <ThemedText variant="body" color="primary" style={styles.txt}>
+                  {ch.current?.name ?? `Item ${ch.item_id}`}
+                </ThemedText>
+                <ThemedText variant="small" color="mint" style={styles.sub}>
+                  {vendorName(ch.vendor_id)} · still selling while you decide
+                </ThemedText>
+              </View>
+            </View>
+
+            {fields.map((f) => (
+              <View key={f.label} style={styles.diffRow}>
+                <ThemedText variant="small" color="muted" style={styles.diffLabel}>{f.label}</ThemedText>
+                <ThemedText variant="small" color="muted" style={styles.diffFrom}>{f.from}</ThemedText>
+                <ThemedText variant="small" color="primary" style={styles.diffTo}>→  {f.to}</ThemedText>
+              </View>
+            ))}
+
+            {ch.photo_pending ? (
+              <ThemedText variant="small" color="warning" style={styles.sub}>
+                New photo proposed — approving replaces the current picture.
+              </ThemedText>
+            ) : null}
+
+            {fields.length === 0 && !ch.photo_pending ? (
+              <ThemedText variant="small" color="muted" style={styles.sub}>
+                Nothing differs from the live version.
+              </ThemedText>
+            ) : null}
+
+            {renderReason(`C${ch.id}`, () => decideChange(ch, false))}
+
+            {reasonFor !== `C${ch.id}` && (
+              <View style={styles.actions}>
+                <TouchableOpacity
+                  disabled={busyId === `C${ch.id}`}
+                  onPress={() => decideChange(ch, false)}
+                >
+                  <ThemedText variant="body" color="muted" style={styles.txt}>Send back</ThemedText>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  disabled={busyId === `C${ch.id}`}
+                  onPress={() => decideChange(ch, true)}
+                >
+                  <ThemedText variant="body" color="mint" style={styles.txt}>
+                    {busyId === `C${ch.id}` ? 'Working…' : 'Approve  ›'}
+                  </ThemedText>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        );
+      })}
+    </ScrollView>
+  );
+}
+
+/**
+ * Standalone screen — kept because the admin push deep-links straight here
+ * ({ screen: 'AdminVendorListings' }), and a notification should open the
+ * queue itself rather than a tab the reader then has to find.
+ */
+export function AdminVendorListingsScreen({ navigation }: { navigation: AdminNavProp }) {
+  return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
@@ -229,154 +386,7 @@ export function AdminVendorListingsScreen({ navigation }: { navigation: AdminNav
         </ThemedText>
         <View style={styles.spacer} />
       </View>
-
-      <ScrollView contentContainerStyle={styles.list} keyboardShouldPersistTaps="handled">
-        {listings.error ? (
-          <ErrorRetry message="Could not load new listings" onRetry={listings.refetch} />
-        ) : null}
-        {changes.error ? (
-          <ErrorRetry message="Could not load proposed changes" onRetry={changes.refetch} />
-        ) : null}
-
-        {pendingCount === 0 && !listings.isLoading && !changes.isLoading ? (
-          <EmptyState
-            title="Nothing waiting"
-            subtitle="New vendor listings and price changes land here for approval."
-          />
-        ) : null}
-
-        {/* ── New listings ── */}
-        {(listings.data ?? []).length > 0 && (
-          <ThemedText variant="small" color="muted" style={styles.sectionLabel}>
-            NEW LISTINGS
-          </ThemedText>
-        )}
-        {(listings.data ?? []).map((item) => (
-          <View key={`L${item.id}`} style={styles.card}>
-            <View style={styles.cardTop}>
-              <CatalogPhotoThumb
-                bucket={PHOTO_BUCKET.essentials}
-                item={item}
-                size={THUMB}
-                requestPx={PHOTO_PX.admin}
-                fallbackIcon="camera-outline"
-              />
-              <View style={styles.cardMeta}>
-                <ThemedText variant="body" color="primary" style={styles.txt}>{item.name}</ThemedText>
-                <ThemedText variant="small" color="muted" style={styles.sub}>
-                  {formatPriceShort(item.price)}{item.unit ? ` / ${item.unit}` : ''} · {cycleName(item.cycle_id)}
-                </ThemedText>
-                <ThemedText variant="small" color="mint" style={styles.sub}>
-                  {vendorName(item.vendor_id)}
-                </ThemedText>
-                {item.description ? (
-                  <ThemedText variant="small" color="muted" style={styles.sub} numberOfLines={2}>
-                    {item.description}
-                  </ThemedText>
-                ) : null}
-              </View>
-            </View>
-
-            {renderReason(`L${item.id}`, () => decideListing(item, false))}
-
-            {reasonFor !== `L${item.id}` && (
-              <View style={styles.actions}>
-                <TouchableOpacity
-                  disabled={busyId === `L${item.id}`}
-                  onPress={() => decideListing(item, false)}
-                >
-                  <ThemedText variant="body" color="muted" style={styles.txt}>Send back</ThemedText>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  disabled={busyId === `L${item.id}`}
-                  onPress={() => decideListing(item, true)}
-                >
-                  <ThemedText variant="body" color="mint" style={styles.txt}>
-                    {busyId === `L${item.id}` ? 'Working…' : 'Approve  ›'}
-                  </ThemedText>
-                </TouchableOpacity>
-              </View>
-            )}
-          </View>
-        ))}
-
-        {(listings.data ?? []).length > 0 && (changes.data ?? []).length > 0 ? <Divider /> : null}
-
-        {/* ── Proposed changes ── */}
-        {(changes.data ?? []).length > 0 && (
-          <ThemedText variant="small" color="muted" style={styles.sectionLabel}>
-            CHANGES TO LIVE LISTINGS
-          </ThemedText>
-        )}
-        {(changes.data ?? []).map((ch) => {
-          const fields = changedFields(ch);
-          return (
-            <View key={`C${ch.id}`} style={styles.card}>
-              <View style={styles.cardTop}>
-                {/* The picture customers see right now. A proposed replacement
-                    is flagged below rather than shown here — it lives at the
-                    pending key and is not public until approved. */}
-                <CatalogPhotoThumb
-                  bucket={PHOTO_BUCKET.essentials}
-                  item={ch.current ?? {}}
-                  size={THUMB}
-                  requestPx={PHOTO_PX.admin}
-                  fallbackIcon="camera-outline"
-                />
-                <View style={styles.cardMeta}>
-                  <ThemedText variant="body" color="primary" style={styles.txt}>
-                    {ch.current?.name ?? `Item ${ch.item_id}`}
-                  </ThemedText>
-                  <ThemedText variant="small" color="mint" style={styles.sub}>
-                    {vendorName(ch.vendor_id)} · still selling while you decide
-                  </ThemedText>
-                </View>
-              </View>
-
-              {fields.map((f) => (
-                <View key={f.label} style={styles.diffRow}>
-                  <ThemedText variant="small" color="muted" style={styles.diffLabel}>{f.label}</ThemedText>
-                  <ThemedText variant="small" color="muted" style={styles.diffFrom}>{f.from}</ThemedText>
-                  <ThemedText variant="small" color="primary" style={styles.diffTo}>→  {f.to}</ThemedText>
-                </View>
-              ))}
-
-              {ch.photo_pending ? (
-                <ThemedText variant="small" color="warning" style={styles.sub}>
-                  New photo proposed — approving replaces the current picture.
-                </ThemedText>
-              ) : null}
-
-              {fields.length === 0 && !ch.photo_pending ? (
-                <ThemedText variant="small" color="muted" style={styles.sub}>
-                  Nothing differs from the live version.
-                </ThemedText>
-              ) : null}
-
-              {renderReason(`C${ch.id}`, () => decideChange(ch, false))}
-
-              {reasonFor !== `C${ch.id}` && (
-                <View style={styles.actions}>
-                  <TouchableOpacity
-                    disabled={busyId === `C${ch.id}`}
-                    onPress={() => decideChange(ch, false)}
-                  >
-                    <ThemedText variant="body" color="muted" style={styles.txt}>Send back</ThemedText>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    disabled={busyId === `C${ch.id}`}
-                    onPress={() => decideChange(ch, true)}
-                  >
-                    <ThemedText variant="body" color="mint" style={styles.txt}>
-                      {busyId === `C${ch.id}` ? 'Working…' : 'Approve  ›'}
-                    </ThemedText>
-                  </TouchableOpacity>
-                </View>
-              )}
-            </View>
-          );
-        })}
-      </ScrollView>
+      <VendorListingsQueue />
     </SafeAreaView>
   );
 }

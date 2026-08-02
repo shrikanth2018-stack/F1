@@ -13,6 +13,16 @@
  *   submitted  ready to verify  ← your move
  *   approved   selling
  *   suspended  catalogue down, existing orders honoured, balance claimable
+ *
+ * TWO TABS, ONE SCREEN. Who a vendor IS and what they are trying to sell are
+ * the same job at different moments, so they sit behind a segmented control
+ * rather than two Manage rows or a row that navigates away. The waiting count
+ * rides on the Listings tab label, so the queue is visible without opening it
+ * — a vendor whose goods are held up has no way to chase us.
+ *
+ * Listings is a tab here AND a standalone route, because the admin push
+ * deep-links straight to the queue; a notification should not land somewhere
+ * the reader then has to go looking.
  */
 
 import React, { useState } from 'react';
@@ -32,7 +42,9 @@ import { EmptyState } from '../../components/EmptyState';
 import { ErrorRetry } from '../../components/ErrorRetry';
 import { DispatchBadge } from '../../components/DispatchBadge';
 import { formatPhone } from '../../utils/formatters';
+import { SegmentedControl } from '../../components/SegmentedControl';
 import { usePendingListingCount } from '../../hooks/useVendorListingReview';
+import { VendorListingsQueue } from './AdminVendorListingsScreen';
 import {
   useVendors,
   STATUS_LABEL,
@@ -45,6 +57,7 @@ const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
 
 type Filter = VendorStatus | 'all';
+type VendorTab = 'vendors' | 'listings';
 
 // "Ready to verify" leads: those are the ones waiting on the admin.
 const FILTERS: { key: Filter; label: string }[] = [
@@ -64,6 +77,7 @@ const STATUS_VARIANT: Record<VendorStatus, 'success' | 'warning' | 'info' | 'err
 };
 
 export function AdminVendorManagerScreen({ navigation }: AdminScreenProps<'AdminVendorManager'>) {
+  const [tab, setTab] = useState<VendorTab>('vendors');
   const [filter, setFilter] = useState<Filter>('submitted');
   const { data: vendors, isLoading, error, refetch } = useVendors(filter);
   const pendingListings = usePendingListingCount();
@@ -100,90 +114,82 @@ export function AdminVendorManagerScreen({ navigation }: AdminScreenProps<'Admin
         <View style={styles.spacer} />
       </View>
 
-      {/* Listings live here rather than as a second row on the Manage page:
-          who a vendor IS and what they are trying to sell are the same job,
-          and splitting them meant the approval queue was easy to walk past.
-          The count is what makes it visible — a vendor waiting on us has no
-          way to chase it, and the push is long gone from the shade. */}
-      <TouchableOpacity
-        style={styles.listingsRow}
-        onPress={() => navigation.navigate('AdminVendorListings')}
-        activeOpacity={0.7}
-      >
-        <View style={styles.flex1}>
-          <ThemedText variant="body" color="primary" style={styles.txt}>Listings</ThemedText>
-          <ThemedText variant="small" color={pendingListings > 0 ? 'warning' : 'muted'} style={styles.listingsSub}>
-            {pendingListings > 0
-              ? `${pendingListings} waiting for approval`
-              : 'New items and price changes appear here'}
-          </ThemedText>
-        </View>
-        <ThemedText variant="body" color="mint" style={styles.txt}>›</ThemedText>
-      </TouchableOpacity>
-
-      <Divider />
-
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.chipScroll}
-        contentContainerStyle={styles.chipRow}
-      >
-        {FILTERS.map((f) => {
-          const active = filter === f.key;
-          return (
-            <TouchableOpacity
-              key={f.key}
-              style={[styles.chip, active && styles.chipActive]}
-              onPress={() => setFilter(f.key)}
-              activeOpacity={0.7}
-            >
-              <ThemedText variant="small" color={active ? 'mint' : 'muted'}>{f.label}</ThemedText>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
-
-      <Divider />
-
-      {isLoading && <ActivityIndicator color={Theme.colors.text.mint} style={styles.loader} />}
-
-      <FlatList
-        data={vendors ?? []}
-        keyExtractor={(v) => String(v.id)}
-        renderItem={renderItem}
-        ItemSeparatorComponent={() => <Divider />}
-        contentContainerStyle={styles.list}
-        ListEmptyComponent={
-          !isLoading ? (
-            <EmptyState
-              title={filter === 'submitted' ? 'Nothing waiting on you' : 'No vendors here'}
-              subtitle={'Tap "+ Onboard vendor" below'}
-            />
-          ) : null
-        }
+      <SegmentedControl<VendorTab>
+        style={styles.tabs}
+        value={tab}
+        onChange={setTab}
+        options={[
+          { key: 'vendors', label: 'Vendors' },
+          {
+            key: 'listings',
+            // Count on the label, not a separate badge: it is the reason to
+            // look at this tab, so it belongs where the eye already goes.
+            label: pendingListings > 0 ? `Listings (${pendingListings})` : 'Listings',
+          },
+        ]}
       />
 
-      <TouchableOpacity
-        style={styles.footer}
-        activeOpacity={0.7}
-        onPress={() => navigation.navigate('AdminVendorOnboard')}
-      >
-        <ThemedText variant="body" color="mint" style={styles.txt}>+ Onboard vendor  ›</ThemedText>
-      </TouchableOpacity>
+      {tab === 'listings' ? (
+        <VendorListingsQueue />
+      ) : (
+        <>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.chipScroll}
+          contentContainerStyle={styles.chipRow}
+        >
+          {FILTERS.map((f) => {
+            const active = filter === f.key;
+            return (
+              <TouchableOpacity
+                key={f.key}
+                style={[styles.chip, active && styles.chipActive]}
+                onPress={() => setFilter(f.key)}
+                activeOpacity={0.7}
+              >
+                <ThemedText variant="small" color={active ? 'mint' : 'muted'}>{f.label}</ThemedText>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+
+        <Divider />
+
+        {isLoading && <ActivityIndicator color={Theme.colors.text.mint} style={styles.loader} />}
+
+        <FlatList
+          data={vendors ?? []}
+          keyExtractor={(v) => String(v.id)}
+          renderItem={renderItem}
+          ItemSeparatorComponent={() => <Divider />}
+          contentContainerStyle={styles.list}
+          ListEmptyComponent={
+            !isLoading ? (
+              <EmptyState
+                title={filter === 'submitted' ? 'Nothing waiting on you' : 'No vendors here'}
+                subtitle={'Tap "+ Onboard vendor" below'}
+              />
+            ) : null
+          }
+        />
+
+        <TouchableOpacity
+          style={styles.footer}
+          activeOpacity={0.7}
+          onPress={() => navigation.navigate('AdminVendorOnboard')}
+        >
+          <ThemedText variant="body" color="mint" style={styles.txt}>+ Onboard vendor  ›</ThemedText>
+        </TouchableOpacity>
+        </>
+      )}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
-  listingsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.md,
-  },
-  listingsSub: { marginTop: 2 },
+  tabs: { marginHorizontal: Theme.spacing.md, marginVertical: Theme.spacing.sm },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
