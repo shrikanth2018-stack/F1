@@ -101,19 +101,58 @@ function BannerPreview({
   );
 }
 
-/** Colour picker row. */
-function SwatchRow({
-  colors, selected, onSelect,
-}: { colors: string[]; selected: string; onSelect: (c: string) => void }) {
+/**
+ * One colour row for both text and background.
+ *
+ * Two labelled rows of 30px dots ate the vertical space the position grid
+ * needed. This is one row of smaller dots plus a target toggle — and each
+ * toggle carries a chip of its CURRENT colour, so collapsing the rows does not
+ * cost you seeing both choices at once.
+ *
+ * In "On photo" there is no background to set, so the toggle disappears
+ * entirely rather than offering a target that does nothing.
+ */
+function ColourPicker({
+  showBackground, target, onTarget, colors, selected, onSelect, textColor, bgColor,
+}: {
+  showBackground: boolean;
+  target: 'text' | 'background';
+  onTarget: (t: 'text' | 'background') => void;
+  colors: string[];
+  selected: string;
+  onSelect: (c: string) => void;
+  textColor: string;
+  bgColor: string;
+}) {
   return (
-    <View style={sw.row}>
-      {colors.map((c) => (
-        <TouchableOpacity
-          key={c}
-          onPress={() => onSelect(c)}
-          style={[sw.swatch, { backgroundColor: c }, selected === c && sw.swatchActive]}
-        />
-      ))}
+    <View>
+      {showBackground ? (
+        <View style={sw.targetRow}>
+          {(['text', 'background'] as const).map((t) => (
+            <TouchableOpacity
+              key={t}
+              onPress={() => onTarget(t)}
+              style={[sw.chip, target === t && sw.chipActive]}
+              activeOpacity={0.7}
+            >
+              <View style={[sw.chipDot, { backgroundColor: t === 'text' ? textColor : bgColor }]} />
+              <ThemedText variant="small" color={target === t ? 'mint' : 'muted'}>
+                {t === 'text' ? 'Text' : 'Background'}
+              </ThemedText>
+            </TouchableOpacity>
+          ))}
+        </View>
+      ) : null}
+
+      <View style={sw.row}>
+        {colors.map((c) => (
+          <TouchableOpacity
+            key={c}
+            onPress={() => onSelect(c)}
+            style={[sw.swatch, { backgroundColor: c }, selected === c && sw.swatchActive]}
+          />
+        ))}
+      </View>
     </View>
   );
 }
@@ -186,9 +225,13 @@ const pv = StyleSheet.create({
 
 const sw = StyleSheet.create({
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingVertical: Theme.spacing.sm },
-  swatch: { width: 30, height: 30, borderRadius: 15 },
+  swatch: { width: 22, height: 22, borderRadius: 11 },
   swatchActive: { borderWidth: 3, borderColor: Theme.colors.text.mint },
+  targetRow: { flexDirection: 'row', gap: 8, paddingTop: Theme.spacing.xs },
+  chipDot: { width: 12, height: 12, borderRadius: 6, marginRight: 6 },
   chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 14,
     paddingVertical: 6,
     borderRadius: 14,
@@ -199,8 +242,8 @@ const sw = StyleSheet.create({
   grid: { paddingVertical: Theme.spacing.sm, gap: 4 },
   gridRow: { flexDirection: 'row', gap: 4 },
   cell: {
-    width: 46,
-    height: 30,
+    width: 52,
+    height: 34,
     borderRadius: 6,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: Theme.colors.layout.divider,
@@ -309,6 +352,7 @@ export function SpecialOfferBannerScreen({ navigation }: { navigation: AdminNavP
   const [size, setSize] = useState<'S' | 'M' | 'L'>('M');
   const [alignH, setAlignH] = useState<'left' | 'center' | 'right'>('center');
   const [alignV, setAlignV] = useState<'top' | 'middle' | 'bottom'>('bottom');
+  const [colourTarget, setColourTarget] = useState<'text' | 'background'>('text');
 
   const customContent: CustomBannerContent = {
     title, subtitle, bg_color: bgColor, text_color: textColor, emoji, pulse,
@@ -511,19 +555,19 @@ export function SpecialOfferBannerScreen({ navigation }: { navigation: AdminNavP
               onChangeText={setSubtitle}
             />
 
-            {/* Background colour — panel only. In "On photo" the text sits
-                directly on the photograph, so offering a colour that changes
-                nothing would just be a dead control. */}
-            {style === 'panel' && (
-              <>
-                <ThemedText variant="small" color="muted" style={styles.fieldLabel}>Background</ThemedText>
-                <SwatchRow colors={BG_COLORS} selected={bgColor} onSelect={setBgColor} />
-              </>
-            )}
-
-            {/* Text color */}
-            <ThemedText variant="small" color="muted" style={styles.fieldLabel}>Text Color</ThemedText>
-            <SwatchRow colors={TEXT_COLORS} selected={textColor} onSelect={setTextColor} />
+            {/* One colour row, targeted. In "On photo" there is no background
+                to set, so it collapses to the text palette alone. */}
+            <ThemedText variant="small" color="muted" style={styles.fieldLabel}>Colour</ThemedText>
+            <ColourPicker
+              showBackground={style === 'panel'}
+              target={style === 'panel' ? colourTarget : 'text'}
+              onTarget={setColourTarget}
+              colors={style === 'panel' && colourTarget === 'background' ? BG_COLORS : TEXT_COLORS}
+              selected={style === 'panel' && colourTarget === 'background' ? bgColor : textColor}
+              onSelect={style === 'panel' && colourTarget === 'background' ? setBgColor : setTextColor}
+              textColor={textColor}
+              bgColor={bgColor}
+            />
 
             {/* Treatment — the A/B you compare on the device. */}
             <ThemedText variant="small" color="muted" style={styles.fieldLabel}>Style</ThemedText>
