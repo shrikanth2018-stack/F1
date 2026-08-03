@@ -18,7 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import ReAnimated, {
+import {
   useSharedValue,
   useAnimatedStyle,
   withTiming,
@@ -42,6 +42,7 @@ import { useUIStore } from '../../store/uiStore';
 import { SegmentedControl } from '../../components/SegmentedControl';
 import { assetUrl } from '../../utils/assets';
 import { useLiveBanner, type CustomBannerContent } from '../../hooks/useBanner';
+import { OfferOverlay } from '../../components/OfferOverlay';
 import { useWalletNudge } from '../../hooks/useWalletNudge';
 import { useAddresses } from '../../hooks/useAddresses';
 import { essentialsCycleLabel } from '../../utils/cycleLabels';
@@ -116,9 +117,11 @@ export function HomeScreen() {
     return null;
   }, [liveBanner]);
 
-  const heroBgUrl = (liveBanner?.banner_type === 'image' && liveBanner.image_url)
-    ? liveBanner.image_url
-    : BANNER_URL;
+  // The hero photo is INDEPENDENT of whether an offer is running. It used to
+  // be read only when banner_type was 'image', so publishing an offer dropped
+  // the admin's uploaded picture and fell back to the bundled default — the
+  // offer was then composed over a photo nobody chose.
+  const heroBgUrl = liveBanner?.image_url || BANNER_URL;
 
   const pulse = useSharedValue(1);
   useEffect(() => {
@@ -204,23 +207,7 @@ export function HomeScreen() {
         />
 
         {textContent && (
-          <ReAnimated.View
-            style={[
-              styles.textBanner,
-              { backgroundColor: textContent.bg_color },
-              pulseStyle,
-            ]}
-          >
-            {!!textContent.emoji && <Text style={styles.bannerEmoji}>{textContent.emoji}</Text>}
-            <Text style={[styles.bannerTitle, { color: textContent.text_color }]} numberOfLines={2}>
-              {textContent.title}
-            </Text>
-            {!!textContent.subtitle && (
-              <Text style={[styles.bannerSub, { color: textContent.text_color }]} numberOfLines={1}>
-                {textContent.subtitle}
-              </Text>
-            )}
-          </ReAnimated.View>
+          <OfferOverlay content={textContent} animatedStyle={pulseStyle} />
         )}
 
         <View style={[styles.header, { paddingTop: insets.top + 4 }]}>
@@ -446,30 +433,6 @@ const styles = StyleSheet.create({
     backgroundColor: Theme.colors.layout.divider,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  textBanner: {
-    position: 'absolute',
-    bottom: 44,
-    left: Theme.spacing.md,
-    right: Theme.spacing.md,
-    borderRadius: 10,
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-    alignItems: 'center',
-  },
-  bannerEmoji: { fontSize: Theme.typography.sizes.body + 6, marginBottom: 2 },
-  bannerTitle: {
-    fontFamily: Theme.typography.fontFamily,
-    fontSize: Theme.typography.sizes.body + 6,
-    fontWeight: '500',
-    textAlign: 'center',
-  },
-  bannerSub: {
-    fontFamily: Theme.typography.fontFamily,
-    fontSize: Theme.typography.sizes.small + 4,
-    textAlign: 'center',
-    marginTop: 2,
-    opacity: 0.85,
   },
 
   // ── Food | Essentials pill (SegmentedControl) ──

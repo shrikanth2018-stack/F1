@@ -8,7 +8,7 @@
  *                  emoji decorator, pulse effect toggle. Live preview updates as you type.
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   ScrollView,
@@ -17,7 +17,7 @@ import {
   StyleSheet,
   Alert,
   Image,
-  Animated,
+  ImageBackground,
   ActivityIndicator,
   Switch,
 } from 'react-native';
@@ -30,6 +30,13 @@ import { ThemedText } from '../../components/ThemedText';
 import { Divider } from '../../components/Divider';
 import { supabase } from '../../api/supabaseClient';
 import { sendPush } from '../../api/sendPush';
+import { LinearGradient } from 'expo-linear-gradient';
+import {
+  useSharedValue, useAnimatedStyle, withRepeat, withSequence, withTiming,
+} from 'react-native-reanimated';
+import { OfferOverlay } from '../../components/OfferOverlay';
+import { assetUrl } from '../../utils/assets';
+import { confirmDialog } from '../../utils/confirmDialog';
 import { useLiveBanner, useUpsertBanner, type CustomBannerContent } from '../../hooks/useBanner';
 import type { AdminNavProp } from '../../navigation/types';
 
@@ -47,93 +54,162 @@ const BG_COLORS = [
 const TEXT_COLORS = ['#FFFFFF', '#F8F8F0', '#FFD700', '#FF6B35', '#1A1A2E'];
 const EMOJIS = ['', '🔥', '✨', '🎉', '💥', '⚡', '🌟', '🎊'];
 
-// ── Animated banner preview ──────────────────────────────
-function BannerPreview({ content, pulse }: { content: CustomBannerContent; pulse: boolean }) {
-  const anim = useRef(new Animated.Value(1)).current;
-
+/**
+ * Preview — the REAL overlay component, over the REAL hero photograph.
+ *
+ * It used to be a separate lookalike, which is how a preview quietly starts
+ * lying: it drifts from the screen it claims to represent. This renders
+ * `OfferOverlay` (what Home renders) on top of the live hero image with the
+ * same gradient, so position, size, colour and treatment are exact.
+ */
+function BannerPreview({
+  content,
+  pulse,
+  heroUrl,
+}: {
+  content: CustomBannerContent;
+  pulse: boolean;
+  heroUrl: string;
+}) {
+  const p = useSharedValue(1);
   useEffect(() => {
     if (pulse) {
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(anim, { toValue: 0.7, duration: 800, useNativeDriver: true }),
-          Animated.timing(anim, { toValue: 1,   duration: 800, useNativeDriver: true }),
-        ])
-      ).start();
+      p.value = withRepeat(
+        withSequence(withTiming(0.7, { duration: 800 }), withTiming(1, { duration: 800 })),
+        -1,
+      );
     } else {
-      anim.stopAnimation();
-      anim.setValue(1);
+      p.value = 1;
     }
-  }, [pulse, anim]);
+  }, [pulse, p]);
+  const pulseStyle = useAnimatedStyle(() => ({ opacity: p.value }));
 
   return (
-    <Animated.View style={[preview.wrap, { backgroundColor: content.bg_color, opacity: anim }]}>
-      {content.emoji ? (
-        <ThemedText variant="body" color="primary" style={preview.emoji}>{content.emoji}</ThemedText>
-      ) : null}
-      <ThemedText
-        variant="header"
-        color="primary"
-        style={[preview.title, { color: content.text_color }]}
-        numberOfLines={2}
-      >
-        {content.title || 'Your offer title'}
-      </ThemedText>
-      {!!content.subtitle && (
-        <ThemedText
-          variant="small"
-          color="muted"
-          style={[preview.sub, { color: content.text_color, opacity: 0.85 }]}
-          numberOfLines={1}
-        >
-          {content.subtitle}
-        </ThemedText>
-      )}
-    </Animated.View>
+    <ImageBackground
+      source={{ uri: heroUrl }}
+      style={pv.hero}
+      imageStyle={pv.heroImg}
+      resizeMode="cover"
+    >
+      <LinearGradient
+        colors={['transparent', `${Theme.colors.background.primary}99`, Theme.colors.background.primary]}
+        locations={[0.25, 0.65, 1.0]}
+        style={StyleSheet.absoluteFillObject}
+      />
+      <OfferOverlay content={content} animatedStyle={pulseStyle} />
+    </ImageBackground>
   );
 }
 
-const preview = StyleSheet.create({
-  wrap: {
-    width: '100%',
-    height: 130,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 8,
-    paddingHorizontal: Theme.spacing.md,
-  },
-  emoji: { fontSize: 28, marginBottom: 4 },
-  title: { fontSize: B + 4, textAlign: 'center' },
-  sub: { fontSize: S, textAlign: 'center', marginTop: 4 },
-});
-
-// ── Color swatch row ─────────────────────────────────────
+/** Colour picker row. */
 function SwatchRow({
-  colors,
-  selected,
-  onSelect,
-}: {
-  colors: string[];
-  selected: string;
-  onSelect: (c: string) => void;
-}) {
+  colors, selected, onSelect,
+}: { colors: string[]; selected: string; onSelect: (c: string) => void }) {
   return (
     <View style={sw.row}>
       {colors.map((c) => (
         <TouchableOpacity
           key={c}
-          style={[sw.swatch, { backgroundColor: c }, selected === c && sw.swatchActive]}
           onPress={() => onSelect(c)}
-          activeOpacity={0.8}
+          style={[sw.swatch, { backgroundColor: c }, selected === c && sw.swatchActive]}
         />
       ))}
     </View>
   );
 }
 
+/** Small labelled choice row — style, size, and anything else with 2-3 options. */
+function OptionRow<T extends string>({
+  options, value, onChange,
+}: { options: { key: T; label: string }[]; value: T; onChange: (v: T) => void }) {
+  return (
+    <View style={sw.row}>
+      {options.map((o) => (
+        <TouchableOpacity
+          key={o.key}
+          onPress={() => onChange(o.key)}
+          style={[sw.chip, value === o.key && sw.chipActive]}
+          activeOpacity={0.7}
+        >
+          <ThemedText variant="small" color={value === o.key ? 'mint' : 'muted'}>{o.label}</ThemedText>
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+}
+
+/**
+ * Where the text sits, as a 3x3 grid you tap.
+ *
+ * One tap instead of two dropdowns, and it mirrors what you are looking at —
+ * so matching a photo becomes "put it where the food isn't" rather than
+ * reasoning about horizontal and vertical separately.
+ */
+function AlignGrid({
+  h, v, onChange,
+}: {
+  h: 'left' | 'center' | 'right';
+  v: 'top' | 'middle' | 'bottom';
+  onChange: (h: 'left' | 'center' | 'right', v: 'top' | 'middle' | 'bottom') => void;
+}) {
+  const rows: ('top' | 'middle' | 'bottom')[] = ['top', 'middle', 'bottom'];
+  const cols: ('left' | 'center' | 'right')[] = ['left', 'center', 'right'];
+  return (
+    <View style={sw.grid}>
+      {rows.map((rv) => (
+        <View key={rv} style={sw.gridRow}>
+          {cols.map((ch) => {
+            const active = h === ch && v === rv;
+            return (
+              <TouchableOpacity
+                key={ch}
+                onPress={() => onChange(ch, rv)}
+                style={[sw.cell, active && sw.cellActive]}
+                activeOpacity={0.7}
+              >
+                <View style={[sw.dot, active && sw.dotActive]} />
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      ))}
+    </View>
+  );
+}
+
+const pv = StyleSheet.create({
+  // Same 0.32-of-screen proportion the hero uses, so what is judged here is
+  // the space the offer actually gets.
+  hero: { width: '100%', aspectRatio: 16 / 9, justifyContent: 'flex-end' },
+  heroImg: { borderRadius: 10 },
+});
+
 const sw = StyleSheet.create({
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingVertical: Theme.spacing.sm },
   swatch: { width: 30, height: 30, borderRadius: 15 },
   swatchActive: { borderWidth: 3, borderColor: Theme.colors.text.mint },
+  chip: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Theme.colors.layout.divider,
+  },
+  chipActive: { borderColor: Theme.colors.text.mint },
+  grid: { paddingVertical: Theme.spacing.sm, gap: 4 },
+  gridRow: { flexDirection: 'row', gap: 4 },
+  cell: {
+    width: 46,
+    height: 30,
+    borderRadius: 6,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Theme.colors.layout.divider,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cellActive: { borderColor: Theme.colors.text.mint, backgroundColor: Theme.colors.background.tertiary },
+  dot: { width: 14, height: 3, borderRadius: 2, backgroundColor: Theme.colors.layout.divider },
+  dotActive: { backgroundColor: Theme.colors.text.mint },
 });
 
 // ── Main screen ──────────────────────────────────────────
@@ -229,17 +305,31 @@ export function SpecialOfferBannerScreen({ navigation }: { navigation: AdminNavP
   const [textColor, setTextColor] = useState(TEXT_COLORS[0]);
   const [emoji, setEmoji] = useState('');
   const [pulse, setPulse] = useState(false);
+  const [style, setStyle] = useState<'panel' | 'scrim'>('panel');
+  const [size, setSize] = useState<'S' | 'M' | 'L'>('M');
+  const [alignH, setAlignH] = useState<'left' | 'center' | 'right'>('center');
+  const [alignV, setAlignV] = useState<'top' | 'middle' | 'bottom'>('bottom');
 
   const customContent: CustomBannerContent = {
     title, subtitle, bg_color: bgColor, text_color: textColor, emoji, pulse,
+    style, size, align_h: alignH, align_v: alignV,
   };
+
+  // The photo the offer will actually sit on — the live one, or the bundled
+  // default when none has been uploaded.
+  const heroForPreview = liveBanner?.image_url || assetUrl('banner.png');
+  const offerIsLive = liveBanner?.banner_type === 'text';
 
   const handleGoLiveCustom = async () => {
     if (!title.trim()) { Alert.alert('Error', 'Enter a banner title.'); return; }
     try {
       await upsertBanner.mutateAsync({
         banner_type: 'text',
-        image_url: null,
+        // Carried forward, NOT nulled. Nulling it dropped the admin's uploaded
+        // hero the moment an offer went live, so the offer was composed over
+        // the bundled default photo instead — and the only way back was to
+        // re-upload the picture.
+        image_url: liveBanner?.image_url ?? null,
         text_content: JSON.stringify(customContent),
         is_live: true,
       });
@@ -247,6 +337,33 @@ export function SpecialOfferBannerScreen({ navigation }: { navigation: AdminNavP
       Alert.alert('Live!', 'Custom banner is now live on the customer home screen.', [
         { text: 'OK', onPress: () => navigation.goBack() },
       ]);
+    } catch (e) {
+      Alert.alert('Error', getErrorMessage(e));
+    }
+  };
+
+  /**
+   * Take the offer down and leave the photo alone.
+   *
+   * There was no way to do this at all: the only exit from a live offer was to
+   * go to Upload Image and re-upload a picture. This keeps the same image_url
+   * and simply stops being a text banner.
+   */
+  const handleTurnOffOffer = async () => {
+    const ok = await confirmDialog({
+      title: 'Turn off the offer?',
+      message: 'The hero photo stays exactly as it is. Only the offer text is removed.',
+      confirmLabel: 'Turn off',
+      destructive: true,
+    });
+    if (!ok) return;
+    try {
+      await upsertBanner.mutateAsync({
+        banner_type: 'image',
+        image_url: liveBanner?.image_url ?? null,
+        text_content: null,
+        is_live: true,
+      });
     } catch (e) {
       Alert.alert('Error', getErrorMessage(e));
     }
@@ -351,8 +468,28 @@ export function SpecialOfferBannerScreen({ navigation }: { navigation: AdminNavP
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            {/* Live preview */}
-            <BannerPreview content={customContent} pulse={pulse} />
+            {/* Taking an offer down is a different job from composing one, so
+                it sits above the composer rather than under it — and it leaves
+                the hero photo untouched. */}
+            {offerIsLive && (
+              <TouchableOpacity
+                style={styles.offerLiveRow}
+                onPress={handleTurnOffOffer}
+                activeOpacity={0.7}
+                disabled={upsertBanner.isPending}
+              >
+                <View style={styles.flex1}>
+                  <ThemedText variant="body" color="primary" style={styles.txt}>An offer is live</ThemedText>
+                  <ThemedText variant="small" color="muted">
+                    Turn it off — the hero photo stays as it is
+                  </ThemedText>
+                </View>
+                <ThemedText variant="body" color="warning" style={styles.txt}>Turn off  ›</ThemedText>
+              </TouchableOpacity>
+            )}
+
+            {/* Live preview — the real overlay, over the real photo */}
+            <BannerPreview content={customContent} pulse={pulse} heroUrl={heroForPreview} />
 
             <View style={styles.fieldGap} />
 
@@ -381,6 +518,33 @@ export function SpecialOfferBannerScreen({ navigation }: { navigation: AdminNavP
             {/* Text color */}
             <ThemedText variant="small" color="muted" style={styles.fieldLabel}>Text Color</ThemedText>
             <SwatchRow colors={TEXT_COLORS} selected={textColor} onSelect={setTextColor} />
+
+            {/* Treatment — the A/B you compare on the device. */}
+            <ThemedText variant="small" color="muted" style={styles.fieldLabel}>Style</ThemedText>
+            <OptionRow
+              options={[
+                { key: 'panel' as const, label: 'Tinted panel' },
+                { key: 'scrim' as const, label: 'On photo' },
+              ]}
+              value={style}
+              onChange={setStyle}
+            />
+
+            {/* Presets, not a number — 40pt would break the hero. */}
+            <ThemedText variant="small" color="muted" style={styles.fieldLabel}>Text Size</ThemedText>
+            <OptionRow
+              options={[
+                { key: 'S' as const, label: 'Small' },
+                { key: 'M' as const, label: 'Medium' },
+                { key: 'L' as const, label: 'Large' },
+              ]}
+              value={size}
+              onChange={setSize}
+            />
+
+            {/* Tap where the text should sit, to work around the photo. */}
+            <ThemedText variant="small" color="muted" style={styles.fieldLabel}>Position</ThemedText>
+            <AlignGrid h={alignH} v={alignV} onChange={(nh, nv) => { setAlignH(nh); setAlignV(nv); }} />
 
             {/* Emoji decorator */}
             <ThemedText variant="small" color="muted" style={styles.fieldLabel}>Emoji Decorator</ThemedText>
@@ -444,6 +608,15 @@ const emojiRow = StyleSheet.create({
 });
 
 const styles = StyleSheet.create({
+  offerLiveRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: Theme.spacing.sm,
+    marginBottom: Theme.spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Theme.colors.layout.divider,
+  },
+  flex1: { flex: 1 },
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
 
   header: {

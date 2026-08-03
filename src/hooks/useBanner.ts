@@ -15,14 +15,30 @@ import { QUERY_STALE_TIME } from '../utils/constants';
 import { useBranchFilter, requireWriteBranch } from './useBranchFilter';
 import type { Banner } from '../types';
 
-export interface CustomBannerContent {
+// A `type`, not an `interface`, on purpose: only type aliases get an implicit
+// index signature, and `resolveLayout` takes whole banner records — including
+// old ones carrying none of the presentation keys.
+export type CustomBannerContent = {
   title: string;
   subtitle?: string;
   bg_color: string;
   text_color: string;
   emoji?: string;
   pulse?: boolean;
-}
+  /**
+   * Presentation, all optional. A banner saved before these existed resolves
+   * to the previous look (panel / medium / bottom-centre) via
+   * `resolveLayout`, so nothing live changes shape until it is edited.
+   *
+   *   style   'panel' tinted card, or 'scrim' text straight on the photo
+   *   size    'S' | 'M' | 'L' — presets, so the hero cannot be broken
+   *   align_h / align_v  where the text sits, to work around the photo
+   */
+  style?: 'panel' | 'scrim';
+  size?: 'S' | 'M' | 'L';
+  align_h?: 'left' | 'center' | 'right';
+  align_v?: 'top' | 'middle' | 'bottom';
+};
 
 export function useLiveBanner() {
   const bf = useBranchFilter();
