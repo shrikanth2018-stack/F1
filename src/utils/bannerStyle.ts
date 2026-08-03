@@ -8,14 +8,14 @@
  *
  * TWO TREATMENTS, chosen per banner:
  *
- *   panel  a tinted card behind the text, at 75% so the photograph reads
+ *   panel  a tinted card behind the text, at 60% so the photograph reads
  *          through it. The admin's colour is literally the card colour.
  *
  *   scrim  no card at all. The hero already carries a LinearGradient that
  *          darkens its lower half for legibility, so a filled box was a second
  *          background fighting one that was already doing the job — which is
  *          what made an offer look cramped. Here the text sits on the photo
- *          with a shadow, and the admin's colour becomes an accent rule.
+ *          with a shadow, and `bg_color` goes unused.
  *
  * READABILITY is a shadow, not a colour choice. White text on a bright
  * photograph is unreadable in every shade of white, so both treatments carry
@@ -101,14 +101,24 @@ export const TEXT_SHADOW = {
 } as const;
 
 /**
- * The tinted card, at 75%.
+ * Alpha byte for the tinted card — 0x99 is 60%.
+ *
+ * Started at 75% and came down after seeing it on a real photo: the panel is
+ * there to hold the text, not to hide the picture behind it, and the text
+ * shadow already carries legibility. Much below this and a busy photograph
+ * starts competing with the words.
+ */
+const PANEL_ALPHA = '99';
+
+/**
+ * The tinted card.
  *
  * `bg_color` is a 6-digit hex from the admin's palette; appending an alpha
  * byte is the whole change. Anything unexpected is passed through untouched
  * rather than mangled into an invalid colour.
  */
 export function panelBackground(bgColor: string): string {
-  return /^#[0-9a-fA-F]{6}$/.test(bgColor) ? `${bgColor}BF` : bgColor;
+  return /^#[0-9a-fA-F]{6}$/.test(bgColor) ? `${bgColor}${PANEL_ALPHA}` : bgColor;
 }
 
 /** Where the text block sits inside the hero, as absolute-position offsets. */

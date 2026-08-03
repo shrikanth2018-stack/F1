@@ -48,7 +48,8 @@ describe('panelBackground', () => {
   it('makes the panel semi-transparent so the photo reads through', () => {
     // The opaque slab is what made an offer look cramped — it was a second
     // background fighting the hero gradient that already aids legibility.
-    expect(panelBackground('#FF6B35')).toBe('#FF6B35BF');
+    // 0x99 = 60%. Came down from 75% after seeing it on a real photograph.
+    expect(panelBackground('#FF6B35')).toBe('#FF6B3599');
   });
 
   it('passes anything unexpected through untouched', () => {

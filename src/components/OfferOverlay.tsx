@@ -6,6 +6,12 @@
  * used to be a separate lookalike, which is how a preview quietly starts
  * lying.
  *
+ * In 'scrim' the text sits on the photograph with nothing behind it but the
+ * hero's own gradient and a text shadow. `bg_color` is therefore UNUSED in
+ * that mode — an accent rule was tried and read as a stray mark above the
+ * text rather than as design, so the composer hides the colour picker instead
+ * of offering a choice that does nothing.
+ *
  * Position, size and treatment all come from the banner's own JSON via
  * `resolveLayout`, so a banner saved before those fields existed keeps the old
  * look rather than jumping to a new one.
@@ -15,7 +21,7 @@
  */
 
 import React from 'react';
-import { View, Text, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
+import { Text, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { Theme } from '../theme';
 import {
@@ -57,18 +63,12 @@ export function OfferOverlay({ content, absolute = true, animatedStyle }: Props)
     animatedStyle,
   ];
 
-  // The shadow does the readability work in BOTH treatments — a tinted panel
-  // at 75% still lets a bright photograph through.
+  // The shadow does the readability work in BOTH treatments — at 60% a tinted
+  // panel still lets a bright photograph through.
   const textBase = { color: content.text_color, textAlign: align, ...TEXT_SHADOW };
 
   return (
     <Animated.View style={blockStyle}>
-      {/* Scrim keeps the admin's colour as an accent rather than a card, so
-          the choice still means something once the panel is gone. */}
-      {!isPanel ? (
-        <View style={[styles.accent, { backgroundColor: content.bg_color }]} />
-      ) : null}
-
       {!!content.emoji && <Text style={styles.emoji}>{content.emoji}</Text>}
 
       <Text
@@ -92,7 +92,6 @@ export function OfferOverlay({ content, absolute = true, animatedStyle }: Props)
 
 const styles = StyleSheet.create({
   block: { maxWidth: '100%' },
-  accent: { width: 34, height: 3, borderRadius: 2, marginBottom: 6 },
   emoji: { fontSize: Theme.typography.sizes.body + 6, marginBottom: 2 },
   title: { fontFamily: Theme.typography.fontFamily, fontWeight: '500' },
   sub: { fontFamily: Theme.typography.fontFamily, marginTop: 2, opacity: 0.9 },

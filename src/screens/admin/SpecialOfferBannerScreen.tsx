@@ -511,9 +511,15 @@ export function SpecialOfferBannerScreen({ navigation }: { navigation: AdminNavP
               onChangeText={setSubtitle}
             />
 
-            {/* Background color */}
-            <ThemedText variant="small" color="muted" style={styles.fieldLabel}>Background</ThemedText>
-            <SwatchRow colors={BG_COLORS} selected={bgColor} onSelect={setBgColor} />
+            {/* Background colour — panel only. In "On photo" the text sits
+                directly on the photograph, so offering a colour that changes
+                nothing would just be a dead control. */}
+            {style === 'panel' && (
+              <>
+                <ThemedText variant="small" color="muted" style={styles.fieldLabel}>Background</ThemedText>
+                <SwatchRow colors={BG_COLORS} selected={bgColor} onSelect={setBgColor} />
+              </>
+            )}
 
             {/* Text color */}
             <ThemedText variant="small" color="muted" style={styles.fieldLabel}>Text Color</ThemedText>
