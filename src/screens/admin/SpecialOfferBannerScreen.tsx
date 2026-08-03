@@ -47,11 +47,30 @@ type BannerTab = 'Upload Image' | 'Custom Banner';
 const TABS: BannerTab[] = ['Upload Image', 'Custom Banner'];
 
 // ── Preset palettes ──────────────────────────────────────
+//
+// The app's own colours lead, so an offer can look like part of the product
+// rather than a sticker on it. Theme.colors is the source — a hex copied by
+// hand here would drift the first time the palette is retuned.
+//
+//   mint          the accent used across the app
+//   amber         status.warning, the "mild yellow/orange"
+//   cyan          action.primary
+//
+// The brighter generic set stays after them for offers that are meant to
+// shout, which is a legitimate thing for an offer to do.
 const BG_COLORS = [
-  '#FF6B35', '#E74C3C', '#8E44AD', '#2980B9',
-  '#27AE60', '#F39C12', '#1A1A2E', '#2C3E50',
+  Theme.colors.text.mint,      // #4ECDC4
+  Theme.colors.status.warning, // #FFBF00
+  Theme.colors.action.primary, // #38bdf8
+  '#FF6B35', '#E74C3C', '#8E44AD', '#27AE60', '#1A1A2E',
 ];
-const TEXT_COLORS = ['#FFFFFF', '#F8F8F0', '#FFD700', '#FF6B35', '#1A1A2E'];
+const TEXT_COLORS = [
+  '#FFFFFF',
+  Theme.colors.text.mint,
+  Theme.colors.status.warning,
+  Theme.colors.action.primary,
+  '#F8F8F0', '#1A1A2E',
+];
 const EMOJIS = ['', '🔥', '✨', '🎉', '💥', '⚡', '🌟', '🎊'];
 
 /**
@@ -512,26 +531,6 @@ export function SpecialOfferBannerScreen({ navigation }: { navigation: AdminNavP
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            {/* Taking an offer down is a different job from composing one, so
-                it sits above the composer rather than under it — and it leaves
-                the hero photo untouched. */}
-            {offerIsLive && (
-              <TouchableOpacity
-                style={styles.offerLiveRow}
-                onPress={handleTurnOffOffer}
-                activeOpacity={0.7}
-                disabled={upsertBanner.isPending}
-              >
-                <View style={styles.flex1}>
-                  <ThemedText variant="body" color="primary" style={styles.txt}>An offer is live</ThemedText>
-                  <ThemedText variant="small" color="muted">
-                    Turn it off — the hero photo stays as it is
-                  </ThemedText>
-                </View>
-                <ThemedText variant="body" color="warning" style={styles.txt}>Turn off  ›</ThemedText>
-              </TouchableOpacity>
-            )}
-
             {/* Live preview — the real overlay, over the real photo */}
             <BannerPreview content={customContent} pulse={pulse} heroUrl={heroForPreview} />
 
@@ -625,17 +624,35 @@ export function SpecialOfferBannerScreen({ navigation }: { navigation: AdminNavP
             </View>
           </ScrollView>
 
-          <TouchableOpacity
-            style={[styles.footer, upsertBanner.isPending && styles.footerDim]}
-            onPress={handleGoLiveCustom}
-            disabled={upsertBanner.isPending}
-            activeOpacity={0.7}
-          >
-            {upsertBanner.isPending
-              ? <ActivityIndicator color={Theme.colors.text.mint} />
-              : <ThemedText variant="body" color="mint" style={styles.txt}>Go Live  ›</ThemedText>
-            }
-          </TouchableOpacity>
+          {/* One line carries both states. Turning an offer off used to be a
+              separate row above the composer, which meant two controls for one
+              decision — and pushed the position grid further down. Publish
+              stays on the right where the primary action has always been; the
+              way out appears on the left only when there is something to
+              leave. It never says just "Go Live" while an offer is already
+              running, because then the honest word is Update. */}
+          <View style={[styles.footer, styles.footerRow, upsertBanner.isPending && styles.footerDim]}>
+            {offerIsLive && !upsertBanner.isPending ? (
+              <TouchableOpacity onPress={handleTurnOffOffer} activeOpacity={0.7}>
+                <ThemedText variant="body" color="warning" style={styles.txt}>Turn off</ThemedText>
+              </TouchableOpacity>
+            ) : <View />}
+
+            <TouchableOpacity
+              onPress={handleGoLiveCustom}
+              disabled={upsertBanner.isPending}
+              activeOpacity={0.7}
+            >
+              {upsertBanner.isPending
+                ? <ActivityIndicator color={Theme.colors.text.mint} />
+                : (
+                  <ThemedText variant="body" color="mint" style={styles.txt}>
+                    {offerIsLive ? 'Update offer  ›' : 'Go Live  ›'}
+                  </ThemedText>
+                )
+              }
+            </TouchableOpacity>
+          </View>
         </>
       )}
     </SafeAreaView>
@@ -658,15 +675,7 @@ const emojiRow = StyleSheet.create({
 });
 
 const styles = StyleSheet.create({
-  offerLiveRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: Theme.spacing.sm,
-    marginBottom: Theme.spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.layout.divider,
-  },
-  flex1: { flex: 1 },
+  footerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
 
   header: {
