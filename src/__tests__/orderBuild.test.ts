@@ -56,6 +56,9 @@ const BASE_TABLES = (): Record<string, Row[]> => ({
     { id: 12, name: 'Morning Dosa', price: 52.5, is_active: true, cycle_id: 2 },
     { id: 13, name: 'Retired Dish', price: 80, is_active: false, cycle_id: 1 },
     { id: 14, name: 'Orphan Dish', price: 60, is_active: true, cycle_id: null },
+    // A building block since the Menu Manager rebuild: no cycle of its own,
+    // hidden from the customer menu, priced for back-office use.
+    { id: 15, name: 'Sambar', price: 0, is_active: true, cycle_id: null, is_customer_visible: false },
   ],
   essentials_catalog: [
     { id: 31, name: 'Milk 500ml', price: 26.25, is_active: true, cycle_id: 2 },
@@ -336,5 +339,60 @@ describe('drift tuple & curated quote', () => {
     expect(quote).not.toHaveProperty('loaded_plans');
     expect(quote).not.toHaveProperty('hub_id');
     expect(quote).not.toHaveProperty('branch_id');
+  });
+});
+
+describe('building blocks — cycle-less, back-office only', () => {
+  it('refuses a block on the customer path', async () => {
+    // Blocks are kept off the customer menu by the QUERY that builds it,
+    // which is a filter and not a rule. Without this check a hand-made
+    // request could add Sambar to a cart and buy it for ₹0.
+    const r = await build({}, { items: [{ item_id: 15, item_type: 'food', quantity: 3 }] });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/no longer available/i);
+  });
+
+  it('accepts a block when the admin names the cycle', async () => {
+    // "50 chapatis with lunch" — the cycle belongs to the order, not to the
+    // chapati, which is why admin-place-order supplies it.
+    const r = await build({}, {
+      items: [{ item_id: 15, item_type: 'food', quantity: 3 }],
+      overrideCycleId: 1,
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.order.groups).toHaveLength(1);
+      expect(r.order.groups[0].cycle_id).toBe(1);
+      expect(r.order.groups[0].items[0].item_name).toBe('Sambar');
+    }
+  });
+
+  it('collapses lines from different cycles into the admin cycle', async () => {
+    // Veg Meal is cycle 1, Morning Dosa cycle 2. On the customer path that is
+    // two orders on two dates; for a bulk order it is one delivery.
+    const r = await build({}, {
+      items: [
+        { item_id: 11, item_type: 'food', quantity: 1 },
+        { item_id: 12, item_type: 'food', quantity: 1 },
+      ],
+      overrideCycleId: 2,
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.order.groups).toHaveLength(1);
+      expect(r.order.groups[0].cycle_id).toBe(2);
+    }
+  });
+
+  it('still splits by the item\'s own cycle for a customer', async () => {
+    // The override must not leak into the customer path.
+    const r = await build({}, {
+      items: [
+        { item_id: 11, item_type: 'food', quantity: 1 },
+        { item_id: 12, item_type: 'food', quantity: 1 },
+      ],
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.order.groups).toHaveLength(2);
   });
 });

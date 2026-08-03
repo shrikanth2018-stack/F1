@@ -102,12 +102,29 @@ export interface BuildArgs {
   deliveryAddressId?: number | null;
   /** The one clock read for this request. */
   now: Date;
+  /**
+   * Back-office only: dispatch every line in THIS cycle, whatever the item is
+   * catalogued under.
+   *
+   * A bulk customer asks for "50 chapatis with lunch" — the cycle is a
+   * property of the order, not of the chapati. admin-place-order has always
+   * collapsed its lines into the admin's chosen cycle after the fact; this
+   * tells the builder up front, so an item with NO cycle of its own (every
+   * building block, since the Menu Manager rebuild) can still be ordered.
+   *
+   * NEVER set on the customer path. There a dish's own cycle is exactly what
+   * decides when it goes out.
+   */
+  overrideCycleId?: number | null;
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 export async function buildAuthoritativeOrder(args: BuildArgs): Promise<BuildResult> {
-  const { supabase, userId, items = [], subscriptionPlans = [], deliveryAddressId, now } = args;
+  const {
+    supabase, userId, items = [], subscriptionPlans = [], deliveryAddressId, now,
+    overrideCycleId = null,
+  } = args;
   const clock = resolveClock(now);
 
   if (items.length === 0 && subscriptionPlans.length === 0) {
@@ -183,7 +200,9 @@ export async function buildAuthoritativeOrder(args: BuildArgs): Promise<BuildRes
   if (foodInputs.length > 0) {
     const ids = foodInputs.map((i) => i.item_id);
     const { data: rows, error } = await supabase
-      .from('menu_items').select('id, name, price, is_active, cycle_id').in('id', ids);
+      .from('menu_items')
+      .select('id, name, price, is_active, cycle_id, is_customer_visible')
+      .in('id', ids);
     if (error) return { ok: false, status: 500, error: error.message };
     const map = new Map<number, any>((rows ?? []).map((r: any) => [r.id, r]));
     for (const inp of foodInputs) {
@@ -191,18 +210,32 @@ export async function buildAuthoritativeOrder(args: BuildArgs): Promise<BuildRes
       if (!m || !m.is_active) {
         return { ok: false, status: 400, error: `An item in your cart is no longer available.` };
       }
-      if (m.cycle_id == null) {
+
+      // Building blocks (is_customer_visible = false) are ingredients, priced
+      // for back-office use and often at 0. They are kept off the customer
+      // menu by the QUERY that builds it — which is not a rule, just a filter,
+      // so a hand-made request could put one in a cart and buy it for nothing.
+      // The admin path orders them legitimately, and says so via
+      // overrideCycleId.
+      if (m.is_customer_visible === false && overrideCycleId == null) {
+        return { ok: false, status: 400, error: `An item in your cart is no longer available.` };
+      }
+
+      // A block carries no cycle of its own, so the admin's chosen cycle is
+      // the only answer. On the customer path this stays a hard requirement.
+      const itemCycleId = overrideCycleId ?? m.cycle_id;
+      if (itemCycleId == null) {
         return { ok: false, status: 400, error: `"${m.name}" is not assigned to a delivery cycle.` };
       }
       // Explicit Accum annotation — a bare literal here infers items: never[]
       // under strict tsc (type-only; no behavior change).
-      const g: Accum = byCycle.get(m.cycle_id) ?? { cycle_id: m.cycle_id, items: [], subtotal: 0 };
+      const g: Accum = byCycle.get(itemCycleId) ?? { cycle_id: itemCycleId, items: [], subtotal: 0 };
       g.items.push({
         item_id: m.id, item_type: 'food', item_name: m.name,
         quantity: inp.quantity, price_at_time: m.price,
       });
       g.subtotal += m.price * inp.quantity;
-      byCycle.set(m.cycle_id, g);
+      byCycle.set(itemCycleId, g);
     }
   }
 

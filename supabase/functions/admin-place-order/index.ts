@@ -217,6 +217,14 @@ Deno.serve(async (req: Request) => {
       })),
       deliveryAddressId: addressId,
       now,
+      // The admin's chosen cycle, handed to the builder rather than applied
+      // after it. §6 below already collapsed every line into this cycle; the
+      // difference is that the builder no longer needs each item to carry a
+      // cycle of its own — building blocks (Sambar, Rice) have none since the
+      // Menu Manager rebuild, and bulk orders are exactly what they are
+      // priced for. It is also what permits a non-customer-visible item here
+      // and nowhere else.
+      overrideCycleId: Number(cycle_id),
     });
     if (!result.ok) return json({ error: result.error }, result.status);
     const order = result.order;
