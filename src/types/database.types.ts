@@ -1068,6 +1068,7 @@ export type Database = {
           name: string
           price: number
           sort_order: number | null
+          unit: string
           updated_at: string | null
         }
         Insert: {
@@ -1084,6 +1085,7 @@ export type Database = {
           name: string
           price: number
           sort_order?: number | null
+          unit?: string
           updated_at?: string | null
         }
         Update: {
@@ -1100,6 +1102,7 @@ export type Database = {
           name?: string
           price?: number
           sort_order?: number | null
+          unit?: string
           updated_at?: string | null
         }
         Relationships: [
@@ -2750,6 +2753,20 @@ export type Database = {
         }
         Returns: number
       }
+      admin_create_menu_block:
+        | {
+            Args: { p_branch_id: number; p_name: string; p_price: number }
+            Returns: number
+          }
+        | {
+            Args: {
+              p_branch_id: number
+              p_name: string
+              p_price: number
+              p_unit?: string
+            }
+            Returns: number
+          }
       admin_onboard_vendor: {
         Args: {
           p_branch_id?: number
@@ -2760,6 +2777,11 @@ export type Database = {
           p_supply_mode?: string
           p_user_id: string
         }
+        Returns: number
+      }
+      admin_remove_menu_item: { Args: { p_id: number }; Returns: string }
+      admin_rename_menu_block: {
+        Args: { p_new: string; p_old: string }
         Returns: number
       }
       admin_review_listing: {
@@ -2774,6 +2796,10 @@ export type Database = {
           p_reason?: string
         }
         Returns: undefined
+      }
+      admin_set_menu_block_unit: {
+        Args: { p_id: number; p_unit: string }
+        Returns: number
       }
       admin_set_vendor_status: {
         Args: { p_note?: string; p_status: string; p_vendor_id: number }
@@ -2955,6 +2981,7 @@ export type Database = {
           user_id: string
         }[]
       }
+      menu_block_usage: { Args: { p_name: string }; Returns: number }
       my_approved_vendor: {
         Args: never
         Returns: {

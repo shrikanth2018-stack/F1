@@ -682,3 +682,64 @@ curl -sD- -o /dev/null -H 'Accept: image/webp,*/*' \
 ```
 
 **Rollback:** commented block at the bottom of the SQL file.
+
+---
+
+## 22. Menu replacement and the two-step Menu Manager (2026-08-03)
+
+Applied in this order, all against the live database:
+
+1. `menu_replace_2026_08.sql` — the whole food menu replaced from the owner's
+   CSV: 37 customer-facing dishes built from blocks.
+2. `clear_test_history_2026_08.sql` — orders, subscriptions, attendance and
+   push/transaction logs cleared while the data was still trial. Wallets set to
+   ₹2000 **with matching ledger rows**, never by writing the balance column —
+   `wallet_transactions` is the source of truth and a bare balance write leaves
+   it unexplainable. Supply data deliberately retained.
+3. `menu_manager_rebuild.sql` — blocks deduplicated 49 → 34, renames cascaded
+   into every recipe naming them.
+4. `menu_item_units.sql` — `unit` moves onto `menu_items`. It had been a
+   property of each recipe LINE, so Sagu was `ml` in Poori and `g` in Lunch Box.
+   Nothing was wrong with the data; the model simply allowed it. Backfilled by
+   majority use, then every recipe rewritten to agree.
+5. `menu_unit_wording.sql` — `g` → `gms`, `no` → `nos`.
+
+**Why the tokens are words.** `StaffDashboard` renders the kitchen prep board
+straight from the recipe text the server aggregates — `${qty} ${unit}` — so
+there is no screen in between that could translate `g` into `gms`. Storing the
+readable token is what removes the mapping layer nobody can forget. The client
+still *reads* `g`/`no` (a phone may hold a recipe cached from before the
+release) but never writes them.
+
+**The unit and the recipe text must move together.** `get_kitchen_aggregate`
+groups prep by **(name, unit)**, so a block whose column says `ml` while a
+recipe still says `g` becomes two prep lines for one ingredient — and one of
+them gets under-cooked. `admin_set_menu_block_unit` therefore rewrites the
+recipes in the same call, exactly as `admin_rename_menu_block` does.
+
+**A rename cannot be a string replace.** Eight block names contain another
+block's name — "Rice" is inside Curd Rice, Fried Rice and Rice Pullav among
+others — so the RPC compares each recipe's name part exactly. §1 of
+`menu_manager_rebuild.sql` first shipped without a canonicalisation pass and
+orphaned a component by renaming a name that was both a dish and a block; §3b
+exists because of that.
+
+Units are **internal** — kitchen, admin and bulk ordering. No customer screen
+renders `ingredients`; a customer sees the quantity of the menu they bought,
+never of an ingredient inside it.
+
+**Verification:**
+
+```sql
+-- Every recipe agrees with its item's unit. Must return zero rows.
+SELECT mi.name, ch.chunk
+FROM menu_items mi
+CROSS JOIN LATERAL regexp_split_to_table(mi.ingredients, ';') ch(chunk)
+LEFT JOIN menu_items b ON NOT b.is_customer_visible
+  AND lower(b.name) = lower(btrim(split_part(ch.chunk, ':', 1)))
+WHERE mi.is_customer_visible AND btrim(ch.chunk) <> ''
+  AND btrim(regexp_replace(btrim(split_part(ch.chunk, ':', 2)), '^[0-9.]+\s*', '')) <> b.unit;
+```
+
+**Rollback:** commented block at the bottom of each SQL file. Reversing the
+wording means undoing the two UPDATEs and re-running `menu_item_units.sql`.

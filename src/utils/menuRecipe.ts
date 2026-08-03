@@ -3,14 +3,14 @@
  *
  * A menu's contents live in `menu_items.ingredients` as text:
  *
- *     Idli:2 no;Sambar:150 ml;Chutney:100 g
+ *     Idli:2 nos;Sambar:150 ml;Chutney:100 gms
  *
  * That string is what `get_kitchen_aggregate` parses to build the prep board,
  * so this file and that function have to agree exactly. Everything that reads
  * or writes a recipe goes through here — the editor, and nothing else.
  *
  * UNITS ARE A CLOSED SET, and that is load-bearing rather than tidiness. The
- * kitchen groups prep by (name, unit), so `4` and `4 no` are DIFFERENT units:
+ * kitchen groups prep by (name, unit), so `4` and `4 nos` are DIFFERENT units:
  * the same ingredient would appear as two prep lines and one of them would be
  * under-cooked. A free-text quantity is how that happens, which is why the
  * editor offers a picker and `buildRecipe` refuses anything else.
@@ -20,26 +20,33 @@
  * this file exists to make impossible.
  */
 
-/** Stored token → label shown in the picker. Compact on the row, readable in the UI. */
-export const MENU_UNITS = [
-  { key: 'no', label: 'Numbers' },
-  { key: 'g', label: 'Grams' },
-  { key: 'ml', label: 'ML' },
-  { key: 'cup', label: 'Cup' },
-  { key: 'plate', label: 'Plate' },
-  { key: 'bowl', label: 'Bowl' },
-] as const;
+/**
+ * The closed set. THE TOKEN IS THE DISPLAY — the kitchen board prints the unit
+ * straight out of the recipe text the server aggregates, so there is no screen
+ * that could translate it. Storing "gms" rather than "g" is what makes the
+ * prep board read "1200 gms" without a mapping layer anyone could forget.
+ */
+export const MENU_UNITS = ['nos', 'gms', 'ml', 'cup', 'plate', 'bowl'] as const;
 
-export type MenuUnit = (typeof MENU_UNITS)[number]['key'];
+export type MenuUnit = (typeof MENU_UNITS)[number];
 
-const UNIT_KEYS = MENU_UNITS.map((u) => u.key) as readonly string[];
+export const DEFAULT_UNIT: MenuUnit = 'nos';
+
+/**
+ * Older data said 'g' and 'no'. `menu_unit_wording.sql` rewrote the database,
+ * but a recipe cached on a phone from before that release still holds them, so
+ * reading tolerates both — writing only ever produces the new tokens.
+ */
+const LEGACY: Record<string, MenuUnit> = { g: 'gms', gm: 'gms', no: 'nos', nr: 'nos' };
 
 export function isMenuUnit(u: string): u is MenuUnit {
-  return UNIT_KEYS.includes(u);
+  return (MENU_UNITS as readonly string[]).includes(u);
 }
 
-export function unitLabel(u: string): string {
-  return MENU_UNITS.find((x) => x.key === u)?.label ?? u;
+/** Normalise anything readable into a real unit. */
+export function toMenuUnit(u?: string | null): MenuUnit {
+  const k = (u ?? '').trim().toLowerCase();
+  return isMenuUnit(k) ? k : LEGACY[k] ?? DEFAULT_UNIT;
 }
 
 /** One line of a recipe: which block, how much of it. */
@@ -74,11 +81,7 @@ export function parseRecipe(text?: string | null): RecipePart[] {
       const qty = m ? m[1] : '1';
       const rawUnit = (m ? m[2] : '').trim().toLowerCase();
 
-      return {
-        name,
-        qty,
-        unit: (isMenuUnit(rawUnit) ? rawUnit : 'no') as MenuUnit,
-      };
+      return { name, qty, unit: toMenuUnit(rawUnit) };
     })
     .filter((p) => p.name.length > 0);
 }
@@ -95,13 +98,8 @@ export function buildRecipe(parts: RecipePart[]): string {
   return parts
     .map((p) => ({ ...p, name: p.name.trim(), qty: p.qty.trim() }))
     .filter((p) => p.name && p.qty && Number.isFinite(Number(p.qty)) && Number(p.qty) > 0)
-    .map((p) => `${p.name}:${Number(p.qty)} ${isMenuUnit(p.unit) ? p.unit : 'no'}`)
+    .map((p) => `${p.name}:${Number(p.qty)} ${toMenuUnit(p.unit)}`)
     .join(';');
-}
-
-/** "2 no", for a summary line. */
-export function formatQuantity(qty: string | number, unit: string): string {
-  return `${qty} ${unitLabel(unit).toLowerCase()}`;
 }
 
 /**

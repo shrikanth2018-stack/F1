@@ -24,6 +24,13 @@ export interface MenuItem {
   image_updated_at?: string | null;
   /** Short customer-facing line under the name on the Home screen. */
   description?: string | null;
+  /**
+   * How this item is measured — 'no' | 'g' | 'ml' | 'cup' | 'plate' | 'bowl'.
+   * A property of the ITEM, not of each recipe that uses it: Sambar is
+   * measured in ml everywhere, and letting each menu choose is how Sagu ended
+   * up as ml in two recipes and g in a third. Meaningless on a dish.
+   */
+  unit?: string | null;
   is_active: boolean;
   /**
    * FALSE = building-block item (a priced part, admin-only — never listed

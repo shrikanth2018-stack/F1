@@ -7,9 +7,14 @@
  *
  * CONTENTS ARE PICKED, NEVER TYPED. The recipe text is what the kitchen board
  * parses, so a typo there is a prep line for an ingredient nobody stocks.
- * Parts come from Step 1 blocks; the quantity is a number plus a unit from a
- * closed set, because the aggregate groups prep by (name, unit) and a free
- * unit would split one ingredient into two lines.
+ * Parts come from Step 1 blocks, found by typing rather than by scrolling a
+ * list of forty.
+ *
+ * THE UNIT IS READ-ONLY HERE. It belongs to the item — Sambar is ml wherever
+ * it appears — so this screen shows it and takes only a number. It is also
+ * resolved from the block at save time rather than trusted from the stored
+ * text, so a recipe cached before the item's unit changed cannot write the old
+ * one back and split the ingredient into two prep lines.
  *
  * THE PRICE IS NOT THE SUM OF THE PARTS. A combo is rarely what its pieces
  * cost, and block prices exist for a different purpose entirely — what a bulk
@@ -33,7 +38,7 @@ import {
 import { confirmDialog, infoDialog } from '../../../utils/confirmDialog';
 import { getErrorMessage, formatPriceShort } from '../../../utils/formatters';
 import {
-  parseRecipe, buildRecipe, MENU_UNITS, type RecipePart, type MenuUnit,
+  parseRecipe, buildRecipe, toMenuUnit, type RecipePart,
 } from '../../../utils/menuRecipe';
 import {
   useAddMenuItem, useUpdateMenuItem, useRemoveMenuItem, useMenuBlocks,
@@ -64,6 +69,7 @@ export function MenuEditorModal({ visible, item, cycleId, cycleName, onClose, on
   const [subtext, setSubtext] = useState('');
   const [price, setPrice] = useState('');
   const [parts, setParts] = useState<RecipePart[]>([]);
+  const [find, setFind] = useState('');
   const [photo, setPhoto] = useState<PickedPhoto | null>(null);
   const [picking, setPicking] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -74,6 +80,7 @@ export function MenuEditorModal({ visible, item, cycleId, cycleName, onClose, on
     setSubtext(item?.description ?? '');
     setPrice(item ? String(item.price) : '');
     setParts(parseRecipe(item?.ingredients));
+    setFind('');
     setPhoto(null);
   }, [visible, item]);
 
@@ -85,13 +92,34 @@ export function MenuEditorModal({ visible, item, cycleId, cycleName, onClose, on
     [parts, blocks],
   );
 
-  const available = useMemo(
-    () => blocks.filter((b) => b.is_active && !parts.some((p) => p.name === b.name)),
-    [blocks, parts],
-  );
+  /** The item's own unit is the truth; the stored text is only a fallback. */
+  const unitFor = (partName: string, fallback: string) =>
+    toMenuUnit(blocks.find((b) => b.name === partName)?.unit ?? fallback);
+
+  // Nothing until you type — the point of the box is to replace a 40-row
+  // scroll. Names that START with what was typed come first, because that is
+  // what someone typing "sa" for Sambar expects to see at the top.
+  const matches = useMemo(() => {
+    const q = find.trim().toLowerCase();
+    if (!q) return [];
+    return blocks
+      .filter((b) => b.is_active && !parts.some((p) => p.name === b.name))
+      .filter((b) => b.name.toLowerCase().includes(q))
+      .sort((a, b) => {
+        const sa = a.name.toLowerCase().startsWith(q) ? 0 : 1;
+        const sb = b.name.toLowerCase().startsWith(q) ? 0 : 1;
+        return sa - sb || a.name.localeCompare(b.name);
+      })
+      .slice(0, 8);
+  }, [blocks, parts, find]);
 
   const setPart = (i: number, patch: Partial<RecipePart>) =>
     setParts((prev) => prev.map((p, n) => (n === i ? { ...p, ...patch } : p)));
+
+  const addPart = (b: MenuItem) => {
+    setParts((prev) => [...prev, { name: b.name, qty: '1', unit: toMenuUnit(b.unit) }]);
+    setFind('');
+  };
 
   const handlePhoto = async () => {
     setPicking(true);
@@ -122,7 +150,7 @@ export function MenuEditorModal({ visible, item, cycleId, cycleName, onClose, on
       infoDialog('Add its contents', 'A menu is built from one or more items. Add at least one below.');
       return;
     }
-    const recipe = buildRecipe(parts);
+    const recipe = buildRecipe(parts.map((p) => ({ ...p, unit: unitFor(p.name, p.unit) })));
     if (!recipe) {
       infoDialog('Quantities required', 'Every item needs a quantity greater than zero.');
       return;
@@ -228,13 +256,25 @@ export function MenuEditorModal({ visible, item, cycleId, cycleName, onClose, on
           </View>
 
           <ScrollView style={s.body} keyboardShouldPersistTaps="handled">
-            <TextInput
-              style={s.input}
-              placeholder="Menu name  (e.g. Idli Vada)"
-              placeholderTextColor={Theme.colors.text.muted}
-              value={name}
-              onChangeText={setName}
-            />
+            {/* Price sits beside the name because those two are what actually
+                get changed; everything below is set once and left alone. */}
+            <View style={s.nameRow}>
+              <TextInput
+                style={[s.input, s.flex1]}
+                placeholder="Menu name  (e.g. Idli Vada)"
+                placeholderTextColor={Theme.colors.text.muted}
+                value={name}
+                onChangeText={setName}
+              />
+              <TextInput
+                style={[s.input, s.priceBox]}
+                placeholder="₹ price"
+                placeholderTextColor={Theme.colors.text.muted}
+                value={price}
+                onChangeText={setPrice}
+                keyboardType="numeric"
+              />
+            </View>
             <TextInput
               style={s.input}
               placeholder="Sub text  (shown under the name to customers)"
@@ -290,18 +330,11 @@ export function MenuEditorModal({ visible, item, cycleId, cycleName, onClose, on
                   placeholder="Qty"
                   placeholderTextColor={Theme.colors.text.muted}
                 />
-                {/* Tap to cycle the unit — a closed set, so a picker would be
-                    four taps to do what one does. */}
-                <TouchableOpacity
-                  onPress={() => {
-                    const idx = MENU_UNITS.findIndex((u) => u.key === p.unit);
-                    setPart(i, { unit: MENU_UNITS[(idx + 1) % MENU_UNITS.length].key as MenuUnit });
-                  }}
-                  style={s.unitBtn}
-                  activeOpacity={0.7}
-                >
-                  <ThemedText variant="small" color="mint">{p.unit}</ThemedText>
-                </TouchableOpacity>
+                {/* Not editable: the unit belongs to the item, and is changed
+                    on the Menu Items tab so every menu using it stays in step. */}
+                <ThemedText variant="small" color="muted" style={s.unitTxt}>
+                  {unitFor(p.name, p.unit)}
+                </ThemedText>
                 <TouchableOpacity
                   onPress={() => setParts((prev) => prev.filter((_, n) => n !== i))}
                   hitSlop={{ top: 8, bottom: 8, left: 10, right: 4 }}
@@ -310,39 +343,36 @@ export function MenuEditorModal({ visible, item, cycleId, cycleName, onClose, on
                 </TouchableOpacity>
               </View>
             ))}
-
-            <ThemedText variant="small" color="muted" style={s.section}>ADD FROM ITEMS</ThemedText>
-            {available.length === 0 ? (
+            {parts.length === 0 && (
               <ThemedText variant="small" color="muted" style={s.hint}>
-                {parts.length > 0 ? 'Everything has been added.' : 'No items yet — create them on the Menu Items tab.'}
+                Nothing yet — find its parts below.
               </ThemedText>
-            ) : (
-              available.slice(0, 40).map((b) => (
-                <TouchableOpacity
-                  key={b.id}
-                  style={s.partRow}
-                  activeOpacity={0.7}
-                  onPress={() => setParts((prev) => [...prev, { name: b.name, qty: '1', unit: 'no' }])}
-                >
-                  <ThemedText variant="body" color="primary" style={[s.txt, s.flex1]} numberOfLines={1}>
-                    {b.name}
-                  </ThemedText>
-                  <ThemedText variant="body" color="subtitle" style={s.txt}>₹{b.price}</ThemedText>
-                  <ThemedText variant="body" color="mint" style={s.plus}>+</ThemedText>
-                </TouchableOpacity>
-              ))
             )}
 
-            {/* Price */}
-            <ThemedText variant="small" color="muted" style={s.section}>PRICE</ThemedText>
             <TextInput
-              style={s.input}
-              placeholder="What a customer pays  (₹)"
+              style={[s.input, s.findBox]}
+              placeholder="Add an item — type a letter or two"
               placeholderTextColor={Theme.colors.text.muted}
-              value={price}
-              onChangeText={setPrice}
-              keyboardType="numeric"
+              value={find}
+              onChangeText={setFind}
+              autoCorrect={false}
             />
+            {find.trim().length > 0 && matches.length === 0 && (
+              <ThemedText variant="small" color="muted" style={s.hint}>
+                Nothing matches “{find.trim()}”. Create it on the Menu Items tab first.
+              </ThemedText>
+            )}
+            {matches.map((b) => (
+              <TouchableOpacity key={b.id} style={s.partRow} activeOpacity={0.7} onPress={() => addPart(b)}>
+                <ThemedText variant="body" color="primary" style={[s.txt, s.flex1]} numberOfLines={1}>
+                  {b.name}
+                </ThemedText>
+                <ThemedText variant="small" color="muted">{toMenuUnit(b.unit)}</ThemedText>
+                <ThemedText variant="body" color="subtitle" style={s.txt}>₹{b.price}</ThemedText>
+                <ThemedText variant="body" color="mint" style={s.plus}>+</ThemedText>
+              </TouchableOpacity>
+            ))}
+
             {partsTotal > 0 && (
               <ThemedText variant="small" color="muted" style={s.hint}>
                 Parts add up to {formatPriceShort(partsTotal)} — for reference only. A menu is
@@ -430,11 +460,10 @@ const s = StyleSheet.create({
     borderBottomColor: Theme.colors.text.mint,
     paddingVertical: 2,
   },
-  unitBtn: {
-    minWidth: 46, alignItems: 'center',
-    paddingVertical: 4, paddingHorizontal: 8, borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth, borderColor: Theme.colors.text.mint,
-  },
+  unitTxt: { fontSize: S, minWidth: 40 },
+  nameRow: { flexDirection: 'row', alignItems: 'flex-start', gap: Theme.spacing.sm },
+  findBox: { marginTop: Theme.spacing.md, borderBottomColor: Theme.colors.text.mint },
+  priceBox: { width: 92, textAlign: 'right' },
   remove: { fontSize: B + 4, color: Theme.colors.text.muted },
   plus: { fontSize: B + 4 },
   actions: {

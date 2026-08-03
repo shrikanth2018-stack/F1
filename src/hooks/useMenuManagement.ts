@@ -64,14 +64,33 @@ const MENU_INVALIDATE_ALL = [
 /** Create a block. An RPC, so the server sets cycle_id NULL and visibility. */
 export function useCreateMenuBlock() {
   const bf = useBranchFilter();
-  return useSupabaseMutation<{ name: string; price: number }, number>(
+  return useSupabaseMutation<{ name: string; price: number; unit: string }, number>(
     (p) =>
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (supabase as any).rpc('admin_create_menu_block', {
         p_name: p.name,
         p_price: p.price,
         p_branch_id: requireWriteBranch(bf),
+        p_unit: p.unit,
       }),
+    BLOCK_INVALIDATE as unknown as string[][],
+  );
+}
+
+/**
+ * Change how a block is measured — AND rewrite every recipe naming it.
+ *
+ * Same shape as a rename, for the same reason: the unit lives in the recipe
+ * text as well as on the row, and the kitchen board reads the text. Leaving
+ * the two out of step splits one ingredient into two prep lines, because
+ * `get_kitchen_aggregate` groups by (name, unit). Returns how many menus it
+ * rewrote.
+ */
+export function useSetMenuBlockUnit() {
+  return useSupabaseMutation<{ id: number; unit: string }, number>(
+    (p) =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (supabase as any).rpc('admin_set_menu_block_unit', { p_id: p.id, p_unit: p.unit }),
     BLOCK_INVALIDATE as unknown as string[][],
   );
 }

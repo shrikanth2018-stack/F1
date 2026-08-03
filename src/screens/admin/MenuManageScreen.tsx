@@ -2,14 +2,16 @@
  * 1stOne F1 — Menu Manager
  *
  * The menu is built in two steps, and this screen is now one tab per step
- * rather than both mixed into a single list.
- *
- *   Menu Items  the building blocks — Idli, Sambar, Chutney. Priced, because
- *               a bulk order can buy one on its own. No cycle: an ingredient
- *               is not a mealtime. No photo: a customer never sees one.
+ * rather than both mixed into a single list. Menus lead, because that is the
+ * day-to-day work — items are the parts drawer behind them.
  *
  *   Menus       what customers buy, per delivery cycle. Composed from Menu
  *               Items, never hand-typed, with a photo and a sub-text.
+ *
+ *   Menu Items  the building blocks — Idli, Sambar, Chutney. Priced, because
+ *               a bulk order can buy one on its own, and each carries the unit
+ *               it is measured in. No cycle: an ingredient is not a mealtime.
+ *               No photo: a customer never sees one.
  *
  * The cycle switcher belongs to Menus alone — Menu Items have no cycle, so
  * offering one there would imply a filter that does not exist.
@@ -31,7 +33,7 @@ import { EmptyState } from '../../components/EmptyState';
 import { SegmentedControl } from '../../components/SegmentedControl';
 import { CatalogPhotoThumb } from '../../components/CatalogPhotoThumb';
 import { PHOTO_BUCKET, PHOTO_PX } from '../../utils/catalogPhoto';
-import { summariseRecipe } from '../../utils/menuRecipe';
+import { summariseRecipe, toMenuUnit } from '../../utils/menuRecipe';
 import { formatPriceShort } from '../../utils/formatters';
 import { MenuItemEditorModal } from './components/MenuItemEditorModal';
 import { MenuEditorModal } from './components/MenuEditorModal';
@@ -84,6 +86,7 @@ export function MenuManageScreen({ navigation }: { navigation: AdminNavProp }) {
         </ThemedText>
         <ThemedText variant="small" color="muted" style={styles.sub}>
           {item.price > 0 ? formatPriceShort(item.price) : 'No price set'}
+          {` · measured in ${toMenuUnit(item.unit)}`}
           {!item.is_active ? ' · disabled' : ''}
         </ThemedText>
       </View>
@@ -140,8 +143,8 @@ export function MenuManageScreen({ navigation }: { navigation: AdminNavProp }) {
         value={tab}
         onChange={setTab}
         options={[
-          { key: 'items', label: 'Menu Items' },
           { key: 'menus', label: 'Menus' },
+          { key: 'items', label: 'Menu Items' },
         ]}
       />
 
@@ -160,7 +163,8 @@ export function MenuManageScreen({ navigation }: { navigation: AdminNavProp }) {
 
       {isItems && (
         <ThemedText variant="small" color="muted" style={styles.lede}>
-          The parts a menu is built from. Priced for when a bulk order buys one on its own.
+          The parts a menu is built from. Each carries its unit and a price for when a
+          bulk order buys it on its own.
         </ThemedText>
       )}
 

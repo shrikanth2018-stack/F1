@@ -17,6 +17,13 @@
  * REMOVE IS NOT ALWAYS A DELETE. The server deletes an item that was never
  * ordered and retires one that was, because order history references it. The
  * button says which it will do, from the same count.
+ *
+ * THE UNIT LIVES HERE, not on each menu. Sambar is measured in ml — always,
+ * in every dish that uses it — so it belongs to Sambar. Changing it is a
+ * third cascade: the unit sits in the recipe text too, and the kitchen groups
+ * prep by (name, unit), so the two must move together or one ingredient
+ * becomes two prep lines. It is internal: a customer sees the quantity of the
+ * menu they bought, never of an ingredient inside it.
  */
 
 import React, { useState, useEffect } from 'react';
@@ -30,8 +37,10 @@ import {
   useRenameMenuBlock,
   useUpdateMenuItem,
   useRemoveMenuItem,
+  useSetMenuBlockUnit,
   useBlockUsage,
 } from '../../../hooks/useMenuManagement';
+import { MENU_UNITS, DEFAULT_UNIT, toMenuUnit, type MenuUnit } from '../../../utils/menuRecipe';
 import type { MenuItem } from '../../../types';
 
 const B = Theme.typography.sizes.body + 2;
@@ -48,18 +57,21 @@ export function MenuItemEditorModal({ visible, item, onClose }: Props) {
   const isNew = !item;
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
+  const [unit, setUnit] = useState<MenuUnit>(DEFAULT_UNIT);
   const [busy, setBusy] = useState(false);
 
   const create = useCreateMenuBlock();
   const rename = useRenameMenuBlock();
   const update = useUpdateMenuItem();
   const remove = useRemoveMenuItem();
+  const setBlockUnit = useSetMenuBlockUnit();
   const { data: usedIn = 0 } = useBlockUsage(item?.name);
 
   useEffect(() => {
     if (!visible) return;
     setName(item?.name ?? '');
     setPrice(item ? String(item.price) : '');
+    setUnit(toMenuUnit(item?.unit));
   }, [visible, item]);
 
   const handleSave = async () => {
@@ -75,7 +87,7 @@ export function MenuItemEditorModal({ visible, item, onClose }: Props) {
     setBusy(true);
     try {
       if (isNew) {
-        await create.mutateAsync({ name: nm, price: finalPrice });
+        await create.mutateAsync({ name: nm, price: finalPrice, unit });
       } else {
         // Name and price move through different paths on purpose: the price is
         // a column, the name is a cascade.
@@ -90,6 +102,11 @@ export function MenuItemEditorModal({ visible, item, onClose }: Props) {
         }
         if (finalPrice !== item!.price) {
           await update.mutateAsync({ id: item!.id, price: finalPrice });
+        }
+        // Last, and through its own RPC: this rewrites recipes, so it must not
+        // run before the rename has settled the names it matches on.
+        if (unit !== toMenuUnit(item!.unit)) {
+          await setBlockUnit.mutateAsync({ id: item!.id, unit });
         }
       }
       onClose();
@@ -173,6 +190,28 @@ export function MenuItemEditorModal({ visible, item, onClose }: Props) {
             keyboardType="numeric"
           />
 
+          <ThemedText variant="small" color="muted" style={s.label}>MEASURED IN</ThemedText>
+          <View style={s.units}>
+            {MENU_UNITS.map((u) => {
+              const on = u === unit;
+              return (
+                <TouchableOpacity
+                  key={u}
+                  onPress={() => setUnit(u)}
+                  style={[s.unit, on && s.unitOn]}
+                  activeOpacity={0.7}
+                >
+                  <ThemedText variant="small" color={on ? 'mint' : 'muted'}>{u}</ThemedText>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          {!isNew && usedIn > 0 && unit !== toMenuUnit(item!.unit) && (
+            <ThemedText variant="small" color="warning" style={s.usage}>
+              This rewrites the quantity in {usedIn} menu{usedIn === 1 ? '' : 's'} — check them after saving.
+            </ThemedText>
+          )}
+
           {/* Where this block actually shows up. Renaming or removing without
               knowing this is how a recipe quietly loses an ingredient. */}
           {!isNew && (
@@ -233,6 +272,13 @@ const s = StyleSheet.create({
     marginTop: Theme.spacing.sm,
   },
   usage: { fontSize: S, marginTop: Theme.spacing.sm },
+  label: { fontSize: S, letterSpacing: 1, marginTop: Theme.spacing.md },
+  units: { flexDirection: 'row', flexWrap: 'wrap', gap: Theme.spacing.sm, marginTop: Theme.spacing.sm },
+  unit: {
+    paddingVertical: 5, paddingHorizontal: 12, borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: Theme.colors.layout.divider,
+  },
+  unitOn: { borderColor: Theme.colors.text.mint },
   actions: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     marginTop: Theme.spacing.lg, paddingTop: Theme.spacing.sm,

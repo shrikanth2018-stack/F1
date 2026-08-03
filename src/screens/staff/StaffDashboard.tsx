@@ -473,7 +473,7 @@ export function StaffDashboard() {
         </ThemedText>
         <ThemedText variant="body" color="subtitle" style={[styles.qty, styles.rowText]}>
           {item.unit
-            ? `${item.total_quantity % 1 === 0 ? item.total_quantity : item.total_quantity.toFixed(1)}${item.unit}`
+            ? `${item.total_quantity % 1 === 0 ? item.total_quantity : item.total_quantity.toFixed(1)} ${item.unit}`
             : `× ${item.total_quantity}`}
         </ThemedText>
         <TouchableOpacity
