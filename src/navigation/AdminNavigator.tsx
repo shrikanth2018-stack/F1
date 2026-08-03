@@ -10,8 +10,6 @@ import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { AdminHome } from '../screens/admin/AdminHome';
 import { MenuManageScreen } from '../screens/admin/MenuManageScreen';
-import { CreateItemScreen } from '../screens/admin/CreateItemScreen';
-import { CreateMenuScreen } from '../screens/admin/CreateMenuScreen';
 import { CreatePlanScreen } from '../screens/admin/CreatePlanScreen';
 import { DeliveryManagerScreen } from '../screens/admin/DeliveryManagerScreen';
 import { PlansManageScreen } from '../screens/admin/PlansManageScreen';
@@ -77,8 +75,6 @@ export function AdminNavigator() {
 
       {/* Manage — Menu */}
       <Stack.Screen name="MenuManage" component={MenuManageScreen} />
-      <Stack.Screen name="CreateItem" component={CreateItemScreen} />
-      <Stack.Screen name="CreateMenu" component={CreateMenuScreen} />
       <Stack.Screen name="CreatePlan" component={CreatePlanScreen} />
       <Stack.Screen name="PlansManage" component={PlansManageScreen} />
       <Stack.Screen name="EssentialsCatalogManage" component={EssentialsCatalogManageScreen} />

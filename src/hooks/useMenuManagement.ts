@@ -5,6 +5,7 @@
  * Supabase hook layer. Filtered by branch when branch_management_active is on.
  */
 
+import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../api/supabaseClient';
 import { useSupabaseQuery, useSupabaseMutation } from '../api/useSupabaseQuery';
 import { QUERY_KEYS, QUERY_STALE_TIME } from '../utils/constants';
@@ -13,6 +14,121 @@ import type { MenuItem, DeliveryCycle } from '../types';
 
 const MENU_INVALIDATE = [['admin_menu_items'], QUERY_KEYS.MENU_ITEMS] as const;
 const CYCLE_INVALIDATE = [['admin_delivery_cycles'], QUERY_KEYS.DELIVERY_CYCLES] as const;
+
+/**
+ * Step 1 — building blocks. No cycle: an ingredient is not a mealtime, and
+ * since the rebuild they carry cycle_id NULL, so this is a single flat list
+ * rather than one per cycle.
+ */
+export function useMenuBlocks() {
+  const bf = useBranchFilter();
+  return useSupabaseQuery<MenuItem>(
+    ['menu_blocks', bf.isActive ? bf.branchId ?? 'all' : 'off'],
+    () => {
+      let q = supabase
+        .from('menu_items')
+        .select('*')
+        .eq('is_customer_visible', false)
+        .order('sort_order', { ascending: true });
+      if (bf.isActive && bf.branchId != null) q = q.eq('branch_id', bf.branchId);
+      return q;
+    },
+    { staleTime: QUERY_STALE_TIME },
+  );
+}
+
+/** Step 2 — the customer-facing dishes of one cycle. */
+export function useMenusForCycle(cycleId?: number) {
+  const bf = useBranchFilter();
+  return useSupabaseQuery<MenuItem>(
+    ['menus_for_cycle', cycleId ?? 'all', bf.isActive ? bf.branchId ?? 'all' : 'off'],
+    () => {
+      let q = supabase
+        .from('menu_items')
+        .select('*')
+        .eq('is_customer_visible', true)
+        .order('sort_order', { ascending: true });
+      if (cycleId) q = q.eq('cycle_id', cycleId);
+      if (bf.isActive && bf.branchId != null) q = q.eq('branch_id', bf.branchId);
+      return q;
+    },
+    { staleTime: QUERY_STALE_TIME },
+  );
+}
+
+const BLOCK_INVALIDATE = [['menu_blocks'], ['menus_for_cycle'], ['admin_menu_items']] as const;
+const MENU_INVALIDATE_ALL = [
+  ['menus_for_cycle'], ['menu_blocks'], ['admin_menu_items'], QUERY_KEYS.MENU_ITEMS,
+] as const;
+
+/** Create a block. An RPC, so the server sets cycle_id NULL and visibility. */
+export function useCreateMenuBlock() {
+  const bf = useBranchFilter();
+  return useSupabaseMutation<{ name: string; price: number }, number>(
+    (p) =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (supabase as any).rpc('admin_create_menu_block', {
+        p_name: p.name,
+        p_price: p.price,
+        p_branch_id: requireWriteBranch(bf),
+      }),
+    BLOCK_INVALIDATE as unknown as string[][],
+  );
+}
+
+/**
+ * Rename a block AND every recipe naming it.
+ *
+ * Server-side because it cannot half-apply, and because a plain string
+ * replace would be wrong: eight block names contain another block's name, so
+ * renaming "Rice" would corrupt Curd Rice, Fried Rice, Rice Pullav and two
+ * more. The RPC compares each recipe's name part exactly.
+ */
+export function useRenameMenuBlock() {
+  return useSupabaseMutation<{ oldName: string; newName: string }, number>(
+    (p) =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (supabase as any).rpc('admin_rename_menu_block', {
+        p_old: p.oldName,
+        p_new: p.newName,
+      }),
+    MENU_INVALIDATE_ALL as unknown as string[][],
+  );
+}
+
+/**
+ * How many menus name this block — shown before disabling or removing it.
+ *
+ * Plain useQuery rather than the shared helper: this RPC returns a scalar,
+ * and useSupabaseQuery is shaped for row sets.
+ */
+export function useBlockUsage(name?: string) {
+  return useQuery({
+    queryKey: ['menu_block_usage', name ?? 'none'],
+    queryFn: async (): Promise<number> => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase as any).rpc('menu_block_usage', { p_name: name });
+      if (error) throw new Error(error.message);
+      return (data as number) ?? 0;
+    },
+    enabled: !!name,
+    staleTime: QUERY_STALE_TIME,
+  });
+}
+
+/**
+ * Remove an item. Returns 'deleted' or 'retired' — the server decides, based
+ * on whether it was ever ordered, so the UI never has to guess and can say
+ * which happened.
+ */
+export function useRemoveMenuItem() {
+  return useSupabaseMutation<{ id: number }, string>(
+    (p) =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (supabase as any).rpc('admin_remove_menu_item', { p_id: p.id }),
+    MENU_INVALIDATE_ALL as unknown as string[][],
+  );
+}
 
 /** Fetch ALL menu items for admin (including inactive) */
 export function useAllMenuItems(cycleId?: number) {
@@ -44,8 +160,8 @@ export function useAllMenuItems(cycleId?: number) {
  *
  * Returns the inserted row's id. A menu photo is stored at a path keyed by
  * that id (`menu-photos/{id}.jpg`), so it cannot be uploaded until the row
- * exists — CreateMenuScreen holds the picked image and attaches it in the
- * onSuccess callback. Callers that ignore the return value are unaffected.
+ * exists — MenuEditorModal holds the picked image and attaches it once the
+ * insert returns. Callers that ignore the return value are unaffected.
  */
 export function useAddMenuItem() {
   const bf = useBranchFilter();

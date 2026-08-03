@@ -286,6 +286,46 @@ export function ImportItemsScreen({ navigation, route }: AdminScreenProps<'Impor
     return { records, skipped, table: 'essentials_catalog', queryKeys: [['admin_essentials']] };
   };
 
+  /**
+   * Create any building block a menu's recipe names but that does not exist.
+   *
+   * An imported recipe is text — "Idli:4 no;Sambar:150 ml" — and the importer
+   * only ever wrote the MENU rows. So after the last import 49 blocks had to
+   * be created by hand, and until they were, Step 2 could not show those
+   * recipes as pickable items. Blocks land at ₹0: they are recipe parts, and
+   * a price is only needed when a bulk order buys one on its own.
+   */
+  const createMissingBlocks = async (records: any[]): Promise<number> => {
+    const wanted = new Set<string>();
+    for (const r of records) {
+      for (const chunk of String(r.ingredients ?? '').split(';')) {
+        const nm = chunk.split(':')[0]?.trim();
+        if (nm) wanted.add(nm);
+      }
+    }
+    if (wanted.size === 0) return 0;
+
+    const { data: existing } = await supabase
+      .from('menu_items')
+      .select('name')
+      .eq('is_customer_visible', false);
+    const have = new Set((existing ?? []).map((b: any) => String(b.name).toLowerCase()));
+
+    const missing = [...wanted].filter((n) => !have.has(n.toLowerCase()));
+    for (const nm of missing) {
+      // One RPC per name: it is the only path that sets cycle_id NULL and
+      // is_customer_visible false, which the menu_items_shape constraint
+      // requires. A handful of calls on an import nobody runs often.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (supabase as any).rpc('admin_create_menu_block', {
+        p_name: nm,
+        p_price: 0,
+        p_branch_id: branchFilter.branchIdForWrite,
+      });
+    }
+    return missing.length;
+  };
+
   const performInsert = async (records: any[], table: string, queryKeys: string[][]) => {
     try {
       // PostgREST .from() expects a literal table-name union; runtime table is
@@ -293,10 +333,20 @@ export function ImportItemsScreen({ navigation, route }: AdminScreenProps<'Impor
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { error } = await (supabase.from(table as any) as any).insert(records as any);
       if (error) throw error;
+
+      // Menus only — essentials and plans have no recipes.
+      const created = isMenu ? await createMissingBlocks(records) : 0;
+
       queryKeys.forEach((qk) => queryClient.invalidateQueries({ queryKey: qk }));
+      queryClient.invalidateQueries({ queryKey: ['menu_blocks'] });
+      queryClient.invalidateQueries({ queryKey: ['menus_for_cycle'] });
+
       infoDialog(
         'Import complete',
-        `${records.length} item${records.length !== 1 ? 's' : ''} imported.`,
+        `${records.length} item${records.length !== 1 ? 's' : ''} imported.` +
+          (created > 0
+            ? `\n\n${created} new menu item${created !== 1 ? 's' : ''} created from the recipes, priced at ₹0 — set their prices on the Menu Items tab if they will be sold on their own.`
+            : ''),
       ).then(() => navigation.goBack());
     } catch (err) {
       infoDialog('Import failed', getErrorMessage(err));

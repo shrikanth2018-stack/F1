@@ -2,7 +2,7 @@
  * 1stOne F1 — Catalogue photo picking + upload
  *
  * Shared by every surface that sets a picture, across both catalogues:
- * CreateMenuScreen and MenuManageScreen for food, CreateEssentialScreen and
+ * the Menu Manager's two editors for food, CreateEssentialScreen and
  * EssentialsCatalogManageScreen for essentials, and VendorDashboardScreen for
  * a vendor's own items. All of them go through here so the compression
  * settings and — more importantly — the replace-in-place rule can only be
@@ -234,9 +234,9 @@ export async function uploadCatalogPhoto(
   itemId: number,
   photo: PickedPhoto,
 ): Promise<void> {
-  // Re-checked here rather than trusted from the pick: CreateMenuScreen and
-  // CreateEssentialScreen hold a picked photo in state across a save, so the
-  // two calls can be a long way apart.
+  // Re-checked here rather than trusted from the pick: the menu and essential
+  // editors hold a picked photo in state across a save, so the two calls can
+  // be a long way apart.
   assertUploadablePhoto(photo);
 
   const key = objectKeyFromPath(bucket, photoPath(bucket, itemId));
