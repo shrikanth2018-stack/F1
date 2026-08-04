@@ -42,6 +42,7 @@ DECLARE
   v_orders  BIGINT[];
   v_report  TEXT := '';
   v_n       INTEGER;
+  v_corrected_days DATE[];
 BEGIN
   SELECT id, started_at INTO v_run, v_from
     FROM public.seed_360_run ORDER BY id DESC LIMIT 1;
@@ -94,15 +95,28 @@ BEGIN
   GET DIAGNOSTICS v_n = ROW_COUNT; v_report := v_report || format(E'subscription_plans   %s\n', v_n);
 
   -- ── 3. Staff records the walk produced ───────────────────────
+  -- The days an approved correction BACKFILLED, captured before the requests
+  -- are deleted and the link is gone. A correction exists precisely to write
+  -- attendance for a date in the past, so "date >= run start" can never catch
+  -- those rows — the first run of this teardown left one behind for exactly
+  -- that reason.
+  SELECT array_agg(DISTINCT d.the_date) INTO v_corrected_days
+    FROM public.attendance_correction_days d
+    JOIN public.attendance_correction_requests r ON r.id = d.request_id
+   WHERE r.staff_id = ANY(v_cast) AND r.created_at >= v_from;
+
   DELETE FROM public.attendance_correction_requests
    WHERE staff_id = ANY(v_cast) AND created_at >= v_from;
   GET DIAGNOSTICS v_n = ROW_COUNT; v_report := v_report || format(E'attendance_corr      %s\n', v_n);
 
   -- staff_attendance has no created_at — its `date` IS the row's identity, and
   -- scoping on the attendance date is the more honest bound anyway: it removes
-  -- the days the walk clocked, not rows that merely happen to be new.
+  -- the days the walk clocked, not rows that merely happen to be new. Plus any
+  -- past day a correction wrote, from above.
   DELETE FROM public.staff_attendance
-   WHERE staff_id = ANY(v_cast) AND date >= v_from::date;
+   WHERE staff_id = ANY(v_cast)
+     AND (date >= v_from::date
+       OR date = ANY(COALESCE(v_corrected_days, ARRAY[]::date[])));
   GET DIAGNOSTICS v_n = ROW_COUNT; v_report := v_report || format(E'staff_attendance     %s\n', v_n);
 
   DELETE FROM public.staff_leaves
