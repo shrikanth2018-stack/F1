@@ -286,6 +286,26 @@ serve(async (req) => {
       if (tagErr) {
         console.warn('[place-order] tag_wallet_debit_to_order failed (non-fatal):', tagErr.message);
       }
+
+      // ── Stamp paid_at (found in the 360 walkthrough) ───────────
+      // A wallet order is paid the moment the debit succeeds, but nothing
+      // recorded WHEN: place_order_atomic writes status 'Confirmed' and no
+      // timestamp, so every customer wallet order carried a NULL paid_at
+      // while admin-place-order stamped its own wallet path. The same fact
+      // was recorded or not depending on who placed the order.
+      //
+      // Every row in the group, not just the primary: one payment covers the
+      // whole checkout, so the sibling cycle rows were paid at the same
+      // instant. Non-fatal — the order is already placed and the money has
+      // already moved; a missing timestamp must not fail the checkout.
+      const { error: paidErr } = await supabase
+        .from('orders')
+        .update({ paid_at: new Date().toISOString() })
+        .in('id', orderIds)
+        .is('paid_at', null);
+      if (paidErr) {
+        console.warn('[place-order] paid_at stamp failed (non-fatal):', paidErr.message);
+      }
     }
 
     // ── Create user_subscriptions rows for any plans in this order ──
