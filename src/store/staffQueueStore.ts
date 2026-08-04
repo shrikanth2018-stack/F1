@@ -19,12 +19,39 @@ export interface QueuedMutation {
   table: string;
   operation: 'insert' | 'update' | 'upsert';
   payload: Record<string, unknown>;
+  /**
+   * Legacy single-column match. Still honoured on replay, because a phone can
+   * be holding a queue written by an older build — but prefer `match`.
+   *
+   * One column was never enough to express what the online calls do. Clocking
+   * out online matches (staff_id, date); queued, it could only say staff_id,
+   * and the replay stamped today's clock-out time onto EVERY attendance row
+   * that person had. A whole history of hours worked, overwritten on
+   * reconnect, in the exact low-signal conditions this queue exists for.
+   */
   matchColumn?: string;
   matchValue?: unknown;
+  /** Every column that must match. All are ANDed on replay. */
+  match?: Record<string, unknown>;
+  /**
+   * Conflict target for an upsert — "staff_id,date". Without it supabase-js
+   * falls back to the primary key, which for a payload carrying no id means a
+   * plain insert, and the row's own unique index then rejects it.
+   */
+  onConflict?: string;
   /** Customer to push once this mutation syncs (order status updates only). */
   notifyUserId?: string | null;
   createdAt: number;
   retryCount: number;
+}
+
+/** The columns a queued mutation must match, whichever shape it was written in. */
+export function matchOf(m: QueuedMutation): Record<string, unknown> {
+  if (m.match && Object.keys(m.match).length > 0) return m.match;
+  if (m.matchColumn !== undefined && m.matchValue !== undefined) {
+    return { [m.matchColumn]: m.matchValue };
+  }
+  return {};
 }
 
 interface StaffQueueState {

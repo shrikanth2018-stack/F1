@@ -316,13 +316,17 @@ export function usePendingLeaves() {
   const query = useSupabaseQuery<any>(
     ['resource_pending_leaves', bf.isActive ? bf.branchId ?? 'all' : 'off'],
     () => {
+      // !inner is load-bearing. Filtering on an EMBEDDED resource without it
+      // nulls the embed and keeps the parent row, so the branch filter below
+      // did not filter: a branch admin saw every branch's pending leaves, each
+      // with a blank employee name. An inner join is safe here because
+      // staff_leaves_staff_id_fkey guarantees the profile exists.
       let q = supabase
         .from('staff_leaves')
-        .select('*, profiles!staff_leaves_staff_id_fkey(full_name, phone_number, employee_id)')
+        .select('*, profiles!staff_leaves_staff_id_fkey!inner(full_name, phone_number, employee_id)')
         .eq('status', 'Pending')
         .order('created_at', { ascending: true });
       if (bf.isActive && bf.branchId != null) {
-        // filter by branch via joined profile
         q = q.eq('profiles.branch_id', bf.branchId);
       }
       return q;

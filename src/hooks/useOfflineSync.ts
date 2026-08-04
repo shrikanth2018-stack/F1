@@ -9,7 +9,7 @@
 import { useEffect, useCallback } from 'react';
 import NetInfo from '@react-native-community/netinfo';
 import { supabase } from '../api/supabaseClient';
-import { useStaffQueueStore } from '../store/staffQueueStore';
+import { useStaffQueueStore, matchOf } from '../store/staffQueueStore';
 import { MAX_QUEUE_RETRIES } from '../utils/constants';
 import { fireOrderStatusPush } from '../utils/orderStatusPush';
 import { ORDER_STATUS_FLOW } from '../utils/orderStatus';
@@ -50,8 +50,7 @@ export function useOfflineSync() {
         captureError(new Error('Offline queue mutation dropped after max retries'), {
           table: mutation.table,
           operation: mutation.operation,
-          matchColumn: mutation.matchColumn,
-          matchValue: mutation.matchValue,
+          match: matchOf(mutation),
           payload: mutation.payload,
           retryCount: mutation.retryCount,
           queuedAt: mutation.createdAt,
@@ -72,13 +71,17 @@ export function useOfflineSync() {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const db = supabase as any;
         let query;
+        const match = matchOf(mutation);
         if (mutation.operation === 'insert') {
           query = db.from(mutation.table).insert(mutation.payload);
-        } else if (mutation.operation === 'update' && mutation.matchColumn && mutation.matchValue) {
-          query = db
-            .from(mutation.table)
-            .update(mutation.payload)
-            .eq(mutation.matchColumn, mutation.matchValue);
+        } else if (mutation.operation === 'update' && Object.keys(match).length > 0) {
+          // EVERY match column, ANDed. A single column was how an offline
+          // clock-out came to rewrite a staff member's whole attendance
+          // history — see QueuedMutation.matchColumn.
+          query = db.from(mutation.table).update(mutation.payload);
+          for (const [col, val] of Object.entries(match)) {
+            query = query.eq(col, val);
+          }
           // G3: an offline order-status update must never regress an order
           // another staffer/driver advanced while this sat queued. Apply it
           // only while the row is still at a status earlier than the target;
@@ -92,7 +95,17 @@ export function useOfflineSync() {
             }
           }
         } else if (mutation.operation === 'upsert') {
-          query = db.from(mutation.table).upsert(mutation.payload);
+          // The conflict target has to be carried, or supabase-js falls back
+          // to the primary key: a payload with no id is then a plain insert,
+          // which the row's own unique index rejects. An offline clock-in for
+          // a day that already had a row died that way — five retries, then
+          // dropped to Sentry.
+          query = db
+            .from(mutation.table)
+            .upsert(
+              mutation.payload,
+              mutation.onConflict ? { onConflict: mutation.onConflict } : undefined,
+            );
         } else {
           dequeue(mutation.id);
           continue;
@@ -115,8 +128,9 @@ export function useOfflineSync() {
             mutation.notifyUserId &&
             typeof mutation.payload.status === 'string'
           ) {
+            // Orders are matched on their id, in either match shape.
             fireOrderStatusPush(
-              Number(mutation.matchValue),
+              Number(match.id ?? mutation.matchValue),
               mutation.payload.status,
               mutation.notifyUserId,
             );

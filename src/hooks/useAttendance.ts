@@ -126,6 +126,10 @@ export function useClockIn() {
           table: 'staff_attendance',
           operation: 'upsert',
           payload,
+          // Same conflict target as the online call above. Without it the
+          // replay falls back to the primary key and becomes a plain insert,
+          // which staff_attendance_staff_date_unique then rejects.
+          onConflict: 'staff_id,date',
           userId: session.user.id,
         });
       }
@@ -188,8 +192,11 @@ export function useClockOut() {
           table: 'staff_attendance',
           operation: 'update',
           payload,
-          matchColumn: 'staff_id',
-          matchValue: session.user.id,
+          // BOTH columns, matching the online call above. Queued with
+          // staff_id alone, the replay stamped this clock-out time onto every
+          // attendance row the person had — a whole history of hours worked,
+          // overwritten on reconnect.
+          match: { staff_id: session.user.id, date: today },
           userId: session.user.id,
         });
       }

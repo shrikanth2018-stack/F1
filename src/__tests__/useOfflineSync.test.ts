@@ -151,7 +151,13 @@ describe('useOfflineSync — drain guards', () => {
     expect(mockCaptureError).toHaveBeenCalledTimes(1);
     const [err, ctx] = mockCaptureError.mock.calls[0];
     expect((err as Error).message).toMatch(/dropped after max retries/);
-    expect(ctx).toMatchObject({ table: 'orders', matchValue: 42, retryCount: MAX_QUEUE_RETRIES });
+    // The dropped-mutation report carries the RESOLVED match, so a report
+    // reads the same whichever shape the mutation was queued in.
+    expect(ctx).toMatchObject({
+      table: 'orders',
+      match: { id: 42 },
+      retryCount: MAX_QUEUE_RETRIES,
+    });
   });
 
   it('increments retryCount (keeps the mutation) when the write errors', async () => {
@@ -196,5 +202,74 @@ describe('useOfflineSync — drain guards', () => {
     expect(builder.in).not.toHaveBeenCalled();
     expect(useStaffQueueStore.getState().queue).toHaveLength(0);
     expect(mockFirePush).not.toHaveBeenCalled();
+  });
+});
+
+describe('useOfflineSync — a replay must match on everything the online call did', () => {
+  it('ANDs every column of a multi-column match (clock-out)', async () => {
+    // THE REGRESSION THIS PINS. Clocking out online matches (staff_id, date).
+    // Queued, it could only carry staff_id — so on reconnect the replay
+    // stamped that clock-out time onto EVERY attendance row the person had,
+    // rewriting their whole history of hours worked in exactly the low-signal
+    // conditions this queue exists for.
+    const builder = makeBuilder({ data: [{ id: 7 }], error: null });
+    mockFromImpl = jest.fn(() => builder);
+    seedQueue([baseMutation({
+      table: 'staff_attendance',
+      operation: 'update',
+      payload: { clock_out_time: '2026-08-04T12:00:00Z' },
+      matchColumn: undefined,
+      matchValue: undefined,
+      match: { staff_id: 'staff-A', date: '2026-08-04' },
+      notifyUserId: null,
+    })]);
+
+    await drain();
+
+    expect(builder.update).toHaveBeenCalled();
+    expect(builder.calls.eq).toEqual([
+      ['staff_id', 'staff-A'],
+      ['date', '2026-08-04'],
+    ]);
+    expect(useStaffQueueStore.getState().queue).toHaveLength(0);
+  });
+
+  it('still honours a legacy single-column match from an older build’s queue', async () => {
+    // The queue is persisted, so a phone can be holding mutations written
+    // before `match` existed. Those must keep replaying, not silently stall.
+    const builder = makeBuilder({ data: [{ id: 42 }], error: null });
+    mockFromImpl = jest.fn(() => builder);
+    seedQueue([baseMutation({ payload: { status: 'Packed' } })]);
+
+    await drain();
+
+    expect(builder.calls.eq).toEqual([['id', 42]]);
+    expect(mockFirePush).toHaveBeenCalledWith(42, 'Packed', 'cust-1');
+    expect(useStaffQueueStore.getState().queue).toHaveLength(0);
+  });
+
+  it('carries the upsert conflict target (clock-in)', async () => {
+    // Without it supabase-js falls back to the primary key; a payload with no
+    // id is then a plain insert, which staff_attendance_staff_date_unique
+    // rejects — five retries, then dropped to Sentry.
+    const builder = makeBuilder({ data: [{ id: 1 }], error: null });
+    mockFromImpl = jest.fn(() => builder);
+    seedQueue([baseMutation({
+      table: 'staff_attendance',
+      operation: 'upsert',
+      payload: { staff_id: 'staff-A', date: '2026-08-04', clock_in_time: 'x' },
+      matchColumn: undefined,
+      matchValue: undefined,
+      onConflict: 'staff_id,date',
+      notifyUserId: null,
+    })]);
+
+    await drain();
+
+    expect(builder.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ staff_id: 'staff-A', date: '2026-08-04' }),
+      { onConflict: 'staff_id,date' },
+    );
+    expect(useStaffQueueStore.getState().queue).toHaveLength(0);
   });
 });
