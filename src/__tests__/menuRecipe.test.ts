@@ -11,6 +11,7 @@
 
 import {
   parseRecipe, buildRecipe, summariseRecipe, isMenuUnit, toMenuUnit, MENU_UNITS,
+  portionCount, countToQty,
 } from '@/utils/menuRecipe';
 
 describe('parseRecipe', () => {
@@ -104,6 +105,46 @@ describe('units', () => {
     // A wrong unit is a thing to correct; a lost ingredient is a dish that
     // silently ships short.
     expect(buildRecipe(parseRecipe('Sambar:150 litres'))).toBe('Sambar:150 nos');
+  });
+});
+
+describe('a line as a count of the item’s portion', () => {
+  it('reads one portion as ×1, whatever the portion is', () => {
+    expect(portionCount(150, 150)).toBe(1);   // Sambar 150 ml
+    expect(portionCount(100, 100)).toBe(1);   // Chutney 100 gms
+    expect(portionCount(4, 1)).toBe(4);       // Idli, 4 of them
+  });
+
+  it('rounds a part-portion to three places', () => {
+    // Masala Dosa takes 100 ml of a 150 ml sambar.
+    expect(portionCount(100, 150)).toBe(0.667);
+    expect(portionCount(200, 150)).toBe(1.333);
+  });
+
+  it('survives a missing or zero portion rather than dividing by it', () => {
+    expect(portionCount(150, 0)).toBe(150);
+    expect(portionCount(150, NaN)).toBe(150);
+  });
+
+  it('multiplies a typed count back out exactly', () => {
+    expect(countToQty(1, 150)).toBe(150);
+    expect(countToQty(2, 150)).toBe(300);
+    expect(countToQty(0.5, 150)).toBe(75);
+  });
+
+  it('does NOT round-trip a part-portion — which is why the editor must not', () => {
+    // The whole reason MenuEditorModal keeps the stored amount until a row's
+    // count is actually typed in. Reading 100 ml as 0.667 and writing it back
+    // gives 100.05, and a menu would drift a little on every save that merely
+    // opened it. If this ever starts passing, that guard can be reconsidered.
+    expect(countToQty(portionCount(100, 150), 150)).not.toBe(100);
+    expect(countToQty(portionCount(100, 150), 150)).toBeCloseTo(100, 0);
+  });
+
+  it('does round-trip a whole portion, which is 70 of the 77 real lines', () => {
+    for (const [qty, portion] of [[150, 150], [300, 150], [4, 1], [100, 100]]) {
+      expect(countToQty(portionCount(qty, portion), portion)).toBe(qty);
+    }
   });
 });
 

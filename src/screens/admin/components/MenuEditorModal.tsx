@@ -10,11 +10,30 @@
  * Parts come from Step 1 blocks, found by typing rather than by scrolling a
  * list of forty.
  *
+ * A LINE IS A COUNT OF THE ITEM'S OWN PORTION — "Sambar 150 ml × 1", not
+ * "Sambar 150 ml". The portion belongs to the item and is shown here as a
+ * fact; the only thing typed is how many of them this dish contains. Checked
+ * against the real menu before changing it: 70 of 77 recipe lines were exactly
+ * one portion, so the old field was asking for a number the item already knew.
+ * It also removes a duplicated fact that nothing kept in step — an item's
+ * portion could be edited on the Menu Items tab while every recipe went on
+ * saying the old amount.
+ *
+ * WHAT IS STORED DID NOT CHANGE. The recipe text is still an absolute amount
+ * ("Sambar:150 ml"), so get_kitchen_aggregate, the prep board and the order
+ * path are all untouched. The count is presentation: read as qty ÷ portion,
+ * written back as count × portion.
+ *
+ * AND THE STORED AMOUNT IS NEVER REWRITTEN UNLESS THE BOX IS TYPED IN. Five
+ * lines are not whole multiples — Masala Dosa takes 100 ml of a 150 ml sambar,
+ * so its count is 0.667. Multiplying a rounded 0.667 back out gives 100.05,
+ * which would corrupt the recipe on any save that merely opened the dish. So
+ * `qty` stays exactly as parsed until someone edits that row's count.
+ *
  * THE UNIT IS READ-ONLY HERE. It belongs to the item — Sambar is ml wherever
- * it appears — so this screen shows it and takes only a number. It is also
- * resolved from the block at save time rather than trusted from the stored
- * text, so a recipe cached before the item's unit changed cannot write the old
- * one back and split the ingredient into two prep lines.
+ * it appears — and is resolved from the block at save time rather than trusted
+ * from the stored text, so a recipe cached before the item's unit changed
+ * cannot write the old one back and split the ingredient into two prep lines.
  *
  * THE PRICE IS NOT THE SUM OF THE PARTS. A combo is rarely what its pieces
  * cost, and block prices exist for a different purpose entirely — what a bulk
@@ -38,7 +57,8 @@ import {
 import { confirmDialog, infoDialog } from '../../../utils/confirmDialog';
 import { getErrorMessage, formatPriceShort } from '../../../utils/formatters';
 import {
-  parseRecipe, buildRecipe, toMenuUnit, type RecipePart,
+  parseRecipe, buildRecipe, toMenuUnit, portionCount, countToQty,
+  type RecipePart,
 } from '../../../utils/menuRecipe';
 import {
   useAddMenuItem, useUpdateMenuItem, useRemoveMenuItem, useMenuBlocks,
@@ -69,6 +89,15 @@ export function MenuEditorModal({ visible, item, cycleId, cycleName, onClose, on
   const [subtext, setSubtext] = useState('');
   const [price, setPrice] = useState('');
   const [parts, setParts] = useState<RecipePart[]>([]);
+  /**
+   * What each count box shows, once it has been typed in — keyed by row.
+   *
+   * A row absent from here renders its count derived from the stored amount,
+   * which is what keeps an untouched 0.667 from being rounded and multiplied
+   * back into 100.05. It also lets a half-typed "1." survive, the same reason
+   * RecipePart.qty is a string.
+   */
+  const [countText, setCountText] = useState<Record<number, string>>({});
   const [find, setFind] = useState('');
   const [photo, setPhoto] = useState<PickedPhoto | null>(null);
   const [picking, setPicking] = useState(false);
@@ -80,6 +109,7 @@ export function MenuEditorModal({ visible, item, cycleId, cycleName, onClose, on
     setSubtext(item?.description ?? '');
     setPrice(item ? String(item.price) : '');
     setParts(parseRecipe(item?.ingredients));
+    setCountText({});
     setFind('');
     setPhoto(null);
   }, [visible, item]);
@@ -91,6 +121,24 @@ export function MenuEditorModal({ visible, item, cycleId, cycleName, onClose, on
    * recipe line asking for 150 ml costs ₹20, not ₹20 × 150. Multiplying by the
    * line quantity alone is what made this read ₹3,000 for a plate of idli.
    */
+  const blockFor = (partName: string) => blocks.find((b) => b.name === partName);
+
+  /**
+   * How much one of the item is. Falls back to 1 for a name no block matches,
+   * which degrades the row to the raw amount rather than hiding the line —
+   * the same tolerance parseRecipe has, and for the same reason.
+   */
+  const portionOf = (partName: string) =>
+    Number(blockFor(partName)?.base_quantity ?? 1) || 1;
+
+  /** The item's own unit is the truth; the stored text is only a fallback. */
+  const unitFor = (partName: string, fallback: string) =>
+    toMenuUnit(blockFor(partName)?.unit ?? fallback);
+
+  /** What the box shows: typed if it has been, derived from the amount if not. */
+  const countFor = (p: RecipePart, i: number) =>
+    countText[i] ?? String(portionCount(Number(p.qty), portionOf(p.name)));
+
   const partsTotal = useMemo(
     () => parts.reduce((sum, p) => {
       const b = blocks.find((x) => x.name === p.name);
@@ -100,10 +148,6 @@ export function MenuEditorModal({ visible, item, cycleId, cycleName, onClose, on
     }, 0),
     [parts, blocks],
   );
-
-  /** The item's own unit is the truth; the stored text is only a fallback. */
-  const unitFor = (partName: string, fallback: string) =>
-    toMenuUnit(blocks.find((b) => b.name === partName)?.unit ?? fallback);
 
   // Nothing until you type — the point of the box is to replace a 40-row
   // scroll. Names that START with what was typed come first, because that is
@@ -122,11 +166,47 @@ export function MenuEditorModal({ visible, item, cycleId, cycleName, onClose, on
       .slice(0, 8);
   }, [blocks, parts, find]);
 
-  const setPart = (i: number, patch: Partial<RecipePart>) =>
-    setParts((prev) => prev.map((p, n) => (n === i ? { ...p, ...patch } : p)));
+  /**
+   * Typing a count is the only thing that rewrites the stored amount. The text
+   * is kept as typed so "1." survives mid-edit; the amount follows whenever it
+   * parses to a real number.
+   */
+  const setCount = (i: number, text: string) => {
+    setCountText((prev) => ({ ...prev, [i]: text }));
+    const n = Number(text);
+    if (text.trim() !== '' && Number.isFinite(n)) {
+      setParts((prev) =>
+        prev.map((p, x) =>
+          x === i ? { ...p, qty: String(countToQty(n, portionOf(p.name))) } : p,
+        ),
+      );
+    }
+  };
 
+  /** Removing a row shifts every later index, so the typed counts shift with it. */
+  const removePart = (i: number) => {
+    setParts((prev) => prev.filter((_, n) => n !== i));
+    setCountText((prev) => {
+      const next: Record<number, string> = {};
+      for (const [k, v] of Object.entries(prev)) {
+        const n = Number(k);
+        if (n < i) next[n] = v;
+        else if (n > i) next[n - 1] = v;
+      }
+      return next;
+    });
+  };
+
+  // A new part starts at one portion of itself — "Sambar 150 ml × 1".
   const addPart = (b: MenuItem) => {
-    setParts((prev) => [...prev, { name: b.name, qty: '1', unit: toMenuUnit(b.unit) }]);
+    setParts((prev) => [
+      ...prev,
+      {
+        name: b.name,
+        qty: String(Number(b.base_quantity ?? 1) || 1),
+        unit: toMenuUnit(b.unit),
+      },
+    ]);
     setFind('');
   };
 
@@ -161,7 +241,7 @@ export function MenuEditorModal({ visible, item, cycleId, cycleName, onClose, on
     }
     const recipe = buildRecipe(parts.map((p) => ({ ...p, unit: unitFor(p.name, p.unit) })));
     if (!recipe) {
-      infoDialog('Quantities required', 'Every item needs a quantity greater than zero.');
+      infoDialog('Quantities required', 'Every item needs a count greater than zero.');
       return;
     }
     const p = parseFloat(price);
@@ -335,21 +415,23 @@ export function MenuEditorModal({ visible, item, cycleId, cycleName, onClose, on
                 <ThemedText variant="body" color="primary" style={[s.txt, s.flex1]} numberOfLines={1}>
                   {p.name}
                 </ThemedText>
+                {/* The item's own portion, and not editable: it belongs to the
+                    item, and is changed on the Menu Items tab so every menu
+                    using it stays in step. */}
+                <ThemedText variant="small" color="muted" style={s.portion}>
+                  {`${portionOf(p.name)} ${unitFor(p.name, p.unit)}`}
+                </ThemedText>
+                <ThemedText variant="small" color="muted">×</ThemedText>
                 <TextInput
                   style={s.qty}
-                  value={p.qty}
-                  onChangeText={(v) => setPart(i, { qty: v })}
+                  value={countFor(p, i)}
+                  onChangeText={(v) => setCount(i, v)}
                   keyboardType="numeric"
-                  placeholder="Qty"
+                  placeholder="1"
                   placeholderTextColor={Theme.colors.text.muted}
                 />
-                {/* Not editable: the unit belongs to the item, and is changed
-                    on the Menu Items tab so every menu using it stays in step. */}
-                <ThemedText variant="small" color="muted" style={s.unitTxt}>
-                  {unitFor(p.name, p.unit)}
-                </ThemedText>
                 <TouchableOpacity
-                  onPress={() => setParts((prev) => prev.filter((_, n) => n !== i))}
+                  onPress={() => removePart(i)}
                   hitSlop={{ top: 8, bottom: 8, left: 10, right: 4 }}
                 >
                   <ThemedText variant="body" color="muted" style={s.remove}>×</ThemedText>
@@ -481,7 +563,9 @@ const s = StyleSheet.create({
     borderBottomColor: Theme.colors.text.mint,
     paddingVertical: 2,
   },
-  unitTxt: { fontSize: S, minWidth: 40 },
+  // Right-aligned so the portions form a column the eye can run down, however
+  // long the item's name is.
+  portion: { fontSize: S, textAlign: 'right' },
   nameRow: { flexDirection: 'row', alignItems: 'flex-start', gap: Theme.spacing.sm },
   findBox: { marginTop: Theme.spacing.md, borderBottomColor: Theme.colors.text.mint },
   // The row aligns to the top, so the ₹ carries the input's own padding to

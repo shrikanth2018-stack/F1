@@ -111,6 +111,31 @@ export function buildRecipe(parts: RecipePart[]): string {
 }
 
 /**
+ * A line's amount read as a COUNT of the item's own portion — a 150 ml sambar
+ * appearing as "150 ml" is one of them, so the editor shows "× 1".
+ *
+ * Rounded to three places: enough to show that a line is NOT a whole portion,
+ * without pretending to precision a kitchen could act on.
+ *
+ * THE ROUNDING IS WHY THE EDITOR ONLY WRITES BACK A COUNT THAT WAS TYPED.
+ * Masala Dosa takes 100 ml of a 150 ml portion, which reads 0.667 — and
+ * 0.667 × 150 is 100.05, not 100. Round-tripping an untouched row through
+ * these two functions would corrupt it, so the editor doesn't: it keeps the
+ * stored amount until someone edits that row.
+ */
+export function portionCount(qty: number, portion: number): number {
+  const per = Number(portion) || 1;
+  const n = (Number(qty) || 0) / per;
+  return Number.isFinite(n) ? Number(n.toFixed(3)) : 0;
+}
+
+/** The inverse, used when a count has actually been typed. */
+export function countToQty(count: number, portion: number): number {
+  const per = Number(portion) || 1;
+  return (Number(count) || 0) * per;
+}
+
+/**
  * A one-line summary of a recipe, for the row under a menu's name.
  * Names only — quantities belong in the editor, not in a list.
  */
