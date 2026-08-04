@@ -142,8 +142,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // (errors, breadcrumbs) with the active user so we can trace incidents.
   useEffect(() => {
     if (session?.user.id) {
+      // Sentry gets the phone (it is OUR incident tooling, and tracing a
+      // crash to a customer who called about it is the point). PostHog does
+      // not: a UUID is enough to build a funnel, and the number is a lookup
+      // away in our own database if anyone needs it.
       setSentryUser(session.user.id, session.user.phone);
-      identifyUser(session.user.id, { phone: session.user.phone });
+      identifyUser(session.user.id);
     } else {
       clearSentryUser();
       resetAnalyticsUser();

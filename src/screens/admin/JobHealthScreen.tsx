@@ -19,6 +19,7 @@ import { Divider } from '../../components/Divider';
 import { ErrorRetry } from '../../components/ErrorRetry';
 import { useJobHealth, type CronJobHealth } from '../../hooks/useJobHealth';
 import { sendSentryTestEvent } from '../../utils/sentry';
+import { analyticsStatus } from '../../utils/analytics';
 import { infoDialog } from '../../utils/confirmDialog';
 import { formatRelativeTime, formatDateShort } from '../../utils/formatters';
 import type { AdminNavProp } from '../../navigation/types';
@@ -55,6 +56,8 @@ function SectionLabel({ title }: { title: string }) {
 
 export function JobHealthScreen({ navigation }: { navigation: AdminNavProp }) {
   const { data, isLoading, isError, refetch, isRefetching } = useJobHealth();
+  // Read once per render — it is env + __DEV__, neither of which changes.
+  const analytics = analyticsStatus();
 
   /**
    * The dialog matters as much as the event. A test that reports "sent" when
@@ -225,6 +228,43 @@ export function JobHealthScreen({ navigation }: { navigation: AdminNavProp }) {
               </View>
               <ThemedText variant="body" color="mint" style={{ fontSize: B }}>Send ›</ThemedText>
             </TouchableOpacity>
+          </View>
+
+          <Divider />
+
+          {/* ── Analytics ──
+              Not an action, a STATEMENT — and it exists for the same reason as
+              the button above. Analytics has been switched off since the day
+              it was written, because no key was ever configured, and nothing
+              anywhere said so: an app sending no events looks identical to an
+              app nobody is using. The host is shown too, because pointing a
+              key at the wrong region fails exactly as silently. */}
+          <SectionLabel title="Analytics" />
+          <View style={styles.group}>
+            <View style={styles.fieldRow}>
+              <View style={{ flex: 1 }}>
+                <ThemedText variant="body" color="primary" style={{ fontSize: B }}>
+                  {analytics.enabled ? 'Sending events' : 'Not sending'}
+                </ThemedText>
+                <ThemedText variant="small" color="muted" style={{ fontSize: S, marginTop: 3 }}>
+                  {analytics.reason}
+                </ThemedText>
+                <ThemedText variant="small" color="muted" style={{ fontSize: S, marginTop: 3 }}>
+                  {analytics.host}
+                </ThemedText>
+              </View>
+              <View
+                style={[
+                  styles.dot,
+                  {
+                    marginTop: 0,
+                    backgroundColor: analytics.enabled
+                      ? Theme.colors.status.success
+                      : Theme.colors.text.muted,
+                  },
+                ]}
+              />
+            </View>
           </View>
 
           {!!data?.checked_at && (
