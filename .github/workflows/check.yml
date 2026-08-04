@@ -1,0 +1,56 @@
+# 1stOne F1 — the gate, run somewhere other than one laptop.
+#
+# `npm run check` (tsc --noEmit && jest) already runs in .husky/pre-push, and
+# that hook has been the ONLY automated gate this project has. It has two
+# holes: it runs on one machine, with whatever is installed on it, and
+# `git push --no-verify` walks straight past it. This closes both.
+#
+# Deliberately the same command, not a variation. If CI and the hook could
+# disagree, the hook stops being trustworthy and people start ignoring the one
+# that is inconvenient.
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # So it can be re-run from the Actions tab without an empty commit.
+  workflow_dispatch:
+
+# A newer push to the same branch makes an in-flight run pointless.
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      # `npm ci` over `npm install`: it installs exactly the lockfile, so CI
+      # cannot pass against a dependency tree that no one else has. It also
+      # runs the `postinstall` patch-package step, which re-applies
+      # patches/react-native-razorpay+2.3.1.patch — without it the Razorpay
+      # module is not what the app expects.
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck and test
+        run: npm run check
+
+      # A real gate, not advisory. The repo currently has 203 warnings and
+      # ZERO errors, so this passes today — which means it can only ever go
+      # red on something newly introduced. Warnings stay warnings on purpose:
+      # turning the existing 203 into failures would make every PR red for
+      # reasons unrelated to itself, and a permanently red build is one nobody
+      # reads.
+      - name: Lint
+        run: npm run lint
