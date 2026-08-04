@@ -743,3 +743,64 @@ WHERE mi.is_customer_visible AND btrim(ch.chunk) <> ''
 
 **Rollback:** commented block at the bottom of each SQL file. Reversing the
 wording means undoing the two UPDATEs and re-running `menu_item_units.sql`.
+
+---
+
+## 23. A Menu Item's price is for a stated quantity (2026-08-03)
+
+`menu_item_base_quantity.sql`
+
+"Sambar ₹20" answers nothing on its own — ₹20 for how much? The unit said how
+an item is measured but never how much the price buys, and that price has one
+real use: a bulk order buying the item on its own. It was quoting a figure with
+no quantity attached to it.
+
+A block now reads **₹20 for 150 ml**, and a bulk line of ×2 is 300 ml at ₹40.
+
+**The order path needs no change.** `buildAuthoritativeOrder` already
+multiplies price by the line quantity, and that quantity is now unambiguously
+"how many of these". Nothing about money moved.
+
+**This one is NOT a cascade**, unlike the name and the unit. A recipe line
+carries its own quantity — `Sambar:150 ml` is what *that dish* contains, a
+different question from what ₹20 buys. Nothing inside `ingredients` changes, so
+`get_kitchen_aggregate` is untouched and no prep line can split. It is a plain
+column, edited straight through `useUpdateMenuItem`.
+
+**Backfilled by majority use**, the same rule `menu_item_units.sql` used for the
+unit, so Sambar arrives at the 150 ml nine recipes already ask for rather than
+at a meaningless 1. Every block is priced ₹0 today, so the figure is cosmetic
+until someone prices one — which is exactly when a wrong quantity would start
+costing money.
+
+**`admin_create_menu_block` is DROPped before being recreated.** `CREATE OR
+REPLACE` with a longer argument list makes an *overload*, not a replacement,
+and PostgREST would then have two candidates for the same named-argument call.
+The shipped app sends four named arguments and still resolves to the new
+five-argument function, because `p_base_qty` has a default.
+
+**Also fixed in the same slice (app-side, no SQL):** the CSV importer created
+blocks with no unit, so every one landed as `nos` while the recipe text still
+said `150 ml` — and the next save of that menu, which resolves the unit from
+the item, quietly rewrote `150 ml` into `150 nos`. It now reads each block's
+unit and portion back out of the recipes that name it, canonicalises every
+component to the existing block's spelling, and writes recipes through
+`buildRecipe` so no `Buns;2` or `150ml` can reach the database. Blocks are
+created **before** the menu rows now: the failure that order chooses is a few
+unused ₹0 blocks, not a live menu naming a block that does not exist.
+
+**Verification:**
+
+```sql
+-- No block priced without a portion to price. Must return zero rows.
+SELECT name, price, base_quantity, unit FROM menu_items
+WHERE NOT is_customer_visible AND price > 0 AND base_quantity IS NULL;
+
+-- What each part costs at the portion a recipe actually uses.
+SELECT b.name, b.price, b.base_quantity, b.unit
+FROM menu_items b WHERE NOT b.is_customer_visible ORDER BY lower(b.name);
+```
+
+**Rollback:** commented block at the bottom of the SQL file. Dropping the
+five-argument RPC means re-running `menu_unit_wording.sql` to restore the
+four-argument one.

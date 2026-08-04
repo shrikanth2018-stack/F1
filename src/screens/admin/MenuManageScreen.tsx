@@ -84,9 +84,19 @@ export function MenuManageScreen({ navigation }: { navigation: AdminNavProp }) {
         <ThemedText variant="body" color="primary" style={styles.txt} numberOfLines={1}>
           {item.name}
         </ThemedText>
+        {/* "₹20 for 150 ml" — the price and what it buys read as one phrase,
+            with the money in mint. Unpriced (which is every part until one is
+            sold on its own) leads with the portion instead, because a ₹0 is
+            noise where "not priced yet" is the fact. */}
         <ThemedText variant="small" color="muted" style={styles.sub}>
-          {item.price > 0 ? formatPriceShort(item.price) : 'No price set'}
-          {` · measured in ${toMenuUnit(item.unit)}`}
+          {item.price > 0 ? (
+            <>
+              <ThemedText variant="small" color="mint">{formatPriceShort(item.price)}</ThemedText>
+              {` for ${Number(item.base_quantity ?? 1)} ${toMenuUnit(item.unit)}`}
+            </>
+          ) : (
+            `${Number(item.base_quantity ?? 1)} ${toMenuUnit(item.unit)} · no price set`
+          )}
           {!item.is_active ? ' · disabled' : ''}
         </ThemedText>
       </View>

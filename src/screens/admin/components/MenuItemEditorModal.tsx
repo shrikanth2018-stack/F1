@@ -24,14 +24,20 @@
  * prep by (name, unit), so the two must move together or one ingredient
  * becomes two prep lines. It is internal: a customer sees the quantity of the
  * menu they bought, never of an ingredient inside it.
+ *
+ * THE PRICE IS FOR A STATED QUANTITY — ₹20 for 150 ml, the two fields side by
+ * side because neither means anything alone. That is what a bulk order pays
+ * for ONE of these, so a line of ×2 is 300 ml at ₹40. It is NOT the quantity
+ * in a recipe line: "Sambar:150 ml" says what that dish contains, a different
+ * question, and this is the one number here that cascades nowhere.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { View, Modal, TouchableOpacity, TextInput, StyleSheet } from 'react-native';
 import { Theme } from '../../../theme';
 import { ThemedText } from '../../../components/ThemedText';
 import { confirmDialog, infoDialog } from '../../../utils/confirmDialog';
-import { getErrorMessage } from '../../../utils/formatters';
+import { getErrorMessage, formatPriceShort } from '../../../utils/formatters';
 import {
   useCreateMenuBlock,
   useRenameMenuBlock,
@@ -57,6 +63,7 @@ export function MenuItemEditorModal({ visible, item, onClose }: Props) {
   const isNew = !item;
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
+  const [baseQty, setBaseQty] = useState('1');
   const [unit, setUnit] = useState<MenuUnit>(DEFAULT_UNIT);
   const [busy, setBusy] = useState(false);
 
@@ -71,8 +78,28 @@ export function MenuItemEditorModal({ visible, item, onClose }: Props) {
     if (!visible) return;
     setName(item?.name ?? '');
     setPrice(item ? String(item.price) : '');
+    setBaseQty(String(item?.base_quantity ?? 1));
     setUnit(toMenuUnit(item?.unit));
   }, [visible, item]);
+
+  /**
+   * The line under the two fields, in the terms the price is actually used in.
+   * "₹20 for 150 ml" is abstract until it is spent — a bulk order of 2 is what
+   * makes a wrong quantity obvious before it is saved rather than after it is
+   * invoiced.
+   */
+  const costLine = useMemo(() => {
+    const p = parseFloat(price);
+    const q = parseFloat(baseQty);
+    if (!Number.isFinite(q) || q <= 0) {
+      return 'What a bulk order pays when it buys this on its own.';
+    }
+    const two = Number((q * 2).toFixed(3));
+    if (!Number.isFinite(p) || p <= 0) {
+      return `One is ${q} ${unit}. Price it only if it will be sold on its own.`;
+    }
+    return `A bulk order of 2 gets ${two} ${unit} and pays ${formatPriceShort(p * 2)}.`;
+  }, [price, baseQty, unit]);
 
   const handleSave = async () => {
     const nm = name.trim();
@@ -84,10 +111,19 @@ export function MenuItemEditorModal({ visible, item, onClose }: Props) {
     const p = parseFloat(price);
     const finalPrice = Number.isFinite(p) && p >= 0 ? p : 0;
 
+    // A price of ₹20 "for 0" would be a division by zero everywhere it is
+    // read, and the DB refuses it outright — so it is caught here, where the
+    // message can say which field is wrong.
+    const q = parseFloat(baseQty);
+    if (!Number.isFinite(q) || q <= 0) {
+      infoDialog('Quantity required', `How much is one ${nm}? Enter the ${unit} that the price buys.`);
+      return;
+    }
+
     setBusy(true);
     try {
       if (isNew) {
-        await create.mutateAsync({ name: nm, price: finalPrice, unit });
+        await create.mutateAsync({ name: nm, price: finalPrice, unit, baseQty: q });
       } else {
         // Name and price move through different paths on purpose: the price is
         // a column, the name is a cascade.
@@ -100,8 +136,13 @@ export function MenuItemEditorModal({ visible, item, onClose }: Props) {
             infoDialog('Renamed', `${changed} menu${changed === 1 ? '' : 's'} updated to use "${nm}".`);
           }
         }
-        if (finalPrice !== item!.price) {
-          await update.mutateAsync({ id: item!.id, price: finalPrice });
+        // One update for the two plain columns — they are read together and
+        // are meaningless apart, so they should not be able to half-save.
+        const patch: Record<string, number> = {};
+        if (finalPrice !== item!.price) patch.price = finalPrice;
+        if (q !== (item!.base_quantity ?? 1)) patch.base_quantity = q;
+        if (Object.keys(patch).length > 0) {
+          await update.mutateAsync({ id: item!.id, ...patch } as never);
         }
         // Last, and through its own RPC: this rewrites recipes, so it must not
         // run before the rename has settled the names it matches on.
@@ -181,15 +222,6 @@ export function MenuItemEditorModal({ visible, item, onClose }: Props) {
             value={name}
             onChangeText={setName}
           />
-          <TextInput
-            style={s.input}
-            placeholder="Price ₹  (used when a bulk order buys it alone)"
-            placeholderTextColor={Theme.colors.text.muted}
-            value={price}
-            onChangeText={setPrice}
-            keyboardType="numeric"
-          />
-
           <ThemedText variant="small" color="muted" style={s.label}>MEASURED IN</ThemedText>
           <View style={s.units}>
             {MENU_UNITS.map((u) => {
@@ -211,6 +243,35 @@ export function MenuItemEditorModal({ visible, item, onClose }: Props) {
               This rewrites the quantity in {usedIn} menu{usedIn === 1 ? '' : 's'} — check them after saving.
             </ThemedText>
           )}
+
+          {/* Cost and quantity read as one sentence — "₹20 for 150 ml" — and
+              sit below the unit because the unit is the word this line ends
+              in. The money is mint, the only colour money wears here. */}
+          <ThemedText variant="small" color="muted" style={s.label}>WHAT IT COSTS</ThemedText>
+          <View style={s.costRow}>
+            <ThemedText variant="body" color="mint" style={s.fixed}>₹</ThemedText>
+            <TextInput
+              style={[s.input, s.money]}
+              placeholder="0"
+              placeholderTextColor={Theme.colors.text.muted}
+              value={price}
+              onChangeText={setPrice}
+              keyboardType="numeric"
+            />
+            <ThemedText variant="body" color="muted" style={s.fixed}>for</ThemedText>
+            <TextInput
+              style={[s.input, s.qtyBox]}
+              placeholder="1"
+              placeholderTextColor={Theme.colors.text.muted}
+              value={baseQty}
+              onChangeText={setBaseQty}
+              keyboardType="numeric"
+            />
+            <ThemedText variant="body" color="muted" style={s.fixed}>{unit}</ThemedText>
+          </View>
+          <ThemedText variant="small" color="muted" style={s.usage}>
+            {costLine}
+          </ThemedText>
 
           {/* Where this block actually shows up. Renaming or removing without
               knowing this is how a recipe quietly loses an ingredient. */}
@@ -273,6 +334,12 @@ const s = StyleSheet.create({
   },
   usage: { fontSize: S, marginTop: Theme.spacing.sm },
   label: { fontSize: S, letterSpacing: 1, marginTop: Theme.spacing.md },
+  costRow: { flexDirection: 'row', alignItems: 'center', gap: Theme.spacing.sm },
+  // The static words carry the input's own top margin so "₹", "for" and the
+  // unit sit on the same line as what they describe.
+  fixed: { fontSize: B, marginTop: Theme.spacing.sm },
+  money: { flex: 1, color: Theme.colors.text.mint },
+  qtyBox: { width: 72, textAlign: 'center' },
   units: { flexDirection: 'row', flexWrap: 'wrap', gap: Theme.spacing.sm, marginTop: Theme.spacing.sm },
   unit: {
     paddingVertical: 5, paddingHorizontal: 12, borderRadius: 14,

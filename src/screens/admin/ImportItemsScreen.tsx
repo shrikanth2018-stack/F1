@@ -38,6 +38,9 @@ import {
   type EssentialRow,
   type PlanRow,
 } from '../../utils/csvParsers';
+import {
+  parseRecipe, buildRecipe, toMenuUnit, DEFAULT_UNIT, type MenuUnit,
+} from '../../utils/menuRecipe';
 import { downloadCsvString } from '../../utils/exportCsv';
 import type { AdminScreenProps } from '../../navigation/types';
 import { Platform } from 'react-native';
@@ -286,56 +289,120 @@ export function ImportItemsScreen({ navigation, route }: AdminScreenProps<'Impor
     return { records, skipped, table: 'essentials_catalog', queryKeys: [['admin_essentials']] };
   };
 
+  /** Most frequent value, ties broken by first appearance so a re-run agrees. */
+  const commonest = <T,>(values: T[]): T | undefined => {
+    const tally = new Map<T, number>();
+    for (const v of values) tally.set(v, (tally.get(v) ?? 0) + 1);
+    let best: T | undefined;
+    let bestN = 0;
+    for (const [v, n] of tally) if (n > bestN) { best = v; bestN = n; }
+    return best;
+  };
+
   /**
-   * Create any building block a menu's recipe names but that does not exist.
+   * Settle the building blocks a menu import needs, and rewrite its recipes to
+   * match them. Menus only — essentials and plans carry no recipes.
    *
-   * An imported recipe is text — "Idli:4 no;Sambar:150 ml" — and the importer
-   * only ever wrote the MENU rows. So after the last import 49 blocks had to
-   * be created by hand, and until they were, Step 2 could not show those
-   * recipes as pickable items. Blocks land at ₹0: they are recipe parts, and
-   * a price is only needed when a bulk order buys one on its own.
+   * THREE THINGS THE IMPORTER USED TO GET WRONG.
+   *
+   * It only ever wrote the MENU rows, so after the last import 49 blocks had
+   * to be made by hand, and until they were, Step 2 could not show those
+   * recipes as pickable items.
+   *
+   * It then created them with no unit, so every one landed as 'nos' while the
+   * recipe text still said "150 ml". The row and the text disagreed, and the
+   * next save of that menu — which resolves the unit from the item — quietly
+   * rewrote 150 ml into 150 nos. Here the unit is read back OUT of the recipes
+   * the block appears in, majority wins, exactly as menu_item_units.sql did
+   * for the existing catalogue. The portion the price buys is inferred the
+   * same way.
+   *
+   * And it wrote the CSV's spelling verbatim, so "sambar" became a second
+   * block beside "Sambar". Every component name is now canonicalised to the
+   * existing block's spelling — the invariant menu_manager_rebuild.sql §3b
+   * established and that the Step 2 editor relies on to match a recipe to
+   * pickable items.
+   *
+   * Returns how many blocks were created. Blocks land at ₹0: they are recipe
+   * parts, and a price is only needed when a bulk order buys one on its own.
    */
-  const createMissingBlocks = async (records: any[]): Promise<number> => {
-    const wanted = new Set<string>();
+  const prepareMenuRecords = async (records: any[]): Promise<number> => {
+    // What every recipe in this import asks for, tolerant of CSV spelling
+    // ("150ml", "1n") because parseRecipe normalises on the way in.
+    const wanted = new Map<string, { name: string; qty: string; unit: MenuUnit }[]>();
     for (const r of records) {
-      for (const chunk of String(r.ingredients ?? '').split(';')) {
-        const nm = chunk.split(':')[0]?.trim();
-        if (nm) wanted.add(nm);
+      for (const p of parseRecipe(r.ingredients)) {
+        const key = p.name.toLowerCase();
+        wanted.set(key, [...(wanted.get(key) ?? []), p]);
       }
     }
     if (wanted.size === 0) return 0;
 
+    // An existing block's spelling and unit win outright: it is already
+    // referenced by live recipes, and changing its unit is a cascade this
+    // screen has no business running.
     const { data: existing } = await supabase
       .from('menu_items')
-      .select('name')
+      .select('name, unit')
       .eq('is_customer_visible', false);
-    const have = new Set((existing ?? []).map((b: any) => String(b.name).toLowerCase()));
 
-    const missing = [...wanted].filter((n) => !have.has(n.toLowerCase()));
-    for (const nm of missing) {
+    const canon = new Map<string, { name: string; unit: MenuUnit }>();
+    for (const b of (existing ?? []) as { name: string; unit?: string | null }[]) {
+      canon.set(String(b.name).toLowerCase(), { name: b.name, unit: toMenuUnit(b.unit) });
+    }
+
+    let created = 0;
+    for (const [key, uses] of wanted) {
+      if (canon.has(key)) continue;
+      const name = uses[0].name;
+      const unit = commonest(uses.map((u) => u.unit)) ?? DEFAULT_UNIT;
+      // The portion is only meaningful in the unit that won, so a stray
+      // "Sagu:200 gms" does not set the base quantity of an ml item.
+      const qty = Number(commonest(uses.filter((u) => u.unit === unit).map((u) => u.qty)) ?? '1');
+
       // One RPC per name: it is the only path that sets cycle_id NULL and
       // is_customer_visible false, which the menu_items_shape constraint
       // requires. A handful of calls on an import nobody runs often.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await (supabase as any).rpc('admin_create_menu_block', {
-        p_name: nm,
+        p_name: name,
         p_price: 0,
         p_branch_id: branchFilter.branchIdForWrite,
+        p_unit: unit,
+        p_base_qty: Number.isFinite(qty) && qty > 0 ? qty : 1,
       });
+      canon.set(key, { name, unit });
+      created++;
     }
-    return missing.length;
+
+    // Rewrite each recipe in the block's spelling and unit. buildRecipe is the
+    // only writer of this grammar, so what lands in the DB is already in the
+    // shape get_kitchen_aggregate parses — no "Buns;2" or "150ml" can survive.
+    for (const r of records) {
+      const parts = parseRecipe(r.ingredients).map((p) => {
+        const c = canon.get(p.name.toLowerCase());
+        return c ? { ...p, name: c.name, unit: c.unit } : p;
+      });
+      r.ingredients = buildRecipe(parts) || null;
+    }
+
+    return created;
   };
 
   const performInsert = async (records: any[], table: string, queryKeys: string[][]) => {
     try {
+      // Blocks FIRST, and the recipes rewritten against them, because the menu
+      // rows are what get normalised. The failure this order chooses is a few
+      // unused ₹0 blocks if the insert then fails — removable in one tap, and
+      // far better than the other way round, which leaves a live menu whose
+      // recipe names something that does not exist.
+      const created = isMenu ? await prepareMenuRecords(records) : 0;
+
       // PostgREST .from() expects a literal table-name union; runtime table is
       // one of the three import targets, all valid. Cast keeps the helper generic.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { error } = await (supabase.from(table as any) as any).insert(records as any);
       if (error) throw error;
-
-      // Menus only — essentials and plans have no recipes.
-      const created = isMenu ? await createMissingBlocks(records) : 0;
 
       queryKeys.forEach((qk) => queryClient.invalidateQueries({ queryKey: qk }));
       queryClient.invalidateQueries({ queryKey: ['menu_blocks'] });
@@ -345,7 +412,7 @@ export function ImportItemsScreen({ navigation, route }: AdminScreenProps<'Impor
         'Import complete',
         `${records.length} item${records.length !== 1 ? 's' : ''} imported.` +
           (created > 0
-            ? `\n\n${created} new menu item${created !== 1 ? 's' : ''} created from the recipes, priced at ₹0 — set their prices on the Menu Items tab if they will be sold on their own.`
+            ? `\n\n${created} new menu item${created !== 1 ? 's' : ''} created from the recipes, each measured as the recipes use it and priced at ₹0 — set a price and the quantity it buys on the Menu Items tab if it will be sold on its own.`
             : ''),
       ).then(() => navigation.goBack());
     } catch (err) {

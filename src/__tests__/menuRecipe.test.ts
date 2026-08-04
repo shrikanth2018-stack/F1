@@ -89,6 +89,22 @@ describe('units', () => {
     expect(toMenuUnit('no')).toBe('nos');
     expect(buildRecipe(parseRecipe('Chutney:100 g'))).toBe('Chutney:100 gms');
   });
+
+  it('reads the spellings a hand-typed CSV arrives with', () => {
+    // The importer normalises against these, so a menu built from a CSV lands
+    // in the same grammar as one built in the editor. The last import carried
+    // both of these: '150ml' with no space, and 'Sweet:1n'.
+    expect(toMenuUnit('n')).toBe('nos');
+    expect(toMenuUnit('grams')).toBe('gms');
+    expect(buildRecipe(parseRecipe('Sambar:150ml;Sweet:1n')))
+      .toBe('Sambar:150 ml;Sweet:1 nos');
+  });
+
+  it('keeps an unknown spelling as an ingredient rather than dropping it', () => {
+    // A wrong unit is a thing to correct; a lost ingredient is a dish that
+    // silently ships short.
+    expect(buildRecipe(parseRecipe('Sambar:150 litres'))).toBe('Sambar:150 nos');
+  });
 });
 
 describe('summariseRecipe', () => {

@@ -31,6 +31,14 @@ export interface MenuItem {
    * up as ml in two recipes and g in a third. Meaningless on a dish.
    */
   unit?: string | null;
+  /**
+   * How much of `unit` the price buys — Sambar ₹20 for 150 ml. It is what a
+   * bulk order pays for ONE of these, so a line of ×2 is 300 ml at ₹40.
+   * Not the quantity inside a recipe line: that says what a particular dish
+   * contains, which is a different question and lives in `ingredients`.
+   * Meaningless on a dish, where it stays 1.
+   */
+  base_quantity?: number | null;
   is_active: boolean;
   /**
    * FALSE = building-block item (a priced part, admin-only — never listed

@@ -37,6 +37,7 @@ import { ThemedText } from '../../components/ThemedText';
 import { Divider } from '../../components/Divider';
 import { infoDialog, confirmDialog } from '../../utils/confirmDialog';
 import { formatPriceShort, formatDateLong, getErrorMessage } from '../../utils/formatters';
+import { toMenuUnit } from '../../utils/menuRecipe';
 import { useAllMenuItems, useAllDeliveryCycles } from '../../hooks/useMenuManagement';
 import { useCycleDispatch } from '../../hooks/useCycleDispatch';
 import {
@@ -462,10 +463,16 @@ export function AdminCreateOrderScreen({ navigation }: AdminScreenProps<'AdminCr
                 setItemQuery('');
               }}
             >
+              {/* An item's price is for a stated portion, so "₹20" alone says
+                  nothing — ₹20 for how much? The portion is named here, where
+                  the price is what someone is actually about to charge. A
+                  menu is one of itself and needs no such line. */}
               <ThemedText variant="body" color="primary" style={[styles.txt, styles.flex1]} numberOfLines={1}>
                 {it.name}
                 {!it.is_customer_visible && (
-                  <ThemedText variant="small" color="muted">{'  · item'}</ThemedText>
+                  <ThemedText variant="small" color="muted">
+                    {`  · item · ${Number(it.base_quantity ?? 1)} ${toMenuUnit(it.unit)} each`}
+                  </ThemedText>
                 )}
               </ThemedText>
               <ThemedText variant="body" color="subtitle" style={styles.txt}>₹{it.price}</ThemedText>

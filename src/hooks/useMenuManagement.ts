@@ -61,10 +61,19 @@ const MENU_INVALIDATE_ALL = [
   ['menus_for_cycle'], ['menu_blocks'], ['admin_menu_items'], QUERY_KEYS.MENU_ITEMS,
 ] as const;
 
-/** Create a block. An RPC, so the server sets cycle_id NULL and visibility. */
+/**
+ * Create a block. An RPC, so the server sets cycle_id NULL and visibility.
+ *
+ * `baseQty` is how much of `unit` the price buys — ₹20 for 150 ml. A plain
+ * column, unlike the unit and the name: it does not appear inside any recipe,
+ * so changing it later cascades nowhere and goes through useUpdateMenuItem.
+ */
 export function useCreateMenuBlock() {
   const bf = useBranchFilter();
-  return useSupabaseMutation<{ name: string; price: number; unit: string }, number>(
+  return useSupabaseMutation<
+    { name: string; price: number; unit: string; baseQty: number },
+    number
+  >(
     (p) =>
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (supabase as any).rpc('admin_create_menu_block', {
@@ -72,6 +81,7 @@ export function useCreateMenuBlock() {
         p_price: p.price,
         p_branch_id: requireWriteBranch(bf),
         p_unit: p.unit,
+        p_base_qty: p.baseQty,
       }),
     BLOCK_INVALIDATE as unknown as string[][],
   );

@@ -36,8 +36,16 @@ export const DEFAULT_UNIT: MenuUnit = 'nos';
  * Older data said 'g' and 'no'. `menu_unit_wording.sql` rewrote the database,
  * but a recipe cached on a phone from before that release still holds them, so
  * reading tolerates both — writing only ever produces the new tokens.
+ *
+ * A CSV is the other source of loose spellings, and it is typed by hand: the
+ * last import carried '150ml' and 'Sweet:1n'. Anything not listed here still
+ * falls back to 'nos' rather than being dropped, so a new spelling is a wrong
+ * unit to correct, never a lost ingredient.
  */
-const LEGACY: Record<string, MenuUnit> = { g: 'gms', gm: 'gms', no: 'nos', nr: 'nos' };
+const LEGACY: Record<string, MenuUnit> = {
+  g: 'gms', gm: 'gms', gram: 'gms', grams: 'gms',
+  no: 'nos', n: 'nos', nr: 'nos',
+};
 
 export function isMenuUnit(u: string): u is MenuUnit {
   return (MENU_UNITS as readonly string[]).includes(u);

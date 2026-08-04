@@ -84,10 +84,19 @@ export function MenuEditorModal({ visible, item, cycleId, cycleName, onClose, on
     setPhoto(null);
   }, [visible, item]);
 
+  /**
+   * What the parts would cost bought separately.
+   *
+   * An item's price is for its OWN quantity — Sambar is ₹20 for 150 ml — so a
+   * recipe line asking for 150 ml costs ₹20, not ₹20 × 150. Multiplying by the
+   * line quantity alone is what made this read ₹3,000 for a plate of idli.
+   */
   const partsTotal = useMemo(
     () => parts.reduce((sum, p) => {
       const b = blocks.find((x) => x.name === p.name);
-      return sum + (b?.price ?? 0) * (Number(p.qty) || 0);
+      if (!b) return sum;
+      const per = Number(b.base_quantity ?? 1) || 1;
+      return sum + (b.price ?? 0) * ((Number(p.qty) || 0) / per);
     }, 0),
     [parts, blocks],
   );
@@ -266,9 +275,13 @@ export function MenuEditorModal({ visible, item, cycleId, cycleName, onClose, on
                 value={name}
                 onChangeText={setName}
               />
+              {/* Money is mint wherever it appears in the menu builder, and
+                  the ₹ is a label rather than typed, so the field holds a
+                  number and nothing else. */}
+              <ThemedText variant="body" color="mint" style={s.rupee}>₹</ThemedText>
               <TextInput
                 style={[s.input, s.priceBox]}
-                placeholder="₹ price"
+                placeholder="price"
                 placeholderTextColor={Theme.colors.text.muted}
                 value={price}
                 onChangeText={setPrice}
@@ -367,16 +380,24 @@ export function MenuEditorModal({ visible, item, cycleId, cycleName, onClose, on
                 <ThemedText variant="body" color="primary" style={[s.txt, s.flex1]} numberOfLines={1}>
                   {b.name}
                 </ThemedText>
-                <ThemedText variant="small" color="muted">{toMenuUnit(b.unit)}</ThemedText>
-                <ThemedText variant="body" color="subtitle" style={s.txt}>₹{b.price}</ThemedText>
+                {/* Its own portion, so the quantity you are about to type has
+                    something to be relative to. Priced at ₹0 — which is every
+                    part until one is sold on its own — the money is left off
+                    rather than shown as a meaningless zero. */}
+                <ThemedText variant="small" color={b.price > 0 ? 'mint' : 'muted'}>
+                  {b.price > 0 ? `${formatPriceShort(b.price)} for ` : ''}
+                  {Number(b.base_quantity ?? 1)} {toMenuUnit(b.unit)}
+                </ThemedText>
                 <ThemedText variant="body" color="mint" style={s.plus}>+</ThemedText>
               </TouchableOpacity>
             ))}
 
             {partsTotal > 0 && (
               <ThemedText variant="small" color="muted" style={s.hint}>
-                Parts add up to {formatPriceShort(partsTotal)} — for reference only. A menu is
-                priced on its own, and item prices are what a bulk order pays for them separately.
+                Parts add up to{' '}
+                <ThemedText variant="small" color="mint">{formatPriceShort(partsTotal)}</ThemedText>
+                {' '}— for reference only. A menu is priced on its own, and item prices are
+                what a bulk order pays for them separately.
               </ThemedText>
             )}
           </ScrollView>
@@ -463,7 +484,10 @@ const s = StyleSheet.create({
   unitTxt: { fontSize: S, minWidth: 40 },
   nameRow: { flexDirection: 'row', alignItems: 'flex-start', gap: Theme.spacing.sm },
   findBox: { marginTop: Theme.spacing.md, borderBottomColor: Theme.colors.text.mint },
-  priceBox: { width: 92, textAlign: 'right' },
+  // The row aligns to the top, so the ₹ carries the input's own padding to
+  // land on the same line as the number it labels.
+  rupee: { fontSize: B, paddingTop: Theme.spacing.sm },
+  priceBox: { width: 74, textAlign: 'right', color: Theme.colors.text.mint },
   remove: { fontSize: B + 4, color: Theme.colors.text.muted },
   plus: { fontSize: B + 4 },
   actions: {
