@@ -76,7 +76,7 @@ export default ({ config }) => {
     ...config,
     name: '1stOne',
     slug: '1stOne-F1',
-    version: '1.3.2-stable.1',
+    version: '1.4.0',
     orientation: 'portrait',
     icon: './assets/icon.png',
     userInterfaceStyle: 'dark',
