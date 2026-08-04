@@ -269,33 +269,20 @@ export function useToggleVendorItem() {
   });
 }
 
-export interface SupplyLine {
-  dispatch_date: string;
-  cycle_id: number | null;
-  cycle_name: string | null;
-  item_id: number;
-  item_name: string;
-  total_qty: number;
-  order_count: number;
-}
-
 /**
- * What to bring, and when. Server-shaped: item, quantity and date only —
- * a supply-only vendor never sees who ordered. Paid orders only, so a
- * vendor is never asked to source for a sale that may not happen.
+ * NOTE — `vendor_supply_list()` exists in the database and has no caller here.
+ *
+ * It was written to answer "what do I bring, and when" as item/quantity/date
+ * only, so a supply-only vendor never sees who ordered. The dashboard's
+ * Supply tab shipped reading `vendorOrders` instead and is labelled "Orders",
+ * which is the question a vendor actually asks today. The hook that wrapped
+ * the RPC was dead code from the day it landed and has been removed rather
+ * than left looking like a live path.
+ *
+ * The RPC itself is left deployed — it is scoped to the calling vendor and
+ * costs nothing idle. Wire a hook back up if the supply view is ever wanted;
+ * do not assume it is unused server-side without checking.
  */
-export function useVendorSupplyList(enabled: boolean) {
-  return useQuery({
-    queryKey: ['vendor_supply_list'],
-    queryFn: async (): Promise<SupplyLine[]> => {
-      const { data, error } = await supabase.rpc('vendor_supply_list');
-      if (error) throw new Error(error.message);
-      return (data ?? []) as unknown as SupplyLine[];
-    },
-    enabled,
-    staleTime: QUERY_STALE_TIME,
-  });
-}
 
 export interface VendorOrder {
   order_id: number;

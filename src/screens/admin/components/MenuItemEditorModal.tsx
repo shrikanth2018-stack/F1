@@ -189,8 +189,36 @@ export function MenuItemEditorModal({ visible, item, onClose }: Props) {
     }
   };
 
+  /**
+   * Disabling a block does far less than it looks like it does, and the gap
+   * between the two is the problem.
+   *
+   * It does NOT take the item out of any recipe. Every menu using it keeps
+   * selling, and the kitchen keeps prepping it, because the prep board is
+   * built from the recipe TEXT. What it actually stops is the two places the
+   * row itself is read: a bulk order can no longer buy it on its own
+   * (orderBuild refuses an inactive item), and it stops being offered when
+   * composing a new menu.
+   *
+   * Remove already refuses outright while a block is in use. Disable was
+   * silent — so an admin switching Sambar off to take it off the menu got no
+   * hint that nothing about the menu had changed. Now it says so, once, and
+   * only when there is something to say.
+   */
   const handleToggle = async () => {
     if (!item) return;
+    if (item.is_active && usedIn > 0) {
+      const ok = await confirmDialog({
+        title: `Disable ${item.name}?`,
+        message:
+          `${item.name} is in ${usedIn} menu${usedIn === 1 ? '' : 's'}, and disabling it does not change ` +
+          `${usedIn === 1 ? 'that menu' : 'those menus'} — ${usedIn === 1 ? 'it keeps' : 'they keep'} selling and the kitchen still preps it.\n\n` +
+          'It only stops this item being sold on its own in a bulk order, and stops it being added to new menus.',
+        confirmLabel: 'Disable',
+        cancelLabel: 'Cancel',
+      });
+      if (!ok) return;
+    }
     setBusy(true);
     try {
       await update.mutateAsync({ id: item.id, is_active: !item.is_active });
