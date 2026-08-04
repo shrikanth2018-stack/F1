@@ -18,6 +18,8 @@ import { ThemedText } from '../../components/ThemedText';
 import { Divider } from '../../components/Divider';
 import { ErrorRetry } from '../../components/ErrorRetry';
 import { useJobHealth, type CronJobHealth } from '../../hooks/useJobHealth';
+import { sendSentryTestEvent } from '../../utils/sentry';
+import { infoDialog } from '../../utils/confirmDialog';
 import { formatRelativeTime, formatDateShort } from '../../utils/formatters';
 import type { AdminNavProp } from '../../navigation/types';
 
@@ -53,6 +55,31 @@ function SectionLabel({ title }: { title: string }) {
 
 export function JobHealthScreen({ navigation }: { navigation: AdminNavProp }) {
   const { data, isLoading, isError, refetch, isRefetching } = useJobHealth();
+
+  /**
+   * The dialog matters as much as the event. A test that reports "sent" when
+   * it sent nothing is worse than no test — so the two inert cases (no DSN, or
+   * a dev build where `enabled: !__DEV__` suppresses everything) say so
+   * explicitly rather than showing a cheerful tick.
+   */
+  const handleTestEvent = () => {
+    const sent = sendSentryTestEvent({ source: 'JobHealthScreen', at: new Date().toISOString() });
+    if (sent) {
+      infoDialog(
+        'Test event sent',
+        'Open Sentry → Issues and look for "1stOne diagnostic". It should appear within a minute.\n\n' +
+          'Check the stack trace names a real file, e.g. JobHealthScreen.tsx. If it reads ' +
+          'index.android.bundle:1:… then the source maps did not upload for this build.',
+      );
+    } else {
+      infoDialog(
+        'Nothing was sent',
+        'Crash reporting is switched off in this build — either no Sentry DSN is configured, ' +
+          'or this is a development build, where it is disabled on purpose to keep the noise out.\n\n' +
+          'Use the release build to test it.',
+      );
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -173,6 +200,31 @@ export function JobHealthScreen({ navigation }: { navigation: AdminNavProp }) {
                 </View>
               ))
             )}
+          </View>
+
+          <Divider />
+
+          {/* ── Crash reporting ──
+              Every other section on this screen reports what the system DID.
+              This one asks a question, because crash reporting is the one
+              piece of observability that cannot report on itself: if it is
+              broken, its symptom is silence, which is identical to a healthy
+              app. The only way to tell them apart is to send something on
+              purpose. Ask again after every native build — a binary can ship
+              without its source maps and nothing will say so. */}
+          <SectionLabel title="Crash Reporting" />
+          <View style={styles.group}>
+            <TouchableOpacity style={styles.fieldRow} onPress={handleTestEvent} activeOpacity={0.7}>
+              <View style={{ flex: 1 }}>
+                <ThemedText variant="body" color="primary" style={{ fontSize: B }}>
+                  Send a test event
+                </ThemedText>
+                <ThemedText variant="small" color="muted" style={{ fontSize: S, marginTop: 3 }}>
+                  Proves Sentry receives, and that traces name real files
+                </ThemedText>
+              </View>
+              <ThemedText variant="body" color="mint" style={{ fontSize: B }}>Send ›</ThemedText>
+            </TouchableOpacity>
           </View>
 
           {!!data?.checked_at && (
