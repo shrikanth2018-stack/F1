@@ -2,15 +2,15 @@
 
 Expo/React Native app + Supabase backend for a home-kitchen food & essentials delivery business (single region, IST). One binary serves customer, staff, driver, hub-operator, vendor and admin personas, routed by JWT claims + table lookups.
 
-> **Provenance.** Sections 1–9 were re-derived directly from source on 2026-07-30, verified against the live database, not from `docs/`. Where anything disagrees with the code, the code wins.
+> **Provenance.** Sections 1–9 were re-derived directly from source on 2026-07-30 and revised on 2026-08-04, verified against the live database, not from `docs/`. Where anything disagrees with the code, the code wins — and on 2026-08-04 three "open" items in §9 turned out to be already fixed, so **check before repeating anything here.**
 >
-> The superseded doc set (`01`–`05`, `CODEBASE_MAP`, `DEEP_DIVE_2026-07-27`) was deleted the same day — all of it predated the vendor network and described four personas rather than six. Recover from git history if ever needed. What remains in `docs/` is still current: `06-ops-and-maintenance-runbook.md`, `07-incident-playbooks.md`, `PHASE_2_PLAN.md` (branch 2 + reverse supply chain, not started), `VENDOR_ONBOARDING_QUESTIONS.md` (decisions record), `HEALTH_REPORT.md` (polish backlog — partly overtaken by §9 below).
+> The superseded doc set (`01`–`05`, `CODEBASE_MAP`, `DEEP_DIVE_2026-07-27`) was deleted 2026-07-30 — all of it predated the vendor network and described four personas rather than six. Recover from git history if ever needed. What remains in `docs/`: `06-ops-and-maintenance-runbook.md` and `07-incident-playbooks.md` (current), `PHASE_2_PLAN.md` (branch 2 + reverse supply chain, not started), `VENDOR_ONBOARDING_QUESTIONS.md` (decisions record), and `HEALTH_REPORT.md` — **a dated snapshot from 2026-07-21, retained as history and NOT a live backlog.** §9 below is the live list.
 
 ## Stack
 Expo SDK 54 · RN 0.81.5 · React 19.1 · TypeScript 5.9 · React Navigation 7 · TanStack Query 5 · Zustand 5 · Supabase (Postgres + RLS + 15 Deno edge functions + pg_cron) · Razorpay · Expo Push · Sentry · PostHog.
 
 ## Commands
-- `npm run check` — `tsc --noEmit && jest` (the pre-push gate; run before any push)
+- `npm run check` — `tsc --noEmit && jest`. Runs in `.husky/pre-push` AND in CI (`.github/workflows/check.yml`) on every push and PR. Same command in both on purpose.
 - `npm test` / `npm run test:watch` / `npm run lint`
 - `npm start` (Expo dev server), `npm run android` / `ios` / `web`
 - `npm run supabase:gen-types` — regenerate `src/types/database.types.ts` after any schema change
@@ -176,11 +176,22 @@ Offline → persisted Zustand queue. On reconnect `useOfflineSync` drains FIFO w
 
 # 6. Test setup and coverage
 
-- **26 Jest suites, 368 tests** in `src/__tests__/`. `jest-expo` preset, `testEnvironment: node`, `jest.setup.js` eagerly resolves Expo's lazy globals (otherwise they throw "outside of scope").
-- Coverage is collected from `src/utils/**` + `src/hooks/**` only. **Screens, components and edge functions have no direct coverage**; `orderBuild.test.ts`, `dispatch.test.ts`, `reportAggregations.test.ts` and `sendPush.test.ts` reach server code by importing the shared modules.
-- Covered: dispatch dates, order build, subscription math + conflict, order filters, packing flow, delivery status transitions, IST dates, CSV parse/build, validators, formatters, cart store, `extractRole`, and hook tests (`useOrders`, `useStaffOrders`, `useSubscriptions`, `useWallet`, `useAdminOrders`, `useBranchFilter`, `useOfflineSync`, `useSupabaseQuery`) via a shared query-client helper.
-- **No CI service** — the Husky `pre-push` hook (`tsc --noEmit` then `jest`) is the only automated gate.
+- **39 Jest suites, 493 tests** in `src/__tests__/`. `jest-expo` preset, `testEnvironment: node`. `jest.setup.js` eagerly resolves Expo's lazy globals (otherwise they throw "outside of scope") and globally mocks three things every screen test reaches within a few hops: AsyncStorage, safe-area insets, and Supabase env (with a deliberately bogus URL, so a stray live call fails against a fake host instead of reaching production).
+- Coverage is *collected* from `src/utils/**` + `src/hooks/**` only, but **five screens now have tests**: `CheckoutScreen`, `StaffDashboard`, `AdminOrderDetailScreen`, `MenuEditorModal`, `MenuItemEditorModal`. Chosen where being wrong costs most, not where testing is easiest. The other ~114 screen/component files still have none.
+- Covered elsewhere: dispatch dates, order build, subscription math + conflict, order filters, packing flow, delivery status, IST dates, CSV parse/build, recipe grammar + portion arithmetic, validators, formatters, cart store, `extractRole`, analytics + Sentry guards, and hook tests via a shared query-client helper. `orderBuild.test.ts`, `dispatch.test.ts`, `reportAggregations.test.ts` and `sendPush.test.ts` reach *server* code by importing the shared modules.
+- **CI: `.github/workflows/check.yml`** runs the same `npm run check` on every push and PR, plus lint as a real gate (203 warnings, zero errors — so it only goes red on something new). `npm ci`, not `install`, so CI cannot pass against a dependency tree that exists only in somebody's `node_modules`. The Husky `pre-push` hook still runs locally; the two are deliberately the same command.
+- **MUTATION-CHECK A NEW TEST BEFORE TRUSTING IT.** Break the behaviour, confirm the test fails, revert. Every screen test here was checked that way, and it caught a real one: a privacy guard on `identifyUser` passed while the fix was reverted at the *call site*, because the test only covered the function. The fix moved into the function as a result. A test that passes against broken code is worse than no test.
 - `knip.json` for dead-code analysis; `patch-package` re-applies `patches/react-native-razorpay+2.3.1.patch` on install.
+
+## Test harnesses against the live database
+
+Three SQL harnesses in `supabase/tests/`. The first two roll back by design — they end in `RAISE EXCEPTION`, which both prints the report and discards everything. **Read the report, not the exit code.**
+
+| File | What it proves |
+|---|---|
+| `platform_health_check.sql` | 37 assertions end to end: back-office customer + bulk order, wallet, staff gates, vendor credit-on-delivery, cancellation, loyalty, vendor portal, hub commission, subscription manifest, listing approval. §K is the only section that switches ROLE — the rest set claims but stay privileged, so nothing RLS-enforced is covered by A–J. |
+| `subscription_flow_check.sql` | Completes §J, which SKIPS whenever no active subscription exists (i.e. every run on an empty database). Buys a plan as the service role, dispatches it through the real manifest, checks BF-19 zero-money rows and idempotency, then confirms as the real customer role that they can pause and skip but cannot reset `days_consumed` or flip `is_active`. |
+| `seed_360.sql` / `teardown_360.sql` | The only pair that COMMITS — a walkthrough's rows must survive to be seen on a screen. Seed fills the gaps around the existing test cast (its logins already exist; it does not create auth users). Teardown is bounded three ways at once — registered by the seed, created after the run started, AND belonging to a profile that existed at seed time — so it cannot over-delete. |
 
 ---
 
@@ -203,10 +214,18 @@ Offline → persisted Zustand queue. On reconnect `useOfflineSync` drains FIFO w
 - No hardcoded business values or colors: business rules live in `store_config`/`feature_flags`, styling in `src/theme/`.
 - Code comments carry audit tags (D#, G#, BF-#, MF-#, O#, FT-#) referencing past audit rounds — keep them when editing nearby code; match the existing header-comment style in every file.
 
-# 9. Audit state — July 2026 stable
+# 9. Audit state — 2026-08-04
 
-Full audit 2026-07-30, verified against the live database. Everything below is
-the state **after** the fixes of that date.
+Full audit 2026-07-30, then a second working day on 2026-08-04 that closed
+several items and opened others. Everything below is the state **after**
+2026-08-04, and every claim in the Open list was re-verified against the code
+and the live database on that date rather than carried forward.
+
+> **Why that matters.** Three items in the previous Open list were already
+> fixed when checked — the `eas.json` gaps, the `StaffDashboard` header
+> comment, and the vendor supply hook. A stale audit is worse than no audit:
+> it sends you chasing things that are not broken while you trust it about the
+> things that are. **Re-verify before repeating anything here.**
 
 ## Closed
 
@@ -271,55 +290,157 @@ the state **after** the fixes of that date.
   machine behind UTC. It now uses the same `istDate` helpers as the hook.
 - **Shared wallet for vendor-customers** — reviewed and confirmed intended.
   One person, one wallet: they spend as a customer and claim as a vendor.
+  (See Open #4 for the payout consequence, found later.)
+
+### Closed on 2026-08-04
+
+- **Three tables a customer could write directly.** `user_subscriptions`,
+  `expense_claims` and `customer_addresses` each had a policy written as
+  `FOR ALL USING (<owner test>)` with **no WITH CHECK** — and Postgres reuses
+  the USING expression as the insert check, so "rows I may READ" silently
+  became "rows I may WRITE". `schema.sql` grants ALL on these to
+  `authenticated`, so the policy was the only gate. The serious one: a customer
+  could insert their own subscription row against any plan with `is_active`
+  true, and `generate_daily_manifest` would then dispatch a Confirmed order
+  every day for its full duration, at zero money, and the kitchen would cook
+  them. Proven by impersonating a real customer, fixed in
+  `client_write_gaps.sql`. **Grep for the class:** `pg_policies` rows where
+  `cmd = 'ALL'` and `with_check IS NULL`. `cancelled_subscription_days` looked
+  identical but is correct — its USING clause already tests ownership.
+- **An offline clock-out rewrote a staff member's whole attendance history.**
+  Clocking out online matches (staff_id, date); the offline queue could carry
+  only ONE match column, so it queued `staff_id` alone and the replay stamped
+  that clock-out time onto every attendance row the person had — in exactly the
+  low-signal conditions the queue exists for, and it feeds payroll. Fixed at the
+  root: `QueuedMutation` now carries a `match` object ANDed across every column,
+  with the legacy single-column pair still honoured because the queue is
+  persisted on devices. Same fix carried `onConflict` for upserts, which had
+  been silently dropping offline clock-ins.
+- **A branch filter that did not filter.** `usePendingLeaves` filtered on an
+  embedded resource without `!inner`; PostgREST nulls the embed and keeps the
+  parent, so a branch admin saw every branch's pending leaves with a blank name.
+- **Re-onboarding an employee failed with a raw database error.**
+  `elevate_to_staff` inserted a `staff_salary` row unconditionally against a
+  `UNIQUE (staff_id, month, year)`, so a second call in the same month rolled
+  the whole elevate back and lost the correction being made. Now
+  `ON CONFLICT DO NOTHING` — deliberately not DO UPDATE, since that month may
+  already be settled. `nextval` also no longer burns an employee number on
+  every correction.
+- **A wallet payment and an admin refund now leave a trace.** `place-order`
+  wrote `Confirmed` with no `paid_at` while `admin-place-order` stamped its
+  own; both admin cancel RPCs credited the wallet with the three-argument
+  `increment_wallet_balance`, leaving `reference_type`/`reference_id` NULL so a
+  refund could only be tied to its order by parsing a description string.
+- **The menu's recipe grammar.** A line is now a COUNT of the item's own
+  portion ("Sambar 150 ml × 1"), decided by checking real data first: 70 of 77
+  recipe lines were exactly one portion. The stored text did not change, so
+  `get_kitchen_aggregate` and the order path are untouched. **The trap:**
+  `100 ÷ 150` displays as `0.667` and `0.667 × 150` is `100.05`, so the editor
+  keeps the stored amount until a row's box is actually typed in — five real
+  recipes are in that shape.
+- **CI, and the first tests that render a screen.** See §6.
 
 ## Open
 
+**Blocks a public release:**
+
 1. **Production still ships the Razorpay test key.** `eas.json` production
-   `EXPO_PUBLIC_RAZORPAY_KEY_ID = rzp_test_…`. Live payments cannot work until
-   this and the server-side secret are switched together. **Blocks going live.**
-2. **PostHog has never been configured.** `EXPO_PUBLIC_POSTHOG_KEY` is empty in
-   `.env` and absent from every `eas.json` profile, so `initAnalytics()` returns
-   early everywhere — all 12 funnel events have always been no-ops. Needs a key
-   from a PostHog project; there is nothing to fix in code.
-3. **`eas.json` preview/development profiles are incomplete.** `development` has
-   no `EXPO_PUBLIC_SUPABASE_ANON_KEY` and no Maps key; `preview` has no Sentry
-   DSN. Dev-client builds survive because Metro serves the local `.env`; a
-   standalone build from these profiles would not.
-4. **iOS submit config is placeholders** — `REPLACE_WITH_APPLE_ID` /
-   `REPLACE_WITH_ASC_APP_ID` / `REPLACE_WITH_TEAM_ID`.
-5. **Rate limiting counts only successful orders.** `place-order` counts
+   `EXPO_PUBLIC_RAZORPAY_KEY_ID = rzp_test_…`. Deliberate — the owner plans to
+   flip it immediately before the real release, together with the server-side
+   secret and the webhook secret. Half-live fails every payment outright. **No
+   rupee has ever moved through this app.** Do not keep re-raising it; do not
+   let "stable" be claimed while it stands.
+2. **iOS has never had a production build.** Exactly one iOS build exists — a
+   *development* profile from 2026-04-07. Submit config is still
+   `REPLACE_WITH_APPLE_ID` / `REPLACE_WITH_ASC_APP_ID` / `REPLACE_WITH_TEAM_ID`.
+   If the App Store is in scope this is not a config tweak but an unstarted
+   track: developer account, first production build, TestFlight, review.
+3. **Single environment, no staging.** One Supabase project serves dev, preview
+   and production — every schema change today went straight to production. It
+   has been safe because each one was dry-run and rolled back first, but that
+   is discipline, not architecture. The service-role key lives in three places
+   (function env, Vault, `app_config`) — rotation must touch all three.
+
+**Decisions waiting on the owner:**
+
+4. **A vendor payout claims their ENTIRE wallet balance**, including money they
+   deposited as a customer. Demonstrated in the 2026-08-04 walkthrough: a
+   vendor with ₹2000 of customer float and ₹129.20 of sales raised a claim for
+   ₹2129.20, so settling it pays out ₹2000 the vendor had put in themselves.
+   `create_vendor_payout_claim` reads `wallet_balance` and does not distinguish
+   earnings from deposits. Harmless while vendors do not top up; real money at
+   launch. The fix is a business choice (cap at uncleared earnings? track the
+   two separately?), which is why it has not been made. Related:
+   [shared wallet] was reviewed and confirmed intended — this is its sharp edge,
+   not a contradiction of it.
+5. **PostHog still has no key**, so all 12 funnel events are inert. As of
+   2026-08-04 the *wiring* is fixed and safe: `initAnalytics()` is off in dev
+   (matching Sentry), `identifyUser` strips phone/email/name/address whatever
+   it is handed, and Job Health shows whether analytics is live and which host
+   it points at. Adding the key is now one string — but **set the host to match
+   the project's region** (`analytics.ts` defaults to EU; a US project needs
+   `https://us.i.posthog.com`) and set it separately in Cloudflare for web.
+   Deliberately not rushed: with nine test accounts there is nothing to measure.
+
+**Known and accepted:**
+
+6. **Rate limiting counts only successful orders.** `place-order` counts
    `idempotency_keys` rows, which are written only on success, so repeated
    failures are not throttled. Low impact; left alone because changing it means
-   touching the idempotency contract on the money path.
-6. **`vendor_supply_list()` is deployed but unreachable from the app.** The RPC
-   and its hook `useVendorSupplyList` are complete, but the dashboard's "Supply"
-   tab renders `useVendorOrders` instead. Exercised by the health check (§J).
+   touching the idempotency contract on the money path. *(Re-verified
+   2026-08-04 — still true.)*
 7. **`'Paid'` is a dead order status** still referenced defensively in
-   `cancel-order`, `OrderDetailScreen`, `confirm-order`, `kitchen_cutoff_push.sql`
-   and the `orders_status_allowed` CHECK. `mark_order_paid` writes `'Confirmed'`
-   (BF-32a). Harmless today, but it is absent from `ORDER_STATUS_FLOW`, so
-   anything that ever *did* write it would fall outside the offline no-regress guard.
-8. **`StaffDashboard.tsx:5,16`** still documents a "Kitchen | Packing | Delivery"
-   three-tab layout; Delivery moved to `DriverDashboardScreen` + admin Delivery
-   Manager (acknowledged at `:146-147`).
-9. **Single environment, no staging.** One Supabase project serves dev, preview
-   and production. The service-role key lives in three places (function env,
-   Vault, `app_config`) — rotation must touch all three.
+   `cancel-order:34`, `OrderDetailScreen:34`, `confirm-order:98`,
+   `kitchen_cutoff_push.sql` and the `orders_status_allowed` CHECK.
+   `mark_order_paid` writes `'Confirmed'` (BF-32a). Harmless, but it is absent
+   from `ORDER_STATUS_FLOW`, so anything that ever *did* write it would fall
+   outside the offline no-regress guard. *(Re-verified 2026-08-04.)*
+8. **`vendor_supply_list()` is deployed with no caller.** The hook was deleted
+   on 2026-08-04 rather than left looking like a live path; the RPC stays
+   because it is vendor-scoped and costs nothing idle. The dashboard's Supply
+   tab reads `vendor_orders` and is labelled "Orders", which is the question a
+   vendor actually asks. See the note where the hook used to be in
+   `useMyVendor.ts`.
+9. **~114 screen and component files still have no test.** Five have one. The
+   owner has walked the app by hand many times and it performs correctly — so
+   this is missing *automated* evidence, not missing evidence. Say it that way.
+
+## Diagnostics — because absence looks like health
+
+Four systems here have been "configured but silent" at some point: Sentry
+pointed at a project that did not exist, PostHog with no key, source maps that
+fail without failing the build, and analytics with no dev guard. They share a
+shape — **when they break, the symptom is silence, which is identical to
+working perfectly.** Two surfaces exist to break that tie, both on
+**Admin → Operations → Job Health**:
+
+- **Crash Reporting → "Send a test event"** fires one tagged Sentry event
+  (`diagnostic=true`, info level). It answers two questions at once: does an
+  event arrive, and does its stack trace name a real file rather than
+  `index.android.bundle:1:…`. Ask again after **every native build** — the
+  source-map upload does not fail a build when it breaks. It returns false and
+  says "Nothing was sent" with no DSN or in a dev build, because a diagnostic
+  that claims success while sending nothing is worse than none.
+- **Analytics** states whether it is live, why not, and which host it points at.
+
+Verified in the Sentry UI on 2026-08-04: release `1.3.2-stable.1 (30)` has **2
+source-map artifacts**, sessions arriving, one user, crash-free rate 100%, zero
+issues. **Check Releases, not Issues, to answer "is Sentry connected?"** — the
+Issues page shows an onboarding wizard whenever there are no *error* events,
+which reads exactly like "never received anything" and is not.
 
 ## Health check
 
-`supabase/tests/platform_health_check.sql` — 30 assertions across back-office
-customer creation, bulk orders, wallet, staff role gates, vendor
-credit-on-delivery, cancellation, loyalty, the vendor portal, hub commission and
-the subscription manifest. Runs against the live database inside a transaction
-that always rolls back.
+Run after any schema or RPC change:
 
 ```
 supabase db query --linked --file supabase/tests/platform_health_check.sql
+supabase db query --linked --file supabase/tests/subscription_flow_check.sql
 ```
 
-It ends in an error by design — that is what rolls it back. Read the report, not
-the exit code. Re-run it after any schema or RPC change.
+Both end in an error by design — that is what rolls them back. **Read the
+report, not the exit code.** See §6 for what each covers and for the 360
+seed/teardown pair.
 
 ## Working agreements (owner preferences)
 - After making edits, **pause for owner review before** running tsc/jest or committing.
@@ -349,5 +470,35 @@ Two traps, both hit on 2026-08-02: never check an RLS rule as superuser, and
 make sure the *subject* could pass — a customer with no address sees zero
 vendor items whether or not the gate works.
 
-These are a floor, not the goal. They exist because these specific things bit;
-they don't replace judgement about what else deserves checking.
+### Added 2026-08-04
+
+**`eas update` never ships `supabase/functions/`.** Three edge functions had
+changed since the previous release and would have gone out stale — including
+the change that lets a cycle-less building block be bulk-ordered, against a
+database where blocks had lost their cycles the same day. Before any release,
+diff against the last released commit:
+
+```
+git diff --name-only <last-released-sha>..HEAD -- supabase/functions/
+git diff --stat  <last-released-sha>..HEAD -- package.json app.config.js android/ ios/ patches/ eas.json
+```
+
+The second decides whether a new `.aab` is needed at all. Empty means OTA
+suffices and Play needs nothing.
+
+**Verify a web deploy by its CODE, not its content-type.** The known trap is
+Cloudflare serving a missing asset as HTTP 200 `text/html`. The inverse is
+worse because it looks like success: **a stale bundle is still perfectly valid
+JavaScript**, so polling until `content-type: application/javascript` passes
+instantly against the *previous* build. The tell is the `AppEntry-<hash>.js`
+filename being unchanged. Grep the served bundle for a string literal unique to
+the change instead — and allow ~10 minutes, far longer than the ~1 minute the
+`text/html` phase lasts.
+
+**A teardown that reports success is not a teardown that worked.** The 360
+teardown printed clean numbers while leaving a row behind, because its
+`date >= run start` bound could not catch a day an attendance *correction* had
+backfilled. Diff against a before-snapshot; do not trust the report.
+
+**Mutation-check a new test.** See §6 — it caught a guard that was passing
+while the fix it guarded was reverted.

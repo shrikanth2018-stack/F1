@@ -1,5 +1,24 @@
 # 1stOne — Health & Optimization Report
 
+> ## ⚠ HISTORICAL SNAPSHOT — NOT A LIVE BACKLOG
+>
+> Written **2026-07-21** at HEAD `fc8b79a`. Retained as a record of what the
+> system looked like then, and because its reasoning is still worth reading.
+>
+> **It is NOT current.** Much of it has since been fixed — the `CartScreen`
+> conditional hook, network timeouts, the offline-queue wedge, log retention,
+> money-path Sentry coverage. Other parts are simply out of date: it cites
+> 331 tests against 493 today, and predates the vendor listing approval flow,
+> the Menu Manager rebuild, CI, and the 2026-08-04 RLS and attendance fixes.
+>
+> **For the live list, read `CLAUDE.md` §9.** Do not action anything from this
+> file without checking the code first — on 2026-08-04, three items believed
+> open turned out to be already fixed.
+
+---
+
+
+
 > **Provenance.** Written 2026-07-21 at HEAD `fc8b79a` (code unchanged since `f618c60`). Produced by a five-area parallel review (reliability/performance, data integrity & queries, code health, tests, operational readiness), each grounded in `docs/CODEBASE_MAP.md`, then deduplicated and re-ranked globally. Scope was deliberately **optimization-focused** at the owner's request: build-from-scratch verification, dependency audit, and security were excluded (security was covered by the Round 1/2 hardening audits, complete as of May 2026). Inferences are labeled.
 
 ---

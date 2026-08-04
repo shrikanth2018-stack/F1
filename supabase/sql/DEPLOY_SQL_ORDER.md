@@ -804,3 +804,96 @@ FROM menu_items b WHERE NOT b.is_customer_visible ORDER BY lower(b.name);
 **Rollback:** commented block at the bottom of the SQL file. Dropping the
 five-argument RPC means re-running `menu_unit_wording.sql` to restore the
 four-argument one.
+
+---
+
+## 24. Three tables a customer could write directly (2026-08-04)
+
+`client_write_gaps.sql`
+
+A policy written as `FOR ALL USING (<owner test>)` with **no WITH CHECK**.
+Postgres reuses the USING expression as the insert check, so "rows I may READ"
+silently became "rows I may WRITE" — and `schema.sql` grants ALL on these
+tables to `authenticated`, so the policy was the only gate there was.
+
+- **`user_subscriptions`** — the serious one. A customer could insert their own
+  row against any plan with `is_active` true, and `generate_daily_manifest`
+  would dispatch a Confirmed order every day for the plan's full duration, at
+  zero money. Fixed with **column grants**, not a cleverer policy: INSERT and
+  DELETE revoked from `authenticated`, UPDATE narrowed to `is_paused` (the only
+  write any screen makes). Grants are checked before RLS and cannot be reasoned
+  around — the same pattern as `profiles.role` and `vendors.status`.
+- **`expense_claims`** — a WITH CHECK so a claimant can only file their own row
+  at `Pending`, and only if they are staff. Admin settling is untouched. Hub
+  commission and vendor payout go through SECURITY DEFINER RPCs, so a
+  customer-role vendor never needs a direct insert.
+- **`customer_addresses`** — `trg_address_resolve` recomputes `zone_id`,
+  `hub_id`, `is_serviceable` and `branch_id` from the pin, discarding whatever
+  the client sent. The point-in-polygon test was always server-side; its ANSWER
+  was not. Skips service-role and staff/admin callers, so
+  `admin-create-customer` and `assign_addresses_to_hub` still work, and honours
+  `hub_delivery_active` exactly as `AddAddressScreen` does.
+
+**Not changed:** `cancelled_subscription_days`. Its USING clause already tests
+that the subscription belongs to the caller, so doubling as the insert check is
+correct there.
+
+**Grep for the class:** `pg_policies` where `cmd = 'ALL'` and
+`with_check IS NULL`.
+
+**Verification:** impersonate a real customer — `request.jwt.claims` **plus**
+`SET LOCAL ROLE authenticated` — inside `BEGIN … ROLLBACK`. Never as superuser:
+that bypasses RLS and will confirm a policy that denies everyone. Four of the
+seven assertions are regressions, not the fix: the customer can still pause a
+subscription and skip a day, staff can still file a Pending claim, and
+**`place-order` can still create a subscription as the service role** — the one
+that would have broken buying a plan outright.
+
+**Rollback:** commented block at the bottom of the file.
+
+---
+
+## 25. Re-onboarding an employee stops being an error (2026-08-04)
+
+`elevate_employee_reonboard.sql`
+
+`elevate_to_staff` inserted a `staff_salary` row whenever `p_monthly_salary > 0`
+against a `UNIQUE (staff_id, month, year)`, so a second call in the same month
+raised a duplicate-key error and rolled the whole elevate back — losing the
+correction the admin was making. Now `ON CONFLICT DO NOTHING`, deliberately not
+DO UPDATE: that month may already be settled, and re-running onboarding is not
+the place to silently rewrite payroll.
+
+Separately, `nextval('employee_id_seq')` ran before anything checked for an
+existing `employee_id`, so every correction burned a number and the series grew
+gaps. The sequence is now only touched when an ID is actually needed.
+
+Signature unchanged, so the deployed `elevate-employee` Edge Function needs no
+redeploy. **Rollback:** re-run `elevate_employee.sql`.
+
+---
+
+## 26. An admin refund says which order it was for (2026-08-04)
+
+`admin_refund_reference.sql`
+
+Both admin cancel RPCs credited the wallet with the three-argument
+`increment_wallet_balance`, so the refund landed with `reference_type` and
+`reference_id` NULL — the description named the order but nothing
+machine-readable tied them together. The customer path
+(`cancel-order/index.ts`) has always passed `'order_refund'` + the order id, so
+a refund was traceable or not purely by who pressed cancel.
+
+Both are fixed — `admin_cancel_order_atomic` tags `order_refund`,
+`admin_cancel_subscription_atomic` tags `subscription_refund`. Fixing only the
+first would have left the subscription path as the sole untagged credit in the
+ledger, which is worse than where this started.
+
+**Rebuilt from the LIVE function definitions, not the repo files** — two files
+here define `admin_cancel_order_atomic` (`admin_cancel_order_atomic_rpc.sql` and
+`admin_cancel_order_allow_unsuccessful.sql`) and only the deployed one is
+authoritative. Diffed before applying: the credit call is the only change.
+
+**Note for anyone matching on `orders.notes`:** `admin_cancel_order_atomic`
+APPENDS to that column (`… | [Admin cancel: reason]`). An exact-match query
+will find nothing after a cancellation.

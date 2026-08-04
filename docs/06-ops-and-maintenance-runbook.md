@@ -139,6 +139,21 @@ SELECT push_kitchen_summary(<id>, 'YYYY-MM-DD');
 
 ## 6. Releasing changes
 
+> **Before any release, run these two diffs against the last released commit.**
+> `eas update` ships JavaScript only — it does **not** deploy
+> `supabase/functions/`, and on 2026-08-04 three edge functions would have gone
+> out stale, including one the database had already been changed to depend on.
+>
+> ```bash
+> # Edge functions that changed and must be deployed separately
+> git diff --name-only <last-released-sha>..HEAD -- supabase/functions/
+>
+> # Does this need a new .aab at all? Empty output = OTA is enough
+> git diff --stat <last-released-sha>..HEAD -- \
+>   package.json app.config.js android/ ios/ patches/ eas.json
+> ```
+
+
 | Change type | How to ship |
 |---|---|
 | **JS-only** (UI, copy, logic in `src/`) | **OTA** — `eas update --channel production`. Users get it on next launch (`checkAutomatically: ON_LOAD`). No store review. |
@@ -185,8 +200,34 @@ These are deliberate: the customer-facing action (cancel/charge) always complete
 
 ## 10. Backups, logging & observability
 
+> **The failure mode all of this shares: when telemetry breaks, the symptom is
+> SILENCE, and silence is identical to everything working.** Sentry sat pointed
+> at a project that did not exist for months; PostHog has never had a key;
+> source-map uploads fail without failing the build. Do not infer health from
+> quiet — go and check.
+
+### Checking it, rather than assuming (Admin → Operations → System Health)
+
+- **Crash Reporting → "Send a test event"** fires one tagged Sentry event and
+  tells you two things: that an event arrives, and that its stack trace names a
+  real file rather than `index.android.bundle:1:…`. **Do this after every
+  native build** — the source-map upload does not fail a build when it breaks.
+  In a dev build it will say "Nothing was sent", which is correct: Sentry is
+  disabled there on purpose.
+- **Analytics** states whether it is live, why not, and which host it points at.
+
+**In the Sentry web UI, check Releases, not Issues, to answer "is it
+connected?"** The Issues page shows a "Get Started" onboarding wizard whenever
+there are no *error* events — which reads exactly like "never received
+anything" and is not. A release with source-map **artifacts**, a session count
+and a crash-free rate is the proof. (Verified that way 2026-08-04: release
+`1.3.2-stable.1 (30)`, 2 artifacts, sessions arriving.)
+
 - **Errors / crashes:** Sentry (DSN in `eas.json`), tagged with the active user.
-- **Product analytics:** PostHog (login, order placed/failed, subscribed events).
+  Off in development builds by design (`enabled: !__DEV__`).
+- **Product analytics:** PostHog — **not yet switched on**; needs a project key.
+  Off in development too. `identifyUser` strips phone/email/name/address before
+  sending, so customer contact details never leave for a third party.
 - **Push delivery:** every attempt logged to `push_logs` (status, Expo ticket, error); dead tokens auto-deactivated.
 - **Job runs:** `manifest_run_log`, `kitchen_push_log`, `cron.job_run_details`, all surfaced in System Health.
 - **Database backups:** Supabase platform-managed (configure retention in the Supabase dashboard).
@@ -261,6 +302,23 @@ by `assetmap.json` and flat hashed asset names). A web-only
 Comparing the two proves nothing about what Cloudflare built.
 
 ### Verifying a web deploy
+
+**Check for the CODE, not the content-type.** The documented trap is Cloudflare
+serving a missing asset as HTTP 200 `text/html`. The inverse is worse because
+it looks like success: a STALE bundle is still perfectly valid JavaScript, so
+waiting for `content-type: application/javascript` passes instantly against the
+*previous* build. The tell is the `AppEntry-<hash>.js` filename not changing.
+Grep the served bundle for a string literal unique to your change, and allow
+~10 minutes — far longer than the ~1 minute the `text/html` phase lasts.
+
+```bash
+# does the live bundle actually contain the change?
+B=$(curl -s https://app.1stone.in | grep -o '_expo/static/js/web/[^"]*' | head -1)
+curl -s "https://app.1stone.in/$B" | grep -c '<a string literal from your diff>'
+```
+
+Pick something that survives minification — a string literal, a PostgREST
+select, an event key. Comments and identifiers do not.
 
 ```bash
 # which bundle is live

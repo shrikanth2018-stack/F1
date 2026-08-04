@@ -5,6 +5,21 @@ system — architecture, navigation, roles, integrations, business flows, the
 audit state — and it is re-derived from the code rather than maintained by
 hand, so it does not drift the way prose does.
 
+## Where to look for what
+
+| Question | Answer lives in |
+|---|---|
+| How does the system work? | `CLAUDE.md` §1–§5 |
+| What is broken / decided / accepted right now? | `CLAUDE.md` §9 — **the live list** |
+| How do I run and verify things? | `CLAUDE.md` §6, and `06-ops-and-maintenance-runbook.md` |
+| Something is on fire | `07-incident-playbooks.md` |
+| What SQL has been applied, in what order? | `supabase/sql/DEPLOY_SQL_ORDER.md` |
+
+**Nothing in this folder is the live status of anything.** `CLAUDE.md` is, and
+it is re-derived from code rather than maintained by hand. On 2026-08-04 three
+items it listed as open were already fixed — so verify before acting even on
+that, and fix it when you find drift.
+
 ## What lives here now
 
 | File | What it is | Still current? |
@@ -13,7 +28,7 @@ hand, so it does not drift the way prose does.
 | `07-incident-playbooks.md` | What to do when something breaks | Yes |
 | `PHASE_2_PLAN.md` | Second branch + the reverse supply chain. Planned, not started. **House brand belongs here** — it is the same "we buy at an agreed rate" shape | Forward-looking |
 | `VENDOR_ONBOARDING_QUESTIONS.md` | Phase-1 vendor decisions record | Yes |
-| `HEALTH_REPORT.md` | Polish backlog. Several items now done — see `CLAUDE.md` §9 for the live list | Partly overtaken |
+| `HEALTH_REPORT.md` | **Historical snapshot, 2026-07-21.** Retained for its reasoning, not as a backlog — much of it is fixed and it cites 331 tests against 493 today | No — see `CLAUDE.md` §9 |
 
 ## What was removed on 2026-07-30, and why
 
