@@ -179,29 +179,32 @@ export function useUpdateReferralSettings() {
   });
 }
 
-/** Admin manually issues the month completion bonus for a referral */
+/**
+ * Admin manually issues the month completion bonus for a referral.
+ *
+ * ONE SERVER CALL, not three. This used to read the settings, credit the
+ * wallet, and then mark the referral — from a phone, over three round-trips,
+ * with money moving in the middle one. A failure after the credit paid the
+ * referrer and left the row unmarked, so pressing again paid them twice.
+ *
+ * `admin_issue_referral_month_bonus` does all of it inside one transaction,
+ * locks the row so two admins cannot both pay, and refuses a referral that
+ * has already been settled. It is also the reason the raw
+ * `increment_wallet_balance` RPC no longer needs to be reachable from a
+ * client at all — see supabase/sql/lock_down_definer_functions.sql.
+ *
+ * `referrerId` is still accepted so the calling screen did not have to
+ * change; the server reads the referrer from the referral row rather than
+ * trusting what the client sent, which is the point.
+ */
 export function useIssueMonthBonus() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ referralId, referrerId }: { referralId: number; referrerId: string }) => {
-      const { data: rawSettings } = await supabase
-        .from('referral_settings')
-        .select('*').limit(1).maybeSingle();
+    mutationFn: async ({ referralId }: { referralId: number; referrerId?: string }) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const settings = mergedSettings(rawSettings as any);
-
-      if (settings.referrer_month_credit > 0) {
-        await creditWallet(
-          referrerId,
-          settings.referrer_month_credit,
-          'Referral bonus — friend completed first month'
-        );
-      }
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error } = await (supabase as any)
-        .from('referrals')
-        .update({ status: 'month_complete', month_reward_given: true })
-        .eq('id', referralId);
+      const { error } = await (supabase as any).rpc('admin_issue_referral_month_bonus', {
+        p_referral_id: referralId,
+      });
       if (error) throw new Error((error as { message: string }).message);
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin_referrals'] }),
@@ -209,12 +212,11 @@ export function useIssueMonthBonus() {
 }
 
 // ── Helpers ──────────────────────────────────────────────────
-
-async function creditWallet(userId: string, amount: number, description: string): Promise<void> {
-  const { error } = await supabase.rpc('increment_wallet_balance', {
-    p_user_id: userId,
-    p_amount: amount,
-    p_description: description,
-  });
-  if (error) throw new Error(`increment_wallet_balance failed: ${error.message}`);
-}
+//
+// `creditWallet` lived here and called `increment_wallet_balance` straight
+// from the client. It was the LAST client caller of that RPC, which is why
+// the RPC could not be locked to the server while it existed. Its one user
+// (useIssueMonthBonus, above) now goes through an admin-gated RPC that does
+// the credit and the bookkeeping in a single transaction, so this is gone
+// and the money function is server-side only. Do not reintroduce it: a
+// wallet must never be movable by anything the client can call directly.
