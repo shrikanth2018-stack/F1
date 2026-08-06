@@ -986,3 +986,44 @@ on the next cutoff. Ship the app fixes whenever.
 
 **Rollback:** re-run `kitchen_cutoff_push.sql`, which restores the whole file
 including the old title.
+
+---
+
+## 29. Attendance regularization reminder (2026-08-06)
+
+| # | File | What it does |
+|---|------|--------------|
+| 1 | `attendance_regularization_reminder.sql` | Pushes every staff member on the day BEFORE the last day of each month, prompting them to file attendance corrections. New daily cron `attendance-regularization-reminder` (05:00 UTC = 10:30 IST); the function decides whether today is the day. |
+
+Corrections have existed since `attendance_corrections.sql` but nothing ever
+told anyone to file one, so the prompt only arrived as an argument about pay.
+
+**The copy does not threaten a deduction, deliberately.** Nothing here cuts
+pay automatically — `staff_salary.deductions` is a plain column an admin types
+into. The message says "before the month closes", which is true, rather than
+"or you will be docked", which the software does not enforce.
+
+**Generic wording, not "you have N days unmarked".** `staff_shifts` carries
+`days_of_week` and is **empty**, so nobody has working days configured and
+every elapsed day without a clock-in reads as absent, weekly offs included. A
+personalised count would tell someone who worked their full roster that they
+had 26 days unmarked. Worth adding once shifts are filled in; until then it
+would only teach people to ignore the push.
+
+**The date is derived, not hardcoded** — `first of month + 1 month - 2 days`,
+computed in IST because a UTC date is still yesterday before 05:30 IST.
+Verified across 14 months including February: always exactly one day before
+the last.
+
+The copy is editable from Manage → Notifications (event key
+`staff.attendance_regularization`) — unlike the kitchen batch push, which has
+no `event_key` and is stranded in SQL. The job is picked up automatically by
+`get_job_health()` and `alert_cron_failures()`.
+
+**App-side in the same slice, no SQL:** Customer Export moved from Operations
+Manager to Manage → People → Customer Manager (still super-admin only, the row
+is simply absent otherwise), and a new **vendor export** was added to the
+Vendor Manager footer — directory plus opt-in trading figures, mirroring the
+customer export's filter/column/CSV shape.
+
+**Rollback:** commented block at the bottom of the SQL file.
