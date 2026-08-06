@@ -207,10 +207,19 @@ export function ImportItemsScreen({ navigation, route }: AdminScreenProps<'Impor
           skipped.push({ row: csvRow, reason: `cycle "${r.cycle_name}" not recognized` });
           return;
         }
+        // A menu with no contents is customer-visible and orderable, but the
+        // kitchen has nothing to explode it into — get_kitchen_aggregate falls
+        // back to printing the DISH name on the prep board instead of its
+        // parts, so the cooks are told "Idli Vada ×3" and left to guess.
+        // MenuEditorModal refuses to save one; this door was still open.
+        if (!r.ingredients.trim()) {
+          skipped.push({ row: csvRow, reason: `"${r.name}" has no sub-items — a menu must list what it contains` });
+          return;
+        }
         records.push({
           name: r.name,
           cycle_id,
-          ingredients: r.ingredients || null,
+          ingredients: r.ingredients,
           price: r.price,
           is_active: true,
           sort_order: 0,
@@ -304,12 +313,29 @@ export function ImportItemsScreen({ navigation, route }: AdminScreenProps<'Impor
 
     // Essentials catalog
     const rows = parsedRows as EssentialRow[];
+    // Only a cycle flagged is_essentials can render on the customer's
+    // Essentials page — HomeScreen builds its sections from that list and
+    // buildSections silently DROPS an item whose cycle is not in it. Both
+    // admin screens already offer essentials cycles only; this importer took
+    // any cycle name, so "Snacks" produced a row that was fetched and thrown
+    // away with nothing said to anyone. Same failure the vendor picker was
+    // fixed for.
+    const essentialsCycleIds = new Set(
+      (cycles as AnyCycle[]).filter((c) => c.is_essentials).map((c) => c.id),
+    );
     const records: any[] = [];
     rows.forEach((r, i) => {
       const csvRow = i + 2;
       const cycle_id = cycleMap[r.cycle_name.toLowerCase()];
       if (cycle_id == null) {
         skipped.push({ row: csvRow, reason: `cycle "${r.cycle_name}" not recognized` });
+        return;
+      }
+      if (!essentialsCycleIds.has(cycle_id)) {
+        skipped.push({
+          row: csvRow,
+          reason: `"${r.cycle_name}" does not serve essentials — customers would never see this item`,
+        });
         return;
       }
       records.push({

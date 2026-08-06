@@ -14,20 +14,27 @@
  *      it looks exactly like a bug and has been reported as one.
  *   4. A past-dated undelivered order is kept OFF Packing (D2) — it belongs
  *      to the delivery personas, not to the packers.
+ *   5. "Mark all as Ready" acts on the BOARD, not on the batch. 'Ready' is a
+ *      status that pushes the customer, so sweeping in an essentials order
+ *      the kitchen never saw tells someone their food is ready when nobody
+ *      has made it.
  */
 
 import React from 'react';
+import { Alert } from 'react-native';
 import { render, fireEvent, screen } from '@testing-library/react-native';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { createTestQueryClient } from './_helpers/queryClient';
 
 let mockOrders: Record<string, unknown>[] = [];
 let mockKitchen: Record<string, unknown>[] = [];
+/** Stable across renders, so a test can assert on what was dispatched. */
+const mockBulkAdvance = jest.fn();
 
 jest.mock('@/hooks/useStaffOrders', () => ({
   useStaffOrders: () => ({ data: mockOrders, isLoading: false, isError: false, refetch: jest.fn() }),
   useUpdateOrderStatus: () => ({ mutate: jest.fn(), isPending: false }),
-  useBulkAdvanceStatus: () => ({ mutate: jest.fn(), isPending: false }),
+  useBulkAdvanceStatus: () => ({ mutate: mockBulkAdvance, isPending: false }),
   useKitchenAggregate: () => ({ data: mockKitchen, isLoading: false, refetch: jest.fn() }),
 }));
 
@@ -133,5 +140,57 @@ describe('StaffDashboard — Packing partitions food from essentials', () => {
     open();
     fireEvent.press(screen.getByText('Packing'));
     expect(screen.queryByText(/#33/)).toBeNull();
+  });
+});
+
+describe('StaffDashboard — "Mark all as Ready" acts on the board, not the batch', () => {
+  /** Press the button, then take the confirm action out of the Alert. */
+  const confirmMarkAllReady = () => {
+    const spy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    fireEvent.press(screen.getByText(/Mark all as Ready/));
+    const buttons = spy.mock.calls[0]?.[2] as { text: string; onPress?: () => void }[] | undefined;
+    buttons?.find((b) => b.text === 'Mark Ready')?.onPress?.();
+    spy.mockRestore();
+  };
+
+  it('advances exactly the orders the prep board is showing', () => {
+    mockKitchen = [
+      { item_name: 'Rolls',   unit: 'nos', total_quantity: 4,   status: 'Confirmed', order_ids: [11] },
+      { item_name: 'Chethey', unit: 'ml',  total_quantity: 250, status: 'Confirmed', order_ids: [11] },
+    ];
+    mockOrders = [order({ id: 11, order_type: 'food' })];
+    open();
+    confirmMarkAllReady();
+    // One order, not two entries — the two board rows share it.
+    expect(mockBulkAdvance).toHaveBeenCalledWith({ orderIds: [11], status: 'Ready' });
+  });
+
+  it('NEVER sweeps in an essentials order — it is not on this board', () => {
+    // Essentials bypass the kitchen (BF-34b) and are packed straight from
+    // Confirmed. They are in the same pushed batch, so reading the batch
+    // instead of the board marked them Ready and pushed the customer.
+    mockKitchen = [
+      { item_name: 'Rolls', unit: 'nos', total_quantity: 4, status: 'Confirmed', order_ids: [11] },
+    ];
+    mockOrders = [
+      order({ id: 11, order_type: 'food' }),
+      order({ id: 22, order_type: 'essential' }),
+    ];
+    open();
+    confirmMarkAllReady();
+    expect(mockBulkAdvance).toHaveBeenCalledWith({ orderIds: [11], status: 'Ready' });
+    expect(mockBulkAdvance).not.toHaveBeenCalledWith(
+      expect.objectContaining({ orderIds: expect.arrayContaining([22]) }),
+    );
+  });
+
+  it('does nothing when every board row is already past Confirmed / Preparing', () => {
+    mockKitchen = [
+      { item_name: 'Rolls', unit: 'nos', total_quantity: 4, status: 'Ready', order_ids: [11] },
+    ];
+    mockOrders = [order({ id: 11, order_type: 'food' })];
+    open();
+    confirmMarkAllReady();
+    expect(mockBulkAdvance).not.toHaveBeenCalled();
   });
 });

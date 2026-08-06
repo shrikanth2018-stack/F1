@@ -252,20 +252,35 @@ export function StaffDashboard() {
     updateStatus.mutate({ orderId, status: next, userId: order?.user_id });
   }, [updateStatus, orders]);
 
+  /**
+   * Mark all as Ready — over exactly what the board is showing.
+   *
+   * The ids come from the AGGREGATE, not from the batch. `useStaffOrders`
+   * returns every order in the pushed cycle, essentials included, and this
+   * used to sweep all of them: an essentials order — which never appears on
+   * this board, and is packed without the kitchen touching it — was advanced
+   * to Ready by a button the staffer had no way to know applied to it. 'Ready'
+   * is one of the five statuses that push the CUSTOMER (orderStatusPush.ts),
+   * so the result was a "your order is ready" for something nobody had made.
+   *
+   * get_kitchen_aggregate filters to `order_type = 'food'`, so taking the ids
+   * from there makes the button and the list provably the same set.
+   */
   const handleMarkAllKitchenReady = useCallback(() => {
-    const toMark = (orders ?? []).filter(
-      (o) => o.status === 'Confirmed' || o.status === 'Preparing'
-    );
-    if (toMark.length === 0) return;
-    Alert.alert('Mark All as Ready', `Mark ${toMark.length} order(s) as Ready?`, [
+    const ids = [...new Set(
+      kitchenItems
+        .filter((k) => k.status === 'Confirmed' || k.status === 'Preparing')
+        .flatMap((k) => k.order_ids),
+    )];
+    if (ids.length === 0) return;
+    Alert.alert('Mark All as Ready', `Mark ${ids.length} order(s) as Ready?`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Mark Ready',
-        onPress: () =>
-          bulkAdvance.mutate({ orderIds: toMark.map((o) => o.id), status: 'Ready' }),
+        onPress: () => bulkAdvance.mutate({ orderIds: ids, status: 'Ready' }),
       },
     ]);
-  }, [orders, bulkAdvance]);
+  }, [kitchenItems, bulkAdvance]);
 
   const handleMarkAllPacked = useCallback(() => {
     // BF-34b (F3.2): include 'Confirmed' essentials — they have no

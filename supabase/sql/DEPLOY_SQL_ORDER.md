@@ -944,3 +944,45 @@ unaffected — it writes plans without the two new keys, which still render.
 fallback (only safe while no plan holds block ids). The deleted plans have no
 rollback; rebuild them in Manage → Subscriptions Manager.
 
+---
+
+## 28. Essentials really do bypass the kitchen (2026-08-06)
+
+Three ways the food/essentials split leaked, found by tracing the block →
+menu → customer → kitchen → packing chain end to end.
+
+| # | File | What it does |
+|---|------|--------------|
+| 1 | `kitchen_push_title_2026_08.sql` | The batch-release push is titled "Order summary — Breakfast", not "Kitchen order summary". |
+
+**The count is deliberately untouched.** This push is the batch release for
+Kitchen *and* Packing — `get_active_staff_batch` reads the row it writes — so
+narrowing the count to food would make an essentials-only cycle land on the
+`no_orders` branch and send nothing at all. Nobody would be told there was
+packing to do. Verified against the live essentials-only Dinner batch inside
+`BEGIN … ROLLBACK`: still `dispatched`, `orders_count` 1. Only the title
+string differs from `kitchen_cutoff_push.sql` §3 — diffed line by line before
+applying, and there is no `event_key`, so this string is not editable from
+Notification Manager.
+
+**Two app-side fixes ship with it, no SQL:**
+
+- **The Kitchen's "Mark all as Ready" was sweeping essentials orders.** It
+  read the whole pushed batch rather than the prep board, and essentials are
+  in the batch but never on that board. `Ready` is one of the five statuses
+  that push the customer (`orderStatusPush.ts`), so a customer was told their
+  order was ready for goods the kitchen had never touched. It now takes its
+  ids from `get_kitchen_aggregate`, which is food-only, so the button and the
+  list are the same set by construction.
+- **Two open doors in the CSV importer.** A menu row with no sub-items created
+  a customer-visible, orderable menu with no recipe — the prep board then
+  prints the DISH name instead of its parts. And an essentials row could name
+  any cycle, including one with `is_essentials = false`, which
+  `buildSections` fetches and silently drops. Both admin screens already
+  prevented the second; the importer was the last way in.
+
+**App coupling:** none for the SQL — the title is server-side and takes effect
+on the next cutoff. Ship the app fixes whenever.
+
+**Rollback:** re-run `kitchen_cutoff_push.sql`, which restores the whole file
+including the old title.
