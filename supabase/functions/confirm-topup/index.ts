@@ -16,13 +16,9 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 import { getUserFromJwt } from '../_shared/auth.ts';
+import { isAllowedOrigin } from '../_shared/cors.ts';
 
 const SUPABASE_PROJECT_URL = Deno.env.get('SUPABASE_URL') ?? '';
-const ALLOWED_ORIGINS = new Set([
-  SUPABASE_PROJECT_URL,
-  'http://localhost:8081',
-  'http://localhost:19006',
-]);
 
 async function hmacSha256Hex(secret: string, message: string): Promise<string> {
   const enc = new TextEncoder();
@@ -37,7 +33,7 @@ async function hmacSha256Hex(secret: string, message: string): Promise<string> {
 
 Deno.serve(async (req: Request) => {
   const origin = req.headers.get('Origin') ?? '';
-  const acao = ALLOWED_ORIGINS.has(origin) ? origin : SUPABASE_PROJECT_URL;
+  const acao = isAllowedOrigin(origin) ? origin : SUPABASE_PROJECT_URL;
   const cors = {
     'Access-Control-Allow-Origin': acao,
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',

@@ -28,16 +28,12 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 import { getUserFromJwt } from '../_shared/auth.ts';
+import { isAllowedOrigin } from '../_shared/cors.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 const SUPABASE_PROJECT_URL = SUPABASE_URL;
-const ALLOWED_ORIGINS = new Set([
-  SUPABASE_PROJECT_URL,
-  'http://localhost:8081',
-  'http://localhost:19006',
-]);
 
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
 
@@ -46,7 +42,7 @@ type ExpoTicket = { status: 'ok' | 'error'; id?: string; message?: string; detai
 Deno.serve(async (req) => {
   // ── CORS ────────────────────────────────────────────────────
   const origin = req.headers.get('Origin') ?? '';
-  const acao = ALLOWED_ORIGINS.has(origin) ? origin : SUPABASE_PROJECT_URL;
+  const acao = isAllowedOrigin(origin) ? origin : SUPABASE_PROJECT_URL;
   const cors = {
     'Access-Control-Allow-Origin': acao,
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',

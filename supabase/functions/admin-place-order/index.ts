@@ -55,23 +55,19 @@ import { resolveAndSendPush } from '../_shared/notifications.ts';
 import { buildAuthoritativeOrder } from '../_shared/orderBuild.ts';
 import { loadStoreConfig } from '../_shared/storeConfig.ts';
 import { resolveClock, getDispatchScenario, scenarioToDate, timeToMinutes, toPaise } from '../_shared/dispatch.ts';
+import { isAllowedOrigin } from '../_shared/cors.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const RAZORPAY_KEY_ID = Deno.env.get('RAZORPAY_KEY_ID') ?? '';
 const RAZORPAY_KEY_SECRET = Deno.env.get('RAZORPAY_KEY_SECRET') ?? '';
 
-const ALLOWED_ORIGINS = new Set([
-  SUPABASE_URL,
-  'http://localhost:8081',
-  'http://localhost:19006',
-]);
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 Deno.serve(async (req: Request) => {
   const origin = req.headers.get('Origin') ?? '';
-  const acao = ALLOWED_ORIGINS.has(origin) ? origin : SUPABASE_URL;
+  const acao = isAllowedOrigin(origin) ? origin : SUPABASE_URL;
   const cors = {
     'Access-Control-Allow-Origin': acao,
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
