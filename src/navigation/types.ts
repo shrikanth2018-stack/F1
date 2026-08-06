@@ -53,6 +53,8 @@ export type AdminStackParamList = {
   AdminVendorDetail: { vendorId: number };
   /** Approval queue for vendor listings. Also the push deep-link target. */
   AdminVendorListings: undefined;
+  /** The vendor list as a spreadsheet — directory plus trading figures. */
+  AdminVendorExport: undefined;
   AdminSubscriptions: undefined;
   StoreConfig: undefined;
   FeatureFlags: undefined;

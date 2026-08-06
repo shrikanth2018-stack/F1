@@ -174,13 +174,26 @@ export function AdminVendorManagerScreen({ navigation }: AdminScreenProps<'Admin
           }
         />
 
-        <TouchableOpacity
-          style={styles.footer}
-          activeOpacity={0.7}
-          onPress={() => navigation.navigate('AdminVendorOnboard')}
-        >
-          <ThemedText variant="body" color="mint" style={styles.txt}>+ Onboard vendor  ›</ThemedText>
-        </TouchableOpacity>
+        {/* Export sits beside onboarding rather than behind a row of its own:
+            it acts on the list you are already looking at, and the filter
+            chips above are the same ones it offers. NOT super-admin gated,
+            unlike the customer export — a branch admin can already open any
+            vendor here and read their commission, so withholding the
+            spreadsheet would protect nothing. RLS scopes it to their branch. */}
+        <View style={styles.footerRow}>
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => navigation.navigate('AdminVendorExport')}
+          >
+            <ThemedText variant="body" color="mint" style={styles.txt}>Export  ›</ThemedText>
+          </TouchableOpacity>
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => navigation.navigate('AdminVendorOnboard')}
+          >
+            <ThemedText variant="body" color="mint" style={styles.txt}>+ Onboard vendor  ›</ThemedText>
+          </TouchableOpacity>
+        </View>
         </>
       )}
     </SafeAreaView>
@@ -227,7 +240,10 @@ const styles = StyleSheet.create({
   flex1: { flex: 1 },
   sub: { fontSize: S, marginTop: 2 },
 
-  footer: {
+  footerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: Theme.spacing.md,
     paddingVertical: Theme.spacing.sm + 2,
     borderTopWidth: StyleSheet.hairlineWidth,

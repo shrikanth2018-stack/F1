@@ -189,6 +189,9 @@ function ReportsTab() {
 
 type ManageRowDef = { label: string; screen: string };
 
+// Reachable only through Operations Manager (Branches) or Customer Manager
+// (Export) — listed here so SEARCH still finds them, which is how anyone who
+// knows the name will actually look for them.
 const SUPER_ADMIN_MANAGE_ROWS: ManageRowDef[] = [
   { label: 'Manage Branches', screen: 'BranchesManage' },
   { label: 'Export Customers', screen: 'CustomerExport' },
@@ -212,6 +215,8 @@ const ALL_MANAGE_ROWS: ManageRowDef[] = [
   { label: 'Delivery Manager', screen: 'DeliveryManage' },
   { label: 'Customer Manager', screen: 'AdminCustomerManager' },
   { label: 'Vendor Manager', screen: 'AdminVendorManager' },
+  // Lives in the Vendor Manager footer; here so search finds it by name.
+  { label: 'Export Vendors', screen: 'AdminVendorExport' },
   { label: 'Note to Staff', screen: 'PushNotifications' },
   { label: 'Manage Notifications', screen: 'NotificationManager' },
   { label: 'Banners & Backgrounds', screen: 'LoginBg' },

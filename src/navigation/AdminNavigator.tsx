@@ -41,6 +41,7 @@ import { AdminVendorManagerScreen } from '../screens/admin/AdminVendorManagerScr
 import { AdminVendorListingsScreen } from '../screens/admin/AdminVendorListingsScreen';
 import { AdminVendorOnboardScreen } from '../screens/admin/AdminVendorOnboardScreen';
 import { AdminVendorDetailScreen } from '../screens/admin/AdminVendorDetailScreen';
+import { AdminVendorExportScreen } from '../screens/admin/AdminVendorExportScreen';
 import { AdminSubscriptionsScreen } from '../screens/admin/AdminSubscriptionsScreen';
 import { BranchesManageScreen } from '../screens/admin/BranchesManageScreen';
 import { CustomerExportScreen } from '../screens/admin/CustomerExportScreen';
@@ -115,6 +116,7 @@ export function AdminNavigator() {
       <Stack.Screen name="AdminVendorOnboard" component={AdminVendorOnboardScreen} />
       <Stack.Screen name="AdminVendorDetail" component={AdminVendorDetailScreen} />
       <Stack.Screen name="AdminVendorListings" component={AdminVendorListingsScreen} />
+      <Stack.Screen name="AdminVendorExport" component={AdminVendorExportScreen} />
       <Stack.Screen name="AdminSubscriptions" component={AdminSubscriptionsScreen} />
       <Stack.Screen name="StoreConfig" component={StoreConfigScreen} />
       <Stack.Screen name="FeatureFlags" component={FeatureFlagsScreen} />

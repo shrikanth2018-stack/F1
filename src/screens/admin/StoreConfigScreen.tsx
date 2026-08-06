@@ -288,7 +288,11 @@ export function StoreConfigScreen({ navigation }: { navigation: AdminNavProp }) 
           <Field label="WhatsApp Number" value={whatsappNum} onChangeText={setWhatsappNum} keyboardType="phone-pad" last />
         </View>
 
-        {/* SUPER-ADMIN — branches CRUD + customer export, only visible to super-admin */}
+        {/* SUPER-ADMIN — branches CRUD, only visible to super-admin.
+            Customer export used to sit here too and now lives under
+            Manage → People → Customer Manager, where someone looking for the
+            customer list would actually go. Still super-admin gated, just
+            gated there instead of here. */}
         {branchFilter.isSuperAdmin && (
           <>
             <Divider />
@@ -297,10 +301,6 @@ export function StoreConfigScreen({ navigation }: { navigation: AdminNavProp }) 
               <DrillRow
                 label="Manage Branches"
                 onPress={() => navigation.navigate('BranchesManage')}
-              />
-              <DrillRow
-                label="Export Customers"
-                onPress={() => navigation.navigate('CustomerExport')}
                 last
               />
             </View>

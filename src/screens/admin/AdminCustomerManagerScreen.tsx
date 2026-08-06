@@ -10,8 +10,11 @@
  * often set up days ahead), and lookup is a support task rather than an
  * ordering one. That is why neither belongs under ORDERS.
  *
- * Export lives in Operations Manager, not here: it is a super-admin action
- * over the whole base rather than something you do to one customer.
+ * EXPORT MOVED HERE from Operations Manager. It was filed there as a
+ * super-admin action over the whole base, but nobody looking for "the
+ * customer list" thinks to open Operations. It is still super-admin only —
+ * the row is simply absent for a branch admin rather than shown and refused,
+ * because an entry that exists only to reject you is worse than no entry.
  */
 
 import React from 'react';
@@ -20,6 +23,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { SettingsRow } from '../../components/SettingsRow';
+import { useBranchFilter } from '../../hooks/useBranchFilter';
 import type { AdminScreenProps } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
@@ -27,6 +31,8 @@ const B = Theme.typography.sizes.body + 2;
 export function AdminCustomerManagerScreen({
   navigation,
 }: AdminScreenProps<'AdminCustomerManager'>) {
+  const { isSuperAdmin } = useBranchFilter();
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -54,6 +60,15 @@ export function AdminCustomerManagerScreen({
           labelSize={B}
           onPress={() => navigation.navigate('AdminCustomerLookup')}
         />
+        {isSuperAdmin && (
+          <SettingsRow
+            label="Export Customers"
+            subtitle="Filter the base and download it as a spreadsheet"
+            showChevron
+            labelSize={B}
+            onPress={() => navigation.navigate('CustomerExport')}
+          />
+        )}
       </ScrollView>
     </SafeAreaView>
   );
