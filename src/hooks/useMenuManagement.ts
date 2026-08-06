@@ -234,14 +234,9 @@ export function useUpdateMenuItem() {
   );
 }
 
-/** Toggle menu item active/inactive */
-export function useToggleMenuItem() {
-  return useSupabaseMutation<{ id: number; is_active: boolean }>(
-    ({ id, is_active }) =>
-      supabase.from('menu_items').update({ is_active }).eq('id', id),
-    MENU_INVALIDATE,
-  );
-}
+// useToggleMenuItem lived here and had no callers. Both editors toggle
+// visibility through useUpdateMenuItem({ id, is_active }) instead, which is
+// the same statement with one less way to write it.
 
 /** Admin: manage delivery cycles */
 export function useAllDeliveryCycles() {
