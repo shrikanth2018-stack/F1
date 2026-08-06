@@ -196,20 +196,58 @@ Deno.serve(async (req) => {
     const logRows: any[] = [];
 
     // ── Fan out via Expo ────────────────────────────────────────
+    //
+    // EVERY CHUNK IS ISOLATED. This fetch used to be unguarded, so a
+    // network-layer throw — DNS failure, the 15s AbortSignal firing, a
+    // connection reset — jumped straight to the handler at the bottom of this
+    // function, skipping the remaining chunks, the dead-token cleanup AND the
+    // push_logs insert. The push then failed leaving no evidence at all, on
+    // the one table you would look at to find out why nobody got it.
+    //
+    // That is not hypothetical here: the kitchen batch push spent months
+    // pointing at a placeholder hostname from an unprovisioned Vault, and
+    // push_logs was empty throughout — which read as "no pushes were ever
+    // attempted" rather than "every one of them failed".
+    //
+    // _shared/notifications.ts already got this right; this is the same
+    // treatment. A failed chunk records one 'failed' row per recipient and
+    // the loop carries on, so one bad batch cannot silence the rest.
     for (const chunk of chunks) {
-      const res = await fetch(EXPO_PUSH_URL, {
-        method: 'POST',
-        // Bounded — an Expo stall must not hang the cron/status-update caller (#10).
-        signal: AbortSignal.timeout(15_000),
-        headers: {
-          'Accept': 'application/json',
-          'Accept-Encoding': 'gzip, deflate',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(chunk),
-      });
-      const payload = await res.json().catch(() => ({}));
-      const tickets: ExpoTicket[] = payload?.data ?? [];
+      let tickets: ExpoTicket[] = [];
+      try {
+        const res = await fetch(EXPO_PUSH_URL, {
+          method: 'POST',
+          // Bounded — an Expo stall must not hang the cron/status-update caller (#10).
+          signal: AbortSignal.timeout(15_000),
+          headers: {
+            'Accept': 'application/json',
+            'Accept-Encoding': 'gzip, deflate',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(chunk),
+        });
+        const payload = await res.json().catch(() => ({}));
+        tickets = payload?.data ?? [];
+      } catch (e) {
+        const detail = (e as Error)?.message ?? String(e);
+        console.error('[send-push] Expo POST failed:', detail);
+        for (const msg of chunk) {
+          failed += 1;
+          logRows.push({
+            user_id: tokenUserMap.get(msg.to) ?? null,
+            token: msg.to,
+            title,
+            body: resolvedBody,
+            data: data ?? {},
+            trigger_source,
+            reference_id: reference_id ? String(reference_id) : null,
+            expo_ticket_id: null,
+            status: 'failed',
+            error_message: detail,
+          });
+        }
+        continue;
+      }
 
       tickets.forEach((t: ExpoTicket, idx: number) => {
         const token = chunk[idx].to;

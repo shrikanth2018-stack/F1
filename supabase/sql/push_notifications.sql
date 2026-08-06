@@ -123,7 +123,14 @@ select cron.schedule(
       'Content-Type',  'application/json',
       'Authorization', 'Bearer ' || (select value from app_config where key = 'service_role_key')
     ),
-    body    := '{}'::text
+    -- '{}'::jsonb, NOT '{}'::text. Current pg_net has no
+    -- net.http_post(..., body => text) overload, so the text cast raises
+    -- "function does not exist" at every run — the exact failure that took
+    -- subscription dispatch down once already (see generate_daily_manifest.sql's
+    -- header). The LIVE job was hand-corrected at some point and works; this
+    -- file was not, so re-running it on a rebuild or a fresh environment
+    -- would have re-registered a job that fails silently every night.
+    body    := '{}'::jsonb
   );
   $$
 );
