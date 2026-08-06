@@ -7,7 +7,8 @@
  */
 
 import type { Order, OrderItem } from '../types';
-import { todayIST } from './istDate';
+import { todayIST, istMinutesNow } from './istDate';
+import { timeToMinutes } from './timeEngine';
 
 /**
  * BF-31: a subscription PURCHASE order has every order_item.item_type
@@ -49,4 +50,65 @@ export function isUnsuccessfulDelivery(
   if (TERMINAL_STATUSES.has(order.status ?? '')) return false;
   // IST calendar date — same basis as dispatch_date (a 'YYYY-MM-DD' string).
   return order.dispatch_date < todayIST();
+}
+
+/** Delivery-window start per cycle id, from useDeliveryCycles. */
+export type CycleStarts = Record<number, string | null | undefined>;
+
+/**
+ * Has this order's delivery moment passed while it is still unfinished?
+ *
+ * `isUnsuccessfulDelivery` above answers a coarser question — "is it from a
+ * PREVIOUS day" — and is what the badges on four screens read. It is
+ * deliberately left alone: it needs no cycle data, and every one of those
+ * call sites has none.
+ *
+ * This is the finer question, and it is the one staff visibility depends on.
+ * The board shows exactly one cycle's batch, and D2 carried over only
+ * past-DATED orders — so an order from an EARLIER CYCLE OF THE SAME DAY that
+ * had not finished fell through both and vanished until midnight. Confirmed
+ * live: order 11496, Breakfast, due 07:30, still Confirmed at 11:43, visible
+ * on no staff screen at all because the Lunch push had flipped the batch.
+ *
+ * "Its cycle has started" is the right test rather than "a later cycle
+ * pushed": it is true for exactly the orders somebody should already be
+ * acting on, and false for this evening's dinner, which has not come due and
+ * would only clutter the board.
+ */
+export function isPastDue(
+  order: { dispatch_date?: string | null; status?: string | null; cycle_id?: number | null },
+  cycleStarts: CycleStarts,
+): boolean {
+  if (!order.dispatch_date) return false;
+  if (TERMINAL_STATUSES.has(order.status ?? '')) return false;
+
+  const today = todayIST();
+  if (order.dispatch_date < today) return true;
+  if (order.dispatch_date > today) return false;
+
+  // Today: due once the cycle's delivery window has opened.
+  //
+  // AN UNKNOWN CYCLE COUNTS AS DUE. `useDeliveryCycles` returns only ACTIVE
+  // cycles, so an order sitting on a cycle an admin has since switched off
+  // has no entry here — and hiding it would be the very failure this
+  // function exists to prevent, on the orders least likely to be noticed.
+  // Showing one early is clutter; hiding one that is due loses somebody's
+  // food. The asymmetry decides it.
+  const start = order.cycle_id != null ? cycleStarts[order.cycle_id] : null;
+  if (!start) return true;
+  return timeToMinutes(start) <= istMinutesNow();
+}
+
+/**
+ * Is this order with the driver or the hub rather than the packers?
+ *
+ * Packing used to exclude anything `isUnsuccessfulDelivery` flagged, which
+ * meant a past-due order that had never been PACKED was hidden from the one
+ * screen that could pack it. Stage, not date, is what decides whose job an
+ * order is.
+ */
+const DELIVERY_STAGE = new Set(['Dispatched', 'Received at Hub', 'On the Way']);
+
+export function isAtDeliveryStage(order: { status?: string | null }): boolean {
+  return DELIVERY_STAGE.has(order.status ?? '');
 }

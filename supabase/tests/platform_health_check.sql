@@ -233,6 +233,15 @@ BEGIN
     SELECT COALESCE(sum(net_amount),0) INTO v_bal FROM vendor_earnings WHERE order_id = ANY(v_ids);
     r := r || format('E2 vendor wallet increased by exactly the net ... %s%s',
       CASE WHEN v_bal > 0 THEN 'PASS' ELSE 'FAIL' END, E'\n');
+    -- Walk it backwards and re-deliver, to prove ux_vendor_earnings_order_item
+    -- refuses a second credit. This is FIXTURE SETUP, not the thing under
+    -- test — and since 2026-08-06 a staff user cannot regress an order's
+    -- status (trg_orders_status_no_regress), which is the claims context §D
+    -- left behind. Clearing the claims runs it as the service role does,
+    -- which is one of the two routes a re-delivery genuinely takes in
+    -- production (the other being an admin override); both are allowed by
+    -- that trigger. §F sets its own claims immediately after.
+    PERFORM set_config('request.jwt.claims', NULL, true);
     UPDATE orders SET status='Ready' WHERE id = ANY(v_ids);
     UPDATE orders SET status='Delivered' WHERE id = ANY(v_ids);
     SELECT count(*) INTO v_n FROM vendor_earnings WHERE order_id = ANY(v_ids);

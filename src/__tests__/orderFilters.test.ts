@@ -105,3 +105,72 @@ describe('isOperationalOrder', () => {
     ).toBe(false);
   });
 });
+
+// ── isPastDue / isAtDeliveryStage ────────────────────────────
+//
+// The bug these guard: the staff board shows one cycle's batch, and the D2
+// carry-over only rescued orders from a PREVIOUS day. An order from an
+// earlier CYCLE of the same day matched neither and was invisible on every
+// staff screen until midnight. Confirmed live on order 11496 — Breakfast,
+// due 07:30, still Confirmed at 11:43, on no board at all.
+
+import { isPastDue, isAtDeliveryStage } from '../utils/orderFilters';
+import { todayIST, istDateWithOffset } from '../utils/istDate';
+
+const CYCLES = { 1: '07:30:00', 2: '12:30:00', 4: '19:30:00' };
+
+describe('isPastDue', () => {
+  const today = todayIST();
+
+  it('rescues an unfinished order from an EARLIER cycle of today', () => {
+    // Breakfast delivers at 07:30. Any test run happens after that only if
+    // the clock says so, so assert against a cycle that has certainly opened.
+    const openedCycle = { 1: '00:00:00' };
+    expect(isPastDue({ dispatch_date: today, status: 'Confirmed', cycle_id: 1 }, openedCycle)).toBe(true);
+  });
+
+  it('does NOT show a cycle that has not come due yet', () => {
+    // 23:59 has not opened at any hour a test can run.
+    expect(isPastDue({ dispatch_date: today, status: 'Confirmed', cycle_id: 4 }, { 4: '23:59:00' })).toBe(false);
+  });
+
+  it('still rescues a past-DATED order, whatever its cycle', () => {
+    expect(isPastDue({ dispatch_date: istDateWithOffset(-1), status: 'Confirmed', cycle_id: 4 }, CYCLES)).toBe(true);
+  });
+
+  it('ignores finished orders — delivered, cancelled and failed are done', () => {
+    for (const status of ['Delivered', 'Cancelled', 'Failed']) {
+      expect(isPastDue({ dispatch_date: istDateWithOffset(-1), status, cycle_id: 1 }, CYCLES)).toBe(false);
+    }
+  });
+
+  it('never shows a FUTURE dispatch date', () => {
+    expect(isPastDue({ dispatch_date: istDateWithOffset(1), status: 'Confirmed', cycle_id: 1 }, { 1: '00:00:00' })).toBe(false);
+  });
+
+  it('SHOWS rather than hides when the cycle is unknown', () => {
+    // useDeliveryCycles returns only ACTIVE cycles, so an order on a cycle an
+    // admin has since switched off has no entry — and hiding it would be the
+    // exact failure this function exists to prevent, on the orders least
+    // likely to be noticed. Showing one early is clutter; hiding one that is
+    // due loses somebody's food.
+    expect(isPastDue({ dispatch_date: today, status: 'Confirmed', cycle_id: 99 }, CYCLES)).toBe(true);
+    expect(isPastDue({ dispatch_date: today, status: 'Confirmed', cycle_id: null }, CYCLES)).toBe(true);
+  });
+});
+
+describe('isAtDeliveryStage', () => {
+  it('is true only once the order has left the building', () => {
+    for (const s of ['Dispatched', 'Received at Hub', 'On the Way']) {
+      expect(isAtDeliveryStage({ status: s })).toBe(true);
+    }
+  });
+
+  it('keeps an unpacked order with Packing, however overdue it is', () => {
+    // The old date-based exclusion hid a past-due Confirmed order from the
+    // one screen that could pack it.
+    for (const s of ['Confirmed', 'Preparing', 'Ready', 'Packed']) {
+      expect(isAtDeliveryStage({ status: s })).toBe(false);
+    }
+  });
+});

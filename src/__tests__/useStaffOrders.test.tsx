@@ -67,6 +67,20 @@ jest.mock('@/hooks/useActiveStaffBatch', () => ({
   useActiveStaffBatch: () => mockActiveStaffBatch(),
 }));
 
+// The hook now needs each cycle's delivery time to tell an order from an
+// EARLIER cycle of today (still owed) from one that has not come due yet.
+// Mocked with the real Breakfast/Lunch/Snacks/Dinner windows.
+jest.mock('@/hooks/useDeliveryCycles', () => ({
+  useDeliveryCycles: () => ({
+    data: [
+      { id: 1, delivery_start: '07:30:00' },
+      { id: 2, delivery_start: '12:30:00' },
+      { id: 3, delivery_start: '16:30:00' },
+      { id: 4, delivery_start: '19:30:00' },
+    ],
+  }),
+}));
+
 import { useStaffOrders } from '@/hooks/useStaffOrders';
 
 beforeEach(() => {
@@ -95,11 +109,13 @@ describe('useStaffOrders — BF-31 sub-purchase exclusion (hook integration)', (
     const orders = [
       {
         id: 1,
+        cycle_id: 4, dispatch_date: '2026-05-17',
         order_items: [{ item_type: 'food' }],
         customer_addresses: { hub_id: null },
       },
       {
         id: 2, // sub-purchase
+        cycle_id: 4, dispatch_date: '2026-05-17',
         order_items: [{ item_type: 'subscription' }],
         customer_addresses: { hub_id: null },
       },
@@ -121,7 +137,7 @@ describe('useStaffOrders — BF-31 sub-purchase exclusion (hook integration)', (
   it('lets mixed-item orders (food + subscription line) through', async () => {
     const orders = [{
       id: 5,
-      order_items: [{ item_type: 'food' }, { item_type: 'subscription' }],
+      cycle_id: 4, dispatch_date: '2026-05-17', order_items: [{ item_type: 'food' }, { item_type: 'subscription' }],
       customer_addresses: { hub_id: null },
     }];
     mockFromImpl.mockReturnValueOnce(makeBuilder({ data: orders, error: null }));
@@ -178,8 +194,8 @@ describe('useStaffOrders — branch filter applied when active', () => {
 describe('useStaffOrders — hub-operator filtering', () => {
   it('client-filters to assigned_hub_id when hub_delivery_active + session has hub', async () => {
     const orders = [
-      { id: 1, order_items: [{ item_type: 'food' }], customer_addresses: { hub_id: 19 } },
-      { id: 2, order_items: [{ item_type: 'food' }], customer_addresses: { hub_id: 20 } },
+      { id: 1, cycle_id: 4, dispatch_date: '2026-05-17', order_items: [{ item_type: 'food' }], customer_addresses: { hub_id: 19 } },
+      { id: 2, cycle_id: 4, dispatch_date: '2026-05-17', order_items: [{ item_type: 'food' }], customer_addresses: { hub_id: 20 } },
     ];
     mockFromImpl.mockReturnValueOnce(makeBuilder({ data: orders, error: null }));
     mockBranchFilter.mockReturnValue({ isActive: false, branchId: null });
@@ -199,8 +215,8 @@ describe('useStaffOrders — hub-operator filtering', () => {
 
   it('returns all operational orders when feature flag off', async () => {
     const orders = [
-      { id: 1, order_items: [{ item_type: 'food' }], customer_addresses: { hub_id: 19 } },
-      { id: 2, order_items: [{ item_type: 'food' }], customer_addresses: { hub_id: 20 } },
+      { id: 1, cycle_id: 4, dispatch_date: '2026-05-17', order_items: [{ item_type: 'food' }], customer_addresses: { hub_id: 19 } },
+      { id: 2, cycle_id: 4, dispatch_date: '2026-05-17', order_items: [{ item_type: 'food' }], customer_addresses: { hub_id: 20 } },
     ];
     mockFromImpl.mockReturnValueOnce(makeBuilder({ data: orders, error: null }));
     mockBranchFilter.mockReturnValue({ isActive: false, branchId: null });

@@ -34,7 +34,8 @@ import { useUpdateOrderStatus } from '../../hooks/useStaffOrders';
 import { useActiveStaffBatch } from '../../hooks/useActiveStaffBatch';
 import { useRealtimeOrders } from '../../hooks/useRealtimeOrders';
 import { useStaffNoteForTab } from '../../hooks/useAdminNotes';
-import { isOperationalOrder } from '../../utils/orderFilters';
+import { useDeliveryCycles } from '../../hooks/useDeliveryCycles';
+import { isOperationalOrder, isPastDue, type CycleStarts } from '../../utils/orderFilters';
 import { todayIST } from '../../utils/istDate';
 import { supabase } from '../../api/supabaseClient';
 import type { CustomerScreenProps } from '../../navigation/types';
@@ -56,6 +57,11 @@ export function DriverDashboardScreen({ navigation }: CustomerScreenProps<'Drive
   useRealtimeOrders(true);
   // Delivery-tab + All-Staff broadcast banner. Same shape as Hub.
   const { data: notes = [] } = useStaffNoteForTab('delivery');
+  const { data: cycles = [] } = useDeliveryCycles();
+  const cycleStarts: CycleStarts = React.useMemo(
+    () => Object.fromEntries(cycles.map((c) => [c.id, c.delivery_start])),
+    [cycles],
+  );
 
   const { data: orders = [], isLoading, isRefetching, error, refetch } = useQuery({
     queryKey: ['driver_orders', userId, batch ? `${batch.cycle_id}:${batch.push_date}` : 'none', today],
@@ -76,8 +82,12 @@ export function DriverDashboardScreen({ navigation }: CustomerScreenProps<'Drive
       // delivery" (D2) — a past-dated order still not Delivered/Cancelled/
       // Failed — so an undelivered perishable order never vanishes when the
       // batch flips. Filtered client-side by hub/zone membership below.
-      const unsuccessful =
-        `and(dispatch_date.lt.${today},status.not.in.(Delivered,Cancelled,Failed))`;
+      // `lte` today, not `lt` — same fix as useStaffOrders. A driver's own
+      // undelivered order from an earlier cycle of TODAY used to vanish from
+      // this board the moment the next cycle pushed. Narrowed by isPastDue
+      // below, which needs the cycle delivery times.
+      const dueOrOverdue =
+        `and(dispatch_date.lte.${today},status.not.in.(Delivered,Cancelled,Failed))`;
       let ordersQuery = supabase
         .from('orders')
         .select(`
@@ -90,9 +100,9 @@ export function DriverDashboardScreen({ navigation }: CustomerScreenProps<'Drive
       if (batch) {
         const active =
           `and(cycle_id.eq.${batch.cycle_id},dispatch_date.eq.${batch.push_date},status.neq.Cancelled)`;
-        ordersQuery = ordersQuery.or(`${active},${unsuccessful}`);
+        ordersQuery = ordersQuery.or(`${active},${dueOrOverdue}`);
       } else {
-        ordersQuery = ordersQuery.or(unsuccessful);
+        ordersQuery = ordersQuery.or(dueOrOverdue);
       }
       const { data, error: ordersErr } = await ordersQuery;
 
@@ -101,8 +111,12 @@ export function DriverDashboardScreen({ navigation }: CustomerScreenProps<'Drive
       // Drop subscription-purchase orders (no physical delivery) — the same
       // operational filter Kitchen/Packing/Hub use. Daily sub-dispatch rows
       // carry real items and pass.
+      const inBatch = (o: any) =>
+        batch != null && o.cycle_id === batch.cycle_id && o.dispatch_date === batch.push_date;
+
       return (data ?? []).filter((o: any) => {
         if (!isOperationalOrder(o)) return false;
+        if (!inBatch(o) && !isPastDue(o, cycleStarts)) return false;
         const addr = o.customer_addresses;
         if (!addr) return false;
         if (addr.hub_id != null && myHubIds.includes(addr.hub_id)) return true;
@@ -110,7 +124,7 @@ export function DriverDashboardScreen({ navigation }: CustomerScreenProps<'Drive
         return false;
       });
     },
-    enabled: !!userId && batch !== undefined,
+    enabled: !!userId && batch !== undefined && cycles.length > 0,
     refetchOnMount: 'always',
   });
 

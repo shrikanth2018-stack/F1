@@ -51,7 +51,7 @@ import {
   type KitchenAggregateItem,
 } from '../../hooks/useStaffOrders';
 import { nextPackingStatus } from '../../utils/packingFlow';
-import { isUnsuccessfulDelivery } from '../../utils/orderFilters';
+import { isAtDeliveryStage } from '../../utils/orderFilters';
 import { useRealtimeOrders } from '../../hooks/useRealtimeOrders';
 import { useOfflineSync } from '../../hooks/useOfflineSync';
 import { useAuth } from '../../hooks/useAuth';
@@ -215,7 +215,7 @@ export function StaffDashboard() {
   const packingOrders = useMemo(
     () => (orders ?? []).filter((o) => {
       if (o.status === 'Cancelled') return false;
-      if (isUnsuccessfulDelivery(o)) return false;
+      if (isAtDeliveryStage(o)) return false;
       return packingSubTab === 'Food'
         ? o.order_type === 'food'
         : o.order_type === 'essential';
