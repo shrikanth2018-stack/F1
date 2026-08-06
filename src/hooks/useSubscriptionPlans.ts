@@ -7,7 +7,14 @@
  *   price, is_active, plan_items (JSON string), branch_id
  * }
  *
- * plan_items JSON: [{ item_id: number, item_name: string, quantity: number }]
+ * plan_items JSON: [{ item_id, item_name, quantity, unit?, base_quantity? }]
+ *
+ * For a FOOD plan `item_id` is a building-block item — `menu_items` with
+ * `is_customer_visible = false` — never a menu. A plan is a composition in its
+ * own right, the same as a menu is, so it is built from the same parts rather
+ * than out of another composition. `unit` / `base_quantity` snapshot the
+ * block's portion at build time. See `src/utils/planItems.ts`.
+ *
  * Filtered by branch when branch_management_active is on.
  */
 
@@ -18,11 +25,8 @@ import { useBranchFilter, requireWriteBranch } from './useBranchFilter';
 
 export type PlanType = 'food' | 'essentials';
 
-export interface PlanItem {
-  item_id: number;
-  item_name: string;
-  quantity: number;
-}
+/** Re-exported from the single definition so callers have one shape to import. */
+export type { SubscriptionPlanItem as PlanItem } from '../types';
 
 export interface SubscriptionPlan {
   id: number;

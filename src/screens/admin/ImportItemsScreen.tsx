@@ -27,8 +27,9 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { supabase } from '../../api/supabaseClient';
-import { useAllDeliveryCycles, useAllMenuItems } from '../../hooks/useMenuManagement';
+import { useAllDeliveryCycles, useMenuBlocks } from '../../hooks/useMenuManagement';
 import { useEssentialsCatalog } from '../../hooks/useEssentials';
+import { portionOf } from '../../utils/planItems';
 import { useBranchFilter, requireWriteBranch } from '../../hooks/useBranchFilter';
 import {
   parseMenuCsv,
@@ -55,6 +56,7 @@ const S = Theme.typography.sizes.small + 2;
 
 type AnyCycle = { id: number; cycle_name: string; is_essentials?: boolean | null };
 type AnyItem  = { id: number; name: string; cycle_id: number | null };
+type AnyBlock = AnyItem & { unit?: string | null; base_quantity?: number | null };
 
 function cycleHeader(cycles: AnyCycle[]): string {
   const names = cycles.map((c) => c.cycle_name).filter(Boolean);
@@ -79,15 +81,23 @@ function buildEssentialsTemplate(cycles: AnyCycle[]): string {
     `Fresh Bread,${first},35,400g\n`;
 }
 
-function buildPlansTemplate(cycles: AnyCycle[], menuItems: AnyItem[], essItems: AnyItem[]): string {
+/**
+ * The food example names a BLOCK, not a menu.
+ *
+ * A food plan's core items are building blocks — "Idli:4;Sambar:1" — because a
+ * plan is a composition in its own right, not a wrapper around a menu. An
+ * example naming a menu would teach the wrong shape, and fourteen names exist
+ * as both a block and a menu, so it would also resolve ambiguously.
+ */
+function buildPlansTemplate(cycles: AnyCycle[], blocks: AnyBlock[], essItems: AnyItem[]): string {
   const header =
     `Plan Name,${cycleHeader(cycles)},Type (food/essentials),Number of Days,Price,` +
     `Core Items (name:qty;name2:qty2),Savings Amount\n`;
   const firstCycle = cycles[0];
-  const firstMenu = menuItems.find((m) => m.cycle_id === firstCycle?.id) ?? menuItems[0];
+  const firstBlock = blocks[0];
   const firstEss  = essItems[0];
-  const foodExample = firstMenu
-    ? `Example Food 30,${firstCycle?.cycle_name ?? 'Breakfast'},food,30,2000,${firstMenu.name}:1,400\n`
+  const foodExample = firstBlock
+    ? `Example Food 30,${firstCycle?.cycle_name ?? 'Breakfast'},food,30,2000,${firstBlock.name}:1,400\n`
     : '';
   const essExample = firstEss
     ? `Example Essentials 30,${cycles.find((c) => c.id === firstEss.cycle_id)?.cycle_name ?? 'Breakfast'},essentials,30,1950,${firstEss.name}:1,150\n`
@@ -104,8 +114,12 @@ export function ImportItemsScreen({ navigation, route }: AdminScreenProps<'Impor
   const queryClient = useQueryClient();
   const branchFilter = useBranchFilter();
   const { data: cycles = [] } = useAllDeliveryCycles();
-  // Menu + essentials only fetched when building the Plans template (needed for Core Items example lookup).
-  const { data: menuItems = [] } = useAllMenuItems();
+  // Blocks + essentials resolve a PLAN's core items, and seed its template.
+  // Blocks specifically, where this used to read every menu_items row:
+  // fourteen names — Masala Dosa, Poori, Upma and eleven more — exist as both
+  // a block and a menu, so a lookup over both resolved a CSV name to
+  // whichever the loop happened to reach last.
+  const { data: blocks = [] } = useMenuBlocks();
   const { data: essItems = [] } = useEssentialsCatalog();
 
   const [parsedRows, setParsedRows] = useState<MenuRow[] | EssentialRow[] | PlanRow[] | null>(null);
@@ -118,7 +132,7 @@ export function ImportItemsScreen({ navigation, route }: AdminScreenProps<'Impor
       const csv = isMenu
         ? buildMenuTemplate(cycles as AnyCycle[])
         : isPlans
-          ? buildPlansTemplate(cycles as AnyCycle[], menuItems as AnyItem[], essItems as AnyItem[])
+          ? buildPlansTemplate(cycles as AnyCycle[], blocks as AnyBlock[], essItems as AnyItem[])
           : buildEssentialsTemplate(cycles as AnyCycle[]);
       const name = isMenu ? 'menu_import_template.csv' : isPlans ? 'plans_import_template.csv' : 'essentials_import_template.csv';
       await downloadCsvString(name, csv);
@@ -208,11 +222,17 @@ export function ImportItemsScreen({ navigation, route }: AdminScreenProps<'Impor
 
     if (isPlans) {
       const rows = parsedRows as PlanRow[];
-      const menuLookup: Record<string, { id: number; name: string }> = {};
-      for (const m of menuItems as AnyItem[]) {
-        if (m.name) menuLookup[m.name.toLowerCase()] = { id: m.id, name: m.name };
+      // Food core items resolve against BLOCKS only — see the hook comment
+      // above for why a lookup over menus as well was ambiguous.
+      type Resolved = { id: number; name: string; unit?: string | null; base_quantity?: number | null };
+      const blockLookup: Record<string, Resolved> = {};
+      for (const b of blocks as AnyBlock[]) {
+        if (b.name) {
+          blockLookup[b.name.toLowerCase()] =
+            { id: b.id, name: b.name, unit: b.unit, base_quantity: b.base_quantity };
+        }
       }
-      const essLookup: Record<string, { id: number; name: string }> = {};
+      const essLookup: Record<string, Resolved> = {};
       for (const e of essItems as AnyItem[]) {
         if (e.name) essLookup[e.name.toLowerCase()] = { id: e.id, name: e.name };
       }
@@ -229,22 +249,37 @@ export function ImportItemsScreen({ navigation, route }: AdminScreenProps<'Impor
           skipped.push({ row: csvRow, reason: `type "${r.type}" not recognized — use food or essentials` });
           return;
         }
-        const catalog = r.type === 'essentials' ? essLookup : menuLookup;
+        const isFoodPlan = r.type !== 'essentials';
+        const catalog = isFoodPlan ? blockLookup : essLookup;
         const missing: string[] = [];
-        const resolvedItems: Array<{ item_id: number; item_name: string; quantity: number }> = [];
+        const resolvedItems: Array<Record<string, unknown>> = [];
         for (const ci of r.core_items) {
           const hit = catalog[ci.name.toLowerCase()];
-          if (hit) {
-            resolvedItems.push({ item_id: hit.id, item_name: hit.name, quantity: ci.quantity });
-          } else {
+          if (!hit) {
             missing.push(ci.name);
+            continue;
           }
+          // Same shape the builder writes: the portion is snapshotted on food
+          // lines, and left off essentials whose unit is a pack description.
+          resolvedItems.push(
+            isFoodPlan
+              ? {
+                  item_id: hit.id,
+                  item_name: hit.name,
+                  quantity: ci.quantity,
+                  unit: toMenuUnit(hit.unit),
+                  base_quantity: portionOf(hit),
+                }
+              : { item_id: hit.id, item_name: hit.name, quantity: ci.quantity },
+          );
         }
         if (missing.length > 0) {
           // Whole-row reject: a partial plan would shortchange the subscriber.
           skipped.push({
             row: csvRow,
-            reason: `${missing.length} ${r.type} item${missing.length !== 1 ? 's' : ''} not in catalog: ${missing.join(', ')}`,
+            reason: isFoodPlan
+              ? `${missing.length} item${missing.length !== 1 ? 's' : ''} not on the Menu Items tab: ${missing.join(', ')}`
+              : `${missing.length} essential${missing.length !== 1 ? 's' : ''} not in catalog: ${missing.join(', ')}`,
           });
           return;
         }

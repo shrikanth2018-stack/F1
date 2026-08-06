@@ -29,6 +29,7 @@ import {
 } from '../../hooks/useSubscriptionPlans';
 import { useAllDeliveryCycles } from '../../hooks/useMenuManagement';
 import { CYCLE_DISPLAY } from '../../hooks/useEssentialsCatalog';
+import { formatPlanLine, type PlanLine } from '../../utils/planItems';
 import type { AdminNavProp } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
@@ -37,7 +38,7 @@ const P = Theme.typography.sizes.body + 4;
 
 type PlanTab = 'Food' | 'Essentials';
 
-function parsePlanItems(raw: string): { item_name: string; quantity: number }[] {
+function parsePlanItems(raw: string): PlanLine[] {
   try { return JSON.parse(raw) ?? []; } catch { return []; }
 }
 
@@ -96,7 +97,7 @@ export function PlansManageScreen({ navigation }: { navigation: AdminNavProp }) 
           </ThemedText>
           {planItems.length > 0 && (
             <ThemedText variant="small" color="muted" style={styles.sub} numberOfLines={1}>
-              {planItems.map((pi) => `${pi.item_name} ×${pi.quantity}`).join(', ')}
+              {planItems.map(formatPlanLine).join(', ')}
             </ThemedText>
           )}
           {isEditingPrice ? (

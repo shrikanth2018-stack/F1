@@ -897,3 +897,50 @@ authoritative. Diffed before applying: the credit call is the only change.
 **Note for anyone matching on `orders.notes`:** `admin_cancel_order_atomic`
 APPENDS to that column (`… | [Admin cancel: reason]`). An exact-match query
 will find nothing after a cancellation.
+
+---
+
+## 27. A subscription plan is built from blocks, not menus (2026-08-06)
+
+The food menu has two stages — priced building-block **items**, and the
+customer-facing **menus** composed from them. A subscription plan is the
+second route food takes to a customer and is itself a composition, but the
+builder picked *menus*, nesting one stage-2 composition inside another. Plans
+now hold block ids, exactly as a menu's recipe does.
+
+Apply in this order:
+
+| # | File | What it does |
+|---|------|--------------|
+| 1 | `kitchen_aggregate_blocks.sql` | `get_kitchen_aggregate` resolves a block ordered on its own to its own portion and unit. **Run this BEFORE the OTA** — see below. |
+| 2 | `clear_menu_based_plans_2026_08.sql` | Deletes plans 24 and 25, the only two, both holding menu ids. Refuses if any subscription or order references them. |
+
+**Why §1 must land first.** A plan's daily dispatch rows are block lines, and
+the aggregate's no-recipe fallback emitted a blank unit — so the prep board
+would have shown `Sambar | '' | 1` from a subscription beside
+`Sambar | ml | 150` from an à-la-carte order. Two prep lines for one
+ingredient, one of them under-cooked: the §22 failure by a new route. It is a
+no-op against existing data (nothing points at a block today) so it is safe to
+apply well ahead of the app.
+
+**No change to** `generate_daily_manifest`, `place-order`, `orderBuild.ts` or
+any RLS policy. `plan_items` gained two optional keys (`unit`,
+`base_quantity` — a snapshot of the block's portion, the same principle as
+`order_items.price_at_time`); every consumer reads `item_id` / `item_name` /
+`quantity` and ignores the rest, so old and new rows both render.
+
+**Also fixed in the same slice (app-side, no SQL):** a food plan's price was
+the daily item total charged once for the whole run — plan #25 was ₹115 for
+thirty days of a ₹115 breakfast. The builder now prefills `daily × days` and
+leaves the field editable. And the plan CSV importer resolved core-item names
+against menus *and* blocks at once; **fourteen names exist as both**, so a row
+naming "Masala Dosa" resolved to whichever the loop reached last. Food plans
+now resolve against blocks only.
+
+**App coupling:** apply both SQL files, then ship the OTA. An old app build is
+unaffected — it writes plans without the two new keys, which still render.
+
+**Rollback:** re-run `get_kitchen_aggregate.sql` to restore the single
+fallback (only safe while no plan holds block ids). The deleted plans have no
+rollback; rebuild them in Manage → Subscriptions Manager.
+

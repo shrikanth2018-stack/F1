@@ -12,10 +12,23 @@ export interface SubscriptionPlan {
   updated_at: string;
 }
 
+/**
+ * One line of a plan's contents. For a food plan `item_id` is a building-block
+ * item (`menu_items` with `is_customer_visible = false`), never a menu — see
+ * `src/utils/planItems.ts`.
+ *
+ * `unit` / `base_quantity` are a snapshot of the block's portion at the time
+ * the plan was built, so a plan already sold keeps reading the way it was
+ * sold. Optional: plans written before the snapshot existed have neither, and
+ * `formatPlanLine` falls back to a bare count for those.
+ */
 export interface SubscriptionPlanItem {
   item_id: number;
   item_name: string;
+  /** How many of the block's own portion, per day. Always a whole number. */
   quantity: number;
+  unit?: string | null;
+  base_quantity?: number | null;
 }
 
 export interface UserSubscription {

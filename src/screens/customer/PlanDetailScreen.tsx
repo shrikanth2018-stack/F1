@@ -36,6 +36,7 @@ import { formatTime12h } from '../../utils/timeEngine';
 import { istDateStr } from '../../utils/istDate';
 import { essentialsCycleLabel } from '../../utils/cycleLabels';
 import { trackPlanViewed } from '../../utils/analytics';
+import { formatPlanLine } from '../../utils/planItems';
 import {
   findCoreItemConflict,
   planItemIds,
@@ -246,13 +247,16 @@ export function PlanDetailScreen({ route, navigation }: any) {
           <ThemedText variant="small" color="muted" style={styles.sectionLabel}>
             {`INCLUDED IN ${planFor.toUpperCase()}`}
           </ThemedText>
-          {(planItems ?? []).map((pi: any, idx: number) => (
+          {/* A food plan's lines are building blocks, so "Sambar ×1" would tell
+              a customer nothing — the amount is what they are buying. The line
+              reads "Sambar 150 ml" wherever the portion was stored, and falls
+              back to a bare count where it was not (plans built before the
+              snapshot existed, and every essentials plan, whose unit is a pack
+              description rather than a measured portion). */}
+          {(planItems ?? []).map((pi, idx: number) => (
             <View key={pi.item_id ?? idx} style={styles.itemRow}>
               <ThemedText variant="body" color="primary">
-                {pi.item_name ?? `Item #${pi.item_id}`}
-              </ThemedText>
-              <ThemedText variant="small" color="subtitle">
-                x{pi.quantity}
+                {pi.item_name ? formatPlanLine(pi) : `Item #${pi.item_id}`}
               </ThemedText>
             </View>
           ))}
