@@ -105,11 +105,23 @@ Deno.serve(async (req) => {
       // No vendor sells anything yet — skip the rest, the answer is zero.
       if (vendorItemIds.size === 0) return empty;
 
+      // 'essential', SINGULAR. This read 'essentials' and therefore matched
+      // nothing, ever — so the Revenue Report's vendor-goods column showed ₹0
+      // however much vendors sold. A quiet zero in a screen used to make
+      // decisions, which is the worst way for a report to be wrong.
+      //
+      // THE TRAP IS REAL AND WILL CATCH THE NEXT PERSON: this codebase uses
+      // BOTH spellings, correctly, on different columns.
+      //   subscription_plans.plan_type  →  'essentials'   (plural)
+      //   orders.order_type             →  'essential'    (singular)
+      //   order_items.item_type         →  'essential'    (singular)
+      // generate_daily_manifest even converts between them on the way through.
+      // Check the column, not your memory.
       const { data: lines } = await sb
         .from('order_items')
         .select('order_id, item_id, quantity, price_at_time')
         .in('order_id', orderIds)
-        .eq('item_type', 'essentials');
+        .eq('item_type', 'essential');
 
       const vendorValueByOrder: Record<number, number> = {};
       for (const l of lines ?? []) {
