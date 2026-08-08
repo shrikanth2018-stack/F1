@@ -299,8 +299,8 @@ Prereq: create the healthchecks.io check (Period 5 min, Grace 10 min) and
 store its ping URL first — see the file header for the exact
 `INSERT INTO app_config` statement. New cron `external-heartbeat` (*/5 min):
 pings healthchecks.io; `/fail` on recent cron failures; silence when the
-chain itself is dead → healthchecks.io emails the owner. Incident playbooks:
-`docs/07-incident-playbooks.md`.
+chain itself is dead → healthchecks.io emails the owner. What to do when
+something breaks: `docs/4-maintenance-workbook.md`.
 
 ## 14. Two-stage menu builder (2026-07-27, Slice 1)
 

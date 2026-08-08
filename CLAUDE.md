@@ -1,504 +1,144 @@
 # CLAUDE.md — 1stOne F1
 
-Expo/React Native app + Supabase backend for a home-kitchen food & essentials delivery business (single region, IST). One binary serves customer, staff, driver, hub-operator, vendor and admin personas, routed by JWT claims + table lookups.
+Expo/React Native app + Supabase backend for a home-kitchen food and essentials
+delivery business. Single region, IST. One binary serves customer, staff,
+driver, hub-operator, vendor and admin, routed by JWT claims plus table lookups.
 
-> **Provenance.** Sections 1–9 were re-derived directly from source on 2026-07-30 and revised on 2026-08-04, verified against the live database, not from `docs/`. Where anything disagrees with the code, the code wins — and on 2026-08-04 three "open" items in §9 turned out to be already fixed, so **check before repeating anything here.**
->
-> The superseded doc set (`01`–`05`, `CODEBASE_MAP`, `DEEP_DIVE_2026-07-27`) was deleted 2026-07-30 — all of it predated the vendor network and described four personas rather than six. Recover from git history if ever needed. What remains in `docs/`: `06-ops-and-maintenance-runbook.md` and `07-incident-playbooks.md` (current), `PHASE_2_PLAN.md` (branch 2 + reverse supply chain, not started), `VENDOR_ONBOARDING_QUESTIONS.md` (decisions record), and `HEALTH_REPORT.md` — **a dated snapshot from 2026-07-21, retained as history and NOT a live backlog.** §9 below is the live list.
+Full detail lives in `docs/1`–`docs/5`. This file is the orientation.
 
 ## Stack
-Expo SDK 54 · RN 0.81.5 · React 19.1 · TypeScript 5.9 · React Navigation 7 · TanStack Query 5 · Zustand 5 · Supabase (Postgres + RLS + 15 Deno edge functions + pg_cron) · Razorpay · Expo Push · Sentry · PostHog.
+
+Expo SDK 54 · RN 0.81.5 · React 19.1 · TypeScript 5.9 · Hermes ·
+React Navigation 7 · TanStack Query 5 · Zustand 5 · Supabase (PostgreSQL 17.6,
+RLS, 17 edge functions, pg_cron) · Razorpay · Expo Push · Sentry · PostHog ·
+Node 22.
 
 ## Commands
-- `npm run check` — `tsc --noEmit && jest`. Runs in `.husky/pre-push` AND in CI (`.github/workflows/check.yml`) on every push and PR. Same command in both on purpose.
-- `npm test` / `npm run test:watch` / `npm run lint`
-- `npm start` (Expo dev server), `npm run android` / `ios` / `web`
-- `npm run supabase:gen-types` — regenerate `src/types/database.types.ts` after any schema change
-- Edge functions: `supabase functions deploy <name> --no-verify-jwt`
-- OTA release: `eas update --channel production` (JS-only changes)
+
+- `npm run check` — `tsc --noEmit && jest`. Runs in `.husky/pre-push` AND in
+  `.github/workflows/check.yml`. Same command in both on purpose.
+- `npm test` · `npm run lint` · `npm start` · `npm run android|ios|web`
+- `npm run supabase:gen-types` — after any schema change
+- `supabase functions deploy <name> --no-verify-jwt`
+- `eas update --channel production` — JS-only changes
 
 ## Layout
-- `src/screens/{auth,customer,staff,admin}` — screens by persona; `src/navigation/` — role navigators (`RootNavigator` switches on JWT role)
-- `src/hooks/` — all data access (React Query, 56 hooks); `src/api/` — supabase client, `invokeFunction`, query helpers
-- `src/store/` — Zustand: `cartStore` (food), `essentialsCartStore` (separate!), `staffQueueStore` (offline queue), `uiStore`, `branchStore`
-- `src/utils/` — pure logic (dispatch, order status, IST dates, validators) — this is what the Jest suites cover
-- `supabase/functions/` — edge functions; `_shared/orderBuild.ts` + `_shared/dispatch.ts` are the money/date brain
-- `supabase/sql/` — 101 idempotent SQL files, applied manually per `DEPLOY_SQL_ORDER.md` (no migration runner)
-- `landing/` — static marketing site (1stone.in, Cloudflare Pages)
 
----
+- `src/screens/{auth,customer,staff,admin}` — 86 screens by persona
+- `src/navigation/` — `RootNavigator` switches on the JWT role
+- `src/hooks/` — **all** data access (56 hooks); `src/api/` — supabase client,
+  `invokeFunction`, query primitives
+- `src/store/` — `cartStore`, `essentialsCartStore` (separate!),
+  `staffQueueStore` (offline queue), `uiStore`, `branchStore`
+- `src/utils/` — pure logic; this is what the Jest suites cover
+- `supabase/functions/` — `_shared/orderBuild.ts` + `_shared/dispatch.ts` are
+  the money and date brain
+- `supabase/sql/` — 127 idempotent files, applied by hand per
+  `DEPLOY_SQL_ORDER.md`. **No migration runner.**
+- `landing/` — static marketing site (Cloudflare Pages)
 
-# 1. Architecture
+## Architecture
 
-**Client → server contract.** The phone sends *intent* (item ids + quantities + address + payment method). The server derives cycles, dispatch dates, prices, tax and fees. `_shared/orderBuild.ts:109 buildAuthoritativeOrder` is the single derivation used by **both** `quote-order` (preview) and `place-order` (commit), so quoted price and charged price cannot diverge in logic.
+The phone sends **intent** (item ids + quantities + address + payment method).
+The server derives delivery cycles, dispatch dates, prices, tax and fees.
+`_shared/orderBuild.ts → buildAuthoritativeOrder` is the single derivation used
+by `quote-order`, `place-order` **and** `admin-place-order`, so a quoted price
+and a charged price cannot diverge.
 
-**Routing.** `App.tsx` mounts ErrorBoundary → QueryClientProvider → AuthProvider → SafeAreaProvider. `RootNavigator.tsx:141-152` picks a navigator from the session:
-- `role === 'admin'` → `AdminNavigator`
-- `role === 'staff'` && !isDriver → `StaffNavigator`
-- everything else (customer, driver-staff, unknown roles) → `CustomerNavigator`
+`RootNavigator`: `admin` → AdminNavigator; `staff` && !isDriver →
+StaffNavigator; everything else — including driver-staff — → CustomerNavigator.
+Driver-staff keeps `role='staff'` so RLS still grants order read/write.
 
-Driver-staff (`role='staff'` + `is_driver`) is deliberately routed through `CustomerNavigator` while keeping staff RLS rights (`RootNavigator.tsx:142`).
+`useAuth.extractRole` base64-decodes the JWT client-side. Claims:
+`user_role`, `branch_id`, `assigned_hub_id`, `is_super_admin`, `is_driver`.
+**Vendor is NOT a claim** — `useMyVendor` reads the `vendors` table. Same for
+the hub operator's `assigned_hub_id` on the profile.
 
-**Role source.** `useAuth.ts:38 extractRole` base64-decodes the JWT payload client-side — zero extra queries. Claims: `user_role`, `branch_id`, `assigned_hub_id`, `is_super_admin`, `is_driver`, stamped by `custom_access_token_hook`. A decode failure falls back to `role: 'customer'`. Claims refresh on app foreground (`useAuth.ts:126-133`) so promotions appear without logout; `supabase.realtime.setAuth` is kept in lockstep or Realtime channels join as anon and hit a reconnect loop.
+TanStack Query for server state (2-min stale, retry 2). Zustand for device
+state only. All async work is server-side: a per-minute `pg_cron` tick releases
+the kitchen batch and creates subscription orders; pushes fan out via
+`EdgeRuntime.waitUntil`.
 
-**Vendor is NOT a JWT role.** A vendor is a `customer`-role profile with a `vendors` row, read from the table by `useMyVendor` — deliberately kept out of the token hook (`vendors_schema.sql:146-149`) because the hook runs for every login of every user and has drifted before (BF-37). Hub operator works the same way (`assigned_hub_id`).
+## Hard invariants
 
-**State.** TanStack Query for all server state (2-min `QUERY_STALE_TIME`, retry 2, `refetchOnWindowFocus` wired to AppState in `App.tsx:68`). Zustand for client state only. Supabase Realtime streams order changes to staff/admin (`useRealtimeOrders`).
-
-**Async work** is server-side: `pg_cron` per-minute kitchen tick, daily/weekly lifecycle pushes, and push fan-out via `EdgeRuntime.waitUntil` (`_shared/notifications.ts:54 runAfterResponse`).
-
----
-
-# 2. Navigation map
-
-## Auth
-`LoginScreen` (phone + OTP as one screen with an internal phase machine) → existing user: session drives re-render; new user: `OnboardingScreen` (name + address + pin, saved atomically via `complete_onboarding_atomic`). Deep link `1stone://referral?code=X` is captured in `RootNavigator.tsx:69-87` and auto-applied once the session is live.
-
-## CustomerNavigator (stack, no tab bar)
-```
-Home ─┬─ Orders ── OrderDetail ── Feedback
-      ├─ Subscriptions ─→ Plans
-      ├─ Cart ── Checkout
-      ├─ Plans (modal) ── PlanDetail ─→ Cart
-      ├─ Wallet (modal) · LoyaltyPoints (modal) · Referral
-      ├─ AddAddress · EditProfile
-      └─ ProfilePopup ─┬─ HubDashboard ── HubOrderHistoryDetail   (hub operators)
-                       ├─ VendorRegistration | VendorDashboard     (vendors)
-                       └─ DriverDashboard                          (drivers)
-```
-`ProfilePopup.tsx` is the router for the secondary personas — it conditionally renders rows based on `assignedHubId`, `useMyVendor()` status, and `isDriver` (`ProfilePopup.tsx:261-291`).
-
-## StaffNavigator
-`StaffDashboard` (top tabs **Kitchen | Packing**, Packing has Food/Essentials sub-tabs) → `Attendance`, `StaffExpenses`, `StaffProfile`.
-The Delivery tab **moved out** to `DriverDashboardScreen` + admin Delivery Manager (`StaffDashboard.tsx:146-147`); the file's own header comment still claims three tabs.
-
-## AdminNavigator
-Root `AdminHome` with two inline tabs.
-- **Reports** → OrderReport · RevenueReport · SubscriptionReport · StaffReport · HubReport
-- **Manage** (searchable list, `AdminHome.tsx:173-193`) grouped as:
-  - Customers → AdminCreateCustomer · AdminCustomerLookup · **AdminVendorManager → AdminVendorOnboard / AdminVendorDetail**
-  - Orders → AdminCreateOrder (bulk/B2B) · AdminOrders → AdminOrderDetail · AdminSubscriptions
-  - Menu → MenuManage → CreateItem/CreateMenu · EssentialsCatalogManage → CreateEssential · PlansManage → CreatePlan · ImportItems
-  - Delivery → DeliveryManage → HubDetail
-  - Notifications → PushNotifications (Note to Staff) · NotificationManager
-  - Marketing → LoginBg (banners) · ReferralSettings · CustomerFeedback
-  - Resources → ResourceManager → EmployeeDetail / OnboardEmployee
-  - Finance → ExpenseManager · StockManager
-  - Operations → StoreConfig · FeatureFlags · JobHealth
-  - Super-admin only → BranchesManage · CustomerExport (gated by `useBranchFilter().isSuperAdmin`)
-
----
-
-# 3. Roles and capabilities
-
-| Persona | How identified | Can do |
-|---|---|---|
-| **Customer** | default | Browse food + essentials (separate carts), order, subscribe, wallet top-up, loyalty, referrals, cancel own order group, feedback, manage addresses |
-| **Staff (kitchen/packing)** | `user_role='staff'` | Active-batch board, bulk status advance, kitchen aggregate, attendance (offline-capable) + corrections, supply requests, expense claims |
-| **Driver** | `is_driver` claim (set via `delivery_zones/hubs.driver_user_id`) | `DriverDashboard`; on hub orders advances only `Dispatched → Received at Hub` then stops (`deliveryStatus.ts:34-38`) |
-| **Hub operator** | `customer` role + `assigned_hub_id` | `HubDashboard`; last mile `Received at Hub → On the Way → Delivered`; monthly commission claim (`expense_claims`, category `Hub Commission`) |
-| **Vendor** | `customer` role + `vendors` row | Complete registration (`vendor_submit_registration`), then once **approved**: manage own `essentials_catalog` rows (price/unit/daily cap/on-off), see own paid orders with a `cancellable_until` deadline, mark ready, view earnings, claim payout |
-| **Admin** | `user_role='admin'` | Everything in §2; branch-scoped by `has_branch_access` |
-| **Super-admin** | `is_super_admin` claim | Adds branch management, customer export, `store_config` / `feature_flags` writes |
-
-**Vendor lifecycle:** `invited` (admin elevates an *existing registered user* — never creates a login) → `submitted` (vendor fills business name/GST/FSSAI) → `approved` (items may go live) → `suspended` (catalogue off, existing orders honoured, balance still claimable) / `rejected` (terminal).
-
-**Vendor selling models:** `own_brand` (vendor is seller of record; paid sale value less commission) and `house_brand` (1stOne is seller of record and buys at an agreed per-item rate `essentials_catalog.vendor_cost`). See §9 — `vendor_cost` has no write path.
-
-**Permission enforcement.** Sensitive columns are never client-writable. `vendors` has `REVOKE UPDATE ... FROM authenticated` with a column-level `GRANT UPDATE (business_name, contact_phone, gst_number, fssai_number, return_policy, terms_accepted_at, submitted_at)` (`vendors_schema.sql:212-215`) — status, commission and selling model can only move through `admin_set_vendor_*`. Same pattern as `profiles.role` behind `elevate_to_staff`, and `wallet_balance` behind the atomic increment RPCs.
-
----
-
-# 4. Backend integrations
-
-## Supabase
-- **Auth:** phone OTP only, no passwords. Phone change is OTP-verified and mirrored to `profiles.phone_number` by a trigger.
-- **RLS on every table.** Helpers in `rls_policies.sql`: `jwt_user_role()`, `jwt_branch_id()`, `is_admin()`, `is_staff_or_admin()`, `is_super_admin()` (falls back to the column for stale tokens), `has_branch_access()`. Pattern: customers touch own rows; staff/admin branch-scoped; super-admin sees all.
-- **Notable policies:** `wallet_tx_no_writes` (ledger is read-only to the app); `expense_claims_self` (`staff_id = auth.uid() OR admin`) — this is what lets a *customer-role* vendor read their own payout claims; `essentials_vendor_scope` is **RESTRICTIVE FOR SELECT** (`vendors_visibility.sql:51`) so it ANDs with the permissive `essentials_catalog_read_all USING (true)` rather than being clobbered when `rls_policies.sql` is re-run.
-- **Edge functions (15)** deploy `--no-verify-jwt`; `_shared/auth.ts` is the real auth boundary — local ES256 JWKS verification with `algorithms: ['ES256']` pinned against alg-confusion.
-- **Key tables:** `profiles`, `wallet_transactions`, `pending_wallet_topups`, `orders` (one row **per delivery cycle**; the customer-facing order is the `order_group_id` set), `order_items`, `user_subscriptions`, `cancelled_subscription_days`, `menu_items`, `essentials_catalog`, `subscription_plans`, `delivery_cycles/zones/hubs`, `customer_addresses`, `vendors`, `vendor_zones`, `vendor_earnings`, `vendor_order_fulfilment`, `store_config`, `feature_flags`, `notification_templates`, `idempotency_keys`, `kitchen_push_log`, `manifest_run_log`, `push_logs`.
-- **No DB enums** — statuses are plain text; `src/utils/orderStatus.ts` is the single vocabulary.
-
-## Razorpay
-- `place-order` creates the Razorpay order **before** any DB write (`place-order/index.ts:181-199`, 15 s `AbortSignal.timeout`); order lands as `Pending`.
-- Two independent, idempotent confirmation paths: foreground `confirm-order` (HMAC of `order_id|payment_id`, retried twice by the app) and the `verify-payment` webhook (HMAC-SHA256 of the raw body; **refuses to run without `RAZORPAY_WEBHOOK_SECRET`**, `verify-payment/index.ts:64-67`). Both flip the whole group by `razorpay_order_id` and activate subscriptions.
-- Webhook handles `payment.captured`, `order.paid`, `payment.failed`, and `payment_link.paid` (admin/bulk orders — matched on `razorpay_payment_link_id`, must be ticked in the Razorpay dashboard or bulk orders never mark paid). All branches run per call; no early return.
-- Webhook always returns 200 on internal failure — a 500 makes Razorpay retry indefinitely.
-- **Web has no Razorpay** (`src/utils/razorpay.ts` is a throwing shim); web checkout is wallet-only.
-
-## Maps
-`react-native-maps` (native) / `@react-google-maps/api` (web), split via `PinMap.tsx` / `PinMap.native.tsx` and `ZoneMap.*`. No Expo config plugin exists, so the Android key is injected into `AndroidManifest.xml` by the inline `withGoogleMapsAndroid` plugin in `app.config.js:12-30`. Serviceability is a **server-side** point-in-polygon test (`serviceability_server_side.sql`) that stamps `zone_id`/`hub_id`/`branch_id` onto the address.
-
-## Sentry
-`src/utils/sentry.ts`, `initSentry()` at `App.tsx:35`. `enabled: !__DEV__`, `tracesSampleRate` 0.2 in prod. User context tagged on session change (`useAuth.ts:143-151`). Money-path failures explicitly `captureError`ed in `CheckoutScreen` (razorpay_open, confirm_order, place_order) and `useOfflineSync` (dropped queue mutation).
-
-## PostHog
-`src/utils/analytics.ts`, `initAnalytics()` at `App.tsx:36`. 12 funnel events, all wired to real call sites. **No-op unless `EXPO_PUBLIC_POSTHOG_KEY` is set — see §9.**
-
----
-
-# 5. Critical business flows
-
-## 5.1 Place order (the money path)
-1. `CheckoutScreen` holds one idempotency key per checkout session (`CheckoutScreen.tsx:104`), gets a binding quote from `quote-order`, asks Scenario-C consent (`:210`), then calls `place-order` echoing `client_quote` + `Idempotency-Key` (`:233`).
-2. `place-order`: JWT verify → rate limit 5/60 s → idempotency replay → legacy-`groups` payload guard → `client_quote` required else 409.
-3. `buildAuthoritativeOrder` re-prices from DB, derives IST dispatch dates from cutoffs, groups by cycle, carves GST out of inclusive prices, applies fee priority **hub → zone → store default** on the earliest-dispatch group only, and runs storm/serviceability/subscription-conflict/vendor-zone/daily-cap checks.
-4. **Drift tripwire:** exact integer-paise tuple comparison (`dispatch.ts:128 driftedFields`). Any drift → 409 `quote_changed`, nothing written, no money moved; the app re-quotes and asks the customer to re-confirm.
-5. Razorpay order created, or atomic wallet debit (`decrement_wallet_balance_if_sufficient`).
-6. All rows written by `place_order_atomic`. On failure the wallet debit auto-refunds; a *failed* refund returns a support reference and logs a reconciliation alert (`:256-266`).
-7. `user_subscriptions` created per plan — `is_active` only for wallet payments; Razorpay subs activate on confirm/webhook. Insert failures push `admin.subscription_create_failed`.
-8. Idempotency key is consumed **only on success** (`:363-370`), so a 409 does not burn it.
-
-**Dispatch scenarios** (`dispatch.ts:83`): same-day cycle → A (before cutoff, today) / B (after, tomorrow). Cross-midnight cycle (`cutoff > delivery_start`) → B (before cutoff, tomorrow) / C (after, day after tomorrow — requires explicit customer consent).
-
-## 5.2 Vendor onboarding → earnings → payout
-1. Admin finds an **already-registered** user by phone (`AdminVendorOnboardScreen`) and calls `admin_onboard_vendor` → status `invited`. Never creates a login.
-2. A "Complete vendor registration" row appears in that person's ProfilePopup → `VendorRegistrationScreen` → `vendor_submit_registration` RPC (a plain table update can't move `status`, which is not grantable) → `submitted`.
-3. Admin verifies in `AdminVendorDetailScreen`, sets terms (`admin_set_vendor_terms`) and selling areas (`vendor_zones`, admin-write only), then `admin_set_vendor_status('approved')`.
-4. Vendor's items live in `essentials_catalog` with a `vendor_id` — **so the order path needs no changes at all**; they inherit cycle tagging, the cart, `buildAuthoritativeOrder`, the GST carve-out and the kitchen exclusion.
-5. Visibility is enforced in RLS for browsing and re-checked server-side for ordering via `vendor_ids_for_address` (the builder runs as service-role and bypasses RLS).
-6. **Earnings credit on delivery via a TRIGGER** (`vendors_earnings_trigger.sql:180`) — because an order reaches `Delivered` by four routes (staff update, offline replay, `advance_orders_status`, admin override) and only a trigger catches all four. `ux_vendor_earnings_order_item` makes double-payment impossible at DB level. Per-line and whole-routine exception isolation: a credit failure never blocks recording the delivery.
-7. Payout: `create_vendor_payout_claim` turns the wallet balance into an `expense_claims` row (category `Vendor Payout`, one open claim at a time), settled in one step in Expense Manager; `trg_vendor_payout_paid` debits the wallet on the `Paid` transition.
-
-## 5.3 Subscription dispatch → staff batch board
-1. `pg_cron` runs `trigger_kitchen_cutoff_pushes()` **every minute**. Delivery is **at-least-once**: the `kitchen_push_log` row is a *claim*, final only once `notified_at` is set; unconfirmed claims are retried until `delivery_start` passes, then `alert_missing_kitchen_pushes()` alarms.
-2. `generate_daily_manifest` creates one `Confirmed` order per active, non-paused subscription, items mirrored from `plan_items` JSON, **zero-money rows** (BF-19 — revenue was booked at purchase), idempotent per `(subscription, date)`, per-subscription error isolation.
-3. `push_kitchen_summary` aggregates and pushes to staff via `pg_net` → `send-push`. **The push is the batch release.**
-4. `useActiveStaffBatch` reads the latest `kitchen_push_log` row; `useStaffOrders.ts:52-79` shows exactly that cycle's batch **plus** any past-dated undelivered order (D2), hub-operator-filtered, with subscription-purchase revenue rows removed by `isOperationalOrder`.
-
-## 5.4 Cancellation
-`cancel-order` cancels the **whole order group**. Guards: ownership, at least one cancellable row, within `cancellation_window_hours` of creation, and the **earliest** dispatch cycle's cutoff not passed (cross-midnight aware). Refunds the sum of `wallet_amount_used` over rows it actually cancelled; a Razorpay portion is reported as `razorpay_refund_due` for a manual dashboard refund. Fully idempotent — an already-cancelled group returns success without a second refund. Subscription-purchase orders are refused here (G7) because this endpoint never touches `user_subscriptions`; that's `admin_cancel_subscription`.
-
-## 5.5 Staff offline status update
-Offline → persisted Zustand queue. On reconnect `useOfflineSync` drains FIFO with four guards: session must exist; **identity guard** (mutations queued by another user on a shared device are discarded); **no-regress guard** (`ORDER_STATUS_FLOW.slice(0, targetIdx)` — a stale update lands as a 0-row no-op); and the customer push fires only if the row actually changed. Max 5 retries, then the dropped mutation is reported to Sentry.
-
----
-
-# 6. Test setup and coverage
-
-- **39 Jest suites, 493 tests** in `src/__tests__/`. `jest-expo` preset, `testEnvironment: node`. `jest.setup.js` eagerly resolves Expo's lazy globals (otherwise they throw "outside of scope") and globally mocks three things every screen test reaches within a few hops: AsyncStorage, safe-area insets, and Supabase env (with a deliberately bogus URL, so a stray live call fails against a fake host instead of reaching production).
-- Coverage is *collected* from `src/utils/**` + `src/hooks/**` only, but **five screens now have tests**: `CheckoutScreen`, `StaffDashboard`, `AdminOrderDetailScreen`, `MenuEditorModal`, `MenuItemEditorModal`. Chosen where being wrong costs most, not where testing is easiest. The other ~114 screen/component files still have none.
-- Covered elsewhere: dispatch dates, order build, subscription math + conflict, order filters, packing flow, delivery status, IST dates, CSV parse/build, recipe grammar + portion arithmetic, validators, formatters, cart store, `extractRole`, analytics + Sentry guards, and hook tests via a shared query-client helper. `orderBuild.test.ts`, `dispatch.test.ts`, `reportAggregations.test.ts` and `sendPush.test.ts` reach *server* code by importing the shared modules.
-- **CI: `.github/workflows/check.yml`** runs the same `npm run check` on every push and PR, plus lint as a real gate (203 warnings, zero errors — so it only goes red on something new). `npm ci`, not `install`, so CI cannot pass against a dependency tree that exists only in somebody's `node_modules`. The Husky `pre-push` hook still runs locally; the two are deliberately the same command.
-- **MUTATION-CHECK A NEW TEST BEFORE TRUSTING IT.** Break the behaviour, confirm the test fails, revert. Every screen test here was checked that way, and it caught a real one: a privacy guard on `identifyUser` passed while the fix was reverted at the *call site*, because the test only covered the function. The fix moved into the function as a result. A test that passes against broken code is worse than no test.
-- `knip.json` for dead-code analysis; `patch-package` re-applies `patches/react-native-razorpay+2.3.1.patch` on install.
-
-## Test harnesses against the live database
-
-Three SQL harnesses in `supabase/tests/`. The first two roll back by design — they end in `RAISE EXCEPTION`, which both prints the report and discards everything. **Read the report, not the exit code.**
-
-| File | What it proves |
-|---|---|
-| `platform_health_check.sql` | 37 assertions end to end: back-office customer + bulk order, wallet, staff gates, vendor credit-on-delivery, cancellation, loyalty, vendor portal, hub commission, subscription manifest, listing approval. §K is the only section that switches ROLE — the rest set claims but stay privileged, so nothing RLS-enforced is covered by A–J. |
-| `subscription_flow_check.sql` | Completes §J, which SKIPS whenever no active subscription exists (i.e. every run on an empty database). Buys a plan as the service role, dispatches it through the real manifest, checks BF-19 zero-money rows and idempotency, then confirms as the real customer role that they can pause and skip but cannot reset `days_consumed` or flip `is_active`. |
-| `seed_360.sql` / `teardown_360.sql` | The only pair that COMMITS — a walkthrough's rows must survive to be seen on a screen. Seed fills the gaps around the existing test cast (its logins already exist; it does not create auth users). Teardown is bounded three ways at once — registered by the seed, created after the run started, AND belonging to a profile that existed at seed time — so it cannot over-delete. |
-
----
-
-# 7. Non-negotiable invariants
-- **Server decides money/dates/prices.** The app sends item ids + quantities only. Never weaken the quote-drift (409 `quote_changed`), idempotency-key, or rate-limit logic in `place-order`.
-- **Wallet ledger is never app-written** — all wallet movement via atomic RPCs (`increment_wallet_balance`, `decrement_wallet_balance_if_sufficient`).
-- **RLS stays on**; role/money columns change only through SECURITY DEFINER RPCs or service-role functions.
+- **Server decides money, prices and dates.** Never weaken the quote-drift 409,
+  the idempotency key, or the rate limit in `place-order`.
+- **The wallet ledger is never app-written** — only
+  `increment_wallet_balance` / `decrement_wallet_balance_if_sufficient`.
+- **RLS stays on.** Role and money columns move only through SECURITY DEFINER
+  RPCs. The real gate is GRANT first, then policy — a client cannot write
+  `order_items` at all, can only set `orders.status`, only
+  `user_subscriptions.is_paused`, and only name + phone on `profiles`.
 - **Never disable the webhook HMAC check** in `verify-payment`.
-- Prices are **GST-inclusive** (tax carved out, never added). All time logic is explicit `Asia/Kolkata`.
-- `Packed` status is intentionally push-silent; only `Ready` notifies customers.
-- Vendor credit is a **trigger**, not a code path — do not move it into one.
+- Prices are **GST-inclusive** — tax is carved out, never added.
+- All time logic is explicit `Asia/Kolkata`. **Never format a business date with
+  `toISOString()`** — between 00:00 and 05:30 IST it gives yesterday. Use
+  `src/utils/istDate.ts`.
+- `Packed` is push-silent. Customer pushes fire only at Ready, Dispatched,
+  Received at Hub, Delivered, Cancelled.
+- Vendor credit is a **trigger** on `orders.status = 'Delivered'`, not a code
+  path. Leave it there — four different routes reach Delivered.
+- No hardcoded business values or colours: rules in `store_config` /
+  `feature_flags`, styling in `src/theme/`.
 
-# 8. Gotchas
-- **`place-order` payload is not backward-compatible** — deploy the function and the app build together.
-- **Live DB > repo `schema.sql`** — the snapshot lags; trust the live Supabase schema. Newer RPCs are called with `(supabase as any).rpc(...)` casts ("MF-08 pattern") until types are regenerated.
-- **Never format a business date with `toISOString()`** — use `src/utils/istDate.ts`. Between 00:00 and 05:30 IST that silently yields the previous day.
-- Web build has no Razorpay — web checkout/top-up is wallet-only; guard new payment UI accordingly.
-- Staff board shows one cycle's batch (latest `kitchen_push_log` row) + past undelivered orders — an "empty board" before the first push of the day is by design.
-- `essentials_catalog` rows with `vendor_id IS NULL` are 1stOne's own — that is every row until the first vendor item exists. Both the daily-cap and vendor-zone guards in `orderBuild` only run when a cart actually holds a vendor item.
-- No hardcoded business values or colors: business rules live in `store_config`/`feature_flags`, styling in `src/theme/`.
-- Code comments carry audit tags (D#, G#, BF-#, MF-#, O#, FT-#) referencing past audit rounds — keep them when editing nearby code; match the existing header-comment style in every file.
+## Gotchas
 
-# 9. Audit state — 2026-08-04
+- **`place-order`'s payload is not backward-compatible** — deploy the function
+  and the app build together.
+- **`eas update` never ships `supabase/functions/`.** Diff before releasing:
+  `git diff --name-only <last-sha>..HEAD -- supabase/functions/`
+- **Live DB > repo `schema.sql`** — trust the live schema. Newer RPCs are called
+  with `(supabase as any).rpc(...)` until types are regenerated.
+- **Web has no Razorpay** — `src/utils/razorpay.ts` throws. Web is wallet-only.
+- **Staff board shows one batch** (latest `kitchen_push_log`) plus anything
+  overdue. Empty before the first push of the day is correct.
+- **Which config table wins**: `hub_delivery_active`,
+  `branch_management_active`, `referral_system` → `feature_flags`.
+  `storm_mode_active` → **both**, OR-combined. Essentials on/off →
+  `branches.essentials_enabled`.
+  `store_config.essentials_module_active` and `.hub_delivery_active` are **dead
+  columns**.
+- **Never verify an RLS policy as a superuser** — it bypasses RLS and will
+  confirm a policy that denies everyone. Impersonate the user: set
+  `request.jwt.claims` **and** `SET LOCAL ROLE authenticated`.
+- `essentials_catalog` rows with `vendor_id IS NULL` are 1stOne's own. The
+  daily-cap and vendor-zone guards only run when a cart holds a vendor item.
+- Vendor reach is defined twice on purpose — `vendor_ids_visible_to_me()` for
+  browsing (any active address), `vendor_ids_for_address()` for ordering (the
+  one address being delivered to). Change one, check the other.
 
-Full audit 2026-07-30, then a second working day on 2026-08-04 that closed
-several items and opened others. Everything below is the state **after**
-2026-08-04, and every claim in the Open list was re-verified against the code
-and the live database on that date rather than carried forward.
+## Current state (8 Aug 2026)
 
-> **Why that matters.** Three items in the previous Open list were already
-> fixed when checked — the `eas.json` gaps, the `StaffDashboard` header
-> comment, and the vendor supply hook. A stale audit is worse than no audit:
-> it sends you chasing things that are not broken while you trust it about the
-> things that are. **Re-verify before repeating anything here.**
+- **40 test suites, 526 tests, all passing.** Coverage collected from
+  `src/utils/**` + `src/hooks/**`; 5 screens have tests, ~114 do not.
+- Version **1.5.0**, shipped as an **OTA over the v1.4.0 (build 31) Android
+  binary**. iOS has one build ever — a dev build from 2026-04-07 — and the
+  submit config is still `REPLACE_WITH_…`.
+- **Production ships the Razorpay TEST key** (`rzp_test_…`) in all three EAS
+  profiles. Server-side secrets are set. No real money has moved.
+- **One Supabase project** is dev, preview and production.
+- **PostHog has no key** in any build — analytics is inert.
+- No order has ever reached `Delivered`, so `vendor_earnings` is empty and the
+  credit trigger has never fired.
+- No hub has a `commission_percent`, so no hub commission claim can be raised.
 
-## Closed
-
-- **No customer could see any vendor item.** `essentials_vendor_scope` tested
-  visibility with an inline `EXISTS` over `vendors` and `vendor_zones`. A policy
-  expression runs as the *calling user*, so both tables applied their own RLS —
-  and both deny SELECT to ordinary customers by design. The subquery read zero
-  rows for every real customer, so the RESTRICTIVE policy denied every vendor
-  item. Only the vendor's own owner account could see their goods. The whole
-  vendor network could not make a single sale, and it presented as a
-  zone-mapping problem during device testing. Fixed by
-  `vendors_fixes_03_visibility.sql` — the rule now lives in
-  `vendor_ids_visible_to_me()` (SECURITY DEFINER, returns vendor IDs only), the
-  mirror of `vendor_ids_for_address` on the order path.
-  **Lesson: never verify an RLS policy with a superuser query.** It bypasses RLS
-  and will confirm a policy that denies everyone. Impersonate the user —
-  `set_config('request.jwt.claims', …)` plus `SET LOCAL ROLE authenticated`.
-  Note the rule now exists twice on purpose: browse matches *any* active
-  address, ordering re-checks the one address being delivered to. Change one,
-  check the other.
-- **Staff dashboard queried a column that does not exist.**
-  `store_config.staff_message` has never been on the table. The query 400'd on
-  every dashboard load, React Query retried it twice, and because the result
-  only fed an `||` fallback nobody ever saw it. Removed; per-tab `admin_notes`
-  had long since replaced it.
-- **`expense_claims` categories.** The CHECK had never been widened past its
-  original five values, so staff `Others` expenses, `Hub Commission` and
-  `Vendor Payout` were all rejected at insert — the latter two dead since the
-  day they shipped. Widened, applied to production, recorded in
-  `DEPLOY_SQL_ORDER.md` §17. **Rule: add the value in the same file that
-  introduces a new claim category.**
-- **Vendor items filed under a non-essentials cycle.** `buildSections` drops
-  any item whose cycle isn't in the essentials list, so a vendor could file
-  one under Snacks and have it fetched then silently discarded. The vendor's
-  picker now offers only cycles that can render.
-- **House-brand vendors credited ₹0.** `essentials_catalog.vendor_cost` had no
-  write path, so `credit_vendor_earnings_for_order` COALESCEd it to 0 on every
-  delivered sale, with a Postgres `WARNING` as the only trace. The option is
-  now withheld from both vendor screens until house brand has its own
-  onboarding, agreed buying price and wallet treatment (see `PHASE_2_PLAN.md`).
-  Column and trigger still handle both models.
-- **Invisible vendors.** An approved vendor with no granted zone or hub reaches
-  nobody and looks identical to one selling normally. My Store now names its
-  areas or warns it has none, the admin vendor page warns when none is granted,
-  and onboarding can set them — it never asked before.
-- **Stale essentials list.** A vendor adding an item is a change on another
-  device, so the customer's cache held a stale list for up to two minutes. The
-  essentials query now re-reads on mount and on foreground. (Live-while-watching
-  would need a Realtime subscription; deliberately not added.)
-- **In-app payments left no reference.** `confirm-order` usually beats the
-  webhook, and `mark_order_paid` only matches rows still `Pending`, so whichever
-  ran second found nothing — the order ended up with no `paid_at` and no
-  `razorpay_payment_id`. Nothing to reconcile against Razorpay, no payment id to
-  refund with. Both paths now write the same row state. Orders placed before
-  2026-07-30 still carry neither.
-- **Reports read a failed fetch as zero.** Four report screens destructured only
-  `data`/`isLoading` and rendered "no data for this period" when the query
-  errored — a real zero, in a screen used to make decisions. All four now
-  distinguish an error from an empty period.
-- **Timezone-dependent test suite.** `walletNudge.test.ts` built dates as UTC and
-  stepped them in local time, so `npm run check` was green in IST and red on any
-  machine behind UTC. It now uses the same `istDate` helpers as the hook.
-- **Shared wallet for vendor-customers** — reviewed and confirmed intended.
-  One person, one wallet: they spend as a customer and claim as a vendor.
-  (See Open #4 for the payout consequence, found later.)
-
-### Closed on 2026-08-04
-
-- **Three tables a customer could write directly.** `user_subscriptions`,
-  `expense_claims` and `customer_addresses` each had a policy written as
-  `FOR ALL USING (<owner test>)` with **no WITH CHECK** — and Postgres reuses
-  the USING expression as the insert check, so "rows I may READ" silently
-  became "rows I may WRITE". `schema.sql` grants ALL on these to
-  `authenticated`, so the policy was the only gate. The serious one: a customer
-  could insert their own subscription row against any plan with `is_active`
-  true, and `generate_daily_manifest` would then dispatch a Confirmed order
-  every day for its full duration, at zero money, and the kitchen would cook
-  them. Proven by impersonating a real customer, fixed in
-  `client_write_gaps.sql`. **Grep for the class:** `pg_policies` rows where
-  `cmd = 'ALL'` and `with_check IS NULL`. `cancelled_subscription_days` looked
-  identical but is correct — its USING clause already tests ownership.
-- **An offline clock-out rewrote a staff member's whole attendance history.**
-  Clocking out online matches (staff_id, date); the offline queue could carry
-  only ONE match column, so it queued `staff_id` alone and the replay stamped
-  that clock-out time onto every attendance row the person had — in exactly the
-  low-signal conditions the queue exists for, and it feeds payroll. Fixed at the
-  root: `QueuedMutation` now carries a `match` object ANDed across every column,
-  with the legacy single-column pair still honoured because the queue is
-  persisted on devices. Same fix carried `onConflict` for upserts, which had
-  been silently dropping offline clock-ins.
-- **A branch filter that did not filter.** `usePendingLeaves` filtered on an
-  embedded resource without `!inner`; PostgREST nulls the embed and keeps the
-  parent, so a branch admin saw every branch's pending leaves with a blank name.
-- **Re-onboarding an employee failed with a raw database error.**
-  `elevate_to_staff` inserted a `staff_salary` row unconditionally against a
-  `UNIQUE (staff_id, month, year)`, so a second call in the same month rolled
-  the whole elevate back and lost the correction being made. Now
-  `ON CONFLICT DO NOTHING` — deliberately not DO UPDATE, since that month may
-  already be settled. `nextval` also no longer burns an employee number on
-  every correction.
-- **A wallet payment and an admin refund now leave a trace.** `place-order`
-  wrote `Confirmed` with no `paid_at` while `admin-place-order` stamped its
-  own; both admin cancel RPCs credited the wallet with the three-argument
-  `increment_wallet_balance`, leaving `reference_type`/`reference_id` NULL so a
-  refund could only be tied to its order by parsing a description string.
-- **The menu's recipe grammar.** A line is now a COUNT of the item's own
-  portion ("Sambar 150 ml × 1"), decided by checking real data first: 70 of 77
-  recipe lines were exactly one portion. The stored text did not change, so
-  `get_kitchen_aggregate` and the order path are untouched. **The trap:**
-  `100 ÷ 150` displays as `0.667` and `0.667 × 150` is `100.05`, so the editor
-  keeps the stored amount until a row's box is actually typed in — five real
-  recipes are in that shape.
-- **CI, and the first tests that render a screen.** See §6.
-
-## Open
-
-**Blocks a public release:**
-
-1. **Production still ships the Razorpay test key.** `eas.json` production
-   `EXPO_PUBLIC_RAZORPAY_KEY_ID = rzp_test_…`. Deliberate — the owner plans to
-   flip it immediately before the real release, together with the server-side
-   secret and the webhook secret. Half-live fails every payment outright. **No
-   rupee has ever moved through this app.** Do not keep re-raising it; do not
-   let "stable" be claimed while it stands.
-2. **iOS has never had a production build.** Exactly one iOS build exists — a
-   *development* profile from 2026-04-07. Submit config is still
-   `REPLACE_WITH_APPLE_ID` / `REPLACE_WITH_ASC_APP_ID` / `REPLACE_WITH_TEAM_ID`.
-   If the App Store is in scope this is not a config tweak but an unstarted
-   track: developer account, first production build, TestFlight, review.
-3. **Single environment, no staging.** One Supabase project serves dev, preview
-   and production — every schema change today went straight to production. It
-   has been safe because each one was dry-run and rolled back first, but that
-   is discipline, not architecture. The service-role key lives in three places
-   (function env, Vault, `app_config`) — rotation must touch all three.
-
-**Decisions waiting on the owner:**
-
-4. **A vendor payout claims their ENTIRE wallet balance**, including money they
-   deposited as a customer. Demonstrated in the 2026-08-04 walkthrough: a
-   vendor with ₹2000 of customer float and ₹129.20 of sales raised a claim for
-   ₹2129.20, so settling it pays out ₹2000 the vendor had put in themselves.
-   `create_vendor_payout_claim` reads `wallet_balance` and does not distinguish
-   earnings from deposits. Harmless while vendors do not top up; real money at
-   launch. The fix is a business choice (cap at uncleared earnings? track the
-   two separately?), which is why it has not been made. Related:
-   [shared wallet] was reviewed and confirmed intended — this is its sharp edge,
-   not a contradiction of it.
-5. **PostHog still has no key**, so all 12 funnel events are inert. As of
-   2026-08-04 the *wiring* is fixed and safe: `initAnalytics()` is off in dev
-   (matching Sentry), `identifyUser` strips phone/email/name/address whatever
-   it is handed, and Job Health shows whether analytics is live and which host
-   it points at. Adding the key is now one string — but **set the host to match
-   the project's region** (`analytics.ts` defaults to EU; a US project needs
-   `https://us.i.posthog.com`) and set it separately in Cloudflare for web.
-   Deliberately not rushed: with nine test accounts there is nothing to measure.
-
-**Known and accepted:**
-
-6. **Rate limiting counts only successful orders.** `place-order` counts
-   `idempotency_keys` rows, which are written only on success, so repeated
-   failures are not throttled. Low impact; left alone because changing it means
-   touching the idempotency contract on the money path. *(Re-verified
-   2026-08-04 — still true.)*
-7. **`'Paid'` is a dead order status** still referenced defensively in
-   `cancel-order:34`, `OrderDetailScreen:34`, `confirm-order:98`,
-   `kitchen_cutoff_push.sql` and the `orders_status_allowed` CHECK.
-   `mark_order_paid` writes `'Confirmed'` (BF-32a). Harmless, but it is absent
-   from `ORDER_STATUS_FLOW`, so anything that ever *did* write it would fall
-   outside the offline no-regress guard. *(Re-verified 2026-08-04.)*
-8. **`vendor_supply_list()` is deployed with no caller.** The hook was deleted
-   on 2026-08-04 rather than left looking like a live path; the RPC stays
-   because it is vendor-scoped and costs nothing idle. The dashboard's Supply
-   tab reads `vendor_orders` and is labelled "Orders", which is the question a
-   vendor actually asks. See the note where the hook used to be in
-   `useMyVendor.ts`.
-9. **~114 screen and component files still have no test.** Five have one. The
-   owner has walked the app by hand many times and it performs correctly — so
-   this is missing *automated* evidence, not missing evidence. Say it that way.
-
-## Diagnostics — because absence looks like health
-
-Four systems here have been "configured but silent" at some point: Sentry
-pointed at a project that did not exist, PostHog with no key, source maps that
-fail without failing the build, and analytics with no dev guard. They share a
-shape — **when they break, the symptom is silence, which is identical to
-working perfectly.** Two surfaces exist to break that tie, both on
-**Admin → Operations → Job Health**:
-
-- **Crash Reporting → "Send a test event"** fires one tagged Sentry event
-  (`diagnostic=true`, info level). It answers two questions at once: does an
-  event arrive, and does its stack trace name a real file rather than
-  `index.android.bundle:1:…`. Ask again after **every native build** — the
-  source-map upload does not fail a build when it breaks. It returns false and
-  says "Nothing was sent" with no DSN or in a dev build, because a diagnostic
-  that claims success while sending nothing is worse than none.
-- **Analytics** states whether it is live, why not, and which host it points at.
-
-Verified in the Sentry UI on 2026-08-04: release `1.3.2-stable.1 (30)` has **2
-source-map artifacts**, sessions arriving, one user, crash-free rate 100%, zero
-issues. **Check Releases, not Issues, to answer "is Sentry connected?"** — the
-Issues page shows an onboarding wizard whenever there are no *error* events,
-which reads exactly like "never received anything" and is not.
-
-## Health check
-
-Run after any schema or RPC change:
+## Health checks
 
 ```
 supabase db query --linked --file supabase/tests/platform_health_check.sql
 supabase db query --linked --file supabase/tests/subscription_flow_check.sql
 ```
 
-Both end in an error by design — that is what rolls them back. **Read the
-report, not the exit code.** See §6 for what each covers and for the 360
-seed/teardown pair.
+Both end in an error **by design** — that is what rolls them back.
+**Read the report, not the exit code.**
 
-## Working agreements (owner preferences)
-- After making edits, **pause for owner review before** running tsc/jest or committing.
-- During polish sessions, bank changes locally — one commit + OTA per slice, not per fix.
-- Owner-facing flows must be tested by actually opening every screen (no symbolic testing); prefer AskUserQuestion options over free-text during device tests.
-- Commit/push only when asked.
+## Working agreements
 
-## Release practice (agreed 2026-08-02)
-
-**Web ships with every release.** `eas update` or a Play release is followed by
-`git push` in the same sitting — all four surfaces on one commit. (Not the same
-minute: web ~2 min, OTA on next launch, Play after review.)
-
-**Dummy flow before anything a customer can reach** — release, OTA, web push.
-Not before every commit; the pre-push gate covers those. Two halves, and one
-proves nothing about the other:
-
-- **Server** — the real RPCs as the REAL roles (`request.jwt.claims` **plus**
-  `set_config('role','authenticated')`), inside `BEGIN … ROLLBACK`. Not
-  "delete later" — a half-failed run leaves rows in production, a rollback
-  cannot, and it discards queued pg_net pushes so a test can't notify real
-  admins.
-- **Screen** — open it on device or web. SQL cannot see a screen: the vendor
-  listing backend passed 7/7 while the add-item popup had never been run.
-
-Two traps, both hit on 2026-08-02: never check an RLS rule as superuser, and
-make sure the *subject* could pass — a customer with no address sees zero
-vendor items whether or not the gate works.
-
-### Added 2026-08-04
-
-**`eas update` never ships `supabase/functions/`.** Three edge functions had
-changed since the previous release and would have gone out stale — including
-the change that lets a cycle-less building block be bulk-ordered, against a
-database where blocks had lost their cycles the same day. Before any release,
-diff against the last released commit:
-
-```
-git diff --name-only <last-released-sha>..HEAD -- supabase/functions/
-git diff --stat  <last-released-sha>..HEAD -- package.json app.config.js android/ ios/ patches/ eas.json
-```
-
-The second decides whether a new `.aab` is needed at all. Empty means OTA
-suffices and Play needs nothing.
-
-**Verify a web deploy by its CODE, not its content-type.** The known trap is
-Cloudflare serving a missing asset as HTTP 200 `text/html`. The inverse is
-worse because it looks like success: **a stale bundle is still perfectly valid
-JavaScript**, so polling until `content-type: application/javascript` passes
-instantly against the *previous* build. The tell is the `AppEntry-<hash>.js`
-filename being unchanged. Grep the served bundle for a string literal unique to
-the change instead — and allow ~10 minutes, far longer than the ~1 minute the
-`text/html` phase lasts.
-
-**A teardown that reports success is not a teardown that worked.** The 360
-teardown printed clean numbers while leaving a row behind, because its
-`date >= run start` bound could not catch a day an attendance *correction* had
-backfilled. Diff against a before-snapshot; do not trust the report.
-
-**Mutation-check a new test.** See §6 — it caught a guard that was passing
-while the fix it guarded was reverted.
+- After making edits, **pause for owner review** before running tsc/jest or
+  committing.
+- Bank changes locally during a polish session — one commit + OTA per slice.
+- Owner-facing flows must be tested by actually opening every screen. Prefer
+  AskUserQuestion options over free text during device tests.
+- **Commit and push only when asked.**
+- Web ships with every release: `eas update` or a Play release is followed by
+  `git push` in the same sitting.
