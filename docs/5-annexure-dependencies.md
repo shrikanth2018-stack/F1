@@ -11,7 +11,20 @@ Current as of 8 August 2026.
 > keep them in a password manager, or ask for a separate file that is excluded
 > from git.
 
-**Account owner for everything below:** shrikanth.2018@gmail.com
+**There are TWO owner accounts, not one.** Verified in each dashboard on
+8 August 2026:
+
+| Account | Owns |
+|---|---|
+| **`1st0nedotin@gmail.com`** | Google Play Console · Cloudflare · Supabase |
+| **`shrikanth.2018@gmail.com`** | Expo / EAS · GitHub |
+
+Both are single points of failure. Print and store the two-factor recovery
+codes for **both**.
+
+Play, Cloudflare and Supabase were confirmed by opening each dashboard;
+EAS by `eas whoami`. **Razorpay, Firebase, Google Maps, Sentry and
+healthchecks.io were not opened** — their rows say so rather than guessing.
 
 ---
 
@@ -24,7 +37,7 @@ Current as of 8 August 2026.
 | Dashboard | https://supabase.com/dashboard/project/wcvqxzqqwcxlcgrjyunf |
 | Project | `1st0ne`, ref `wcvqxzqqwcxlcgrjyunf`, region ap-southeast-1 (Singapore) |
 | Database host | `db.wcvqxzqqwcxlcgrjyunf.supabase.co` (PostgreSQL 17.6) |
-| Login | the account owner email above |
+| Login | `1st0nedotin@gmail.com` |
 | Public key | `EXPO_PUBLIC_SUPABASE_ANON_KEY` — in `.env` and in `eas.json` (safe to publish; it is meant to ship in the app) |
 | Secret key | `SUPABASE_SERVICE_ROLE_KEY` — in **three** places: Supabase → Edge Functions → Secrets; the `app_config` table (key `service_role_key`); and Supabase Vault. **All three must change together.** |
 | Cost | Paid plan (the project is always-on and uses `pg_cron` and `pg_net`) |
@@ -39,7 +52,7 @@ Current as of 8 August 2026.
 | What it does | Card and UPI payments, wallet top-ups, payment links for back-office orders |
 | Without it | No payment except from wallet balance |
 | Dashboard | https://dashboard.razorpay.com |
-| Login | the account owner email above |
+| Login | **not verified — check which of the two accounts** |
 | Public key id | `EXPO_PUBLIC_RAZORPAY_KEY_ID` — in `.env` and in all three `eas.json` build profiles. **Currently a TEST key (`rzp_test_…`)** |
 | Secret | `RAZORPAY_KEY_SECRET` — Supabase → Edge Functions → Secrets (set 20 Apr 2026) |
 | Webhook secret | `RAZORPAY_WEBHOOK_SECRET` — same place (set 18 Apr 2026) |
@@ -82,7 +95,7 @@ No credential — it works from the device token. Nothing to renew.
 | Project | `stone-8a468`, project number `265332383368` |
 | Android app | `com.stone1st.f1`, app id `1:265332383368:android:1beb152ee30c7e4bd3893d` |
 | Credential | `google-services.json`, committed in the repository root |
-| Login | Google account (the owner email) |
+| Login | **not verified — check which of the two accounts** |
 | Cost | Free |
 
 ---
@@ -96,7 +109,7 @@ No credential — it works from the device token. Nothing to renew.
 | Console | https://console.cloud.google.com/google/maps-apis |
 | Credential | `EXPO_PUBLIC_GOOGLE_MAPS_KEY` — in `.env` and all three `eas.json` profiles |
 | How it reaches Android | Injected into `AndroidManifest.xml` at build time by a small plugin in `app.config.js` |
-| Login | Google account (the owner email) |
+| Login | **not verified — check which of the two accounts** |
 | Cost | **Pay-as-you-go with a monthly free allowance. Needs a billing account.** Worth watching once traffic grows |
 
 ⚠️ This key is a spending key. Restrict it in the Google Cloud console to the
@@ -114,7 +127,8 @@ app's package name and the APIs actually used.
 | Organisation | `1stonein` · Project `javascript-react` |
 | Public DSN | `EXPO_PUBLIC_SENTRY_DSN` — in `.env` and in the preview + production `eas.json` profiles (safe to publish) |
 | Write token | `SENTRY_AUTH_TOKEN` — an **EAS secret**, needs the `project:releases` scope. Not in the repository, because it can write to the Sentry organisation |
-| Login | the account owner email |
+| Login | **not verified — check which of the two accounts** |
+| Verified 8 Aug 2026 | Release **1.5.0 (32)** present with **2 source-map artifacts**, sessions arriving, crash-free 100%, zero issues |
 | Cost | Free tier for low volume; paid above it |
 
 To check it is alive: **Admin → Operations → Job Health → Send a test event**,
@@ -146,7 +160,7 @@ The project key is safe to commit — it is write-only by design.
 | Ping URL | `https://hc-ping.com/b9f7803a-453f-452f-bdf9-806c1a6bed06` |
 | Where it is stored | The `app_config` table, key `healthchecks_ping_url` |
 | Dashboard | https://healthchecks.io |
-| Login | the account owner email |
+| Login | **not verified — check which of the two accounts** |
 | Cost | Free tier |
 
 Set up an email or WhatsApp alert on this check — it is the loudest alarm
@@ -163,8 +177,10 @@ available and costs nothing.
 | Dashboard | https://dash.cloudflare.com |
 | Production address | https://app.1stone.in |
 | Preview addresses | `https://<id>.1stone-app.pages.dev` |
-| Deploys when | You push to `main` on GitHub |
-| Login | the account owner email |
+| Deploys when | You push to `main` on GitHub — **automatic deployments confirmed enabled, every deployment to date succeeded** |
+| Pages projects | **TWO**, both wired to `shrikanth2018-stack/F1`: `1stone-app` → app.1stone.in, and `f1` → the marketing site |
+| Account ID | `d1b44fb6bd0fd362241453b43c68d200` |
+| Login | `1st0nedotin@gmail.com` |
 | Cost | Free tier |
 
 The list of web addresses allowed to talk to the backend lives in
@@ -192,9 +208,12 @@ file and redeploying every edge function.**
 | What it does | Distributes the Android app |
 | Without it | No Android releases |
 | Console | https://play.google.com/console |
-| Package | `com.stone1st.f1` |
+| Package | `com.stone1st.f1` · developer account ID `7560855775784977775` |
+| Status | **Draft app.** Production track inactive; 1.5.0 (32) live on the internal-testing track |
+| Store setup | **9 of 11 complete.** Done: privacy policy, data safety, content rating, target audience, ads, sign-in details. Outstanding: app category + contact details, and the store listing |
+| Android developer verification | **already registered** (the Sep 2026 deadline is met) |
 | Credential | A service-account key file referenced by `eas.json` as `./play-store-service-account.json`. **This file is not in the repository** — it must be kept safe outside it |
-| Login | Google account (the owner email) |
+| Login | `1st0nedotin@gmail.com` |
 | Cost | One-off developer registration fee, already paid |
 
 ---
@@ -254,8 +273,10 @@ takes the website down and breaks a link inside the app.
 | Apple Developer (if started) | Annually, US$99 | iOS app removed from sale |
 | Sentry / PostHog / healthchecks / Cloudflare / GitHub | Free tiers today | Nothing, until volume grows |
 
-## If you lose access to the owner email
+## If you lose access to an owner account
 
-Every service above is tied to **shrikanth.2018@gmail.com**. That single account
-is the recovery path for all of them. Two-factor recovery codes for that account
-are worth printing and storing somewhere physical.
+The services split across **two** Google accounts (see the top of this
+document). Losing `1st0nedotin@gmail.com` costs you Play, Cloudflare and
+Supabase — the app store, the website and the entire backend. Losing
+`shrikanth.2018@gmail.com` costs you builds and source control. Print the
+two-factor recovery codes for both and keep them somewhere physical.
