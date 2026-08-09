@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.stone1st.f1",
+      "sha256_cert_fingerprints": [
+        "69:B4:B0:15:F0:C8:E8:B2:F5:DB:1A:19:55:C1:DB:50:CC:AF:07:29:BD:B6:3F:9F:82:2A:C4:48:24:B6:99:F4"
+      ]
+    }
+  }
+]

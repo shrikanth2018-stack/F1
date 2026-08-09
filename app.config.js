@@ -77,6 +77,21 @@ export default ({ config }) => {
     name: '1stOne',
     slug: '1stOne-F1',
     version: '1.5.0',
+    /**
+     * Custom URL scheme. WITHOUT THIS, `1stone://` IS NOT REGISTERED AT ALL.
+     *
+     * Expo only auto-adds the dev-client scheme (`exp+1stone-f1`) when this is
+     * absent, so a production build had exactly one VIEW intent-filter and it
+     * was the development one. ReferralScreen shares
+     * `1stone://referral?code=XXXXX` and RootNavigator has working code to read
+     * it — the link simply never reached the app, because Android did not know
+     * the scheme belonged to us. Referral sharing could not work on any
+     * production install.
+     *
+     * Changing this changes AndroidManifest.xml, so it needs a new build; an
+     * `eas update` cannot deliver it.
+     */
+    scheme: '1stone',
     orientation: 'portrait',
     icon: './assets/icon.png',
     userInterfaceStyle: 'dark',
