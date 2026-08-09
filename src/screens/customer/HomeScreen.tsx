@@ -36,7 +36,6 @@ import { useMenuItems } from '../../hooks/useMenuItems';
 import { useSmartCart } from '../../hooks/useSmartCart';
 import { useEssentialsEnabled } from '../../hooks/useEssentialsEnabled';
 import { useEssentialsCatalog } from '../../hooks/useEssentials';
-import { useEssentialsCartStore } from '../../store/essentialsCartStore';
 import { useCartStore } from '../../store/cartStore';
 import { useUIStore } from '../../store/uiStore';
 import { HomeTabStrip } from './components/HomeTabStrip';
@@ -183,22 +182,21 @@ export function HomeScreen() {
   const removeItem = useCartStore((s) => s.removeItem);
   const cartItems = useCartStore((s) => s.items);
 
-  const essentialsCart = useEssentialsCartStore((s) => s.items);
-  const addEssential = useEssentialsCartStore((s) => s.addItem);
-  const updateEssential = useEssentialsCartStore((s) => s.updateQuantity);
-  const removeEssential = useEssentialsCartStore((s) => s.removeItem);
-
+  // One cart now — food and essentials are the same store, told apart by
+  // item_type. The two id spaces overlap, so every lookup passes both.
   const getItemQty = useCallback(
-    (id: number) => cartItems.find((i) => i.menu_item_id === id)?.quantity ?? 0,
+    (id: number) =>
+      cartItems.find((i) => i.item_id === id && i.item_type === 'food')?.quantity ?? 0,
     [cartItems]
   );
   const getDispatchInfo = useCallback(
-    (id: number) => evaluations.find((e) => e.menu_item_id === id),
+    (id: number) => evaluations.find((e) => e.item_id === id && e.item_type === 'food'),
     [evaluations]
   );
   const getEssentialQty = useCallback(
-    (id: number) => essentialsCart.find((i) => i.essential_item_id === id)?.quantity ?? 0,
-    [essentialsCart]
+    (id: number) =>
+      cartItems.find((i) => i.item_id === id && i.item_type === 'essential')?.quantity ?? 0,
+    [cartItems]
   );
 
   const handleRefresh = useCallback(() => {
@@ -360,9 +358,9 @@ export function HomeScreen() {
                   qty={qty}
                   dispatchLabel={dispatch?.dispatch_label}
                   isLast={itemIdx === section.data.length - 1}
-                  onAdd={() => addItem({ menu_item_id: item.id, cycle_id: item.cycle_id, name: item.name, display_price: item.price })}
-                  onIncrement={() => updateQuantity(item.id, qty + 1)}
-                  onDecrement={() => qty <= 1 ? removeItem(item.id) : updateQuantity(item.id, qty - 1)}
+                  onAdd={() => addItem({ item_id: item.id, item_type: 'food', cycle_id: item.cycle_id, name: item.name, display_price: item.price })}
+                  onIncrement={() => updateQuantity(item.id, 'food', qty + 1)}
+                  onDecrement={() => qty <= 1 ? removeItem(item.id, 'food') : updateQuantity(item.id, 'food', qty - 1)}
                 />
               );
             })}
@@ -404,9 +402,9 @@ export function HomeScreen() {
                     item={item}
                     qty={qty}
                     isLast={itemIdx === section.data.length - 1}
-                    onAdd={() => addEssential({ essential_item_id: item.id, cycle_id: item.cycle_id, name: item.name, display_price: item.price, unit: item.unit })}
-                    onIncrement={() => updateEssential(item.id, qty + 1)}
-                    onDecrement={() => qty <= 1 ? removeEssential(item.id) : updateEssential(item.id, qty - 1)}
+                    onAdd={() => addItem({ item_id: item.id, item_type: 'essential', cycle_id: item.cycle_id, name: item.name, display_price: item.price, unit: item.unit })}
+                    onIncrement={() => updateQuantity(item.id, 'essential', qty + 1)}
+                    onDecrement={() => qty <= 1 ? removeItem(item.id, 'essential') : updateQuantity(item.id, 'essential', qty - 1)}
                   />
                 );
               })}

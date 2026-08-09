@@ -30,7 +30,6 @@ import { useDeliveryCycles } from '../../hooks/useDeliveryCycles';
 import { useCycleDispatch } from '../../hooks/useCycleDispatch';
 import { useEssentialsEnabled } from '../../hooks/useEssentialsEnabled';
 import { useCartStore } from '../../store/cartStore';
-import { useEssentialsCartStore } from '../../store/essentialsCartStore';
 import { formatPriceShort, formatDateShort } from '../../utils/formatters';
 import { formatTime12h } from '../../utils/timeEngine';
 import { istDateStr } from '../../utils/istDate';
@@ -77,8 +76,9 @@ export function PlanDetailScreen({ route, navigation }: any) {
   const { data: mySubs } = useMySubscriptions();
   const { data: cycleDispatch } = useCycleDispatch();
 
-  const setFoodPlan = useCartStore((s) => s.setSinglePlan);
-  const setEssPlan = useEssentialsCartStore((s) => s.setSinglePlan);
+  // One cart holds every plan now — a food plan and an essentials plan are
+  // both just plans, and the server tells them apart by plan_type.
+  const setPlan = useCartStore((s) => s.setSinglePlan);
 
   React.useEffect(() => {
     if (plan) trackPlanViewed(plan.id, plan.plan_name, plan.price);
@@ -127,11 +127,10 @@ export function PlanDetailScreen({ route, navigation }: any) {
       start_date: istDateStr(start),
       plan_item_ids: Array.from(newItemIds),
     };
-    if (planType === 'food') setFoodPlan(cartPlan);
-    else setEssPlan(cartPlan);
+    setPlan(cartPlan);
     // Subscription-only cart view — no popup
     navigation.navigate('Cart', { subscriptionPlanId: plan.id });
-  }, [plan, planType, newItemIds, setFoodPlan, setEssPlan, navigation]);
+  }, [plan, planType, newItemIds, setPlan, navigation]);
 
   const activeSubs: ActiveSubForConflict[] = useMemo(() => {
     if (!mySubs) return [];

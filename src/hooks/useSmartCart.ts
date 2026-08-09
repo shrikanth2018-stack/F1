@@ -1,7 +1,9 @@
 /**
  * 1stOne F1 — useSmartCart
  *
- * Per-item dispatch evaluation for the food cart. The dispatch scenario is
+ * Per-item dispatch evaluation for THE cart — food and essentials alike.
+ * There was a second, identical hook for the essentials cart; one cart needs
+ * one of these. The dispatch scenario is
  * server-derived (see useCycleDispatch / the cycle-dispatch Edge Function) —
  * the device only maps each cart item to its cycle's dispatch info and
  * applies the display label.
@@ -34,7 +36,8 @@ export function useSmartCart(): {
       // over-promises a same-day delivery.
       const scenario = cycleDispatch?.scenario ?? 'B';
       return {
-        menu_item_id: item.menu_item_id,
+        item_id: item.item_id,
+        item_type: item.item_type,
         cycle_id: item.cycle_id,
         scenario,
         dispatch_label: getDispatchLabel(scenario),

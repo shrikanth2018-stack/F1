@@ -25,6 +25,7 @@ import {
   getDispatchScenario,
   scenarioToDate,
   toPaise,
+  cmpDispatch,
   type DispatchScenario,
 } from './dispatch.ts';
 import { loadStoreConfig, type StoreConfig } from './storeConfig.ts';
@@ -51,8 +52,25 @@ export interface OrderItemRow {
   price_at_time: number;
 }
 
+/**
+ * A row's type. Identical vocabulary to `OrderItemRow.item_type`, and that is
+ * the point: after the one-cart merge, an orders row carries the type of the
+ * lines inside it and nothing else. There is no order-wide category left.
+ */
+export type RowType = 'food' | 'essential' | 'subscription';
+
 export interface QuoteGroup {
   cycle_id: number | null;
+  /**
+   * THE INVARIANT: every group is pure. Each one holds lines of exactly one
+   * item_type, so this always equals the item_type of every line in `items`.
+   *
+   * This is what lets a single cart hold food, essentials and plans across
+   * several cycles while the kitchen board, the packing tabs, the vendor
+   * credit trigger and the reports keep working unchanged — none of them ever
+   * meets a row that is two things at once.
+   */
+  order_type: RowType;
   dispatch_date: string;          // YYYY-MM-DD, IST
   scenario: DispatchScenario | null; // null = subscription-purchase group
   items: OrderItemRow[];
@@ -186,9 +204,18 @@ export async function buildAuthoritativeOrder(args: BuildArgs): Promise<BuildRes
     deliveryFee = 0;
   }
 
-  // ── Price + cycle every item from the DB, group by cycle ───
-  type Accum = { cycle_id: number; items: OrderItemRow[]; subtotal: number };
-  const byCycle = new Map<number, Accum>();
+  // ── Price + cycle every item from the DB, group by cycle AND type ───
+  //
+  // Keyed on both, never on cycle alone. Food and essentials SHARE delivery
+  // cycles (cycle 1 is "Breakfast" to food and "Morning" to essentials), so a
+  // cycle-only key would put idli and milk in one row the moment the carts
+  // merged — and a row that is two types at once has no correct answer for
+  // the packing tabs, whose state machine differs per type (essentials skip
+  // the kitchen). Splitting here keeps every row pure at the point of
+  // creation, which is the only place it can be guaranteed.
+  type Accum = { cycle_id: number; order_type: RowType; items: OrderItemRow[]; subtotal: number };
+  const groupKey = (cycleId: number, type: RowType) => `${cycleId}:${type}`;
+  const byCycle = new Map<string, Accum>();
   // Items a vendor has capped for the day. Collected while pricing, checked
   // once the dispatch DATE is known — a cap is per day, and the date only
   // exists after the cutoff rule has run.
@@ -229,13 +256,15 @@ export async function buildAuthoritativeOrder(args: BuildArgs): Promise<BuildRes
       }
       // Explicit Accum annotation — a bare literal here infers items: never[]
       // under strict tsc (type-only; no behavior change).
-      const g: Accum = byCycle.get(itemCycleId) ?? { cycle_id: itemCycleId, items: [], subtotal: 0 };
+      const fKey = groupKey(itemCycleId, 'food');
+      const g: Accum = byCycle.get(fKey)
+        ?? { cycle_id: itemCycleId, order_type: 'food', items: [], subtotal: 0 };
       g.items.push({
         item_id: m.id, item_type: 'food', item_name: m.name,
         quantity: inp.quantity, price_at_time: m.price,
       });
       g.subtotal += m.price * inp.quantity;
-      byCycle.set(itemCycleId, g);
+      byCycle.set(fKey, g);
     }
   }
 
@@ -295,13 +324,15 @@ export async function buildAuthoritativeOrder(args: BuildArgs): Promise<BuildRes
           error: `"${e.name}" is not available for this delivery address.`,
         };
       }
-      const g: Accum = byCycle.get(e.cycle_id) ?? { cycle_id: e.cycle_id, items: [], subtotal: 0 };
+      const eKey = groupKey(e.cycle_id, 'essential');
+      const g: Accum = byCycle.get(eKey)
+        ?? { cycle_id: e.cycle_id, order_type: 'essential', items: [], subtotal: 0 };
       g.items.push({
         item_id: e.id, item_type: 'essential', item_name: e.name,
         quantity: inp.quantity, price_at_time: e.price,
       });
       g.subtotal += e.price * inp.quantity;
-      byCycle.set(e.cycle_id, g);
+      byCycle.set(eKey, g);
       if (e.daily_cap != null) {
         cappedItems.set(e.id, { name: e.name, cap: Number(e.daily_cap), cycleId: e.cycle_id });
       }
@@ -309,7 +340,9 @@ export async function buildAuthoritativeOrder(args: BuildArgs): Promise<BuildRes
   }
 
   // ── Derive each cycle's dispatch date (server time + cutoff) ─
-  const cycleIds = [...byCycle.keys()];
+  // From the accumulators, not the map keys — the keys are cycle+type now, so
+  // one cycle can appear twice and must still be looked up once.
+  const cycleIds = [...new Set([...byCycle.values()].map((a) => a.cycle_id))];
   const cycleTiming = new Map<number, { cutoff_time: string; delivery_start: string }>();
   if (cycleIds.length > 0) {
     const { data: cycles, error } = await supabase
@@ -327,8 +360,8 @@ export async function buildAuthoritativeOrder(args: BuildArgs): Promise<BuildRes
   const groups: QuoteGroup[] = [];
   let hasScenarioC = false;
 
-  for (const [cycleId, accum] of byCycle) {
-    const timing = cycleTiming.get(cycleId);
+  for (const accum of byCycle.values()) {
+    const timing = cycleTiming.get(accum.cycle_id);
     if (!timing) {
       return { ok: false, status: 400, error: `A delivery cycle in your cart is no longer available.` };
     }
@@ -336,7 +369,8 @@ export async function buildAuthoritativeOrder(args: BuildArgs): Promise<BuildRes
     if (scenario === 'C') hasScenarioC = true;
     const tax = inclusiveTax(accum.subtotal);
     groups.push({
-      cycle_id: cycleId,
+      cycle_id: accum.cycle_id,
+      order_type: accum.order_type,
       dispatch_date: scenarioToDate(scenario, clock),
       scenario,
       items: accum.items,
@@ -415,28 +449,33 @@ export async function buildAuthoritativeOrder(args: BuildArgs): Promise<BuildRes
       }
     }
 
-    // One subscription-purchase group — revenue record, dispatched today.
-    const subItems: OrderItemRow[] = [];
-    let subSubtotal = 0;
+    // ONE PURCHASE ROW PER PLAN — revenue record, no fulfilment.
+    //
+    // Not one combined row for all plans: a customer who buys two plans and
+    // later cancels one should be a per-row refund, the same operation as
+    // cancelling a cycle's food, rather than surgery on line items inside a
+    // shared row. Per-plan revenue then also reads straight off the row.
+    //
+    // cycle_id stays null because nothing is delivered by this row. The
+    // plan's own daily deliveries are created later by the manifest, which
+    // stamps them with the PLAN's cycle.
     for (const plan of loadedPlans) {
-      subSubtotal += plan.price;
-      subItems.push({
-        item_id: plan.id, item_type: 'subscription', item_name: plan.plan_name,
-        quantity: 1, price_at_time: plan.price,
+      groups.push({
+        cycle_id: null,
+        order_type: 'subscription',
+        dispatch_date: clock.todayStr,
+        scenario: null,
+        items: [{
+          item_id: plan.id, item_type: 'subscription', item_name: plan.plan_name,
+          quantity: 1, price_at_time: plan.price,
+        }],
+        subtotal: round2(plan.price),
+        tax_amount: inclusiveTax(plan.price),
+        delivery_fee: 0,
+        total_amount: 0,      // finalised below
+        group_total_paise: 0, // finalised below
       });
     }
-    const subTax = inclusiveTax(subSubtotal);
-    groups.push({
-      cycle_id: null,
-      dispatch_date: clock.todayStr,
-      scenario: null,
-      items: subItems,
-      subtotal: round2(subSubtotal),
-      tax_amount: subTax,
-      delivery_fee: 0,
-      total_amount: 0,
-      group_total_paise: 0,
-    });
   }
 
   // ── Daily caps ─────────────────────────────────────────────
@@ -485,6 +524,16 @@ export async function buildAuthoritativeOrder(args: BuildArgs): Promise<BuildRes
   }
 
   // ── Money: delivery fee once, on the earliest-dispatch group ─
+  //
+  // A SUBSCRIPTION-PURCHASE GROUP IS ELIGIBLE FOR THE FEE, DELIBERATELY.
+  // It looks wrong — the row delivers nothing — but the plan's daily
+  // dispatch rows are each stamped with a zero fee and the explicit note
+  // "delivery fee was paid at original purchase" (generate_daily_manifest).
+  // The purchase is where the plan's delivery fee is collected, once, for
+  // the whole run. Excluding it here would silently stop collecting it.
+  //
+  // The fee is charged exactly once per checkout either way; which group
+  // carries it only decides attribution.
   let earliestIdx = 0;
   for (let i = 1; i < groups.length; i++) {
     if (groups[i].dispatch_date < groups[earliestIdx].dispatch_date) earliestIdx = i;
@@ -503,6 +552,15 @@ export async function buildAuthoritativeOrder(args: BuildArgs): Promise<BuildRes
   }
   const grandTotal = round2(groups.reduce((s, g) => s + g.total_amount, 0));
 
+  /**
+   * Order-wide type — RETAINED ONLY AS A FALLBACK.
+   *
+   * Every group now carries its own `order_type`, and that is what gets
+   * written to each row. This value is still passed to `place_order_atomic`
+   * as `p_order_type`, where it is only reached by a caller that sends no
+   * per-group type. Nothing should depend on it; do not reintroduce reads of
+   * it, or the order-wide category this surgery removed comes straight back.
+   */
   const hasFood =
     groups.some((g) => g.items.some((it) => it.item_type === 'food')) ||
     loadedPlans.some((p) => (p.plan_type ?? 'food') === 'food');
@@ -524,13 +582,10 @@ export async function buildAuthoritativeOrder(args: BuildArgs): Promise<BuildRes
           dispatch_date: g.dispatch_date,
           group_total_paise: g.group_total_paise,
         }))
-        .sort((a, b) => {
-          // (cycle_id, dispatch_date) — nulls last
-          if (a.cycle_id == null && b.cycle_id != null) return 1;
-          if (a.cycle_id != null && b.cycle_id == null) return -1;
-          if (a.cycle_id !== b.cycle_id) return (a.cycle_id ?? 0) - (b.cycle_id ?? 0);
-          return a.dispatch_date < b.dispatch_date ? -1 : a.dispatch_date > b.dispatch_date ? 1 : 0;
-        }),
+        // Sorted by the SAME comparator the drift check uses. See cmpDispatch
+        // in dispatch.ts for why the paise tiebreak is not optional now that
+        // two groups can share a cycle and a date.
+        .sort(cmpDispatch),
       has_scenario_c: hasScenarioC,
       storm_mode: stormMode,
       serviceable,
@@ -553,6 +608,10 @@ export function curateQuote(o: BuiltOrder) {
   return {
     groups: o.groups.map((g) => ({
       cycle_id: g.cycle_id,
+      // The cart renders one section per group, and a section headed
+      // "Morning" needs to know whether it is the food half or the
+      // essentials half of that cycle.
+      order_type: g.order_type,
       dispatch_date: g.dispatch_date,
       scenario: g.scenario,
       items: g.items,

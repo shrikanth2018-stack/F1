@@ -15,17 +15,18 @@
  *   Orders → number of ORDER GROUPS still in flight. Grouped, because one
  *            checkout spanning breakfast and lunch is one order to the
  *            customer and two rows in the table.
- *   Plans  → "2 of 30", the delivery this plan is on out of its length.
- *            Neither the number of plans ("1" says nothing) nor a bare meals
- *            -left count, which cannot say whether you are near the start or
- *            the end of a plan.
+ *   Plans  → number of ACTIVE PLANS. A progress fraction ("2/30") was tried
+ *            and dropped: it can only ever describe one plan, so the moment a
+ *            customer holds two it is quietly reporting the wrong one. How
+ *            far through each plan you are belongs in the panel, where there
+ *            is room to say it once per plan.
  *
  * Tapping opens a translucent panel over the list. The panel is intentionally
  * read-mostly: it answers "what is coming and when", and hands off to the
  * screens that already do the work well rather than rebuilding skip/pause here.
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -36,16 +37,15 @@ import {
   Dimensions,
   type LayoutChangeEvent,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Theme } from '../../../theme';
 import { ThemedText } from '../../../components/ThemedText';
-import { useMyOrders, useOrderGroup } from '../../../hooks/useOrders';
+import { useActiveOrders, type OrderWithItems } from '../../../hooks/useOrders';
 import { useMySubscriptions } from '../../../hooks/useSubscriptions';
 import { useDeliveryCycles } from '../../../hooks/useDeliveryCycles';
 import { subscriptionDaysRemaining } from '../../../utils/subscriptionMath';
 import { formatDateOrdinalShort } from '../../../utils/formatters';
 import { formatTime12h } from '../../../utils/timeEngine';
-import type { Order } from '../../../types';
 
 /** Statuses that mean the order is finished and no longer "in flight". */
 const TERMINAL = new Set(['Delivered', 'Cancelled', 'Failed']);
@@ -66,9 +66,16 @@ export function HomeRails() {
   // screen. Measured rather than assumed — the rails size to their content.
   const [railY, setRailY] = useState<{ orders: number; subs: number }>({ orders: 0, subs: 0 });
 
-  // First page of the customer's orders is enough: anything still in flight is
-  // by definition recent, and this query is already warm from My Orders.
-  const { data: orderPages } = useMyOrders();
+  // The in-flight set, queried directly — NOT the first page of history.
+  // Deriving it from a page under-counted the moment a customer had more
+  // than a page of rows, which one cart reaches twice as fast (a row per
+  // cycle AND per type). See useActiveOrders.
+  //
+  // Refetch on focus, because this is the one surface showing live state:
+  // place an order or have the kitchen move it on, come back to Home, and
+  // the badge must not still be showing what it loaded at mount.
+  const { data: activeRows, refetch: refetchOrders } = useActiveOrders();
+  useFocusEffect(useCallback(() => { refetchOrders(); }, [refetchOrders]));
   const { data: subs } = useMySubscriptions();
   const { data: cycles } = useDeliveryCycles();
 
@@ -97,9 +104,12 @@ export function HomeRails() {
    *   purchase group carries a NULL cycle, so that is a safe test.
    */
   const activeGroups = useMemo(() => {
-    const rows: Order[] = (orderPages?.pages ?? []).flat() as Order[];
-    const byGroup = new Map<string, Order[]>();
+    const rows: OrderWithItems[] = activeRows ?? [];
+    const byGroup = new Map<string, OrderWithItems[]>();
     for (const o of rows) {
+      // The query already excludes both, but keep the guards: they are the
+      // definition of what this rail counts, and a future change to the
+      // query should have to argue with them.
       if (TERMINAL.has(o.status ?? '')) continue;
       if (o.cycle_id == null) continue;
       const key = String(o.order_group_id ?? o.id);
@@ -117,7 +127,7 @@ export function HomeRails() {
       .sort((a, b) =>
         String(a.next.dispatch_date).localeCompare(String(b.next.dispatch_date)),
       );
-  }, [orderPages]);
+  }, [activeRows]);
 
   /**
    * The one order the customer is actually waiting on. The panel shows THIS,
@@ -125,7 +135,10 @@ export function HomeRails() {
    * answer, and a list of near-identical rows answered it badly.
    */
   const nextGroup = activeGroups[0] ?? null;
-  const { data: nextRows } = useOrderGroup(Number(nextGroup?.next.id ?? 0));
+  // Items already came back with the rows — no second round trip, and no
+  // window where the count and the panel disagree because two queries
+  // refreshed at different moments.
+  const nextRows = nextGroup?.rows ?? [];
 
   const activeSubs = useMemo(
     () => (subs ?? []).filter((s: any) => s.is_active),
@@ -141,24 +154,6 @@ export function HomeRails() {
       ),
     [activeSubs],
   );
-
-  /**
-   * "2 of 30" — the delivery this plan is on, out of the plan's length. A bare
-   * meals-left number could not say whether someone was near the start or the
-   * end of a plan, which is the thing worth glancing at.
-   *
-   * Read off the FIRST active plan. Almost everyone has one; with two, the
-   * badge follows the first and the panel lists them all.
-   */
-  const planProgress = useMemo(() => {
-    const first = activeSubs[0];
-    if (!first) return '';
-    const plan = (first as any).subscription_plans ?? {};
-    const total = plan.duration_days ?? 0;
-    if (!total) return String(mealsLeft);
-    const done = Math.max(0, total - subscriptionDaysRemaining(plan, first));
-    return `${done} of ${total}`;
-  }, [activeSubs, mealsLeft]);
 
   const showOrders = activeGroups.length > 0;
   const showSubs = activeSubs.length > 0 && mealsLeft > 0;
@@ -200,7 +195,7 @@ export function HomeRails() {
         {showSubs && (
           <Rail
             label="Plans"
-            badgeText={planProgress}
+            badgeText={String(activeSubs.length)}
             badgeBg={Theme.colors.text.accent}
             tint={Theme.colors.text.accent}
             showBadge={open !== 'subs'}
@@ -242,7 +237,14 @@ export function HomeRails() {
                         this for — everything below it is detail. */}
                     {nextGroup && (
                       <ThemedText variant="small" color="mint" style={styles.statusFirst}>
-                        {nextGroup.next.status}
+                        {/* EVERY distinct status in the order, not the first
+                            row's. One checkout is now several rows that move
+                            independently — the food goes through the kitchen
+                            while the essentials are packed straight away — so
+                            a single status was reporting one part of the
+                            order as though it were the whole thing. */}
+                        {[...new Set(nextRows.map((r) => r.status))].join(' · ')
+                          || nextGroup.next.status}
                       </ThemedText>
                     )}
                     {(() => {
@@ -262,18 +264,32 @@ export function HomeRails() {
                       );
                     })()}
                     <ScrollView style={styles.panelScroll} showsVerticalScrollIndicator={false}>
-                      {(nextRows ?? [])
-                        .flatMap((r) => r.order_items ?? [])
-                        .map((it: any) => (
-                          <View key={it.id} style={styles.itemLine}>
-                            <ThemedText variant="body" color="primary" style={styles.itemName}>
-                              {it.item_name}
+                      {/* Grouped by ROW, not flattened. A row is one delivery
+                          with its own status, and the food and the essentials
+                          of the same order move at different speeds — the
+                          flattened list showed six items under one status
+                          that was true of only some of them. The per-row
+                          status only appears when there is more than one, so
+                          a single-delivery order reads exactly as before. */}
+                      {nextRows.map((row) => (
+                        <View key={row.id}>
+                          {nextRows.length > 1 && (
+                            <ThemedText variant="micro" color="mint" style={styles.rowStatus}>
+                              {row.status}
                             </ThemedText>
-                            <ThemedText variant="body" color="muted">
-                              {'\u00d7'}{it.quantity}
-                            </ThemedText>
-                          </View>
-                        ))}
+                          )}
+                          {(row.order_items ?? []).map((it: any) => (
+                            <View key={it.id} style={styles.itemLine}>
+                              <ThemedText variant="body" color="primary" style={styles.itemName}>
+                                {it.item_name}
+                              </ThemedText>
+                              <ThemedText variant="body" color="muted">
+                                {'\u00d7'}{it.quantity}
+                              </ThemedText>
+                            </View>
+                          ))}
+                        </View>
+                      ))}
                     </ScrollView>
 
                     {/* No count here — the rail's own badge already carries it,
@@ -409,7 +425,11 @@ function PanelAction({ label, onPress }: { label: string; onPress: () => void })
 const RAIL_W = 116;
 const RAIL_H = 34;
 /** Negative leans the near (left) end DOWN and the far end UP. */
-const RAIL_TILT = '-13deg';
+const RAIL_TILT_DEG = -13;
+const RAIL_TILT = `${RAIL_TILT_DEG}deg`;
+/** Cancels the lean for children that must stay level. Derived, not typed
+ *  again, so the two can never drift apart. */
+const RAIL_UNTILT = `${-RAIL_TILT_DEG}deg`;
 const RAIL_BLEED = 34;
 
 const styles = StyleSheet.create({
@@ -450,8 +470,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     transform: [{ rotate: RAIL_TILT }],
   },
-  /** Top-LEFT, the only corner that hangs over the screen rather than off it:
-   *  the rail is flush to the right edge. Mirrors the cart badge's geometry. */
+  /**
+   * On the near end of the bar — the end that hangs over the screen rather
+   * than off its edge.
+   *
+   * Counter-rotated by exactly the bar's lean. The badge is a child, so it
+   * inherits the rotation, and a tilted number reads as a rendering fault
+   * rather than as a decision. The circle is symmetric, so only the digits
+   * benefit.
+   */
   railBadge: {
     position: 'absolute',
     top: -8,
@@ -459,10 +486,10 @@ const styles = StyleSheet.create({
     minWidth: 20,
     height: 20,
     borderRadius: 10,
-    // Wider than the cart's: this one has to hold "2 of 30", not just a digit.
-    paddingHorizontal: 7,
+    paddingHorizontal: 5,
     alignItems: 'center',
     justifyContent: 'center',
+    transform: [{ rotate: RAIL_UNTILT }],
   },
   railBadgeText: {
     fontFamily: Theme.typography.fontFamily,
@@ -474,7 +501,7 @@ const styles = StyleSheet.create({
   // with readable text is the better trade.
   railLabel: {
     fontFamily: Theme.typography.fontFamily,
-    fontSize: Theme.typography.sizes.micro - 2,
+    fontSize: Theme.typography.sizes.micro - 1,
     marginTop: 1,
     textAlign: 'center',
   },
@@ -534,6 +561,7 @@ const styles = StyleSheet.create({
     borderTopColor: Theme.colors.layout.divider,
   },
   itemName: { flex: 1, marginRight: Theme.spacing.sm },
+  rowStatus: { marginTop: Theme.spacing.sm, letterSpacing: 0.3 },
   /** Sits above the title, so it needs no rule of its own. */
   statusFirst: { paddingBottom: 3 },
   panelAction: {

@@ -109,15 +109,39 @@ export interface DriftDispatch {
   group_total_paise: number;
 }
 
-/** Sort comparator for the dispatch tuple — (cycle_id, dispatch_date), nulls last. */
+/**
+ * Sort comparator for the dispatch tuple — (cycle_id, dispatch_date,
+ * group_total_paise), nulls last.
+ *
+ * THE PAISE TIEBREAK IS LICENSED BY THE DRIFT CHECK, NOT BY TASTE.
+ * Since one cart can hold food and essentials in the SAME cycle, two groups
+ * now legitimately share (cycle_id, dispatch_date). Without a third key the
+ * comparator is a partial order, and `driftedFields` — which sorts both the
+ * server's fresh tuple and the client's echo, then compares them element by
+ * element — would be relying on sort stability and on the client having
+ * echoed the groups in the order the server first produced them. If those
+ * ever disagreed, two tied entries would be compared against each other's
+ * totals and the order would be refused with a 409 the customer could not
+ * clear by retrying.
+ *
+ * Paise makes it a total order for every case that matters. Two groups with
+ * the same cycle, date AND total are indistinguishable to the comparison
+ * that follows, so their relative order genuinely cannot change the verdict.
+ *
+ * Widening the tuple itself would have been the other fix, but that changes
+ * the client payload — and `place-order`'s payload is not backward
+ * compatible, so it would force the app and the function to ship together.
+ * This does not.
+ */
 export function cmpDispatch(
-  a: { cycle_id: number | null; dispatch_date: string },
-  b: { cycle_id: number | null; dispatch_date: string },
+  a: { cycle_id: number | null; dispatch_date: string; group_total_paise?: number },
+  b: { cycle_id: number | null; dispatch_date: string; group_total_paise?: number },
 ): number {
   if (a.cycle_id == null && b.cycle_id != null) return 1;
   if (a.cycle_id != null && b.cycle_id == null) return -1;
   if (a.cycle_id !== b.cycle_id) return (a.cycle_id ?? 0) - (b.cycle_id ?? 0);
-  return a.dispatch_date < b.dispatch_date ? -1 : a.dispatch_date > b.dispatch_date ? 1 : 0;
+  if (a.dispatch_date !== b.dispatch_date) return a.dispatch_date < b.dispatch_date ? -1 : 1;
+  return (a.group_total_paise ?? 0) - (b.group_total_paise ?? 0);
 }
 
 /**

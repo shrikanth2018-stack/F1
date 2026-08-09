@@ -54,18 +54,14 @@ jest.mock('@/hooks/useAuth', () => ({
 }));
 
 // Zustand stores are read with selectors, so the mock has to accept one.
-const mockFoodCart = {
-  items: [{ menu_item_id: 1, cycle_id: 3, name: 'Chapati Roll', display_price: 50, quantity: 2 }],
+const mockCart: { items: any[]; plans: unknown[]; clearCart: jest.Mock; clearPlans: jest.Mock } = {
+  items: [{ item_id: 1, item_type: 'food', cycle_id: 3, name: 'Chapati Roll', display_price: 50, quantity: 2 }] as any[],
   plans: [] as unknown[],
   clearCart: jest.fn(),
   clearPlans: jest.fn(),
 };
 jest.mock('@/store/cartStore', () => ({
-  useCartStore: (sel: (s: unknown) => unknown) => sel(mockFoodCart),
-}));
-const mockEssCart = { items: [], plans: [], clearCart: jest.fn(), clearPlans: jest.fn() };
-jest.mock('@/store/essentialsCartStore', () => ({
-  useEssentialsCartStore: (sel: (s: unknown) => unknown) => sel(mockEssCart),
+  useCartStore: (sel: (s: unknown) => unknown) => sel(mockCart),
 }));
 jest.mock('@/store/uiStore', () => ({
   useUIStore: (sel: (s: unknown) => unknown) => sel({ setGlobalLoading: jest.fn() }),
@@ -103,7 +99,7 @@ const open = () => {
   const client = createTestQueryClient();
   return render(
     <QueryClientProvider client={client}>
-      <CheckoutScreen navigation={{ navigate: jest.fn(), goBack: jest.fn(), popToTop: jest.fn() }} route={{ params: { cartType: 'food' } }} />
+      <CheckoutScreen navigation={{ navigate: jest.fn(), goBack: jest.fn(), popToTop: jest.fn() }} route={{ params: {} }} />
     </QueryClientProvider>,
   );
 };
@@ -114,6 +110,10 @@ beforeEach(() => {
   mockQuoteState = { isLoading: false, isError: false, error: null };
   mockWallet = 5000;
   mockEssentialsEnabled = true;
+  // The cart is mutated by the essentials-gate test, so reset it per test.
+  mockCart.items = [
+    { item_id: 1, item_type: 'food', cycle_id: 3, name: 'Chapati Roll', display_price: 50, quantity: 2 },
+  ];
 });
 
 describe('CheckoutScreen — it displays the server’s quote, it does not compute one', () => {
@@ -153,14 +153,19 @@ describe('CheckoutScreen — it displays the server’s quote, it does not compu
     expect(screen.getByRole('button', { name: /Pay/ }).props.accessibilityState.disabled).toBe(true);
   });
 
-  it('refuses an essentials checkout when the module is switched off', () => {
+  // With one cart the gate can no longer key off a route param — it has to
+  // read what the cart actually holds.
+  it('refuses checkout when the cart holds essentials and the module is off', () => {
     mockEssentialsEnabled = false;
+    mockCart.items = [
+      { item_id: 9, item_type: 'essential', cycle_id: 3, name: 'Milk 500ml', display_price: 26, quantity: 1 },
+    ];
     const client = createTestQueryClient();
     render(
       <QueryClientProvider client={client}>
         <CheckoutScreen
           navigation={{ navigate: jest.fn(), goBack: jest.fn(), popToTop: jest.fn() }}
-          route={{ params: { cartType: 'essentials' } }}
+          route={{ params: {} }}
         />
       </QueryClientProvider>,
     );

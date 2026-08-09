@@ -364,6 +364,16 @@ Deno.serve(async (req: Request) => {
       p_branch_id: order.branch_id,
       p_groups: [{
         cycle_id: Number(cycle_id),
+        // THE ONE PLACE A ROW MAY HOLD MORE THAN ONE ITEM TYPE, and it is
+        // deliberate: a back-office bulk order is ONE delivery on one
+        // admin-chosen cycle, which is why every line is collapsed above and
+        // the fee applies once. The customer path never does this — see
+        // orderBuild's cycle+type grouping.
+        //
+        // Stated explicitly rather than left to place_order_atomic's
+        // p_order_type fallback, so this row's type is a decision in the
+        // code and not a leftover.
+        order_type: order.order_type,
         dispatch_date: dispatchDate,
         total_amount: totalAmount,
         tax_amount: taxAmount,

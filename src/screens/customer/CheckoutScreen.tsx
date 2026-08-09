@@ -33,7 +33,6 @@ import { DispatchBadge } from '../../components/DispatchBadge';
 import { useQueryClient } from '@tanstack/react-query';
 import { QUERY_KEYS } from '../../utils/constants';
 import { useCartStore } from '../../store/cartStore';
-import { useEssentialsCartStore } from '../../store/essentialsCartStore';
 import { useUIStore } from '../../store/uiStore';
 import { useAddresses } from '../../hooks/useAddresses';
 import { useWalletBalance } from '../../hooks/useWallet';
@@ -52,41 +51,31 @@ import { captureError } from '../../utils/sentry';
 type PaymentChoice = 'razorpay' | 'wallet';
 
 export function CheckoutScreen({ navigation, route }: any) {
-  const cartType: 'food' | 'essentials' = route?.params?.cartType ?? 'food';
   const subscriptionPlanId: number | undefined = route?.params?.subscriptionPlanId;
   const isSubscriptionOnly = subscriptionPlanId != null;
   const { session } = useAuth();
-  // Defense-in-depth: even if CartScreen / PlanDetail somehow leak the user
-  // through to Checkout with an essentials payload while the module is
-  // disabled, refuse to load the checkout. Past essentials orders / subs
-  // continue to live in My Orders unaffected.
+  // Defense-in-depth: if the module is switched off mid-session, refuse to
+  // check out a cart that still holds essentials. Past essentials orders and
+  // subs continue to live in My Orders unaffected.
   const essentialsEnabled = useEssentialsEnabled();
-  const essentialsBlocked = !essentialsEnabled && cartType === 'essentials';
 
-  const foodItems = useCartStore((s) => s.items);
-  const foodPlans = useCartStore((s) => s.plans);
-  const clearFood = useCartStore((s) => s.clearCart);
-  const clearFoodPlans = useCartStore((s) => s.clearPlans);
+  const cartItems = useCartStore((s) => s.items);
+  const cartPlans = useCartStore((s) => s.plans);
+  const clearCart = useCartStore((s) => s.clearCart);
+  const clearCartPlans = useCartStore((s) => s.clearPlans);
 
-  const essItems = useEssentialsCartStore((s) => s.items);
-  const essPlans = useEssentialsCartStore((s) => s.plans);
-  const clearEss = useEssentialsCartStore((s) => s.clearCart);
-  const clearEssPlans = useEssentialsCartStore((s) => s.clearPlans);
+  const essentialsBlocked =
+    !essentialsEnabled && cartItems.some((i) => i.item_type === 'essential');
 
   // In subscription-only mode, ignore items completely; only the one plan flows through.
   const subPlan = isSubscriptionOnly
-    ? (foodPlans.find((p) => p.plan_id === subscriptionPlanId)
-       ?? essPlans.find((p) => p.plan_id === subscriptionPlanId)
-       ?? null)
+    ? (cartPlans.find((p) => p.plan_id === subscriptionPlanId) ?? null)
     : null;
 
-  const activeItems = isSubscriptionOnly ? [] : (cartType === 'food' ? foodItems : essItems);
+  const activeItems = isSubscriptionOnly ? [] : cartItems;
   const activePlans = useMemo(
-    () =>
-      isSubscriptionOnly
-        ? (subPlan ? [subPlan] : [])
-        : (cartType === 'food' ? foodPlans : essPlans),
-    [isSubscriptionOnly, subPlan, cartType, foodPlans, essPlans],
+    () => (isSubscriptionOnly ? (subPlan ? [subPlan] : []) : cartPlans),
+    [isSubscriptionOnly, subPlan, cartPlans],
   );
   const totalCartCount = activeItems.length + activePlans.length;
 
@@ -137,10 +126,12 @@ export function CheckoutScreen({ navigation, route }: any) {
   // Re-fetches whenever the selected address changes (the fee depends on it).
   const quoteItems = useMemo<QuoteItemInput[]>(() => {
     if (isSubscriptionOnly) return [];
-    return cartType === 'food'
-      ? foodItems.map((i) => ({ item_id: i.menu_item_id, item_type: 'food' as const, quantity: i.quantity }))
-      : essItems.map((i) => ({ item_id: i.essential_item_id, item_type: 'essential' as const, quantity: i.quantity }));
-  }, [isSubscriptionOnly, cartType, foodItems, essItems]);
+    // One flat array, food and essentials together — which is what
+    // buildAuthoritativeOrder has always accepted.
+    return cartItems.map((i) => ({
+      item_id: i.item_id, item_type: i.item_type, quantity: i.quantity,
+    }));
+  }, [isSubscriptionOnly, cartItems]);
 
   const quotePlans = useMemo(
     () => activePlans.map((p) => ({ plan_id: p.plan_id, start_date: p.start_date })),
@@ -369,15 +360,11 @@ export function CheckoutScreen({ navigation, route }: any) {
         queryClient.invalidateQueries({ queryKey: QUERY_KEYS.SUBSCRIPTIONS });
       }
 
-      trackOrderPlaced(order.id ?? '', order.total_amount ?? grandTotal, paymentMethod, cartType);
+      trackOrderPlaced(order.id ?? '', order.total_amount ?? grandTotal, paymentMethod);
       if (isSubscriptionOnly && subPlan) {
         trackSubscribed(subPlan.plan_id, subPlan.plan_name, paymentMethod);
       }
-      if (isSubscriptionOnly) {
-        if (cartType === 'food') clearFoodPlans(); else clearEssPlans();
-      } else {
-        if (cartType === 'food') clearFood(); else clearEss();
-      }
+      if (isSubscriptionOnly) clearCartPlans(); else clearCart();
       idempotencyKeyRef.current = newIdempotencyKey();
       setGlobalLoading(false);
 
@@ -405,12 +392,11 @@ export function CheckoutScreen({ navigation, route }: any) {
       }
     } catch (err) {
       const msg = getErrorMessage(err);
-      trackOrderFailed(msg, cartType);
+      trackOrderFailed(msg);
       // Money-path visibility (health report #3): place-order failures were
       // previously Alert-only — PostHog got a counter, Sentry got nothing.
       captureError(err instanceof Error ? err : new Error(msg), {
         stage: 'place_order',
-        cart_type: cartType,
         payment_method: paymentMethod,
       });
       infoDialog('Order Failed', msg);
@@ -422,8 +408,8 @@ export function CheckoutScreen({ navigation, route }: any) {
   }, [
     quote, quoteItems, quotePlans, activePlans, subPlan, isSubscriptionOnly,
     selectedAddressId, paymentMethod, session, refetchQuote,
-    clearFood, clearEss, clearFoodPlans, clearEssPlans,
-    navigation, setGlobalLoading, queryClient, cartType, totalCartCount, grandTotal,
+    clearCart, clearCartPlans,
+    navigation, setGlobalLoading, queryClient, totalCartCount, grandTotal,
   ]);
 
   if (essentialsBlocked) {
@@ -472,7 +458,7 @@ export function CheckoutScreen({ navigation, route }: any) {
                   // the cart — its items belong to the previous branch's catalog.
                   const currentBranch = addresses?.find((a) => a.id === selectedAddressId)?.branch_id ?? null;
                   const nextBranch = addr.branch_id ?? null;
-                  const cartHasItems = (foodItems.length + foodPlans.length + essItems.length + essPlans.length) > 0;
+                  const cartHasItems = (cartItems.length + cartPlans.length) > 0;
                   if (
                     selectedAddressId != null &&
                     currentBranch != null &&
@@ -488,8 +474,7 @@ export function CheckoutScreen({ navigation, route }: any) {
                       destructive: true,
                     });
                     if (!ok) return;
-                    clearFood();
-                    clearEss();
+                    clearCart();
                   }
                   setSelectedAddressId(addr.id);
                 }}
@@ -518,10 +503,12 @@ export function CheckoutScreen({ navigation, route }: any) {
             ORDER SUMMARY
           </ThemedText>
 
-          {!isSubscriptionOnly && cartType === 'food' && foodItems.map((item) => {
-            const dispatch = evaluations.find((e) => e.menu_item_id === item.menu_item_id);
+          {!isSubscriptionOnly && cartItems.map((item) => {
+            const dispatch = evaluations.find(
+              (e) => e.item_id === item.item_id && e.item_type === item.item_type,
+            );
             return (
-              <View key={item.menu_item_id} style={styles.summaryRow}>
+              <View key={`${item.item_type}-${item.item_id}`} style={styles.summaryRow}>
                 <View style={styles.summaryLeft}>
                   <ThemedText variant="body" color="primary">
                     {item.name} x{item.quantity}
@@ -544,16 +531,6 @@ export function CheckoutScreen({ navigation, route }: any) {
             );
           })}
 
-          {!isSubscriptionOnly && cartType === 'essentials' && essItems.map((item) => (
-            <View key={item.essential_item_id} style={styles.summaryRow}>
-              <ThemedText variant="body" color="primary">
-                {item.name} x{item.quantity}
-              </ThemedText>
-              <ThemedText variant="body" color="subtitle">
-                {formatPriceShort(item.display_price * item.quantity)}
-              </ThemedText>
-            </View>
-          ))}
 
           {activePlans.map((p) => (
             <View key={`plan-${p.plan_id}`} style={styles.summaryRow}>

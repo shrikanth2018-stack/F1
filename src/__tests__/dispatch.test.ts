@@ -92,6 +92,42 @@ describe('cmpDispatch', () => {
       '1:2026-05-17', '1:2026-05-18', '2:2026-05-17', 'null:2026-05-17',
     ]);
   });
+  /**
+   * ONE CART MAKES THIS A TOTAL ORDER, NOT A NICETY.
+   *
+   * Food and essentials share delivery cycles, so after the merge two groups
+   * legitimately carry the same (cycle_id, dispatch_date). driftedFields
+   * sorts the server's fresh tuple and the client's echo and compares them
+   * element by element — with only two keys, two tied entries could pair up
+   * against each other's totals and refuse a perfectly good order with a 409
+   * the customer cannot clear by retrying.
+   */
+  it('breaks a cycle+date tie on paise, so the order is total', () => {
+    const tied = [
+      { cycle_id: 2, dispatch_date: '2026-05-17', group_total_paise: 5250 },
+      { cycle_id: 2, dispatch_date: '2026-05-17', group_total_paise: 2625 },
+    ];
+    // Whichever order they arrive in, they sort the same way.
+    const a = [...tied].sort(cmpDispatch).map((r) => r.group_total_paise);
+    const b = [...tied].reverse().sort(cmpDispatch).map((r) => r.group_total_paise);
+    expect(a).toEqual([2625, 5250]);
+    expect(b).toEqual([2625, 5250]);
+  });
+
+  it('does not report drift when the client echoes tied groups in the other order', () => {
+    const server = {
+      total_paise: 7875,
+      dispatches: [
+        { cycle_id: 2, dispatch_date: '2026-05-17', group_total_paise: 5250 },
+        { cycle_id: 2, dispatch_date: '2026-05-17', group_total_paise: 2625 },
+      ],
+    };
+    const echo = {
+      total_paise: 7875,
+      dispatches: [...server.dispatches].reverse(),
+    };
+    expect(driftedFields(server, echo)).toEqual([]);
+  });
 });
 
 describe('driftedFields — the drift path', () => {

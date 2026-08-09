@@ -91,9 +91,35 @@ export function AdminOrdersScreen({ navigation }: { navigation: AdminNavProp }) 
   const filteredOrders = useMemo(() => {
     const all = orders ?? [];
     const term = searchTerm.trim();
+
+    /**
+     * SEARCH BY ANY NUMBER IN A PURCHASE, GET THE WHOLE PURCHASE.
+     *
+     * One checkout is now several rows — a food row and an essentials row per
+     * cycle — each with its own id. The customer only ever sees the lowest
+     * one, and the printed slip carries them all. Matching ids alone meant
+     * searching the number a customer quoted returned one row and left its
+     * siblings looking like unrelated orders.
+     *
+     * So: find the rows whose id matches, then widen to every row sharing
+     * their order group.
+     */
+    const groupsMatched = term
+      ? new Set(
+          all
+            .filter((o) => String(o.id).includes(term))
+            .map((o) => (o as any).order_group_id)
+            .filter(Boolean),
+        )
+      : null;
+
     const filtered = all.filter((o) => {
       if (statusFilter !== 'All' && o.status !== statusFilter) return false;
-      if (term && !String(o.id).includes(term)) return false;
+      if (term) {
+        const idHit = String(o.id).includes(term);
+        const groupHit = groupsMatched?.has((o as any).order_group_id) ?? false;
+        if (!idHit && !groupHit) return false;
+      }
       if (bulkOnly && !(o as any).placed_by) return false;
       return true;
     });

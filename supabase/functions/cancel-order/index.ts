@@ -119,46 +119,65 @@ Deno.serve(async (req: Request) => {
     if (groupErr) throw groupErr;
     if (!groupRows || groupRows.length === 0) return json({ error: 'Order not found' }, 404);
 
-    // ── G7: subscription-purchase orders are NOT customer-cancellable here ──
+    // ── G7: subscription-purchase rows are NOT customer-cancellable here ──
+    //
     // This endpoint cancels orders + refunds the wallet, but never touches
-    // user_subscriptions — so cancelling a subscription-purchase order would
+    // user_subscriptions — so cancelling a subscription-purchase row would
     // refund the customer yet leave the subscription active and dispatching.
-    // Subscription cancellation is an admin action (admin_cancel_subscription
-    // deactivates the sub AND issues a prorated refund, atomically).
-    {
-      const groupIds = groupRows.map((r) => r.id);
-      const { data: subLines } = await supabase
-        .from('order_items')
-        .select('id')
-        .in('order_id', groupIds)
-        .eq('item_type', 'subscription')
-        .limit(1);
-      if (subLines && subLines.length > 0) {
-        return json({
-          error: 'This is a subscription purchase. To cancel a subscription, please contact support.',
-        }, 409);
-      }
+    // Subscription cancellation stays an admin action
+    // (admin_cancel_subscription deactivates the sub AND issues a prorated
+    // refund, atomically).
+    //
+    // PER ROW, NOT PER GROUP. This guard used to reject the whole checkout if
+    // any line anywhere in it was a plan. With one cart, buying a ₹1,250 plan
+    // alongside a ₹50 breakfast would have made the breakfast permanently
+    // uncancellable — a right rule applied at the wrong altitude. The plan
+    // row is simply left out of everything below; the food and essentials
+    // rows cancel and refund exactly as they always have.
+    //
+    // Identified by the LINE (item_type), not by orders.order_type: the line
+    // is the fact, and this then reads correctly both before and after the
+    // rows are relabelled by one_cart_pure_order_rows.sql.
+    const groupIds = groupRows.map((r) => r.id);
+    const { data: subLines, error: subLineErr } = await supabase
+      .from('order_items')
+      .select('order_id')
+      .in('order_id', groupIds)
+      .eq('item_type', 'subscription');
+    if (subLineErr) throw subLineErr;
+    const planRowIds = new Set((subLines ?? []).map((r: any) => r.order_id));
+
+    // Everything this endpoint is allowed to act on.
+    const fulfilmentRows = groupRows.filter((r) => !planRowIds.has(r.id));
+
+    if (fulfilmentRows.length === 0) {
+      return json({
+        error: 'This is a subscription purchase. To cancel a subscription, please contact support.',
+      }, 409);
     }
 
     const sumWallet = (rows: any[]) => rows.reduce((s, r) => s + (Number(r.wallet_amount_used) || 0), 0);
     const sumTotal  = (rows: any[]) => rows.reduce((s, r) => s + (Number(r.total_amount) || 0), 0);
 
     // ── Idempotency guard ──────────────────────────────────────
-    // Whole group already cancelled — return success, no second refund.
-    if (groupRows.every((r) => r.status === 'Cancelled')) {
-      const walletRefund = sumWallet(groupRows);
+    // Every cancellable row already cancelled — return success, no second
+    // refund. Plan rows are excluded throughout, so a group whose food is
+    // cancelled and whose plan is still running reads as fully cancelled
+    // here, which is correct: there is nothing left this endpoint may do.
+    if (fulfilmentRows.every((r) => r.status === 'Cancelled')) {
+      const walletRefund = sumWallet(fulfilmentRows);
       return json({
         status: 'cancelled',
         wallet_refunded: walletRefund,
-        razorpay_refund_due: Math.max(0, sumTotal(groupRows) - walletRefund),
+        razorpay_refund_due: Math.max(0, sumTotal(fulfilmentRows) - walletRefund),
         idempotent: true,
       });
     }
 
     // Rows we can still cancel (skip already-Cancelled — already refunded).
-    const cancellable = groupRows.filter((r) => CANCELLABLE_STATUSES.has(r.status));
+    const cancellable = fulfilmentRows.filter((r) => CANCELLABLE_STATUSES.has(r.status));
     if (cancellable.length === 0) {
-      const blocking = groupRows.find((r) => r.status !== 'Cancelled');
+      const blocking = fulfilmentRows.find((r) => r.status !== 'Cancelled');
       return json({
         error: `Order cannot be cancelled — it is already ${blocking?.status ?? 'in progress'}.`,
       }, 409);
@@ -171,7 +190,7 @@ Deno.serve(async (req: Request) => {
     } catch (_e) {
       return json({ error: 'Store configuration is unavailable. Please try again shortly.' }, 503);
     }
-    const earliestCreated = Math.min(...groupRows.map((r) => new Date(r.created_at).getTime()));
+    const earliestCreated = Math.min(...fulfilmentRows.map((r) => new Date(r.created_at).getTime()));
     const ageHours = (Date.now() - earliestCreated) / (1000 * 60 * 60);
 
     if (ageHours > windowHours) {
@@ -183,7 +202,7 @@ Deno.serve(async (req: Request) => {
     // ── Guard 2: earliest dispatch cycle's cutoff ──────────────
     // The "1st item" cutoff governs the whole group: once the earliest
     // cycle's kitchen window closes, the order can no longer be cancelled.
-    const cycleIds = [...new Set(groupRows.map((r) => r.cycle_id).filter((c) => c != null))];
+    const cycleIds = [...new Set(fulfilmentRows.map((r) => r.cycle_id).filter((c) => c != null))];
     let cyclesById = new Map<number, any>();
     if (cycleIds.length > 0) {
       const { data: cycleRows } = await supabase
@@ -194,7 +213,9 @@ Deno.serve(async (req: Request) => {
     }
 
     // Earliest row: min dispatch_date, tie-break on the cycle's cutoff_time.
-    const sortedRows = [...groupRows].sort((a, b) => {
+    // Over fulfilment rows only — a plan purchase is dated today and carries
+    // no cycle, so including it would compare a cutoff that does not exist.
+    const sortedRows = [...fulfilmentRows].sort((a, b) => {
       if (a.dispatch_date !== b.dispatch_date) {
         return a.dispatch_date < b.dispatch_date ? -1 : 1;
       }
@@ -284,6 +305,9 @@ Deno.serve(async (req: Request) => {
       status: 'cancelled',
       wallet_refunded: walletRefund,
       razorpay_refund_due: razorpayRefundDue,
+      // So the app can say "your food was cancelled, your plan is still
+      // running" rather than implying the whole purchase went away.
+      subscription_rows_kept: planRowIds.size,
     });
 
   } catch (err: any) {

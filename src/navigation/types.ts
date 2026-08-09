@@ -75,7 +75,7 @@ export type CustomerStackParamList = {
   Orders: undefined;
   Subscriptions: undefined;
   Cart: { subscriptionPlanId?: number } | undefined;
-  Checkout: { cartType: 'food' | 'essentials'; subscriptionPlanId?: number };
+  Checkout: { subscriptionPlanId?: number };
   OrderDetail: { orderId: number };
   EditProfile: undefined;
   AddAddress: { addressId?: number } | undefined;

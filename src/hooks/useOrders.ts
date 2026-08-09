@@ -36,6 +36,43 @@ export function useMyOrders() {
 export type OrderWithItems = Order & { order_items: OrderItem[] };
 
 /**
+ * Orders still IN FLIGHT, with their items — the set the Home rail needs.
+ *
+ * A DEDICATED QUERY, NOT A SLICE OF HISTORY. The rail used to count active
+ * orders out of `useMyOrders`'s first page, on the reasoning that anything
+ * still in flight is by definition recent. That held while a checkout was
+ * one row. It is not true now: one cart writes a row per cycle AND per type,
+ * so a 20-row page covers roughly half as many orders as it used to, and a
+ * customer with any history had live orders sitting on page 2 that nothing
+ * ever fetched. The badge quietly under-counted — 9 where the answer was 10.
+ *
+ * Filtering server-side keeps this small however long a customer's history
+ * grows, which is the property the old approach never had.
+ *
+ * Subscription PURCHASES are excluded here (cycle_id IS NULL): buying a plan
+ * is a transaction, not something on its way. Its daily deliveries appear on
+ * their own as the manifest creates them.
+ */
+export function useActiveOrders() {
+  const { session } = useAuth();
+  const userId = session?.user.id ?? '';
+
+  return useSupabaseQuery<OrderWithItems>(
+    [...QUERY_KEYS.MY_ORDERS, 'active'],
+    () =>
+      supabase
+        .from('orders')
+        .select('*, order_items(*)')
+        .eq('user_id', userId)
+        .not('cycle_id', 'is', null)
+        .not('status', 'in', '("Delivered","Cancelled","Failed")')
+        .order('dispatch_date', { ascending: true })
+        .order('id', { ascending: true }),
+    { enabled: !!userId },
+  );
+}
+
+/**
  * MF-10: a customer-facing "order" can be a GROUP of `orders` rows —
  * one per dispatch cycle, all sharing order_group_id. Given any row id,
  * this resolves the whole group and returns every row with its items,

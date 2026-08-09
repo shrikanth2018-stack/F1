@@ -107,12 +107,13 @@ function money(n: number): string {
  * before then has status 'Confirmed' and a null paid_at. Status is the reliable
  * signal — a Razorpay order only leaves 'Pending' once payment is confirmed.
  */
-function paymentLine(order: any): string {
+function paymentLine(order: any, bagTotal?: number): string {
   if (order.subscription_id != null) return 'SUBSCRIPTION &middot; PREPAID';
   if (order.status === 'Pending') return 'PAYMENT PENDING';
   if (order.payment_method === 'wallet') return 'PAID &middot; Wallet';
   if (order.payment_method === 'razorpay') return 'PAID &middot; Online';
-  return `TO COLLECT ${money(order.total_amount)}`;
+  // Amount to collect must cover the whole bag, not just its first row.
+  return `TO COLLECT ${money(bagTotal ?? order.total_amount)}`;
 }
 
 const SLIP_STYLES = `
@@ -304,13 +305,42 @@ export function StaffDashboard() {
     Linking.openURL(`tel:${phone}`);
   };
 
+  /**
+   * Collapse rows into BAGS — one physical delivery each.
+   *
+   * Key is (order group, cycle, dispatch date): the same customer, the same
+   * window, the same day. Rows without a group fall back to their own id so
+   * they can never be merged with someone else's.
+   */
+  const toBags = useCallback((rows: any[]): any[][] => {
+    const map = new Map<string, any[]>();
+    for (const o of rows) {
+      const key = `${o.order_group_id ?? `single-${o.id}`}:${o.cycle_id}:${o.dispatch_date}`;
+      const list = map.get(key) ?? [];
+      list.push(o);
+      map.set(key, list);
+    }
+    // Stable within a bag, so the slip lists rows in id order.
+    return Array.from(map.values()).map((b) => [...b].sort((a, z) => a.id - z.id));
+  }, []);
+
   // ── Print helpers (web + native, via utils/printHtml) ─────
   // Single order, printed from the row's print icon. Uses the same builder as
   // the batch prints below — a reprint must be identical to the original, not
   // a second version of the format that drifts from it.
   const handlePrintOrderLabel = async (item: any) => {
+    // Print the bag this row belongs to, not the row alone — otherwise the
+    // print icon on the food row emits a slip that omits the essentials
+    // travelling in the same bag.
+    const siblings = packingOrders.filter(
+      (o: any) =>
+        (o.order_group_id ?? `single-${o.id}`) === (item.order_group_id ?? `single-${item.id}`) &&
+        o.cycle_id === item.cycle_id &&
+        o.dispatch_date === item.dispatch_date,
+    );
+    const bag = (siblings.length > 0 ? siblings : [item]).sort((a: any, z: any) => a.id - z.id);
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${SLIP_STYLES}</style></head>`
-      + `<body><div class="section">${renderLabelBlock(item)}</div></body></html>`;
+      + `<body><div class="section">${renderLabelBlock(bag)}</div></body></html>`;
     try {
       await printHtml(html);
     } catch {
@@ -319,14 +349,27 @@ export function StaffDashboard() {
   };
 
   /**
-   * One order as a combined bill + delivery slip. Shared by every print path
+   * ONE BAG as a combined bill + delivery slip. Shared by every print path
    * (single order, by driver, by hub) so the paper the customer receives is
    * identical however it was produced.
+   *
+   * A BAG IS NOT A ROW. Since one cart splits each cycle into a food row and
+   * an essentials row, a single 7:30pm delivery is two rows — and printing
+   * per row produced two slips for one bag, each showing a partial total and
+   * neither mentioning the other. The customer receiving "#11569 TOTAL ₹100"
+   * and "#11570 TOTAL ₹180" for one ₹280 purchase is the sort of thing that
+   * has to be right before it is ever a tax invoice.
+   *
+   * Rows belong to the same bag when they share the order group AND the
+   * cycle AND the dispatch date. A three-cycle order is genuinely three bags
+   * on three days and still prints three slips.
    */
-  const renderLabelBlock = (order: any) => {
+  const renderLabelBlock = (bag: any[]) => {
+    const rowsInBag = Array.isArray(bag) ? bag : [bag];
+    const order = rowsInBag[0];
     const addr = order.customer_addresses;
     const isSub = order.subscription_id != null;
-    const lines = order.order_items ?? [];
+    const lines = rowsInBag.flatMap((o: any) => o.order_items ?? []);
 
     // A subscription dispatch is an operational instruction, not a sale — the
     // money was taken when the plan was bought (BF-19), so every one of these
@@ -347,10 +390,12 @@ export function StaffDashboard() {
           </tr>`;
         }).join('');
 
-    const fee = Number(order.delivery_fee) || 0;
+    // Summed over the bag — the fee sits on whichever row carried it.
+    const fee = rowsInBag.reduce((t: number, o: any) => t + (Number(o.delivery_fee) || 0), 0);
+    const bagTotal = rowsInBag.reduce((t: number, o: any) => t + (Number(o.total_amount) || 0), 0);
     const totals = isSub ? '' : `
       ${fee > 0 ? `<tr class="totRow"><td>Delivery</td><td class="qty"></td><td class="amt">${money(fee)}</td></tr>` : ''}
-      <tr class="grand"><td>TOTAL</td><td class="qty"></td><td class="amt">${money(order.total_amount)}</td></tr>`;
+      <tr class="grand"><td>TOTAL</td><td class="qty"></td><td class="amt">${money(bagTotal)}</td></tr>`;
 
     const cycle = cycleById.get(order.cycle_id);
     const cycleName = cycle
@@ -362,7 +407,7 @@ export function StaffDashboard() {
     return `<div class="slip">
       <div class="biz">
         <span class="bizName">${esc(storeName)}</span>
-        <span class="ord">#${order.id}</span>
+        <span class="ord">${rowsInBag.map((o: any) => `#${o.id}`).join(', ')}</span>
       </div>
       ${supportNumber ? `<p class="bizSub">${esc(supportNumber)}</p>` : ''}
       <div class="rule"></div>
@@ -375,7 +420,7 @@ export function StaffDashboard() {
       ${addr?.phone_number ? `<p class="addr">${esc(addr.phone_number)}</p>` : ''}
       <div class="rule"></div>
       <table>${rows}${totals}</table>
-      <p class="pay">${paymentLine(order)}</p>
+      <p class="pay">${paymentLine(order, bagTotal)}</p>
       ${order.notes ? `<p class="note">${esc(order.notes)}</p>` : ''}
     </div>`;
   };
@@ -398,9 +443,10 @@ export function StaffDashboard() {
       groups.set(key, entry);
     }
     const sections = Array.from(groups.values()).map((g) => {
-      const labels = g.orders.map(renderLabelBlock).join('');
+      const bags = toBags(g.orders);
+      const labels = bags.map(renderLabelBlock).join('');
       return `<div class="section">
-        <div class="sectionTitle">${g.hubName} — ${g.orders.length} order${g.orders.length !== 1 ? 's' : ''}</div>
+        <div class="sectionTitle">${g.hubName} — ${bags.length} order${bags.length !== 1 ? 's' : ''}</div>
         ${labels}
       </div>`;
     }).join('');
@@ -427,9 +473,10 @@ export function StaffDashboard() {
     const sections = Array.from(groups.values())
       .sort((a, b) => a.title.localeCompare(b.title))
       .map((g) => {
-        const labels = g.orders.map(renderLabelBlock).join('');
+        const bags = toBags(g.orders);
+        const labels = bags.map(renderLabelBlock).join('');
         return `<div class="section">
-          <div class="sectionTitle">${g.title} — ${g.orders.length} order${g.orders.length !== 1 ? 's' : ''}</div>
+          <div class="sectionTitle">${g.title} — ${bags.length} order${bags.length !== 1 ? 's' : ''}</div>
           ${labels}
         </div>`;
       }).join('');

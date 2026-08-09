@@ -29,7 +29,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Theme } from '../theme';
 import { useCartStore } from '../store/cartStore';
-import { useEssentialsCartStore } from '../store/essentialsCartStore';
 
 interface CartFloatingButtonProps {
   onPress: () => void;
@@ -37,9 +36,9 @@ interface CartFloatingButtonProps {
 
 export function CartFloatingButton({ onPress }: CartFloatingButtonProps) {
   const insets = useSafeAreaInsets();
-  const foodCount = useCartStore((s) => s.getItemCount());
-  const essCount = useEssentialsCartStore((s) => s.getItemCount());
-  const itemCount = foodCount + essCount;
+  // One cart — the count is simply its lines. It used to be two stores added
+  // together, which is why this badge existed in the first place.
+  const itemCount = useCartStore((s) => s.getItemCount());
 
   if (itemCount === 0) return null;
 

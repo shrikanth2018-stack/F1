@@ -109,12 +109,12 @@ export function trackSubscribed(planId: number, planName: string, paymentMethod:
   client?.capture('subscribed', { plan_id: planId, plan_name: planName, payment_method: paymentMethod });
 }
 
-export function trackOrderPlaced(orderId: number | string, total: number, paymentMethod: string, cartType: 'food' | 'essentials') {
-  client?.capture('order_placed', { order_id: orderId, total, payment_method: paymentMethod, cart_type: cartType });
+export function trackOrderPlaced(orderId: number | string, total: number, paymentMethod: string) {
+  client?.capture('order_placed', { order_id: orderId, total, payment_method: paymentMethod });
 }
 
-export function trackOrderFailed(reason: string, cartType: 'food' | 'essentials') {
-  client?.capture('order_failed', { reason, cart_type: cartType });
+export function trackOrderFailed(reason: string) {
+  client?.capture('order_failed', { reason });
 }
 
 export function trackWalletTopUp(amount: number) {

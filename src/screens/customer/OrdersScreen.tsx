@@ -9,7 +9,7 @@
  * rolled-up status; the per-cycle breakdown lives in OrderDetail.
  */
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import {
   View,
   FlatList,
@@ -25,13 +25,13 @@ import { ThemedText } from '../../components/ThemedText';
 import { DispatchBadge } from '../../components/DispatchBadge';
 import { EmptyState } from '../../components/EmptyState';
 import { ErrorRetry } from '../../components/ErrorRetry';
-import { SegmentedControl } from '../../components/SegmentedControl';
 import { useMyOrders } from '../../hooks/useOrders';
+import { useMySubscriptions } from '../../hooks/useSubscriptions';
+import { subscriptionDaysRemaining } from '../../utils/subscriptionMath';
 import { formatPriceShort, formatDateShort, formatRelativeTime } from '../../utils/formatters';
 import { ORDER_STATUS_FLOW, orderStatusVariant } from '../../utils/orderStatus';
 import type { Order } from '../../types';
 
-type OrderTab = 'food' | 'essentials';
 
 // ── Order-group model ─────────────────────────────────────────
 // One checkout = one order_group_id = one or more `orders` rows.
@@ -88,7 +88,6 @@ function rolledUpStatus(rows: Order[]): string {
 }
 
 export function OrdersScreen({ navigation }: any) {
-  const [activeTab, setActiveTab] = useState<OrderTab>('food');
   const {
     data,
     isLoading,
@@ -101,24 +100,85 @@ export function OrdersScreen({ navigation }: any) {
 
   useFocusEffect(useCallback(() => { refetch(); }, [refetch]));
 
-  // Memoised so groupOrders() only re-runs when the fetched data or the tab
-  // changes — not on every render. Placed before the early return below to
-  // keep hook order stable (Rules of Hooks).
-  const groups = useMemo(() => {
-    const allOrders: Order[] = data?.pages.flat() ?? [];
-    const filtered = allOrders.filter((o) =>
-      activeTab === 'food' ? o.order_type === 'food' : o.order_type === 'essential',
-    );
-    return groupOrders(filtered);
-  }, [data, activeTab]);
+  const { data: mySubs } = useMySubscriptions();
+
+  /**
+   * A SUBSCRIPTION DISPATCH IS NOT A ₹0 ORDER.
+   *
+   * The meal was paid for when the plan was bought, so every dispatch row
+   * carries zero money (BF-19). Rendered as money that read as "₹0" — a
+   * Breakfast-30 subscriber accumulates thirty of them a month, and a
+   * history filling with what look like errors or freebies teaches people to
+   * stop reading it. Say what it actually is instead.
+   */
+  const planLabelFor = useCallback(
+    (subscriptionId: number | null | undefined): string | null => {
+      if (subscriptionId == null) return null;
+      const sub = (mySubs ?? []).find((s: any) => s.id === subscriptionId) as any;
+      if (!sub) return null;
+      const plan = sub.subscription_plans ?? {};
+      const total = plan.duration_days ?? 0;
+      const name = plan.plan_name ?? 'Subscription';
+      if (!total) return name;
+      // Meals used so far. Length is counted in MEALS, not calendar days —
+      // pausing and skipping push the end date out — so this is derived from
+      // the same helper the plan screens use rather than from dates.
+      const used = Math.max(1, Math.min(total, total - subscriptionDaysRemaining(plan, sub)));
+      return `${name} · Day ${used} of ${total}`;
+    },
+    [mySubs],
+  );
+
+
+  /**
+   * ONE CARD PER CHECKOUT. Group, never filter.
+   *
+   * This used to filter rows by order_type BEFORE grouping, back when a
+   * checkout could only be food or only essentials. With one cart that tears
+   * a single purchase in half: the food row grouped alone under a Food tab,
+   * the essentials row alone under an Essentials tab, two cards with
+   * different numbers — and opening either showed the whole order anyway,
+   * because useOrderGroup resolves by order_group_id.
+   *
+   * It also silently hid subscription purchases, which match neither
+   * 'food' nor 'essential' now that they are typed 'subscription'.
+   *
+   * Memoised so groupOrders() only re-runs when the fetched data changes.
+   * Placed before the early return below to keep hook order stable.
+   */
+  const groups = useMemo(
+    () => groupOrders(data?.pages.flat() ?? []),
+    [data],
+  );
 
   if (error) {
     return <ErrorRetry message="Could not load orders" onRetry={refetch} />;
   }
 
   const renderGroup = ({ item }: { item: OrderGroup }) => {
-    const isMulti = item.rows.length > 1;
+    /**
+     * A ROW IS NO LONGER A DELIVERY. Since one cart splits each cycle into a
+     * food row and an essentials row, the dinner containing a fried rice and
+     * a tub of ghee is two rows arriving in ONE 7:30pm delivery. Counting
+     * rows would have told the customer "2 deliveries" for one doorstep
+     * visit. Count distinct (cycle, date) instead.
+     *
+     * Plan-purchase rows carry no cycle and deliver nothing, so they are not
+     * counted at all — a group of only those is a purchase, not a delivery.
+     */
+    const deliveries = new Set(
+      item.rows
+        .filter((r) => r.cycle_id != null)
+        .map((r) => `${r.cycle_id}:${r.dispatch_date}`),
+    );
+    const isMulti = deliveries.size > 1;
+    const isPurchaseOnly = deliveries.size === 0;
     const status = rolledUpStatus(item.rows);
+
+    // A dispatch row belongs to a plan; say which plan and how far through.
+    const planLabel = planLabelFor(
+      item.rows.find((r) => r.subscription_id != null)?.subscription_id,
+    );
     return (
       <TouchableOpacity
         style={styles.row}
@@ -132,14 +192,20 @@ export function OrdersScreen({ navigation }: any) {
 
         <View style={styles.rowMid}>
           <ThemedText variant="body" color="subtitle">
-            {isMulti
-              ? `${item.rows.length} deliveries · ${formatPriceShort(item.totalAmount)}`
-              : `${formatDateShort(item.rows[0].dispatch_date)} · ${formatPriceShort(item.totalAmount)}`}
+            {planLabel
+              // Never "₹0" — that is a plan delivering, not a free order.
+              ? `${formatDateShort(item.rows[0].dispatch_date)} · ${planLabel}`
+              : isPurchaseOnly
+                ? `Subscription · ${formatPriceShort(item.totalAmount)}`
+                : isMulti
+                  ? `${deliveries.size} deliveries · ${formatPriceShort(item.totalAmount)}`
+                  : `${formatDateShort(item.rows[0].dispatch_date)} · ${formatPriceShort(item.totalAmount)}`}
           </ThemedText>
           <ThemedText variant="small" color="muted">
             {formatRelativeTime(item.createdAt)}
           </ThemedText>
         </View>
+
       </TouchableOpacity>
     );
   };
@@ -152,17 +218,6 @@ export function OrdersScreen({ navigation }: any) {
           <ThemedText variant="body" color="muted">Close</ThemedText>
         </TouchableOpacity>
       </View>
-
-      {/* Food | Essentials — shared glass pill (D24) */}
-      <SegmentedControl
-        style={styles.tabs}
-        value={activeTab}
-        onChange={setActiveTab}
-        options={[
-          { key: 'food', label: 'Food' },
-          { key: 'essentials', label: 'Essentials' },
-        ]}
-      />
 
       <FlatList
         data={groups}
@@ -186,7 +241,7 @@ export function OrdersScreen({ navigation }: any) {
         ListEmptyComponent={
           !isLoading ? (
             <EmptyState
-              title={`No ${activeTab} orders yet`}
+              title="No orders yet"
               subtitle="Browse plans or order a single meal to get started"
               actionLabel="Browse Plans"
               onAction={() => navigation.navigate('Plans')}
@@ -207,10 +262,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: Theme.spacing.md,
     paddingTop: Theme.spacing.md,
     paddingBottom: Theme.spacing.sm,
-  },
-  tabs: {
-    marginHorizontal: Theme.spacing.md,
-    marginBottom: Theme.spacing.sm,
   },
   list: {
     paddingTop: Theme.spacing.xs,

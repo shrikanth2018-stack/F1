@@ -210,6 +210,11 @@ serve(async (req) => {
     const orderStatus = payment_method === 'razorpay' ? 'Pending' : 'Confirmed';
     const pGroups = order.groups.map((g) => ({
       cycle_id: g.cycle_id,
+      // Per-row type. place_order_atomic prefers this over p_order_type, so
+      // each row is stamped with what it actually holds instead of one
+      // order-wide label. p_order_type below is now only a fallback for a
+      // caller that does not send this.
+      order_type: g.order_type,
       dispatch_date: g.dispatch_date,
       total_amount: g.total_amount,
       tax_amount: g.tax_amount,

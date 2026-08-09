@@ -396,3 +396,114 @@ describe('building blocks — cycle-less, back-office only', () => {
     if (r.ok) expect(r.order.groups).toHaveLength(2);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────
+// THE ONE-CART INVARIANT
+//
+// Every group is pure: one dispatch unit, one type. This is what lets a
+// single cart hold food, essentials and plans across several cycles while
+// the packing board, the kitchen aggregate, the vendor-credit trigger and
+// the reports keep working — none of them ever meets a row that is two
+// things at once.
+//
+// Cycle 2 carries BOTH a food item (12, Morning Dosa) and an essential
+// (31, Milk) in the fixtures, which is the real-world case: cycle 1 is
+// "Breakfast" to food and "Morning" to essentials. A cycle-only grouping
+// would merge these into a single row.
+// ─────────────────────────────────────────────────────────────────
+describe('one-cart invariant: every group is pure', () => {
+  it('splits ONE cycle into a food group and an essentials group', async () => {
+    const r = await build({}, {
+      items: [
+        { item_id: 12, item_type: 'food', quantity: 1 },       // cycle 2, 52.5
+        { item_id: 31, item_type: 'essential', quantity: 2 },  // cycle 2, 26.25
+      ],
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+
+    const cycle2 = r.order.groups.filter((g) => g.cycle_id === 2);
+    expect(cycle2).toHaveLength(2);
+
+    const food = cycle2.find((g) => g.order_type === 'food')!;
+    const ess = cycle2.find((g) => g.order_type === 'essential')!;
+    expect(food).toBeDefined();
+    expect(ess).toBeDefined();
+    expect(food.subtotal).toBe(52.5);
+    expect(ess.subtotal).toBe(52.5);
+
+    // Same cycle → same dispatch date. The split is by type alone.
+    expect(food.dispatch_date).toBe(ess.dispatch_date);
+  });
+
+  it('never puts two item types in one group, however mixed the cart', async () => {
+    const r = await build({}, {
+      items: [
+        { item_id: 11, item_type: 'food', quantity: 1 },       // cycle 1
+        { item_id: 12, item_type: 'food', quantity: 1 },       // cycle 2
+        { item_id: 31, item_type: 'essential', quantity: 1 },  // cycle 2
+      ],
+      subscriptionPlans: [{ plan_id: 21, start_date: TOMORROW }],
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+
+    for (const g of r.order.groups) {
+      const types = new Set(g.items.map((it) => it.item_type));
+      expect(types.size).toBe(1);
+      // The row's declared type IS its lines' type — not a label beside them.
+      expect([...types][0]).toBe(g.order_type);
+    }
+  });
+
+  it('gives every subscription plan its own purchase row', async () => {
+    const r = await build({
+      subscription_plans: [
+        {
+          id: 21, plan_name: '7-Day Lunch', price: 700, duration_days: 7, cycle_id: 1,
+          plan_type: 'food', is_active: true,
+          plan_items: [{ item_id: 11, item_name: 'Veg Meal', quantity: 1 }], branch_id: 1,
+        },
+        {
+          id: 22, plan_name: '7-Day Breakfast', price: 500, duration_days: 7, cycle_id: 2,
+          plan_type: 'food', is_active: true,
+          plan_items: [{ item_id: 12, item_name: 'Morning Dosa', quantity: 1 }], branch_id: 1,
+        },
+      ],
+    }, {
+      items: [],
+      subscriptionPlans: [
+        { plan_id: 21, start_date: TOMORROW },
+        { plan_id: 22, start_date: TOMORROW },
+      ],
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+
+    // One row per plan, so cancelling or refunding one plan out of two is an
+    // ordinary per-row operation rather than surgery inside a shared row.
+    const subGroups = r.order.groups.filter((g) => g.order_type === 'subscription');
+    expect(subGroups).toHaveLength(2);
+    for (const g of subGroups) {
+      expect(g.cycle_id).toBeNull();
+      expect(g.items).toHaveLength(1);
+    }
+    expect(subGroups.map((g) => g.items[0].item_id).sort()).toEqual([21, 22]);
+  });
+
+  it('carries the row type through to the client quote', async () => {
+    const r = await build({}, {
+      items: [
+        { item_id: 12, item_type: 'food', quantity: 1 },
+        { item_id: 31, item_type: 'essential', quantity: 1 },
+      ],
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const q = curateQuote(r.order);
+    // The cart renders a section per group; a section headed "Morning" has
+    // to know which half of that cycle it is.
+    expect(q.groups.every((g) => g.order_type != null)).toBe(true);
+    expect(q.groups.map((g) => g.order_type).sort()).toEqual(['essential', 'food']);
+  });
+});

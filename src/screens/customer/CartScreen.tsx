@@ -21,9 +21,7 @@ import { ThemedText } from '../../components/ThemedText';
 import { Divider } from '../../components/Divider';
 import { EmptyState } from '../../components/EmptyState';
 import { useCartStore } from '../../store/cartStore';
-import { useEssentialsCartStore } from '../../store/essentialsCartStore';
 import { useSmartCart } from '../../hooks/useSmartCart';
-import { useSmartEssentialsCart } from '../../hooks/useSmartEssentialsCart';
 import { useDeliveryCycles } from '../../hooks/useDeliveryCycles';
 import { formatPriceShort, formatDateShort, plural } from '../../utils/formatters';
 import { formatTime12h } from '../../utils/timeEngine';
@@ -76,24 +74,21 @@ export function CartScreen({ navigation, route }: any) {
   const insets = useSafeAreaInsets();
   const subscriptionPlanId: number | undefined = route?.params?.subscriptionPlanId;
 
-  const foodItems = useCartStore((s) => s.items);
-  const foodPlans = useCartStore((s) => s.plans);
-  const updateFoodQty = useCartStore((s) => s.updateQuantity);
-  const removeFoodItem = useCartStore((s) => s.removeItem);
-  const removeFoodPlan = useCartStore((s) => s.removePlan);
-  const clearFood = useCartStore((s) => s.clearCart);
-  const foodTotal = useCartStore((s) => s.getDisplayTotal());
+  const allItems = useCartStore((s) => s.items);
+  const cartPlans = useCartStore((s) => s.plans);
+  const updateQty = useCartStore((s) => s.updateQuantity);
+  const removeCartItem = useCartStore((s) => s.removeItem);
+  const removeCartPlan = useCartStore((s) => s.removePlan);
+  const clearCart = useCartStore((s) => s.clearCart);
+  const cartTotal = useCartStore((s) => s.getDisplayTotal());
 
-  const essItems = useEssentialsCartStore((s) => s.items);
-  const essPlans = useEssentialsCartStore((s) => s.plans);
-  const updateEssQty = useEssentialsCartStore((s) => s.updateQuantity);
-  const removeEssItem = useEssentialsCartStore((s) => s.removeItem);
-  const removeEssPlan = useEssentialsCartStore((s) => s.removePlan);
-  const clearEss = useEssentialsCartStore((s) => s.clearCart);
-  const essTotal = useEssentialsCartStore((s) => s.getDisplayTotal());
+  // ONE cart, split for DISPLAY only. The server groups by (cycle, type) and
+  // writes one row per group, so these two arrays mirror the rows the order
+  // will actually become.
+  const foodItems = useMemo(() => allItems.filter((i) => i.item_type === 'food'), [allItems]);
+  const essItems = useMemo(() => allItems.filter((i) => i.item_type === 'essential'), [allItems]);
 
   const { evaluations } = useSmartCart();
-  const { evaluations: essEvaluations } = useSmartEssentialsCart();
   const { data: cycles } = useDeliveryCycles();
   // Essentials module gate. When the admin turns essentials_module_active
   // off, the cart hides every essentials surface — list + checkout button.
@@ -115,24 +110,19 @@ export function CartScreen({ navigation, route }: any) {
       null,
     [addresses],
   );
-  const { data: foodQuote } = useOrderQuote({
-    items: foodItems.map((i) => ({ item_id: i.menu_item_id, item_type: 'food' as const, quantity: i.quantity })),
-    subscriptionPlans: foodPlans.map((p) => ({ plan_id: p.plan_id, start_date: p.start_date })),
+  // ONE quote for the whole cart — one delivery fee, one GST figure, one
+  // total. This is the number the customer pays.
+  const { data: cartQuote } = useOrderQuote({
+    items: allItems.map((i) => ({ item_id: i.item_id, item_type: i.item_type, quantity: i.quantity })),
+    subscriptionPlans: cartPlans.map((p) => ({ plan_id: p.plan_id, start_date: p.start_date })),
     deliveryAddressId: defaultAddressId,
-    enabled: subscriptionPlanId == null && (foodItems.length > 0 || foodPlans.length > 0),
-  });
-  const { data: essQuote } = useOrderQuote({
-    items: essItems.map((i) => ({ item_id: i.essential_item_id, item_type: 'essential' as const, quantity: i.quantity })),
-    subscriptionPlans: essPlans.map((p) => ({ plan_id: p.plan_id, start_date: p.start_date })),
-    deliveryAddressId: defaultAddressId,
-    enabled: subscriptionPlanId == null && (essItems.length > 0 || essPlans.length > 0),
+    enabled: subscriptionPlanId == null && (allItems.length > 0 || cartPlans.length > 0),
   });
 
   // Float-button amount = the server-quoted grand total (items + delivery;
   // GST is already inside the item prices), falling back to the display
   // subtotal only while the quote is in flight.
-  const foodGrandTotal = foodQuote?.grand_total ?? foodTotal;
-  const essGrandTotal = essQuote?.grand_total ?? essTotal;
+  const grandTotal = cartQuote?.grand_total ?? cartTotal;
 
   const getDeliveryTime = useCallback(
     (cycleId: number) => formatTime12h((cycles ?? []).find((c) => c.id === cycleId)?.delivery_start),
@@ -140,35 +130,39 @@ export function CartScreen({ navigation, route }: any) {
   );
 
   // ── Cycle grouping ──────────────────────────────────────────
+  // Lookup takes BOTH id and type: the two catalogues have independent id
+  // sequences, so menu item 31 and essential 31 are different products.
+  const scenarioOf = useCallback(
+    (it: { item_id: number; item_type: 'food' | 'essential' }) =>
+      evaluations.find((e) => e.item_id === it.item_id && e.item_type === it.item_type)
+        ?.scenario ?? 'A',
+    [evaluations],
+  );
   const foodGroups = useMemo(
-    () => groupByCycle(
-      foodItems,
-      (it) => evaluations.find((e) => e.menu_item_id === it.menu_item_id)?.scenario ?? 'A',
-      cycles ?? [],
-    ),
-    [foodItems, evaluations, cycles],
+    () => groupByCycle(foodItems, scenarioOf, cycles ?? []),
+    [foodItems, scenarioOf, cycles],
   );
   const essGroups = useMemo(
-    () => groupByCycle(
-      essItems,
-      (it) => essEvaluations.find((e) => e.essential_item_id === it.essential_item_id)?.scenario ?? 'A',
-      cycles ?? [],
-    ),
-    [essItems, essEvaluations, cycles],
+    () => groupByCycle(essItems, scenarioOf, cycles ?? []),
+    [essItems, scenarioOf, cycles],
   );
 
   // Any cycle with a missed cutoff → one-line banner.
   const anyMissedCutoff =
     foodGroups.some((g) => g.scenario !== 'A') || essGroups.some((g) => g.scenario !== 'A');
 
+  // ONE checkout for the whole cart. There used to be two buttons —
+  // "Checkout Food · ₹50" and "Checkout Essentials · ₹35" — so ₹85 of
+  // shopping sitting in one place had to be paid for twice. The server has
+  // always accepted a mixed cart; only this screen did not.
   const confirmCheckout = useCallback(
-    (cartType: 'food' | 'essentials') => {
-      const groups = cartType === 'food' ? foodGroups : essGroups;
+    () => {
+      const groups = [...foodGroups, ...essGroups];
       const today = itemsToday(groups);
       const later = itemsLater(groups);
 
       if (!(today > 0 && later > 0)) {
-        navigation.navigate('Checkout', { cartType });
+        navigation.navigate('Checkout', {});
         return;
       }
       Alert.alert(
@@ -177,7 +171,7 @@ export function CartScreen({ navigation, route }: any) {
         `${plural(later, 'item')} dispatched later\n\nContinue to checkout?`,
         [
           { text: 'Alter Order', style: 'cancel' },
-          { text: 'Yes, Continue', onPress: () => navigation.navigate('Checkout', { cartType }) },
+          { text: 'Yes, Continue', onPress: () => navigation.navigate('Checkout', {}) },
         ],
       );
     },
@@ -228,9 +222,7 @@ export function CartScreen({ navigation, route }: any) {
 
   // ── Subscription-only mode ─────────────────────────────────
   const subPlan = subscriptionPlanId != null
-    ? (foodPlans.find((p) => p.plan_id === subscriptionPlanId)
-       ?? essPlans.find((p) => p.plan_id === subscriptionPlanId)
-       ?? null)
+    ? (cartPlans.find((p) => p.plan_id === subscriptionPlanId) ?? null)
     : null;
 
   React.useEffect(() => {
@@ -244,8 +236,7 @@ export function CartScreen({ navigation, route }: any) {
 
     const goHome = () => navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
     const handleRemove = () => {
-      if (subPlan.plan_type === 'food') removeFoodPlan(subPlan.plan_id);
-      else removeEssPlan(subPlan.plan_id);
+      removeCartPlan(subPlan.plan_id);
       goHome();
     };
 
@@ -297,7 +288,6 @@ export function CartScreen({ navigation, route }: any) {
           style={[styles.floatBtn, { bottom: insets.bottom + 16 }]}
           activeOpacity={0.85}
           onPress={() => navigation.navigate('Checkout', {
-            cartType: subPlan.plan_type === 'essentials' ? 'essentials' : 'food',
             subscriptionPlanId: subPlan.plan_id,
           })}
           accessibilityRole="button"
@@ -312,7 +302,7 @@ export function CartScreen({ navigation, route }: any) {
     );
   }
 
-  if (foodItems.length === 0 && essItems.length === 0 && foodPlans.length === 0 && essPlans.length === 0) {
+  if (allItems.length === 0 && cartPlans.length === 0) {
     return (
       <SafeAreaView style={styles.container}>
         <EmptyState
@@ -325,8 +315,8 @@ export function CartScreen({ navigation, route }: any) {
     );
   }
 
-  const foodHasContent = foodItems.length > 0 || foodPlans.length > 0;
-  const essHasContent = essentialsEnabled && (essItems.length > 0 || essPlans.length > 0);
+  const foodHasContent = foodItems.length > 0;
+  const essHasContent = essentialsEnabled && essItems.length > 0;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -343,7 +333,7 @@ export function CartScreen({ navigation, route }: any) {
               confirmLabel: 'Clear All',
               destructive: true,
             });
-            if (ok) { clearFood(); clearEss(); }
+            if (ok) clearCart();
           }}
         >
           <ThemedText variant="small" color="muted">Clear All</ThemedText>
@@ -366,9 +356,6 @@ export function CartScreen({ navigation, route }: any) {
           <View style={styles.cartSection}>
             <View style={styles.sectionHeader}>
               <ThemedText variant="small" color="muted" style={styles.sectionLabel}>FOOD</ThemedText>
-              <TouchableOpacity onPress={clearFood}>
-                <ThemedText variant="micro" color="muted">Clear</ThemedText>
-              </TouchableOpacity>
             </View>
 
             {/* One block per delivery cycle */}
@@ -376,26 +363,27 @@ export function CartScreen({ navigation, route }: any) {
               renderCycleGroup(
                 g,
                 g.items.map((item) => renderRow(
-                  `f-${item.menu_item_id}`,
+                  `f-${item.item_id}`,
                   item.name,
                   item.quantity,
                   item.display_price * item.quantity,
                   () => (item.quantity <= 1
-                    ? removeFoodItem(item.menu_item_id)
-                    : updateFoodQty(item.menu_item_id, item.quantity - 1)),
-                  () => updateFoodQty(item.menu_item_id, item.quantity + 1),
+                    ? removeCartItem(item.item_id, 'food')
+                    : updateQty(item.item_id, 'food', item.quantity - 1)),
+                  () => updateQty(item.item_id, 'food', item.quantity + 1),
                 )),
               ),
             )}
 
-            {/* Food subscription plans */}
-            {foodPlans.length > 0 && (
+            {/* Subscription plans — one block; they belong to the cart, not
+                to a food half or an essentials half. */}
+            {cartPlans.length > 0 && (
               <>
                 {foodItems.length > 0 && <View style={styles.groupDivider} />}
                 <ThemedText variant="small" color="muted" style={styles.planSubLabel}>
                   SUBSCRIPTION PLANS
                 </ThemedText>
-                {foodPlans.map((p) => (
+                {cartPlans.map((p) => (
                   <View key={`food-plan-${p.plan_id}`} style={styles.itemRow}>
                     <View style={styles.itemInfo}>
                       <ThemedText variant="body" color="primary">{p.plan_name}</ThemedText>
@@ -404,7 +392,7 @@ export function CartScreen({ navigation, route }: any) {
                       </ThemedText>
                     </View>
                     <View style={styles.itemRight}>
-                      <TouchableOpacity onPress={() => removeFoodPlan(p.plan_id)} style={styles.removeBtn}>
+                      <TouchableOpacity onPress={() => removeCartPlan(p.plan_id)} style={styles.removeBtn}>
                         <ThemedText variant="micro" color="muted">Remove</ThemedText>
                       </TouchableOpacity>
                       <ThemedText variant="body" color="accent">
@@ -416,33 +404,6 @@ export function CartScreen({ navigation, route }: any) {
               </>
             )}
 
-            <View style={styles.sectionFooter}>
-              <View style={styles.totalRow}>
-                <ThemedText variant="small" color="subtitle">Subtotal</ThemedText>
-                <ThemedText variant="small" color="primary">{formatPriceShort(foodTotal)}</ThemedText>
-              </View>
-              <View style={styles.totalRow}>
-                <ThemedText variant="small" color="subtitle">Delivery</ThemedText>
-                <ThemedText variant="small" color="primary">
-                  {!foodQuote
-                    ? '—'
-                    : foodQuote.fee_pending
-                      ? 'At checkout'
-                      : foodQuote.delivery_fee === 0
-                        ? 'Free'
-                        : formatPriceShort(foodQuote.delivery_fee)}
-                </ThemedText>
-              </View>
-              <View style={styles.totalRow}>
-                <ThemedText variant="small" color="subtitle">Total</ThemedText>
-                <ThemedText variant="small" color="accent">{formatPriceShort(foodGrandTotal)}</ThemedText>
-              </View>
-              {!!foodQuote && foodQuote.tax_total > 0 && (
-                <ThemedText variant="micro" color="muted">
-                  Incl. GST {formatPriceShort(foodQuote.tax_total)}
-                </ThemedText>
-              )}
-            </View>
           </View>
         )}
 
@@ -453,111 +414,76 @@ export function CartScreen({ navigation, route }: any) {
           <View style={styles.cartSection}>
             <View style={styles.sectionHeader}>
               <ThemedText variant="small" color="muted" style={styles.sectionLabel}>ESSENTIALS</ThemedText>
-              <TouchableOpacity onPress={clearEss}>
-                <ThemedText variant="micro" color="muted">Clear</ThemedText>
-              </TouchableOpacity>
             </View>
 
             {essGroups.map((g) =>
               renderCycleGroup(
                 g,
                 g.items.map((item) => renderRow(
-                  `e-${item.essential_item_id}`,
+                  `e-${item.item_id}`,
                   item.name,
                   item.quantity,
                   item.display_price * item.quantity,
                   () => (item.quantity <= 1
-                    ? removeEssItem(item.essential_item_id)
-                    : updateEssQty(item.essential_item_id, item.quantity - 1)),
-                  () => updateEssQty(item.essential_item_id, item.quantity + 1),
+                    ? removeCartItem(item.item_id, 'essential')
+                    : updateQty(item.item_id, 'essential', item.quantity - 1)),
+                  () => updateQty(item.item_id, 'essential', item.quantity + 1),
                 )),
               ),
             )}
 
-            {/* Essentials subscription plans */}
-            {essPlans.length > 0 && (
-              <>
-                {essItems.length > 0 && <View style={styles.groupDivider} />}
-                <ThemedText variant="small" color="muted" style={styles.planSubLabel}>
-                  SUBSCRIPTION PLANS
-                </ThemedText>
-                {essPlans.map((p) => (
-                  <View key={`ess-plan-${p.plan_id}`} style={styles.itemRow}>
-                    <View style={styles.itemInfo}>
-                      <ThemedText variant="body" color="primary">{p.plan_name}</ThemedText>
-                      <ThemedText variant="small" color="muted">
-                        Starts {formatDateShort(p.start_date)} · {p.duration_days} days
-                      </ThemedText>
-                    </View>
-                    <View style={styles.itemRight}>
-                      <TouchableOpacity onPress={() => removeEssPlan(p.plan_id)} style={styles.removeBtn}>
-                        <ThemedText variant="micro" color="muted">Remove</ThemedText>
-                      </TouchableOpacity>
-                      <ThemedText variant="body" color="accent">
-                        {formatPriceShort(p.price)}
-                      </ThemedText>
-                    </View>
-                  </View>
-                ))}
-              </>
-            )}
+            {/* Plans are rendered once, with FOOD above — they belong to the
+                cart, not to either half of it. */}
 
-            <View style={styles.sectionFooter}>
-              <View style={styles.totalRow}>
-                <ThemedText variant="small" color="subtitle">Subtotal</ThemedText>
-                <ThemedText variant="small" color="primary">{formatPriceShort(essTotal)}</ThemedText>
-              </View>
-              <View style={styles.totalRow}>
-                <ThemedText variant="small" color="subtitle">Delivery</ThemedText>
-                <ThemedText variant="small" color="primary">
-                  {!essQuote
-                    ? '—'
-                    : essQuote.fee_pending
-                      ? 'At checkout'
-                      : essQuote.delivery_fee === 0
-                        ? 'Free'
-                        : formatPriceShort(essQuote.delivery_fee)}
-                </ThemedText>
-              </View>
-              <View style={styles.totalRow}>
-                <ThemedText variant="small" color="subtitle">Total</ThemedText>
-                <ThemedText variant="small" color="accent">{formatPriceShort(essGrandTotal)}</ThemedText>
-              </View>
-              {!!essQuote && essQuote.tax_total > 0 && (
-                <ThemedText variant="micro" color="muted">
-                  Incl. GST {formatPriceShort(essQuote.tax_total)}
-                </ThemedText>
-              )}
-            </View>
           </View>
         )}
+
+        {/* ── ONE total for the whole cart ── */}
+        <View style={styles.cartSection}>
+          <View style={styles.sectionFooter}>
+            <View style={styles.totalRow}>
+              <ThemedText variant="small" color="subtitle">Subtotal</ThemedText>
+              <ThemedText variant="small" color="primary">{formatPriceShort(cartTotal)}</ThemedText>
+            </View>
+            <View style={styles.totalRow}>
+              <ThemedText variant="small" color="subtitle">Delivery</ThemedText>
+              <ThemedText variant="small" color="primary">
+                {!cartQuote
+                  ? '—'
+                  : cartQuote.fee_pending
+                    ? 'At checkout'
+                    : cartQuote.delivery_fee === 0
+                      ? 'Free'
+                      : formatPriceShort(cartQuote.delivery_fee)}
+              </ThemedText>
+            </View>
+            <View style={styles.totalRow}>
+              <ThemedText variant="small" color="subtitle">Total</ThemedText>
+              <ThemedText variant="small" color="accent">{formatPriceShort(grandTotal)}</ThemedText>
+            </View>
+            {!!cartQuote && cartQuote.tax_total > 0 && (
+              <ThemedText variant="micro" color="muted">
+                Incl. GST {formatPriceShort(cartQuote.tax_total)}
+              </ThemedText>
+            )}
+          </View>
+        </View>
       </ScrollView>
 
-      {/* Floating checkout buttons */}
-      {foodHasContent && (
-        <TouchableOpacity
-          style={[styles.floatBtn, { bottom: insets.bottom + 16 }]}
-          activeOpacity={0.85}
-          onPress={() => confirmCheckout('food')}
-        >
-          <ThemedText variant="body" style={styles.floatBtnText}>
-            Checkout Food · {formatPriceShort(foodGrandTotal)}
-          </ThemedText>
-          <ThemedText variant="body" style={styles.floatBtnText}>›</ThemedText>
-        </TouchableOpacity>
-      )}
-      {essHasContent && (
-        <TouchableOpacity
-          style={[styles.floatBtn, { bottom: foodHasContent ? insets.bottom + 72 : insets.bottom + 16 }]}
-          activeOpacity={0.85}
-          onPress={() => confirmCheckout('essentials')}
-        >
-          <ThemedText variant="body" style={styles.floatBtnText}>
-            Checkout Essentials · {formatPriceShort(essGrandTotal)}
-          </ThemedText>
-          <ThemedText variant="body" style={styles.floatBtnText}>›</ThemedText>
-        </TouchableOpacity>
-      )}
+      {/* ONE checkout button. Two of these — "Checkout Food" stacked above
+          "Checkout Essentials" — were the clearest symptom of the split
+          cart: the customer could see their whole basket and still had to
+          pay for it twice. */}
+      <TouchableOpacity
+        style={[styles.floatBtn, { bottom: insets.bottom + 16 }]}
+        activeOpacity={0.85}
+        onPress={confirmCheckout}
+      >
+        <ThemedText variant="body" style={styles.floatBtnText}>
+          Checkout · {formatPriceShort(grandTotal)}
+        </ThemedText>
+        <ThemedText variant="body" style={styles.floatBtnText}>›</ThemedText>
+      </TouchableOpacity>
     </SafeAreaView>
   );
 }

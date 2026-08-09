@@ -33,7 +33,8 @@ const samplePlanB = {
 };
 
 const sampleItem = {
-  menu_item_id: 10,
+  item_id: 10,
+  item_type: 'food' as const,
   cycle_id: 1,
   name: 'Tiffin',
   display_price: 120,
@@ -55,7 +56,7 @@ describe('cartStore — items', () => {
     expect(useCartStore.getState().items).toEqual([{ ...sampleItem, quantity: 1 }]);
   });
 
-  it('addItem increments quantity for an existing menu_item_id', () => {
+  it('addItem increments quantity for an existing (item_id, item_type)', () => {
     useCartStore.getState().addItem(sampleItem);
     useCartStore.getState().addItem(sampleItem);
     useCartStore.getState().addItem(sampleItem);
@@ -64,13 +65,13 @@ describe('cartStore — items', () => {
 
   it('updateQuantity removes the item when quantity drops to 0', () => {
     useCartStore.getState().addItem(sampleItem);
-    useCartStore.getState().updateQuantity(sampleItem.menu_item_id, 0);
+    useCartStore.getState().updateQuantity(sampleItem.item_id, 'food', 0);
     expect(useCartStore.getState().items).toEqual([]);
   });
 
   it('updateQuantity removes the item for a negative quantity', () => {
     useCartStore.getState().addItem(sampleItem);
-    useCartStore.getState().updateQuantity(sampleItem.menu_item_id, -5);
+    useCartStore.getState().updateQuantity(sampleItem.item_id, 'food', -5);
     expect(useCartStore.getState().items).toEqual([]);
   });
 });
@@ -131,7 +132,7 @@ describe('cartStore — cycle scoping', () => {
 
   it('clearCycle removes only items in the given cycle', () => {
     useCartStore.getState().addItem({ ...sampleItem, cycle_id: 1 });
-    useCartStore.getState().addItem({ ...sampleItem, menu_item_id: 11, cycle_id: 2 });
+    useCartStore.getState().addItem({ ...sampleItem, item_id: 11, cycle_id: 2 });
     useCartStore.getState().clearCycle(1);
     expect(useCartStore.getState().items).toHaveLength(1);
     expect(useCartStore.getState().items[0]?.cycle_id).toBe(2);
@@ -139,7 +140,7 @@ describe('cartStore — cycle scoping', () => {
 
   it('getCycleItems returns only items in the given cycle', () => {
     useCartStore.getState().addItem({ ...sampleItem, cycle_id: 1 });
-    useCartStore.getState().addItem({ ...sampleItem, menu_item_id: 11, cycle_id: 2 });
+    useCartStore.getState().addItem({ ...sampleItem, item_id: 11, cycle_id: 2 });
     expect(useCartStore.getState().getCycleItems(1)).toHaveLength(1);
     expect(useCartStore.getState().getCycleItems(2)).toHaveLength(1);
     expect(useCartStore.getState().getCycleItems(3)).toEqual([]);
@@ -152,8 +153,8 @@ describe('cartStore — cycle scoping', () => {
     expect(useCartStore.getState().plans).toHaveLength(1);
   });
 
-  it('same menu_item_id in different cycles is treated as ONE record (current behavior)', () => {
-    // Note: addItem matches solely on menu_item_id, ignoring cycle_id.
+  it('same item_id in different cycles is treated as ONE record (current behavior)', () => {
+    // Note: addItem matches on (item_id, item_type), ignoring cycle_id.
     // If admin reuses the same menu_item across cycles, the second add
     // increments the first record's quantity. Documented for awareness.
     useCartStore.getState().addItem({ ...sampleItem, cycle_id: 1 });
@@ -207,7 +208,7 @@ describe('cartStore — getItemCount and getPlanCount', () => {
   it('getItemCount sums quantities across all items', () => {
     useCartStore.getState().addItem(sampleItem);
     useCartStore.getState().addItem(sampleItem);
-    useCartStore.getState().addItem({ ...sampleItem, menu_item_id: 11 });
+    useCartStore.getState().addItem({ ...sampleItem, item_id: 11 });
     expect(useCartStore.getState().getItemCount()).toBe(3);
   });
 
@@ -216,5 +217,86 @@ describe('cartStore — getItemCount and getPlanCount', () => {
     useCartStore.getState().addPlan(samplePlanA);
     useCartStore.getState().addPlan(samplePlanB);
     expect(useCartStore.getState().getPlanCount()).toBe(2);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────
+// THE COMPOSITE KEY
+//
+// menu_items and essentials_catalog have independent id sequences, so menu
+// item 31 and essential 31 are different products that merely share a number.
+// Two stores kept them apart structurally; one store has to do it with the
+// key. If this ever regresses, adding milk would silently bump the quantity
+// of a dish — and the cart would send the wrong thing to be priced.
+// ─────────────────────────────────────────────────────────────────
+describe('one cart: identity is (item_id, item_type)', () => {
+  beforeEach(() => {
+    useCartStore.setState({ items: [], plans: [] });
+  });
+
+  const food = {
+    item_id: 31, item_type: 'food' as const, cycle_id: 1,
+    name: 'Morning Dosa', display_price: 52.5,
+  };
+  const essential = {
+    item_id: 31, item_type: 'essential' as const, cycle_id: 1,
+    name: 'Milk 500ml', display_price: 26.25, unit: '500ml',
+  };
+
+  it('keeps a food item and an essential with the SAME id apart', () => {
+    useCartStore.getState().addItem(food);
+    useCartStore.getState().addItem(essential);
+
+    const items = useCartStore.getState().items;
+    expect(items).toHaveLength(2);
+    expect(items.map((i) => i.name).sort()).toEqual(['Milk 500ml', 'Morning Dosa']);
+    expect(items.every((i) => i.quantity === 1)).toBe(true);
+  });
+
+  it('increments only the matching type when the id is shared', () => {
+    useCartStore.getState().addItem(food);
+    useCartStore.getState().addItem(essential);
+    useCartStore.getState().addItem(essential);
+
+    expect(useCartStore.getState().getQuantity(31, 'food')).toBe(1);
+    expect(useCartStore.getState().getQuantity(31, 'essential')).toBe(2);
+  });
+
+  it('removes only the matching type', () => {
+    useCartStore.getState().addItem(food);
+    useCartStore.getState().addItem(essential);
+    useCartStore.getState().removeItem(31, 'food');
+
+    const items = useCartStore.getState().items;
+    expect(items).toHaveLength(1);
+    expect(items[0].item_type).toBe('essential');
+  });
+
+  it('updateQuantity to 0 drops only the matching type', () => {
+    useCartStore.getState().addItem(food);
+    useCartStore.getState().addItem(essential);
+    useCartStore.getState().updateQuantity(31, 'essential', 0);
+
+    const items = useCartStore.getState().items;
+    expect(items).toHaveLength(1);
+    expect(items[0].item_type).toBe('food');
+  });
+
+  it('getCycleItems can narrow to one type — the cart renders per (cycle, type)', () => {
+    useCartStore.getState().addItem(food);
+    useCartStore.getState().addItem(essential);
+
+    expect(useCartStore.getState().getCycleItems(1)).toHaveLength(2);
+    expect(useCartStore.getState().getCycleItems(1, 'food')).toHaveLength(1);
+    expect(useCartStore.getState().getCycleItems(1, 'essential')).toHaveLength(1);
+  });
+
+  it('counts and totals span both types — one cart, one number', () => {
+    useCartStore.getState().addItem(food);      // 52.5
+    useCartStore.getState().addItem(essential); // 26.25
+    useCartStore.getState().addItem(essential); // 26.25
+
+    expect(useCartStore.getState().getItemCount()).toBe(3);
+    expect(useCartStore.getState().getDisplayTotal()).toBeCloseTo(105, 2);
   });
 });

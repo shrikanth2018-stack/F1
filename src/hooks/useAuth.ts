@@ -14,7 +14,6 @@ import * as Device from 'expo-device';
 import Constants from 'expo-constants';
 import { supabase } from '../api/supabaseClient';
 import { useCartStore } from '../store/cartStore';
-import { useEssentialsCartStore } from '../store/essentialsCartStore';
 import { useStaffQueueStore } from '../store/staffQueueStore';
 import { setSentryUser, clearSentryUser } from '../utils/sentry';
 import { identifyUser, resetAnalyticsUser, trackLogin } from '../utils/analytics';
@@ -221,7 +220,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     await supabase.auth.signOut();
     useCartStore.getState().clearCart();
-    useEssentialsCartStore.getState().clearCart();
     useStaffQueueStore.getState().clearQueue();
     setSession(null);
   }, [session?.user.id]);
