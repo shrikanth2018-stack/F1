@@ -7,7 +7,15 @@
 
 import { create } from 'zustand';
 
-type HomeTab = 'food' | 'essentials';
+/**
+ * Home's top-level switch.
+ *
+ * 'subscription' is for BROWSING and buying NEW plans — it is a shopping mode,
+ * the same as food and essentials. A customer's EXISTING subscriptions are not
+ * here; they live on the side rails, which only appear when there is something
+ * to show. Shopping across the top, ownership down the side.
+ */
+export type HomeTab = 'food' | 'essentials' | 'subscription';
 
 interface UIState {
   /** Global loading overlay (payment processing, etc.) */

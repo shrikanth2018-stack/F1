@@ -67,6 +67,25 @@ export function formatDateShort(dateStr: string): string {
 }
 
 /**
+ * Format date as "6th Aug" — IST-anchored, see formatDateShort.
+ *
+ * No year: this is for dates a few days out, where the year is noise. Built
+ * from two toLocaleDateString calls rather than Intl.formatToParts, which is
+ * not guaranteed across Hermes builds.
+ */
+export function formatDateOrdinalShort(dateStr: string): string {
+  const date = new Date(dateStr);
+  const opts = { timeZone: 'Asia/Kolkata' } as const;
+  const day = Number(date.toLocaleDateString('en-IN', { ...opts, day: 'numeric' }));
+  const month = date.toLocaleDateString('en-IN', { ...opts, month: 'short' });
+  if (!Number.isFinite(day)) return formatDateShort(dateStr);
+  // 11th/12th/13th are the exceptions the naive rule gets wrong.
+  const teen = day % 100 >= 11 && day % 100 <= 13;
+  const suffix = teen ? 'th' : (['th', 'st', 'nd', 'rd'][day % 10] ?? 'th');
+  return `${day}${suffix} ${month}`;
+}
+
+/**
  * Format date as "6 April 2026" — IST-anchored, see formatDateShort.
  */
 export function formatDateLong(dateStr: string): string {

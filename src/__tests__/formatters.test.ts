@@ -9,6 +9,7 @@ import {
   formatPhone,
   formatDateShort,
   formatDateLong,
+  formatDateOrdinalShort,
   formatRelativeTime,
   truncate,
   capitalize,
@@ -106,6 +107,36 @@ describe('formatDateLong', () => {
 
   it('includes the year', () => {
     expect(formatDateLong('2026-04-16')).toMatch(/2026/);
+  });
+});
+
+describe('formatDateOrdinalShort', () => {
+  it('formats as day-with-suffix plus short month', () => {
+    expect(formatDateOrdinalShort('2026-08-06')).toBe('6th Aug');
+    expect(formatDateOrdinalShort('2026-08-01')).toBe('1st Aug');
+    expect(formatDateOrdinalShort('2026-08-02')).toBe('2nd Aug');
+    expect(formatDateOrdinalShort('2026-08-03')).toBe('3rd Aug');
+  });
+
+  it('uses "th" for 11, 12 and 13, which the naive rule gets wrong', () => {
+    expect(formatDateOrdinalShort('2026-08-11')).toBe('11th Aug');
+    expect(formatDateOrdinalShort('2026-08-12')).toBe('12th Aug');
+    expect(formatDateOrdinalShort('2026-08-13')).toBe('13th Aug');
+  });
+
+  it('resumes the suffix pattern in the twenties and thirties', () => {
+    expect(formatDateOrdinalShort('2026-08-21')).toBe('21st Aug');
+    expect(formatDateOrdinalShort('2026-08-22')).toBe('22nd Aug');
+    expect(formatDateOrdinalShort('2026-08-23')).toBe('23rd Aug');
+    expect(formatDateOrdinalShort('2026-08-31')).toBe('31st Aug');
+  });
+
+  /**
+   * The reason this is IST-anchored rather than using toISOString: a UTC
+   * timestamp just before 05:30 IST belongs to the IST date that follows it.
+   */
+  it('reads a timestamp as its IST calendar date, not its UTC one', () => {
+    expect(formatDateOrdinalShort('2026-08-05T20:00:00Z')).toBe('6th Aug');
   });
 });
 

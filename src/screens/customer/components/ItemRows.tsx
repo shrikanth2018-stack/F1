@@ -16,12 +16,16 @@ import { PHOTO_BUCKET, PHOTO_PX } from '../../../utils/catalogPhoto';
 import { GradientSep } from './GradientSep';
 
 /**
- * Row photo tile, in points. 76 is the size at which the supplied dish and
- * product renders stay identifiable (a thali at 44 is a smudge) without
- * dropping the list below ~6 items a screen. Both catalogues use the same
- * value so Food and Essentials scroll at the same rhythm.
+ * Row photo tile, in points. Was 76 — the size at which the supplied dish and
+ * product renders stay identifiable (a thali at 44 is a smudge) — brought down
+ * 13% to fit more items on a screen. Both catalogues use the same value so
+ * Food and Essentials scroll at the same rhythm.
+ *
+ * Note this only shortens rows whose TEXT is shorter than the tile. A row
+ * carrying a two-line description plus a dispatch label is already taller than
+ * the tile, and shrinking the photo does nothing for it.
  */
-const THUMB = 76;
+const THUMB = 66;
 
 interface FoodRowProps {
   item: MenuItem;
@@ -133,14 +137,7 @@ export function EssentialRow({ item, qty, isLast, onAdd, onIncrement, onDecremen
 }
 
 const styles = StyleSheet.create({
-  itemRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Theme.spacing.xs,
-    paddingVertical: 11,
-  },
-  // Food rows carry a 76pt tile, so they breathe more than the compact
-  // essentials row and align to the top of the text block rather than centre.
+  // Both row kinds carry the same tile, so they share one metric.
   foodRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -152,20 +149,18 @@ const styles = StyleSheet.create({
     marginLeft: Theme.spacing.md,
     marginRight: Theme.spacing.sm,
   },
-  rowIcon: {
-    marginRight: Theme.spacing.sm,
-    flexShrink: 0,
-  },
-  itemMeta: { flex: 1, marginRight: Theme.spacing.sm },
   itemName: {
     fontFamily: Theme.typography.fontFamily,
-    fontSize: Theme.typography.sizes.body + 2,
+    // Menu list runs 1pt tighter than the rest of the app: the hero is a
+    // fixed 32% of the screen by design, so this is the only lever left for
+    // how many dishes a customer sees without scrolling.
+    fontSize: Theme.typography.sizes.body + 1,
     color: Theme.colors.text.primary,
     fontWeight: '400',
   },
   itemSub: {
     fontFamily: Theme.typography.fontFamily,
-    fontSize: Theme.typography.sizes.small + 2,
+    fontSize: Theme.typography.sizes.small + 1,
     color: Theme.colors.text.muted,
     marginTop: 2,
   },
@@ -179,7 +174,7 @@ const styles = StyleSheet.create({
   },
   itemPrice: {
     fontFamily: Theme.typography.fontFamily,
-    fontSize: Theme.typography.sizes.body + 2,
+    fontSize: Theme.typography.sizes.body + 1,
     color: Theme.colors.text.mint,
     marginRight: Theme.spacing.md,
     flexShrink: 0,
@@ -214,7 +209,7 @@ const styles = StyleSheet.create({
   },
   qtyText: {
     fontFamily: Theme.typography.fontFamily,
-    fontSize: Theme.typography.sizes.body + 2,
+    fontSize: Theme.typography.sizes.body + 1,
     color: Theme.colors.text.primary,
     minWidth: 20,
     textAlign: 'center',

@@ -139,7 +139,9 @@ export function photoUrl(
  * visible gain.
  */
 export const PHOTO_PX = {
-  /** 76pt customer Home row tile. */
+  /** 66pt customer Home row tile. Held at 240 rather than dropped with the
+   *  tile: it is already comfortably above 3x, and changing it would orphan
+   *  every cached 240px render on the CDN for no visible gain. */
   row: 240,
   /** 48pt admin manager row tile. */
   admin: 150,

@@ -39,7 +39,7 @@ import { useEssentialsCatalog } from '../../hooks/useEssentials';
 import { useEssentialsCartStore } from '../../store/essentialsCartStore';
 import { useCartStore } from '../../store/cartStore';
 import { useUIStore } from '../../store/uiStore';
-import { SegmentedControl } from '../../components/SegmentedControl';
+import { HomeTabStrip } from './components/HomeTabStrip';
 import { assetUrl } from '../../utils/assets';
 import { useLiveBanner, type CustomBannerContent } from '../../hooks/useBanner';
 import { OfferOverlay } from '../../components/OfferOverlay';
@@ -53,6 +53,11 @@ import { CycleGroup } from './components/CycleGroup';
 import { CyclePopup } from './components/CyclePopup';
 import { FoodRow, EssentialRow } from './components/ItemRows';
 import { sortByCutoff, buildSections, type SectionMeta } from './components/homeShared';
+import { HomeRails } from './components/HomeRails';
+import { PlanBrowseRow } from './components/PlanBrowseRow';
+import { useCycleDispatch } from '../../hooks/useCycleDispatch';
+import { useSubscriptionPlans } from '../../hooks/useSubscriptions';
+import { getDispatchLabel } from '../../utils/timeEngine';
 
 const LOGO_URL = assetUrl('logo.png');
 const BANNER_URL = assetUrl('banner.png');
@@ -79,11 +84,12 @@ export function HomeScreen() {
   const isProfileVisible = useUIStore((s) => s.isProfileVisible);
   const setProfileVisible = useUIStore((s) => s.setProfileVisible);
 
-  // Scroll each tab to top whenever it becomes active
+  // Scroll each tab to top whenever it becomes active. The subscription tab
+  // has no scroll ref of its own — it is a short list and always mounts fresh.
   useEffect(() => {
     if (activeHomeTab === 'food') {
       foodScrollRef.current?.scrollTo({ y: 0, animated: false });
-    } else {
+    } else if (activeHomeTab === 'essentials') {
       essentialsScrollRef.current?.scrollTo({ y: 0, animated: false });
     }
   }, [activeHomeTab]);
@@ -109,6 +115,18 @@ export function HomeScreen() {
   const { data: allMenuItems, isLoading: menuLoading, isError: menuError, refetch: refetchMenu } = useMenuItems(cycleIds);
   const { data: essentials, isLoading: essentialsLoading, refetch: refetchEssentials } = useEssentialsCatalog();
   const { evaluations } = useSmartCart();
+  const { data: plans, isLoading: plansLoading } = useSubscriptionPlans();
+
+  // Server-derived delivery day per cycle. The device never decides this —
+  // cycle-dispatch runs the same A/B/C cutoff rule the order path uses.
+  const { data: dispatchByCycle } = useCycleDispatch();
+  const dayLabelFor = useCallback(
+    (cycleId: number) => {
+      const d = dispatchByCycle?.get(cycleId);
+      return d ? getDispatchLabel(d.scenario) : undefined;
+    },
+    [dispatchByCycle],
+  );
 
   const textContent: CustomBannerContent | null = useMemo(() => {
     if (liveBanner?.banner_type === 'text' && liveBanner.text_content) {
@@ -278,18 +296,31 @@ export function HomeScreen() {
         <ErrorRetry message="Failed to load menu" onRetry={handleRefresh} />
       )}
 
-      {/* ── Food | Essentials — shared glass pill (D24) ── */}
-      {essentialsEnabled && (
-        <SegmentedControl
-          style={styles.pill}
-          value={activeHomeTab}
-          onChange={setActiveHomeTab}
-          options={[
-            { key: 'food', label: 'Food' },
-            { key: 'essentials', label: 'Essentials' },
-          ]}
-        />
-      )}
+      {/* ── Food | Essentials | Subscribe — browser tabs ──
+           Subscription is a SHOPPING mode here: browse and buy a NEW plan.
+           A customer's existing subscriptions are on the side rails. This
+           replaces the floating "Subscription Plans" button, which sat on top
+           of the menu list and hid two rows.
+           The active tab is the same colour as the list below it, so the two
+           read as one sheet. See HomeTabStrip for why this is not the shared
+           SegmentedControl. */}
+      <HomeTabStrip
+        style={styles.pill}
+        value={activeHomeTab}
+        onChange={setActiveHomeTab}
+        options={
+          essentialsEnabled
+            ? [
+                { key: 'food', label: 'Food' },
+                { key: 'essentials', label: 'Essentials' },
+                { key: 'subscription', label: 'Subscribe' },
+              ]
+            : [
+                { key: 'food', label: 'Food' },
+                { key: 'subscription', label: 'Subscribe' },
+              ]
+        }
+      />
 
       {/* ── Food scroll — rendered only when food tab is active ── */}
       {/* (display:'none' on a sibling ScrollView claims flex space on Android,
@@ -317,6 +348,7 @@ export function HomeScreen() {
             section={section}
             index={sectionIdx}
             onOpenPopup={setPopupCycle}
+            dayLabel={dayLabelFor(section.cycleId)}
           >
             {section.data.map((item, itemIdx) => {
               const qty = getItemQty(item.id);
@@ -383,20 +415,36 @@ export function HomeScreen() {
         </ScrollView>
       )}
 
-      {/* ── Floating subscription plans button ──────────── */}
-      <View style={[styles.subsBar, { bottom: (insets.bottom || 0) + Theme.spacing.sm }]}>
-        <TouchableOpacity
-          style={styles.subsBtn}
-          activeOpacity={0.75}
-          onPress={() => navigation.navigate('Plans', { initialTab: activeHomeTab })}
+      {/* ── Subscription — browse and buy a NEW plan ────── */}
+      {activeHomeTab === 'subscription' && (
+        <ScrollView
+          style={styles.list}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
         >
-          <Text style={styles.subsText}>Subscription Plans</Text>
-        </TouchableOpacity>
-      </View>
+          {(plans ?? []).length === 0 && !plansLoading && (
+            <EmptyState
+              title="No plans available"
+              subtitle="Subscription plans will appear here once they go live"
+            />
+          )}
+          {(plans ?? []).map((plan, idx) => (
+            <PlanBrowseRow
+              key={plan.id}
+              plan={plan}
+              isLast={idx === (plans ?? []).length - 1}
+              onPress={() => navigation.navigate('PlanDetail', { planId: plan.id })}
+            />
+          ))}
+        </ScrollView>
+      )}
 
       {isProfileVisible && <ProfilePopup />}
       {popupCycle && <CyclePopup cycle={popupCycle} onClose={() => setPopupCycle(null)} />}
-      {!stormMode && <CartFloatingButton cartType={activeHomeTab} onPress={() => navigation.navigate('Cart')} />}
+      {/* Rails render above the list but below the profile popup: they are a
+          persistent affordance, not a modal. */}
+      <HomeRails />
+      {!stormMode && <CartFloatingButton onPress={() => navigation.navigate('Cart')} />}
     </View>
   );
 }
@@ -436,9 +484,11 @@ const styles = StyleSheet.create({
   },
 
   // ── Food | Essentials pill (SegmentedControl) ──
+  /** No bottom margin on purpose — the active tab has to touch the list for
+   *  the two to read as one sheet. */
   pill: {
     marginHorizontal: PILL_MX,
-    marginVertical: Theme.spacing.sm,
+    marginTop: Theme.spacing.sm,
   },
 
   // ── List ──
@@ -470,25 +520,4 @@ const styles = StyleSheet.create({
     borderRadius: Theme.components.inputRadius,
   },
 
-  // ── Floating subscription plans button ──
-  subsBar: {
-    position: 'absolute',
-    left: PILL_MX,
-    right: PILL_MX,
-  },
-  subsBtn: {
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Theme.colors.background.secondary,
-    borderWidth: 1,
-    borderColor: `${Theme.colors.text.mint}4D`,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  subsText: {
-    fontFamily: Theme.typography.fontFamily,
-    fontSize: Theme.typography.sizes.subtitle + 2,
-    color: Theme.colors.text.mint,
-    fontWeight: '400',
-  },
 });

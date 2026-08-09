@@ -21,10 +21,24 @@ interface CycleGroupProps {
   section: SectionMeta;
   index: number;
   onOpenPopup: (s: SectionMeta) => void;
+  /**
+   * Server-derived delivery day for this cycle — 'Today' / 'Tomorrow' /
+   * 'Day after tomorrow'.
+   *
+   * The header used to read "Dispatch by 7:30 AM" with no day at all. At
+   * 09:45 that is unreadable: breakfast at 7:30 can only mean tomorrow, but
+   * the customer had no way to know until they had already added something,
+   * because the day was disclosed on the ITEM row after adding. Naming it up
+   * front is the difference between choosing and guessing.
+   *
+   * Comes from useCycleDispatch (the cycle-dispatch edge function), never
+   * from the device clock — the same A/B/C rule the order path uses.
+   */
+  dayLabel?: string;
   children: React.ReactNode;
 }
 
-export function CycleGroup({ section, index, onOpenPopup, children }: CycleGroupProps) {
+export function CycleGroup({ section, index, onOpenPopup, dayLabel, children }: CycleGroupProps) {
   // Reanimated worklets — runs on UI thread, no JS-thread contention
   // (mixing classic Animated with multiple staggered setTimeouts caused
   // visible stutter on real Android devices, while iOS sim hid it.)
@@ -56,6 +70,12 @@ export function CycleGroup({ section, index, onOpenPopup, children }: CycleGroup
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
           <ThemedText variant="small" color="muted" style={styles.dispatchLink}>
+            {dayLabel ? (
+              <ThemedText variant="small" color="mint" style={styles.dispatchLink}>
+                {dayLabel}
+                {' · '}
+              </ThemedText>
+            ) : null}
             Dispatch by {section.deliveryBy} ›
           </ThemedText>
         </TouchableOpacity>
