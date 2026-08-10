@@ -6,6 +6,8 @@
 import {
   deliveryKeyOf,
   groupIntoDeliveries,
+  sortBySoonestArrival,
+  purchasesWithin,
   rolledUpStatus,
   formatOrderNumbers,
   type DeliveryRow,
@@ -137,5 +139,98 @@ describe('formatOrderNumbers', () => {
 
   it('is empty for nothing', () => {
     expect(formatOrderNumbers([])).toBe('');
+  });
+});
+
+describe("grouping by ARRIVAL (the home rail)", () => {
+  it('clubs two separate purchases landing in the same window', () => {
+    // The live case: #11581 (milk, one checkout) and #11605 (idli, another)
+    // both arrive Breakfast 11 Aug. The rail was showing two 7:30am
+    // deliveries to a customer who had one trip to the door.
+    const rows = [
+      row({ id: 11581, order_group_id: '7bf7368f' }),
+      row({ id: 11605, order_group_id: '4bef67a0' }),
+    ];
+    expect(groupIntoDeliveries(rows, { by: 'arrival' })).toHaveLength(1);
+    // ...while My Orders still sees them as the two purchases they are.
+    expect(groupIntoDeliveries(rows, { by: 'purchase' })).toHaveLength(2);
+  });
+
+  it('still keeps different windows apart', () => {
+    const out = groupIntoDeliveries([
+      row({ id: 1, cycle_id: 1, order_group_id: 'a' }),
+      row({ id: 2, cycle_id: 4, order_group_id: 'b' }),
+    ], { by: 'arrival' });
+    expect(out).toHaveLength(2);
+  });
+
+  it('never merges unrelated plan purchases', () => {
+    const out = groupIntoDeliveries([
+      row({ id: 1, cycle_id: null, order_group_id: 'a' }),
+      row({ id: 2, cycle_id: null, order_group_id: 'b' }),
+    ], { by: 'arrival' });
+    expect(out).toHaveLength(2);
+  });
+
+  it('splits an arrival back into the purchases a tap can open', () => {
+    const arrival = groupIntoDeliveries([
+      row({ id: 11581, order_group_id: '7bf7368f' }),
+      row({ id: 11605, order_group_id: '4bef67a0' }),
+    ], { by: 'arrival' })[0];
+    const purchases = purchasesWithin(arrival);
+    expect(purchases).toHaveLength(2);
+    expect(purchases.map((p) => p.primaryId).sort()).toEqual([11581, 11605]);
+  });
+});
+
+describe('sortBySoonestArrival', () => {
+  const STARTS = { 1: '07:30:00', 3: '16:30:00', 4: '19:30:00' };
+
+  it('orders by TIME within a day, not just by date', () => {
+    // The bug: dispatch_date alone tied Breakfast and Dinner on one day, and
+    // the tie fell to whatever order the rows arrived in.
+    const out = sortBySoonestArrival(
+      groupIntoDeliveries([
+        row({ id: 2, cycle_id: 4, order_group_id: 'b' }),
+        row({ id: 1, cycle_id: 1, order_group_id: 'a' }),
+      ], { by: 'arrival' }),
+      STARTS,
+    );
+    expect(out.map((d) => d.cycleId)).toEqual([1, 4]);
+  });
+
+  it('puts an earlier DAY first regardless of time of day', () => {
+    const out = sortBySoonestArrival(
+      groupIntoDeliveries([
+        row({ id: 1, cycle_id: 1, dispatch_date: '2026-08-12', order_group_id: 'a' }),
+        row({ id: 2, cycle_id: 4, dispatch_date: '2026-08-11', order_group_id: 'b' }),
+      ], { by: 'arrival' }),
+      STARTS,
+    );
+    expect(out.map((d) => d.dispatchDate)).toEqual(['2026-08-11', '2026-08-12']);
+  });
+
+  it('sorts an unknown cycle time LAST within its day, not first', () => {
+    // An unknown time is not evidence of urgency; putting it on top would
+    // displace something we know is imminent.
+    const out = sortBySoonestArrival(
+      groupIntoDeliveries([
+        row({ id: 1, cycle_id: 99, order_group_id: 'a' }),
+        row({ id: 2, cycle_id: 4, order_group_id: 'b' }),
+      ], { by: 'arrival' }),
+      STARTS,
+    );
+    expect(out.map((d) => d.cycleId)).toEqual([4, 99]);
+  });
+
+  it('is stable and total — equal date and time fall back to id', () => {
+    const out = sortBySoonestArrival(
+      groupIntoDeliveries([
+        row({ id: 9, cycle_id: 1, order_group_id: 'a' }),
+        row({ id: 3, cycle_id: 1, dispatch_date: '2026-08-11', order_group_id: 'b' }),
+      ], { by: 'purchase' }),
+      STARTS,
+    );
+    expect(out.map((d) => d.primaryId)).toEqual([3, 9]);
   });
 });

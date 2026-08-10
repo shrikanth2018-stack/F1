@@ -40,7 +40,14 @@ import {
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Theme } from '../../../theme';
 import { ThemedText } from '../../../components/ThemedText';
-import { useActiveOrders, type OrderWithItems } from '../../../hooks/useOrders';
+import { useActiveOrders } from '../../../hooks/useOrders';
+import {
+  groupIntoDeliveries,
+  sortBySoonestArrival,
+  purchasesWithin,
+  rolledUpStatus,
+  formatOrderNumbers,
+} from '../../../utils/orderDeliveries';
 import { useRealtimeOrders } from '../../../hooks/useRealtimeOrders';
 import { useMySubscriptions } from '../../../hooks/useSubscriptions';
 import { useDeliveryCycles } from '../../../hooks/useDeliveryCycles';
@@ -54,8 +61,30 @@ const TERMINAL = new Set(['Delivered', 'Cancelled', 'Failed']);
 type OpenRail = 'orders' | 'subs' | null;
 
 const { height: SCREEN_H } = Dimensions.get('window');
-/** Must match styles.railStack.top — the rails sit inside the fixed hero band. */
-const RAIL_STACK_TOP = SCREEN_H * 0.2;
+
+/**
+ * Millimetres → dp. React Native lays out in density-independent pixels at
+ * 160 per inch, and there are 25.4 mm to the inch, so 1 mm is ~6.3 dp. Here
+ * because the nudge below was measured against a physical device, and
+ * recording it in the unit it was measured in keeps it checkable.
+ */
+const MM = 160 / 25.4;
+
+/**
+ * The rails sit inside the fixed hero band.
+ *
+ * Nudged up 2 mm: at a flat 20% the lower rail grazed the Food/Essentials
+ * toggle on a real Android handset. It looked clear on the iOS simulator,
+ * which is the trap — the hero is a percentage of screen height and the two
+ * devices put the toggle at different absolute offsets.
+ *
+ * styles.railStack.top READS THIS CONSTANT rather than repeating '20%'. The
+ * two used to be separate, with a comment asking whoever edited one to
+ * remember the other; the panel is positioned from the constant and the rails
+ * from the percentage, so a drift between them would have opened every panel
+ * slightly off its own rail.
+ */
+const RAIL_STACK_TOP = SCREEN_H * 0.2 - 2 * MM;
 /** Keep the panel on screen if a rail sits low and the panel is tall. */
 const PANEL_MAX_TOP = SCREEN_H * 0.62;
 
@@ -113,38 +142,40 @@ export function HomeRails() {
    *   daily deliveries appear on their own as they are generated. Only the
    *   purchase group carries a NULL cycle, so that is a safe test.
    */
+  /** Each cycle's delivery time, so arrivals can be ordered within a day. */
+  const cycleStarts = useMemo(
+    () => Object.fromEntries((cycles ?? []).map((c) => [c.id, c.delivery_start])),
+    [cycles],
+  );
+
   const activeGroups = useMemo(() => {
-    const rows: OrderWithItems[] = activeRows ?? [];
-    const byGroup = new Map<string, OrderWithItems[]>();
-    for (const o of rows) {
+    const rows = (activeRows ?? []).filter((o) => {
       // The query already excludes these, but keep the guards: they are the
       // definition of what this rail counts, and a future change to the
       // query should have to argue with them.
-      if (TERMINAL.has(o.status ?? '')) continue;
-      if (o.cycle_id == null) continue;
+      if (TERMINAL.has(o.status ?? '')) return false;
+      if (o.cycle_id == null) return false;
       // A running plan is tracked on the Plans rail, not here — otherwise a
       // 30-day subscription would flood this list with deliveries the
       // customer never placed.
-      if (o.subscription_id != null) continue;
-      // ONE ENTRY PER DELIVERY — same purchase, same window, same day. The
-      // same grouping My Orders uses, so the row the customer taps here is
-      // the row they find there.
-      const key = `${o.order_group_id ?? o.id}:${o.cycle_id}:${o.dispatch_date}`;
-      byGroup.set(key, [...(byGroup.get(key) ?? []), o]);
-    }
-    return [...byGroup.entries()]
-      .map(([key, group]) => ({
-        key,
-        // Earliest dispatch in the group is the one the customer is waiting on.
-        next: [...group].sort((a, b) =>
-          String(a.dispatch_date).localeCompare(String(b.dispatch_date)),
-        )[0],
-        rows: group,
-      }))
-      .sort((a, b) =>
-        String(a.next.dispatch_date).localeCompare(String(b.next.dispatch_date)),
-      );
-  }, [activeRows]);
+      if (o.subscription_id != null) return false;
+      return true;
+    });
+
+    // BY ARRIVAL, not by purchase. This rail answers "what is coming and
+    // when", and two separate checkouts landing in the same window are ONE
+    // trip to the door. Keyed by purchase, it reported two 7:30am deliveries
+    // to a customer who had one — while correctly clubbing the food and
+    // essentials of a single checkout, so the rail contradicted itself
+    // depending on how the customer happened to have bought.
+    //
+    // My Orders stays keyed by PURCHASE, deliberately: a card there is a
+    // thing you bought, with one total and one cancel button.
+    return sortBySoonestArrival(
+      groupIntoDeliveries(rows, { by: 'arrival' }),
+      cycleStarts,
+    );
+  }, [activeRows, cycleStarts]);
 
   /**
    * The one order the customer is actually waiting on. The panel shows THIS,
@@ -255,46 +286,87 @@ export function HomeRails() {
                       <PanelHead lead="Nothing on the way" />
                     ) : (
                       <ScrollView style={styles.panelScroll} showsVerticalScrollIndicator={false}>
-                        {activeGroups.map((g) => {
-                          const start = g.next.cycle_id != null
-                            ? cycleById.get(g.next.cycle_id)?.delivery_start
+                        {activeGroups.map((arrival) => {
+                          const start = arrival.cycleId != null
+                            ? cycleById.get(arrival.cycleId)?.delivery_start
                             : null;
-                          const when = `${start ? `${formatTime12h(start)}, ` : ''}${formatDateOrdinalShort(String(g.next.dispatch_date))}`;
-                          // The bag's own numbers — every row in this
-                          // delivery, because each is real and lookupable.
-                          const numbers = g.rows.map((r) => `#${r.id}`).join(', ');
-                          // Slowest half governs: a bag of idli and milk is
-                          // two rows on different journeys and the customer
-                          // is waiting for the whole bag.
-                          const status = [...new Set(g.rows.map((r) => r.status))].join(' · ');
-                          const contents = g.rows
-                            .flatMap((r) => r.order_items ?? [])
-                            .map((it: any) => `${it.item_name} x${it.quantity}`)
-                            .join(', ');
+                          // DISPATCHED BY, not delivered at. `delivery_start`
+                          // is when the run leaves, which is the only time we
+                          // can commit to — the doorstep moment depends on
+                          // where the customer sits on the round. The order
+                          // detail page has always worded it this way; the
+                          // rail said neither, which let it be read as an
+                          // arrival promise.
+                          const when = `Dispatched by : ${start ? `${formatTime12h(start)}, ` : ''}${formatDateOrdinalShort(String(arrival.dispatchDate))}`;
+                          // An arrival is ONE trip to the door, but it can
+                          // carry more than one purchase — and a purchase is
+                          // what a tap can open, cancel or review. So the
+                          // time heads the block once and each purchase gets
+                          // its own tappable line beneath it.
+                          const purchases = purchasesWithin(arrival);
                           return (
-                            <TouchableOpacity
-                              key={g.key}
-                              style={styles.liveRow}
-                              activeOpacity={0.7}
-                              onPress={() => {
-                                setOpen(null);
-                                setTimeout(
-                                  () => navigation.navigate('OrderDetail', { orderId: g.next.id }),
-                                  120,
+                            <View key={arrival.key} style={styles.liveRow}>
+                              {/* The prominent line, because it is what the
+                                  customer came here to find out. The order
+                                  number below is a reference they need
+                                  occasionally, not the answer.
+                                  ONE LINE, ALWAYS. The panel is 78% of the
+                                  screen capped at 320pt, and "Dispatched by :
+                                  7:30 pm, 11th Aug" lands right at that edge —
+                                  wrapping put the date on its own row and
+                                  split one fact in two. numberOfLines stops
+                                  the wrap; adjustsFontSizeToFit shrinks it
+                                  instead of truncating, so a longer month
+                                  never costs the customer the date. The floor
+                                  keeps it legible rather than letting it
+                                  shrink without limit. */}
+                              <ThemedText
+                                variant="body"
+                                color="primary"
+                                style={styles.dispatchLine}
+                                numberOfLines={1}
+                                adjustsFontSizeToFit
+                                minimumFontScale={0.8}
+                              >
+                                {when}
+                              </ThemedText>
+                              {purchases.map((p) => {
+                                // Slowest half governs: a bag of idli and
+                                // milk is two rows on different journeys and
+                                // the customer is waiting for the whole bag.
+                                const status = rolledUpStatus(p.rows);
+                                const contents = p.rows
+                                  .flatMap((r) => r.order_items ?? [])
+                                  .map((it: any) => `${it.item_name} x${it.quantity}`)
+                                  .join(', ');
+                                return (
+                                  <TouchableOpacity
+                                    key={p.key}
+                                    style={styles.livePurchase}
+                                    activeOpacity={0.7}
+                                    onPress={() => {
+                                      setOpen(null);
+                                      setTimeout(
+                                        () => navigation.navigate('OrderDetail', { orderId: p.primaryId }),
+                                        120,
+                                      );
+                                    }}
+                                  >
+                                    <View style={styles.liveTop}>
+                                      <ThemedText variant="small" color="mint">
+                                        {formatOrderNumbers(p.ids)}
+                                      </ThemedText>
+                                      <ThemedText variant="micro" color="mint">{status}</ThemedText>
+                                    </View>
+                                    {!!contents && (
+                                      <ThemedText variant="small" color="muted" numberOfLines={2}>
+                                        {contents}
+                                      </ThemedText>
+                                    )}
+                                  </TouchableOpacity>
                                 );
-                              }}
-                            >
-                              <View style={styles.liveTop}>
-                                <ThemedText variant="body" color="primary">{numbers}</ThemedText>
-                                <ThemedText variant="micro" color="mint">{status}</ThemedText>
-                              </View>
-                              <ThemedText variant="small" color="mint">{when}</ThemedText>
-                              {!!contents && (
-                                <ThemedText variant="small" color="muted" numberOfLines={2}>
-                                  {contents}
-                                </ThemedText>
-                              )}
-                            </TouchableOpacity>
+                              })}
+                            </View>
                           );
                         })}
                       </ScrollView>
@@ -459,7 +531,7 @@ const styles = StyleSheet.create({
     // Negative, so each bar runs off the screen edge instead of stopping at
     // it — a tilted bar that ends flush would show a wedge of dead space.
     right: -RAIL_BLEED,
-    top: '20%',
+    top: RAIL_STACK_TOP,
     alignItems: 'flex-end',
     gap: Theme.spacing.md,
   },
@@ -498,7 +570,8 @@ const styles = StyleSheet.create({
   },
   railBadgeText: {
     fontFamily: Theme.typography.fontFamily,
-    fontSize: Theme.typography.sizes.micro,
+    // Matches railLabel's bump — the count and its word are one phrase.
+    fontSize: Theme.typography.sizes.micro + 1,
     color: Theme.colors.text.primary,
   },
   // Horizontal. An earlier version rotated this 90° to keep the rail narrow;
@@ -506,7 +579,9 @@ const styles = StyleSheet.create({
   // with readable text is the better trade.
   railLabel: {
     fontFamily: Theme.typography.fontFamily,
-    fontSize: Theme.typography.sizes.micro - 1,
+    // +1 on the collapsed rail: it is read at a glance, edge-on and tilted,
+    // which costs legibility that the panel text does not pay.
+    fontSize: Theme.typography.sizes.micro + 1,
     marginTop: 1,
     textAlign: 'center',
   },
@@ -556,6 +631,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  /** A purchase inside an arrival — indented under the shared time heading. */
+  livePurchase: { paddingTop: Theme.spacing.xs },
+  /** −1 on body: still the loudest line in the panel, one point calmer, and
+   *  it buys back some of the width the full label needs. */
+  dispatchLine: { fontSize: Theme.typography.sizes.body - 1 },
   panelTitle: { flex: 1, fontSize: Theme.typography.sizes.subtitle - 1 },
   panelTitleAccent: { fontSize: Theme.typography.sizes.subtitle - 1 },
   panelScroll: { flexGrow: 0 },

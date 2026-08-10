@@ -48,12 +48,32 @@ export interface Delivery<T> {
 }
 
 /**
- * The grouping key. A plan PURCHASE has no window and delivers nothing, so it
- * stands alone under its own id rather than being merged with whatever else
- * shared its checkout.
+ * TWO HONEST READINGS OF "ONE DELIVERY", and both are needed.
+ *
+ * 'purchase' — same checkout, same window, same day. What My Orders and the
+ *   order detail page show, because there a card is a thing you BOUGHT: it
+ *   has one total, one payment and one cancel button. Merging two purchases
+ *   would produce a card that cannot be cancelled as a unit.
+ *
+ * 'arrival'  — same window, same day, whoever bought what. What the home rail
+ *   shows, because there the question is "what is coming and when", and two
+ *   purchases landing in the same window are ONE trip to your door. Splitting
+ *   them told the customer they had two 7:30am deliveries when they had one.
+ *
+ * Named on purpose rather than left to each screen to spell out, so the
+ * difference is a decision recorded in one place instead of a divergence
+ * nobody meant.
  */
-export function deliveryKeyOf(row: DeliveryRow): string {
+export type DeliveryGrouping = 'purchase' | 'arrival';
+
+/**
+ * The grouping key. A plan PURCHASE has no window and delivers nothing, so it
+ * always stands alone under its own id rather than being merged with whatever
+ * else shared its checkout — or, under 'arrival', with an unrelated purchase.
+ */
+export function deliveryKeyOf(row: DeliveryRow, by: DeliveryGrouping = 'purchase'): string {
   if (row.cycle_id == null) return `purchase-${row.id}`;
+  if (by === 'arrival') return `${row.cycle_id}:${row.dispatch_date}`;
   return `${row.order_group_id ?? `single-${row.id}`}:${row.cycle_id}:${row.dispatch_date}`;
 }
 
@@ -64,6 +84,8 @@ export interface GroupOptions {
    * placed; false for the order detail page, which must still open one.
    */
   excludeSubscriptionDispatches?: boolean;
+  /** See DeliveryGrouping. Defaults to 'purchase'. */
+  by?: DeliveryGrouping;
 }
 
 /** Group rows into deliveries, newest checkout first. */
@@ -74,7 +96,7 @@ export function groupIntoDeliveries<T extends DeliveryRow>(
   const map = new Map<string, T[]>();
   for (const row of rows) {
     if (options.excludeSubscriptionDispatches && row.subscription_id != null) continue;
-    const key = deliveryKeyOf(row);
+    const key = deliveryKeyOf(row, options.by ?? 'purchase');
     const list = map.get(key) ?? [];
     list.push(row);
     map.set(key, list);
@@ -141,4 +163,53 @@ export function formatOrderNumbers(ids: number[], max = 3): string {
   if (ids.length === 0) return '';
   if (ids.length <= max) return ids.map((id) => `#${id}`).join(', ');
   return `${ids.slice(0, max).map((id) => `#${id}`).join(', ')} +${ids.length - max}`;
+}
+
+/**
+ * Soonest arrival first — the order the customer actually cares about on the
+ * home rail.
+ *
+ * THE TIME OF DAY IS PART OF THE ANSWER. Sorting on `dispatch_date` alone
+ * leaves Breakfast (07:30) and Dinner (19:30) on the same day tied, and a tie
+ * falls back to whatever order the rows happened to arrive in — so tonight's
+ * dinner could sit above tomorrow morning's breakfast, or not, unpredictably.
+ * The cycle's delivery_start breaks it.
+ *
+ * A cycle with no known start sorts LAST within its day rather than first: an
+ * unknown time is not evidence of urgency, and putting it at the top would
+ * displace something we do know is imminent.
+ */
+export function sortBySoonestArrival<T>(
+  deliveries: Delivery<T>[],
+  cycleStarts: Record<number, string | null | undefined>,
+): Delivery<T>[] {
+  const minutes = (cycleId: number | null): number => {
+    const raw = cycleId != null ? cycleStarts[cycleId] : null;
+    if (!raw) return 24 * 60 + 1;
+    const [h, m] = String(raw).split(':').map(Number);
+    if (Number.isNaN(h)) return 24 * 60 + 1;
+    return h * 60 + (Number.isNaN(m) ? 0 : m);
+  };
+  return [...deliveries].sort((a, b) => {
+    const da = a.dispatchDate ?? '';
+    const db = b.dispatchDate ?? '';
+    if (da !== db) return da < db ? -1 : 1;
+    const ma = minutes(a.cycleId);
+    const mb = minutes(b.cycleId);
+    if (ma !== mb) return ma - mb;
+    return a.primaryId - b.primaryId;
+  });
+}
+
+/**
+ * The purchases inside one arrival, each with its own row ids.
+ *
+ * An arrival can hold two separate checkouts. They travel together and arrive
+ * together, which is why the rail groups them — but they remain two purchases
+ * with two detail pages and two cancel buttons, so anything TAPPABLE has to
+ * address one of them, not the pair. This splits an arrival back into the
+ * things a tap can legitimately open.
+ */
+export function purchasesWithin<T extends DeliveryRow>(delivery: Delivery<T>): Delivery<T>[] {
+  return groupIntoDeliveries(delivery.rows, { by: 'purchase' });
 }
