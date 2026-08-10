@@ -138,7 +138,23 @@ const styles = StyleSheet.create({
     /** Slightly wider than a resting tab — enough to feel picked, not enough
      *  to squeeze the other two labels. */
     flex: 1.15,
-    height: TAB_H,
+    /**
+     * A PIXEL TALLER THAN THE STRIP, hanging a pixel below it.
+     *
+     * Flush at height TAB_H, this met the baseline exactly — and met is not
+     * covered. Android densities are fractional (2.625, 2.75, 3.5), so a 1dp
+     * line and this tab's bottom edge round to different physical pixels and
+     * a sliver of the baseline survived underneath the active tab. The line
+     * then ran unbroken across the whole strip and read as a divider between
+     * the tabs and the menu, which is precisely the join the browser-tab
+     * shape exists to erase. iOS rounds at 2x and 3x, so it never showed
+     * there.
+     *
+     * Overlapping by a pixel makes the cover independent of how the density
+     * rounds. The overhang lands on the list, which is the same colour.
+     */
+    height: TAB_H + 1,
+    marginBottom: -1,
     backgroundColor: Theme.colors.background.primary,
     borderTopWidth: 1,
     borderLeftWidth: 1,
