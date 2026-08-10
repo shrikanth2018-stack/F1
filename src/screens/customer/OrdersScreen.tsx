@@ -25,29 +25,51 @@ import { ThemedText } from '../../components/ThemedText';
 import { DispatchBadge } from '../../components/DispatchBadge';
 import { EmptyState } from '../../components/EmptyState';
 import { ErrorRetry } from '../../components/ErrorRetry';
-import { useMyOrders } from '../../hooks/useOrders';
-import { useMySubscriptions } from '../../hooks/useSubscriptions';
-import { subscriptionDaysRemaining } from '../../utils/subscriptionMath';
+import { useMyOrders, type OrderWithItems } from '../../hooks/useOrders';
 import { formatPriceShort, formatDateShort, formatRelativeTime } from '../../utils/formatters';
 import { ORDER_STATUS_FLOW, orderStatusVariant } from '../../utils/orderStatus';
-import type { Order } from '../../types';
 
 
-// ── Order-group model ─────────────────────────────────────────
-// One checkout = one order_group_id = one or more `orders` rows.
+// ── Delivery model ────────────────────────────────────────────
+//
+// A CARD IS ONE DELIVERY, NOT ONE CHECKOUT.
+//
+// "Order" means two things: to a customer it is one basket and one payment;
+// to the kitchen, the packers, the driver and the hub it is one BAG going out
+// in one window. One checkout usually becomes several bags — breakfast
+// tomorrow and dinner tonight, or food and milk in the same morning, because
+// one is cooked and one comes off a shelf.
+//
+// Grouping by checkout made the customer track something nobody else could
+// look up: one card, one number, while the second bag's number was real, in
+// use by staff, and printed on the slip. Grouping by DELIVERY makes the row
+// the customer watches the same object that arrives at their door.
+//
+// Same window + same day = one card, contents combined, one status tracker.
+// A different window is a different card.
 
 interface OrderGroup {
   key: string;
-  primaryId: number;       // lowest row id — the customer-facing order number
-  rows: Order[];           // sorted by dispatch_date asc
-  totalAmount: number;     // sum across the group (per-row money model)
+  primaryId: number;       // lowest row id in this delivery
+  rows: OrderWithItems[];  // the rows making up this one delivery
+  totalAmount: number;     // sum across the delivery
   createdAt: string;
 }
 
-function groupOrders(orders: Order[]): OrderGroup[] {
-  const map = new Map<string, Order[]>();
+function groupOrders(orders: OrderWithItems[]): OrderGroup[] {
+  const map = new Map<string, OrderWithItems[]>();
   for (const o of orders) {
-    const key = o.order_group_id ?? `single-${o.id}`;
+    // DAILY SUBSCRIPTION DELIVERIES ARE NOT LISTED HERE. A 30-day plan would
+    // add thirty entries the customer never placed, burying the orders they
+    // did. The plan's own purchase entry stays (it is a real purchase with a
+    // real amount), and the running plan is tracked on the Plans rail.
+    if (o.subscription_id != null) continue;
+
+    // One key per DELIVERY: same purchase, same window, same day. A plan
+    // purchase has no window, so it stands alone under its own id.
+    const key = o.cycle_id == null
+      ? `purchase-${o.id}`
+      : `${o.order_group_id ?? `single-${o.id}`}:${o.cycle_id}:${o.dispatch_date}`;
     const list = map.get(key) ?? [];
     list.push(o);
     map.set(key, list);
@@ -77,7 +99,7 @@ function groupOrders(orders: Order[]): OrderGroup[] {
 // A multi-cycle order has a status per cycle. The list card shows ONE
 // rolled-up status: the least-advanced of the still-active rows, so the
 // customer sees the slowest part. All rows cancelled → Cancelled.
-function rolledUpStatus(rows: Order[]): string {
+function rolledUpStatus(rows: OrderWithItems[]): string {
   const active = rows.filter((r) => r.status !== 'Cancelled');
   if (active.length === 0) return 'Cancelled';
   return active.reduce((least, r) => {
@@ -100,48 +122,13 @@ export function OrdersScreen({ navigation }: any) {
 
   useFocusEffect(useCallback(() => { refetch(); }, [refetch]));
 
-  const { data: mySubs } = useMySubscriptions();
 
   /**
-   * A SUBSCRIPTION DISPATCH IS NOT A ₹0 ORDER.
+   * ONE CARD PER DELIVERY. Group, never filter.
    *
-   * The meal was paid for when the plan was bought, so every dispatch row
-   * carries zero money (BF-19). Rendered as money that read as "₹0" — a
-   * Breakfast-30 subscriber accumulates thirty of them a month, and a
-   * history filling with what look like errors or freebies teaches people to
-   * stop reading it. Say what it actually is instead.
-   */
-  const planLabelFor = useCallback(
-    (subscriptionId: number | null | undefined): string | null => {
-      if (subscriptionId == null) return null;
-      const sub = (mySubs ?? []).find((s: any) => s.id === subscriptionId) as any;
-      if (!sub) return null;
-      const plan = sub.subscription_plans ?? {};
-      const total = plan.duration_days ?? 0;
-      const name = plan.plan_name ?? 'Subscription';
-      if (!total) return name;
-      // Meals used so far. Length is counted in MEALS, not calendar days —
-      // pausing and skipping push the end date out — so this is derived from
-      // the same helper the plan screens use rather than from dates.
-      const used = Math.max(1, Math.min(total, total - subscriptionDaysRemaining(plan, sub)));
-      return `${name} · Day ${used} of ${total}`;
-    },
-    [mySubs],
-  );
-
-
-  /**
-   * ONE CARD PER CHECKOUT. Group, never filter.
-   *
-   * This used to filter rows by order_type BEFORE grouping, back when a
-   * checkout could only be food or only essentials. With one cart that tears
-   * a single purchase in half: the food row grouped alone under a Food tab,
-   * the essentials row alone under an Essentials tab, two cards with
-   * different numbers — and opening either showed the whole order anyway,
-   * because useOrderGroup resolves by order_group_id.
-   *
-   * It also silently hid subscription purchases, which match neither
-   * 'food' nor 'essential' now that they are typed 'subscription'.
+   * This screen once filtered rows by type into Food and Essentials tabs,
+   * which tore a single purchase in half and hid subscription purchases
+   * entirely. Grouping replaced that — first by checkout, now by delivery.
    *
    * Memoised so groupOrders() only re-runs when the fetched data changes.
    * Placed before the early return below to keep hook order stable.
@@ -157,28 +144,21 @@ export function OrdersScreen({ navigation }: any) {
 
   const renderGroup = ({ item }: { item: OrderGroup }) => {
     /**
-     * A ROW IS NO LONGER A DELIVERY. Since one cart splits each cycle into a
-     * food row and an essentials row, the dinner containing a fried rice and
-     * a tub of ghee is two rows arriving in ONE 7:30pm delivery. Counting
-     * rows would have told the customer "2 deliveries" for one doorstep
-     * visit. Count distinct (cycle, date) instead.
+     * Every card is now ONE delivery, so there is no delivery count to show —
+     * just when it arrives, what is in it, and one status for the lot.
      *
-     * Plan-purchase rows carry no cycle and deliver nothing, so they are not
-     * counted at all — a group of only those is a purchase, not a delivery.
+     * The status is the LEAST advanced row in the delivery. A morning bag of
+     * idli and milk is two rows on different journeys — the food is cooked,
+     * the milk is not — and the customer is waiting for the whole bag, so the
+     * tracker follows the slower half.
      */
-    const deliveries = new Set(
-      item.rows
-        .filter((r) => r.cycle_id != null)
-        .map((r) => `${r.cycle_id}:${r.dispatch_date}`),
-    );
-    const isMulti = deliveries.size > 1;
-    const isPurchaseOnly = deliveries.size === 0;
+    const isPurchaseOnly = item.rows.every((r) => r.cycle_id == null);
     const status = rolledUpStatus(item.rows);
+    const contents = item.rows
+      .flatMap((r) => r.order_items ?? [])
+      .map((i) => i.item_name)
+      .join(', ');
 
-    // A dispatch row belongs to a plan; say which plan and how far through.
-    const planLabel = planLabelFor(
-      item.rows.find((r) => r.subscription_id != null)?.subscription_id,
-    );
     return (
       <TouchableOpacity
         style={styles.row}
@@ -192,19 +172,22 @@ export function OrdersScreen({ navigation }: any) {
 
         <View style={styles.rowMid}>
           <ThemedText variant="body" color="subtitle">
-            {planLabel
-              // Never "₹0" — that is a plan delivering, not a free order.
-              ? `${formatDateShort(item.rows[0].dispatch_date)} · ${planLabel}`
-              : isPurchaseOnly
-                ? `Subscription · ${formatPriceShort(item.totalAmount)}`
-                : isMulti
-                  ? `${deliveries.size} deliveries · ${formatPriceShort(item.totalAmount)}`
-                  : `${formatDateShort(item.rows[0].dispatch_date)} · ${formatPriceShort(item.totalAmount)}`}
+            {isPurchaseOnly
+              ? `Subscription · ${formatPriceShort(item.totalAmount)}`
+              : `${formatDateShort(item.rows[0].dispatch_date)} · ${formatPriceShort(item.totalAmount)}`}
           </ThemedText>
           <ThemedText variant="small" color="muted">
             {formatRelativeTime(item.createdAt)}
           </ThemedText>
         </View>
+
+        {/* What is actually in the bag — the customer should not have to open
+            the order to know which delivery this card is. */}
+        {!!contents && (
+          <ThemedText variant="small" color="muted" numberOfLines={2} style={styles.contents}>
+            {contents}
+          </ThemedText>
+        )}
 
       </TouchableOpacity>
     );
@@ -255,6 +238,7 @@ export function OrdersScreen({ navigation }: any) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
+  contents: { marginTop: 2 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

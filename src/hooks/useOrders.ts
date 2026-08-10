@@ -16,16 +16,20 @@ import type { Order, OrderItem } from '../types';
 
 const PAGE_SIZE = 20;
 
+export type OrderWithItems = Order & { order_items: OrderItem[] };
+
 export function useMyOrders() {
   const { session } = useAuth();
   const userId = session?.user.id ?? '';
 
-  return useSupabaseInfiniteQuery<Order>(
+  // Items come with the rows: the list shows what is in each delivery, so the
+  // customer can tell two cards apart without opening either.
+  return useSupabaseInfiniteQuery<OrderWithItems>(
     [...QUERY_KEYS.MY_ORDERS],
     (offset) =>
       supabase
         .from('orders')
-        .select('*')
+        .select('*, order_items(*)')
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
         .range(offset, offset + PAGE_SIZE - 1),
@@ -33,7 +37,6 @@ export function useMyOrders() {
   );
 }
 
-export type OrderWithItems = Order & { order_items: OrderItem[] };
 
 /**
  * Orders still IN FLIGHT, with their items — the set the Home rail needs.

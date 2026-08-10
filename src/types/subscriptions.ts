@@ -39,7 +39,8 @@ export interface UserSubscription {
   days_consumed: number;
   is_paused: boolean;
   is_active: boolean;
-  payment_method: 'wallet' | 'razorpay' | 'split';
+  /** 'split' was in this union and is written by nothing. See PaymentMethod. */
+  payment_method: 'wallet' | 'razorpay';
   razorpay_order_id: string | null;
   razorpay_payment_id: string | null;
   wallet_amount_used: number;

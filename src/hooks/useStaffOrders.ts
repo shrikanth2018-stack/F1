@@ -8,7 +8,6 @@
  * Filtered by branch when branch_management_active is on.
  */
 
-import { useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import NetInfo from '@react-native-community/netinfo';
 import { supabase } from '../api/supabaseClient';
@@ -20,8 +19,7 @@ import { useBranchFilter } from './useBranchFilter';
 import { useFeatureFlag } from './useFeatureFlag';
 import { useAuth } from './useAuth';
 import { useActiveStaffBatch } from './useActiveStaffBatch';
-import { useDeliveryCycles } from './useDeliveryCycles';
-import { isOperationalOrder, isPastDue, type CycleStarts } from '../utils/orderFilters';
+import { isOperationalOrder } from '../utils/orderFilters';
 import { todayIST } from '../utils/istDate';
 import { fireOrderStatusPush } from '../utils/orderStatusPush';
 import type { Order, OrderStatus } from '../types';
@@ -42,13 +40,6 @@ export function useStaffOrders() {
   const { data: batch } = useActiveStaffBatch();
   // IST calendar date — the basis for the D2 "already due" cut-off.
   const today = todayIST();
-  // Each cycle's delivery time, so an order from an earlier cycle of TODAY
-  // can be told apart from one that has not come due yet.
-  const { data: cycles = [] } = useDeliveryCycles();
-  const cycleStarts: CycleStarts = useMemo(
-    () => Object.fromEntries(cycles.map((c) => [c.id, c.delivery_start])),
-    [cycles],
-  );
 
   return useQuery({
     queryKey: [
@@ -59,16 +50,14 @@ export function useStaffOrders() {
       today,
     ],
     queryFn: async () => {
-      // The list = the active batch's cycle, PLUS anything already due and
-      // still unfinished. D2: the batch flip must not hide an undelivered
-      // perishable order.
+      // The board is the active batch and nothing else — see the filter
+      // below, which is what actually decides the list.
       //
-      // `lte` today, not `lt`. The old bound was previous DAYS only, so an
-      // order from an earlier CYCLE of the same day satisfied neither this
-      // nor the active batch and disappeared from every staff screen until
-      // midnight — confirmed live on order 11496. Today's rows are fetched
-      // here and narrowed by isPastDue below, which needs each cycle's
-      // delivery time and so cannot be expressed in the PostgREST filter.
+      // THIS CLAUSE IS NOW AN OVER-READ. It fetches anything already due and
+      // unfinished, which `inBatch` then discards; the rows it adds reach no
+      // screen. It is left in place because narrowing it is a change to a
+      // live operational query, not a comment fix — the backlog it used to
+      // rescue is now worked through in Admin → Orders → Undelivered.
       const dueOrOverdue =
         `and(dispatch_date.lte.${today},status.not.in.(Delivered,Cancelled,Failed))`;
 
@@ -105,15 +94,26 @@ export function useStaffOrders() {
       // Subscription-purchase orders carry only item_type='subscription' rows
       // (revenue record + activation). Daily dispatch rows have real food /
       // essential items from plan_items and pass isOperationalOrder.
-      // Then: keep the active batch, plus anything whose delivery window has
-      // already opened — the `lte today` fetch above deliberately over-reads
-      // so this can decide with the cycle times to hand.
+      //
+      // THE BOARD IS EXACTLY ONE BATCH — nothing else.
+      //
+      // Every row from the push stays, whatever its status, until it is
+      // Delivered or the next push replaces it. It used to also carry over
+      // anything overdue from an earlier cycle or day, so the board was that
+      // batch plus a backlog of unknown age. Unfinished work now leaves the
+      // board when the next batch arrives and is picked up in
+      // Admin → Orders → Undelivered, which exists to be worked through.
+      //
+      // Terminal rows drop out because there is nothing left to do to them —
+      // Delivered is the finish line, and Cancelled/Failed are excluded by
+      // the query above.
       const inBatch = (o: { cycle_id?: number | null; dispatch_date?: string | null }) =>
         batch != null && o.cycle_id === batch.cycle_id && o.dispatch_date === batch.push_date;
 
       const operational = orders
         .filter(isOperationalOrder)
-        .filter((o) => inBatch(o) || isPastDue(o, cycleStarts));
+        .filter(inBatch)
+        .filter((o) => o.status !== 'Delivered');
 
       if (hubDeliveryActive && assignedHubId != null) {
         return operational.filter(
@@ -123,10 +123,10 @@ export function useStaffOrders() {
 
       return operational;
     },
-    // Wait for the active-batch lookup AND the cycle list: isPastDue needs
-    // each cycle's delivery time, and without it today's earlier-cycle orders
-    // would be filtered out on the first render and only appear on a refetch.
-    enabled: batch !== undefined && cycles.length > 0,
+    // Wait for the active-batch lookup: with no batch resolved there is no
+    // board to show, and rendering an empty one first would read as "nothing
+    // to cook" rather than "still loading".
+    enabled: batch !== undefined,
     staleTime: QUERY_STALE_TIME,
   });
 }

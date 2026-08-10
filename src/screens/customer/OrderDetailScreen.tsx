@@ -33,8 +33,10 @@ import { useReorder } from '../../hooks/useReorder';
 import { useMySubscriptions } from '../../hooks/useSubscriptions';
 import { subscriptionDaysRemaining } from '../../utils/subscriptionMath';
 
-// 'Paid' = Razorpay webhook confirmed but kitchen hasn't started yet — still cancellable
-const CANCELLABLE_STATUSES = new Set(['Pending', 'Confirmed', 'Paid', 'Preparing']);
+// Payment confirmed, kitchen not started — still cancellable. 'Paid' used to
+// be in this set; the DB constraint dropped it in May 2026 and nothing writes
+// it, so it matched no order and only implied a state that still existed.
+const CANCELLABLE_STATUSES = new Set(['Pending', 'Confirmed', 'Preparing']);
 
 // Progress bar flows — per blueprint Sec 5.1.
 // Food shows the kitchen Ready step; Essentials skips it (no cooking).

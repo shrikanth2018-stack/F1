@@ -51,7 +51,6 @@ import {
   type KitchenAggregateItem,
 } from '../../hooks/useStaffOrders';
 import { nextPackingStatus } from '../../utils/packingFlow';
-import { isAtDeliveryStage } from '../../utils/orderFilters';
 import { useRealtimeOrders } from '../../hooks/useRealtimeOrders';
 import { useOfflineSync } from '../../hooks/useOfflineSync';
 import { useAuth } from '../../hooks/useAuth';
@@ -213,10 +212,14 @@ export function StaffDashboard() {
   // ── Order filters ────────────────────────────
   // D2: an unsuccessful-delivery order is at the delivery stage (Dispatched
   // / On the Way) — it belongs to Hub + Driver, never Kitchen or Packing.
+  // EVERY ROW IN THE BATCH STAYS, whatever its status, until it is Delivered
+  // or the next push replaces the board. Packing used to drop a row the
+  // moment it reached Dispatched, so a bag that had left vanished from the
+  // board that had been tracking it and nobody could see the batch was
+  // complete. The row is still there; it simply has no action left.
   const packingOrders = useMemo(
     () => (orders ?? []).filter((o) => {
       if (o.status === 'Cancelled') return false;
-      if (isAtDeliveryStage(o)) return false;
       return packingSubTab === 'Food'
         ? o.order_type === 'food'
         : o.order_type === 'essential';

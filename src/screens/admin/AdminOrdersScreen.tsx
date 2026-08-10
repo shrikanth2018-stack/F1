@@ -10,7 +10,7 @@
  * order number. Both compose. Filters are component-lifetime only.
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   View,
   FlatList,
@@ -19,6 +19,7 @@ import {
   ActivityIndicator,
   ScrollView,
   TextInput,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
@@ -29,11 +30,13 @@ import { EmptyState } from '../../components/EmptyState';
 import { ErrorRetry } from '../../components/ErrorRetry';
 import { DispatchBadge } from '../../components/DispatchBadge';
 import { supabase } from '../../api/supabaseClient';
-import { formatDateShort } from '../../utils/formatters';
+import { formatDateShort, formatPriceShort, getErrorMessage } from '../../utils/formatters';
 import { orderStatusVariant } from '../../utils/orderStatus';
 import { isUnsuccessfulDelivery } from '../../utils/orderFilters';
+import { useAdminCancelOrder } from '../../hooks/useAdminOrders';
+import { confirmDialog } from '../../utils/confirmDialog';
 import { todayIST, istDateWithOffset } from '../../utils/istDate';
-import type { AdminNavProp } from '../../navigation/types';
+import type { AdminScreenProps } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
@@ -45,8 +48,44 @@ const STATUS_OPTIONS = [
 ] as const;
 type StatusFilter = typeof STATUS_OPTIONS[number];
 
+/**
+ * UNDELIVERED ORDERS HAVE THEIR OWN TAB — they are not mixed into a day.
+ *
+ * They used to be pulled into whatever date the admin was looking at and
+ * pinned to the top, so they followed you around until resolved. That kept
+ * them visible but made every day's list a mixture of that day's work and a
+ * backlog of unknown age, and it left them cluttering the live boards too.
+ *
+ * Now: the day view shows only that day, and everything past its date and
+ * still unfinished lives here, with the actions to clear it.
+ */
+const UNFINISHED = 'Delivered,Cancelled,Failed';
+
+function useUndeliveredOrders() {
+  const today = todayIST();
+  return useQuery({
+    queryKey: ['admin_orders_undelivered', today],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('orders')
+        .select(`
+          id, status, delivery_method, dispatch_date, placed_by, user_id,
+          total_amount, wallet_amount_used, payment_method, cycle_id,
+          customer_addresses(
+            delivery_hubs(hub_name),
+            delivery_zones(zone_name)
+          )
+        `)
+        .lt('dispatch_date', today)
+        .not('status', 'in', `(${UNFINISHED})`)
+        .order('dispatch_date', { ascending: true });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+}
+
 function useOrdersForDate(date: string) {
-  // IST today — basis for the D2 "unsuccessful delivery" cut-off.
   const today = todayIST();
   return useQuery({
     queryKey: ['admin_orders_manage', date, today],
@@ -58,8 +97,6 @@ function useOrdersForDate(date: string) {
       // D2: also pull "unsuccessful delivery" orders — past-dated and still
       // not Delivered/Cancelled/Failed — regardless of the selected date.
       // They're an alert that must follow the admin until resolved.
-      const unsuccessful =
-        `and(dispatch_date.lt.${today},status.not.in.(Delivered,Cancelled,Failed))`;
       const { data, error } = await supabase
         .from('orders')
         .select(`
@@ -69,7 +106,9 @@ function useOrdersForDate(date: string) {
             delivery_zones(zone_name)
           )
         `)
-        .or(`dispatch_date.eq.${date},${unsuccessful}`)
+        // The chosen day only. Past-dated unfinished orders belong to the
+        // Undelivered tab now, not to every day the admin opens.
+        .eq('dispatch_date', date)
         .order('created_at', { ascending: false });
       if (error) throw error;
       return data ?? [];
@@ -77,7 +116,12 @@ function useOrdersForDate(date: string) {
   });
 }
 
-export function AdminOrdersScreen({ navigation }: { navigation: AdminNavProp }) {
+type AdminOrdersView = 'day' | 'undelivered';
+
+export function AdminOrdersScreen({ navigation, route }: AdminScreenProps<'AdminOrders'>) {
+  // Opens on the tab the caller asked for — the undelivered-batch push sends
+  // `view: 'undelivered'`, so tapping it lands on the list it just described.
+  const [view, setView] = useState<AdminOrdersView>(route.params?.view ?? 'day');
   const [dateOffset, setDateOffset] = useState(0);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('All');
   const [searchTerm, setSearchTerm] = useState('');
@@ -86,7 +130,49 @@ export function AdminOrdersScreen({ navigation }: { navigation: AdminNavProp }) 
   const [bulkOnly, setBulkOnly] = useState(false);
   const date = istDateWithOffset(dateOffset);
 
-  const { data: orders, isLoading, error, refetch } = useOrdersForDate(date);
+  const { data: dayOrders, isLoading: dayLoading, error, refetch } = useOrdersForDate(date);
+  const { data: undelivered, isLoading: undLoading, refetch: refetchUnd } = useUndeliveredOrders();
+  const { mutateAsync: adminCancel } = useAdminCancelOrder();
+  const [busyId, setBusyId] = useState<number | null>(null);
+
+  const isUndelivered = view === 'undelivered';
+  const orders = isUndelivered ? undelivered : dayOrders;
+  const isLoading = isUndelivered ? undLoading : dayLoading;
+
+  /**
+   * Cancel from the Undelivered tab.
+   *
+   * `refund` false credits nothing — for a card payment the money is returned
+   * from the Razorpay dashboard instead, and crediting the wallet as well
+   * would pay the customer twice. `refund` true credits the row's own total,
+   * which is what a wallet-paid order needs.
+   */
+  const cancelUndelivered = useCallback(async (o: any, refund: boolean) => {
+    const amount = refund ? Number(o.total_amount) || 0 : 0;
+    const ok = await confirmDialog({
+      title: refund ? 'Cancel and refund?' : 'Cancel without refund?',
+      message: refund
+        ? `Order #${o.id} will be cancelled and ${formatPriceShort(amount)} credited to the customer's wallet.`
+        : `Order #${o.id} will be cancelled with NO wallet credit. Use this when the money goes back through Razorpay instead.`,
+      confirmLabel: 'Cancel order',
+      destructive: true,
+    });
+    if (!ok) return;
+    setBusyId(o.id);
+    try {
+      await adminCancel({
+        orderId: o.id,
+        refundAmount: amount,
+        userId: o.user_id,
+        reason: 'Undelivered — cleared by admin',
+      });
+      refetchUnd();
+    } catch (e) {
+      Alert.alert('Could not cancel', getErrorMessage(e));
+    } finally {
+      setBusyId(null);
+    }
+  }, [adminCancel, refetchUnd]);
 
   const filteredOrders = useMemo(() => {
     const all = orders ?? [];
@@ -123,12 +209,14 @@ export function AdminOrdersScreen({ navigation }: { navigation: AdminNavProp }) 
       if (bulkOnly && !(o as any).placed_by) return false;
       return true;
     });
-    // D2: pin unsuccessful-delivery orders to the top — they need action.
+    // The Undelivered tab is already nothing but these, and it is sorted
+    // oldest-first by the query — the longest-waiting needs attention most.
+    if (isUndelivered) return filtered;
     return [...filtered].sort(
       (a, b) =>
         (isUnsuccessfulDelivery(a) ? 0 : 1) - (isUnsuccessfulDelivery(b) ? 0 : 1)
     );
-  }, [orders, statusFilter, searchTerm, bulkOnly]);
+  }, [orders, statusFilter, searchTerm, bulkOnly, isUndelivered]);
 
   if (error) return <ErrorRetry message="Could not load orders" onRetry={refetch} />;
 
@@ -142,6 +230,9 @@ export function AdminOrdersScreen({ navigation }: { navigation: AdminNavProp }) 
         <View style={{ minWidth: 60 }} />
       </View>
 
+      {/* Dates apply to the day view only — the Undelivered set spans every
+          date and paging through days there would mean nothing. */}
+      {!isUndelivered && (
       <View style={styles.dateRow}>
         <TouchableOpacity onPress={() => setDateOffset((d) => d - 1)} style={styles.dateArrow} hitSlop={{ top: 12, bottom: 12, left: 16, right: 16 }}>
           <ThemedText style={styles.arrowText} color="mint">‹</ThemedText>
@@ -150,6 +241,29 @@ export function AdminOrdersScreen({ navigation }: { navigation: AdminNavProp }) 
         <TouchableOpacity onPress={() => setDateOffset((d) => d + 1)} style={styles.dateArrow} hitSlop={{ top: 12, bottom: 12, left: 16, right: 16 }}>
           <ThemedText style={styles.arrowText} color="mint">›</ThemedText>
         </TouchableOpacity>
+      </View>
+      )}
+
+      {/* Day | Undelivered. Undelivered is not a status filter — it is a
+          different set entirely: everything past its dispatch date and still
+          unfinished, of any age, regardless of which day is selected. */}
+      <View style={styles.viewRow}>
+        {(['day', 'undelivered'] as AdminOrdersView[]).map((v) => {
+          const active = view === v;
+          const count = v === 'undelivered' ? (undelivered?.length ?? 0) : null;
+          return (
+            <TouchableOpacity
+              key={v}
+              style={[styles.viewTab, active && styles.viewTabActive]}
+              onPress={() => setView(v)}
+              activeOpacity={0.7}
+            >
+              <ThemedText variant="small" color={active ? 'mint' : 'muted'}>
+                {v === 'day' ? "Day's orders" : `Undelivered${count ? ` (${count})` : ''}`}
+              </ThemedText>
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
       {/* Status filter chips */}
@@ -256,10 +370,34 @@ export function AdminOrdersScreen({ navigation }: { navigation: AdminNavProp }) 
                   variant={orderStatusVariant(status)}
                 />
               </View>
-              {unsuccessful && (
+              {unsuccessful && !isUndelivered && (
                 <ThemedText variant="small" color="muted" style={styles.unsuccessfulText}>
                   ⚠ UNSUCCESSFUL DELIVERY
                 </ThemedText>
+              )}
+
+              {/* Undelivered tab: how old it is, and what can be done with it.
+                  Two ways to cancel, because who owes the refund differs — a
+                  wallet order is credited back here, a card order is returned
+                  from the Razorpay dashboard and must NOT also be credited. */}
+              {isUndelivered && (
+                <>
+                  <ThemedText variant="small" color="warning" style={styles.unsuccessfulText}>
+                    Due {formatDateShort(item.dispatch_date)} · {item.payment_method === 'wallet' ? 'paid by wallet' : item.payment_method === 'razorpay' ? 'paid online' : 'unpaid'} · {formatPriceShort(Number(item.total_amount) || 0)}
+                  </ThemedText>
+                  {busyId === item.id ? (
+                    <ActivityIndicator color={Theme.colors.status.error} size="small" style={styles.undActions} />
+                  ) : (
+                    <View style={styles.undActions}>
+                      <TouchableOpacity onPress={() => cancelUndelivered(item, true)} activeOpacity={0.7}>
+                        <ThemedText variant="small" color="mint">Cancel + refund</ThemedText>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => cancelUndelivered(item, false)} activeOpacity={0.7}>
+                        <ThemedText variant="small" color="muted">Cancel, no refund</ThemedText>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </>
               )}
             </TouchableOpacity>
           );
@@ -271,6 +409,28 @@ export function AdminOrdersScreen({ navigation }: { navigation: AdminNavProp }) 
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
+  viewRow: {
+    flexDirection: 'row',
+    marginHorizontal: Theme.spacing.md,
+    marginBottom: Theme.spacing.xs,
+    gap: Theme.spacing.sm,
+  },
+  viewTab: {
+    paddingVertical: 6,
+    paddingHorizontal: Theme.spacing.md,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: Theme.colors.layout.divider,
+  },
+  viewTabActive: {
+    borderColor: `${Theme.colors.text.mint}80`,
+    backgroundColor: `${Theme.colors.text.mint}1A`,
+  },
+  undActions: {
+    flexDirection: 'row',
+    gap: Theme.spacing.md,
+    paddingTop: Theme.spacing.xs,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -1,15 +1,22 @@
 /**
  * 1stOne F1 — Driver Dashboard
  *
- * Shows today's deliveries assigned to this driver. Driver is identified
- * by membership in delivery_hubs.driver_user_id and/or delivery_zones.driver_user_id.
+ * Deliveries assigned to this driver — identified by membership in
+ * delivery_hubs.driver_user_id and/or delivery_zones.driver_user_id.
  *
- * Per-row actions: status advance (Dispatched → Received at Hub if hub
- * order → On the Way → Delivered), call customer, open in maps with
- * directions, show full address.
+ * Two tabs, the same shape the hub operator already has:
+ *   Today   — the live board: exactly the pushed batch, rows staying until
+ *             Delivered or until the next push replaces them.
+ *   History — everything carried before, newest first, read-only. This is
+ *             where an order goes when it falls off the live board
+ *             unfinished; admin chases it from Orders → Undelivered.
+ *
+ * Per-row actions on Today: status advance (Dispatched → Received at Hub if
+ * a hub order → On the Way → Delivered), call customer, open in maps with
+ * directions, show full address. History rows are readOnly.
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   StyleSheet,
@@ -20,35 +27,26 @@ import {
   Alert,
   Text,
 } from 'react-native';
-import { getErrorMessage } from '../../utils/formatters';
+import { getErrorMessage, formatDateShort } from '../../utils/formatters';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useQuery } from '@tanstack/react-query';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { Divider } from '../../components/Divider';
 import { EmptyState } from '../../components/EmptyState';
 import { ErrorRetry } from '../../components/ErrorRetry';
 import { DeliveryOrderRow } from '../../components/DeliveryOrderRow';
-import { useAuth } from '../../hooks/useAuth';
+import { SegmentedControl } from '../../components/SegmentedControl';
 import { useUpdateOrderStatus } from '../../hooks/useStaffOrders';
-import { useActiveStaffBatch } from '../../hooks/useActiveStaffBatch';
+import { useDriverOrders, useDriverOrderHistory } from '../../hooks/useDriverOrders';
 import { useRealtimeOrders } from '../../hooks/useRealtimeOrders';
 import { useStaffNoteForTab } from '../../hooks/useAdminNotes';
-import { useDeliveryCycles } from '../../hooks/useDeliveryCycles';
-import { isOperationalOrder, isPastDue, type CycleStarts } from '../../utils/orderFilters';
-import { todayIST } from '../../utils/istDate';
-import { supabase } from '../../api/supabaseClient';
 import type { CustomerScreenProps } from '../../navigation/types';
 import type { OrderStatus } from '../../types';
 
+type DriverTab = 'Today' | 'History';
+
 export function DriverDashboardScreen({ navigation }: CustomerScreenProps<'DriverDashboard'>) {
-  const { session } = useAuth();
-  const userId = session?.user.id ?? '';
-  // The driver board shows exactly one cycle's batch — the active batch
-  // released by the most recent kitchen push (same as Kitchen/Packing/Hub).
-  const { data: batch } = useActiveStaffBatch();
-  // IST calendar date — basis for the D2 "unsuccessful delivery" cut-off.
-  const today = todayIST();
+  const [tab, setTab] = useState<DriverTab>('Today');
 
   const { mutateAsync: updateStatus, isPending: isUpdating } = useUpdateOrderStatus();
   // Realtime: refresh when an order is dispatched / advances through hub handoff.
@@ -57,76 +55,16 @@ export function DriverDashboardScreen({ navigation }: CustomerScreenProps<'Drive
   useRealtimeOrders(true);
   // Delivery-tab + All-Staff broadcast banner. Same shape as Hub.
   const { data: notes = [] } = useStaffNoteForTab('delivery');
-  const { data: cycles = [] } = useDeliveryCycles();
-  const cycleStarts: CycleStarts = React.useMemo(
-    () => Object.fromEntries(cycles.map((c) => [c.id, c.delivery_start])),
-    [cycles],
-  );
 
-  const { data: orders = [], isLoading, isRefetching, error, refetch } = useQuery({
-    queryKey: ['driver_orders', userId, batch ? `${batch.cycle_id}:${batch.push_date}` : 'none', today],
-    queryFn: async () => {
-      if (!userId) return [];
+  const live = useDriverOrders();
+  const history = useDriverOrderHistory();
 
-      // Find which hubs and zones this driver is assigned to.
-      const [hubsRes, zonesRes] = await Promise.all([
-        supabase.from('delivery_hubs').select('id').eq('driver_user_id', userId),
-        supabase.from('delivery_zones').select('id').eq('driver_user_id', userId),
-      ]);
-      const myHubIds = (hubsRes.data ?? []).map((h: any) => h.id);
-      const myZoneIds = (zonesRes.data ?? []).map((z: any) => z.id);
-
-      if (myHubIds.length === 0 && myZoneIds.length === 0) return [];
-
-      // The driver's list = the active batch's cycle, PLUS any "unsuccessful
-      // delivery" (D2) — a past-dated order still not Delivered/Cancelled/
-      // Failed — so an undelivered perishable order never vanishes when the
-      // batch flips. Filtered client-side by hub/zone membership below.
-      // `lte` today, not `lt` — same fix as useStaffOrders. A driver's own
-      // undelivered order from an earlier cycle of TODAY used to vanish from
-      // this board the moment the next cycle pushed. Narrowed by isPastDue
-      // below, which needs the cycle delivery times.
-      const dueOrOverdue =
-        `and(dispatch_date.lte.${today},status.not.in.(Delivered,Cancelled,Failed))`;
-      let ordersQuery = supabase
-        .from('orders')
-        .select(`
-          *,
-          order_items(*),
-          customer_addresses(*),
-          profiles(phone_number)
-        `)
-        .order('created_at', { ascending: false });
-      if (batch) {
-        const active =
-          `and(cycle_id.eq.${batch.cycle_id},dispatch_date.eq.${batch.push_date},status.neq.Cancelled)`;
-        ordersQuery = ordersQuery.or(`${active},${dueOrOverdue}`);
-      } else {
-        ordersQuery = ordersQuery.or(dueOrOverdue);
-      }
-      const { data, error: ordersErr } = await ordersQuery;
-
-      if (ordersErr) throw ordersErr;
-
-      // Drop subscription-purchase orders (no physical delivery) — the same
-      // operational filter Kitchen/Packing/Hub use. Daily sub-dispatch rows
-      // carry real items and pass.
-      const inBatch = (o: any) =>
-        batch != null && o.cycle_id === batch.cycle_id && o.dispatch_date === batch.push_date;
-
-      return (data ?? []).filter((o: any) => {
-        if (!isOperationalOrder(o)) return false;
-        if (!inBatch(o) && !isPastDue(o, cycleStarts)) return false;
-        const addr = o.customer_addresses;
-        if (!addr) return false;
-        if (addr.hub_id != null && myHubIds.includes(addr.hub_id)) return true;
-        if (addr.zone_id != null && myZoneIds.includes(addr.zone_id)) return true;
-        return false;
-      });
-    },
-    enabled: !!userId && batch !== undefined && cycles.length > 0,
-    refetchOnMount: 'always',
-  });
+  const isToday = tab === 'Today';
+  const orders = (isToday ? live.data : history.data) ?? [];
+  const isLoading = isToday ? live.isLoading : history.isLoading;
+  const isRefetching = isToday ? live.isRefetching : history.isRefetching;
+  const refetch = isToday ? live.refetch : history.refetch;
+  const error = isToday ? live.error : history.error;
 
   const handleAdvanceStatus = async (
     orderId: number,
@@ -156,6 +94,19 @@ export function DriverDashboardScreen({ navigation }: CustomerScreenProps<'Drive
         <Text key={n.id} style={styles.noteLine} numberOfLines={1}>{n.note_text}</Text>
       ))}
 
+      {/* Today | History — the same two-tab shape the hub operator has, for
+          the same reason: the live board is one batch, and everything that
+          has already been through it still has to be lookupable. */}
+      <SegmentedControl
+        style={styles.tabs}
+        value={tab}
+        onChange={setTab}
+        options={[
+          { key: 'Today', label: 'Today' },
+          { key: 'History', label: 'History' },
+        ]}
+      />
+
       {error ? (
         <ErrorRetry message="Failed to load deliveries" onRetry={refetch} />
       ) : (
@@ -168,16 +119,29 @@ export function DriverDashboardScreen({ navigation }: CustomerScreenProps<'Drive
           ItemSeparatorComponent={() => <Divider />}
           contentContainerStyle={styles.list}
           ListEmptyComponent={
-            !isLoading ? <EmptyState title="No deliveries today" subtitle="New orders will appear here as they're dispatched." /> : null
+            !isLoading ? (
+              isToday ? (
+                <EmptyState
+                  title="Nothing to deliver yet"
+                  subtitle="Orders appear here the moment the kitchen releases the next batch."
+                />
+              ) : (
+                <EmptyState title="No past deliveries" subtitle="Completed runs will be listed here." />
+              )
+            ) : null
           }
-          renderItem={({ item }) => (
-            <DeliveryOrderRow
-              order={item}
-              onAdvanceStatus={handleAdvanceStatus}
-              isUpdating={isUpdating}
-              persona="driver"
-            />
-          )}
+          renderItem={({ item }) =>
+            isToday ? (
+              <DeliveryOrderRow
+                order={item}
+                onAdvanceStatus={handleAdvanceStatus}
+                isUpdating={isUpdating}
+                persona="driver"
+              />
+            ) : (
+              <DriverHistoryRow order={item} />
+            )
+          }
         />
       )}
 
@@ -185,6 +149,37 @@ export function DriverDashboardScreen({ navigation }: CustomerScreenProps<'Drive
         <ActivityIndicator color={Theme.colors.text.mint} style={styles.loader} />
       )}
     </SafeAreaView>
+  );
+}
+
+/**
+ * A past delivery — read-only.
+ *
+ * No status pill: History exists precisely for rows the driver can no longer
+ * act on, and a tappable pill on one of them would offer an action the board
+ * rule has already taken away. An order that ended anywhere other than
+ * Delivered says so, because that is the row admin is chasing.
+ */
+function DriverHistoryRow({ order }: { order: any }) {
+  const items = (order.order_items ?? [])
+    .map((oi: any) => `${oi.item_name} ×${oi.quantity}`)
+    .join(', ') || '—';
+  const delivered = order.status === 'Delivered';
+  return (
+    <View style={styles.histRow}>
+      <View style={styles.histTop}>
+        <ThemedText variant="subtitle" color="primary">Order #{order.id}</ThemedText>
+        <ThemedText variant="small" color={delivered ? 'muted' : 'warning'}>
+          {order.status}
+        </ThemedText>
+      </View>
+      <ThemedText variant="small" color="muted">
+        {order.dispatch_date ? formatDateShort(order.dispatch_date) : '—'}
+      </ThemedText>
+      <ThemedText variant="small" color="subtitle" numberOfLines={2}>
+        {items}
+      </ThemedText>
+    </View>
   );
 }
 
@@ -200,6 +195,20 @@ const styles = StyleSheet.create({
     borderBottomColor: Theme.colors.layout.divider,
   },
   spacer: { minWidth: 60 },
+  tabs: {
+    marginHorizontal: Theme.spacing.md,
+    marginVertical: Theme.spacing.sm,
+  },
+  histRow: {
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.sm,
+    gap: 2,
+  },
+  histTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
   list: { paddingBottom: Theme.spacing.xl },
   loader: { marginTop: Theme.spacing.xl },
   noteLine: {

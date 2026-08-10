@@ -37,7 +37,12 @@ export type AdminStackParamList = {
   ExpenseManager: undefined;
   StockManager: undefined;
   // Operations
-  AdminOrders: undefined;
+  /**
+   * `view` opens the screen straight onto a tab. The undelivered-batch push
+   * uses it: telling an admin three orders were stranded and then landing
+   * them on today's list makes them hunt for what they were just told.
+   */
+  AdminOrders: { view?: 'day' | 'undelivered' } | undefined;
   AdminOrderDetail: { orderId: number };
   /** Back-office / bulk order entry on behalf of a customer. */
   AdminCreateOrder: undefined;

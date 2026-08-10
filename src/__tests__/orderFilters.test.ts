@@ -106,15 +106,19 @@ describe('isOperationalOrder', () => {
   });
 });
 
-// ── isPastDue / isAtDeliveryStage ────────────────────────────
+// ── isPastDue ────────────────────────────────────────────────
 //
-// The bug these guard: the staff board shows one cycle's batch, and the D2
+// The bug this guards: a board scoped to one cycle's batch, where the D2
 // carry-over only rescued orders from a PREVIOUS day. An order from an
-// earlier CYCLE of the same day matched neither and was invisible on every
-// staff screen until midnight. Confirmed live on order 11496 — Breakfast,
-// due 07:30, still Confirmed at 11:43, on no board at all.
+// earlier CYCLE of the same day matched neither and was invisible until
+// midnight. Confirmed live on order 11496 — Breakfast, due 07:30, still
+// Confirmed at 11:43, on no board at all.
+//
+// The STAFF board no longer carries anything over — it is exactly one batch,
+// and unfinished work is picked up in Admin → Orders → Undelivered. The
+// DRIVER board still uses this, which is why it stays.
 
-import { isPastDue, isAtDeliveryStage } from '../utils/orderFilters';
+import { isPastDue } from '../utils/orderFilters';
 import { todayIST, istDateWithOffset } from '../utils/istDate';
 
 const CYCLES = { 1: '07:30:00', 2: '12:30:00', 4: '19:30:00' };
@@ -156,21 +160,5 @@ describe('isPastDue', () => {
     // due loses somebody's food.
     expect(isPastDue({ dispatch_date: today, status: 'Confirmed', cycle_id: 99 }, CYCLES)).toBe(true);
     expect(isPastDue({ dispatch_date: today, status: 'Confirmed', cycle_id: null }, CYCLES)).toBe(true);
-  });
-});
-
-describe('isAtDeliveryStage', () => {
-  it('is true only once the order has left the building', () => {
-    for (const s of ['Dispatched', 'Received at Hub', 'On the Way']) {
-      expect(isAtDeliveryStage({ status: s })).toBe(true);
-    }
-  });
-
-  it('keeps an unpacked order with Packing, however overdue it is', () => {
-    // The old date-based exclusion hid a past-due Confirmed order from the
-    // one screen that could pack it.
-    for (const s of ['Confirmed', 'Preparing', 'Ready', 'Packed']) {
-      expect(isAtDeliveryStage({ status: s })).toBe(false);
-    }
   });
 });

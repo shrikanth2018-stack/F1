@@ -1,7 +1,13 @@
+/**
+ * The status set the `orders_status_allowed` CHECK constraint permits.
+ *
+ * 'Paid' was dropped from that constraint on 2026-05-19 — both the webhook
+ * and confirm-order write 'Confirmed' — so the database will now REJECT it.
+ * Keeping it here described a state no row can hold.
+ */
 export type OrderStatus =
   | 'Pending'
   | 'Confirmed'
-  | 'Paid'
   | 'Preparing'
   | 'Ready'
   | 'Packed'
@@ -15,9 +21,13 @@ export type OrderStatus =
 export type OrderType = 'food' | 'essential';
 /**
  * 'account' = a back-office order confirmed now and collected later
- * (admin-place-order). 'split' is legacy and unused.
+ * (admin-place-order).
+ *
+ * 'split' was legacy and never written by any code path. It survives only in
+ * the DB CHECK constraint (see admin_bulk_orders.sql), which is a schema
+ * change to remove and not worth one on its own.
  */
-export type PaymentMethod = 'wallet' | 'razorpay' | 'split' | 'account';
+export type PaymentMethod = 'wallet' | 'razorpay' | 'account';
 
 export interface Order {
   id: number;

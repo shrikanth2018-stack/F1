@@ -41,6 +41,7 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Theme } from '../../../theme';
 import { ThemedText } from '../../../components/ThemedText';
 import { useActiveOrders, type OrderWithItems } from '../../../hooks/useOrders';
+import { useRealtimeOrders } from '../../../hooks/useRealtimeOrders';
 import { useMySubscriptions } from '../../../hooks/useSubscriptions';
 import { useDeliveryCycles } from '../../../hooks/useDeliveryCycles';
 import { subscriptionDaysRemaining } from '../../../utils/subscriptionMath';
@@ -74,6 +75,15 @@ export function HomeRails() {
   // Refetch on focus, because this is the one surface showing live state:
   // place an order or have the kitchen move it on, come back to Home, and
   // the badge must not still be showing what it loaded at mount.
+  //
+  // LIVE, not merely fresh-on-open. The staff board, the admin home, the
+  // driver page and the hub page have all received changes the moment they
+  // happen for a long time; no customer screen was ever connected to it. So
+  // the kitchen could mark an order Ready and the customer's rail would go on
+  // showing Confirmed until they navigated away and back. The rail is the one
+  // customer surface whose whole job is "where is my order right now", so it
+  // is the one that has to be live.
+  useRealtimeOrders(true);
   const { data: activeRows, refetch: refetchOrders } = useActiveOrders();
   useFocusEffect(useCallback(() => { refetchOrders(); }, [refetchOrders]));
   const { data: subs } = useMySubscriptions();
@@ -107,12 +117,19 @@ export function HomeRails() {
     const rows: OrderWithItems[] = activeRows ?? [];
     const byGroup = new Map<string, OrderWithItems[]>();
     for (const o of rows) {
-      // The query already excludes both, but keep the guards: they are the
+      // The query already excludes these, but keep the guards: they are the
       // definition of what this rail counts, and a future change to the
       // query should have to argue with them.
       if (TERMINAL.has(o.status ?? '')) continue;
       if (o.cycle_id == null) continue;
-      const key = String(o.order_group_id ?? o.id);
+      // A running plan is tracked on the Plans rail, not here — otherwise a
+      // 30-day subscription would flood this list with deliveries the
+      // customer never placed.
+      if (o.subscription_id != null) continue;
+      // ONE ENTRY PER DELIVERY — same purchase, same window, same day. The
+      // same grouping My Orders uses, so the row the customer taps here is
+      // the row they find there.
+      const key = `${o.order_group_id ?? o.id}:${o.cycle_id}:${o.dispatch_date}`;
       byGroup.set(key, [...(byGroup.get(key) ?? []), o]);
     }
     return [...byGroup.entries()]
@@ -134,12 +151,6 @@ export function HomeRails() {
    * not a list: "what is coming and when" is a single question with a single
    * answer, and a list of near-identical rows answered it badly.
    */
-  const nextGroup = activeGroups[0] ?? null;
-  // Items already came back with the rows — no second round trip, and no
-  // window where the count and the panel disagree because two queries
-  // refreshed at different moments.
-  const nextRows = nextGroup?.rows ?? [];
-
   const activeSubs = useMemo(
     () => (subs ?? []).filter((s: any) => s.is_active),
     [subs],
@@ -233,68 +244,62 @@ export function HomeRails() {
                 <View style={[styles.panelWash, { backgroundColor: `${panelTint}14` }]} pointerEvents="none" />
                 {open === 'orders' ? (
                   <>
-                    {/* Status leads. It is the one thing the customer opened
-                        this for — everything below it is detail. */}
-                    {nextGroup && (
-                      <ThemedText variant="small" color="mint" style={styles.statusFirst}>
-                        {/* EVERY distinct status in the order, not the first
-                            row's. One checkout is now several rows that move
-                            independently — the food goes through the kitchen
-                            while the essentials are packed straight away — so
-                            a single status was reporting one part of the
-                            order as though it were the whole thing. */}
-                        {[...new Set(nextRows.map((r) => r.status))].join(' · ')
-                          || nextGroup.next.status}
-                      </ThemedText>
+                    {/* EVERY live delivery, one row each — not just the next
+                        one due. The panel used to answer "what is coming"
+                        with a single order, which was true when a checkout
+                        was one row. A customer can have several bags in
+                        flight at once, each with its own number that staff
+                        and the printed slip use, and hiding all but one made
+                        the others untrackable. */}
+                    {activeGroups.length === 0 ? (
+                      <PanelHead lead="Nothing on the way" />
+                    ) : (
+                      <ScrollView style={styles.panelScroll} showsVerticalScrollIndicator={false}>
+                        {activeGroups.map((g) => {
+                          const start = g.next.cycle_id != null
+                            ? cycleById.get(g.next.cycle_id)?.delivery_start
+                            : null;
+                          const when = `${start ? `${formatTime12h(start)}, ` : ''}${formatDateOrdinalShort(String(g.next.dispatch_date))}`;
+                          // The bag's own numbers — every row in this
+                          // delivery, because each is real and lookupable.
+                          const numbers = g.rows.map((r) => `#${r.id}`).join(', ');
+                          // Slowest half governs: a bag of idli and milk is
+                          // two rows on different journeys and the customer
+                          // is waiting for the whole bag.
+                          const status = [...new Set(g.rows.map((r) => r.status))].join(' · ');
+                          const contents = g.rows
+                            .flatMap((r) => r.order_items ?? [])
+                            .map((it: any) => `${it.item_name} x${it.quantity}`)
+                            .join(', ');
+                          return (
+                            <TouchableOpacity
+                              key={g.key}
+                              style={styles.liveRow}
+                              activeOpacity={0.7}
+                              onPress={() => {
+                                setOpen(null);
+                                setTimeout(
+                                  () => navigation.navigate('OrderDetail', { orderId: g.next.id }),
+                                  120,
+                                );
+                              }}
+                            >
+                              <View style={styles.liveTop}>
+                                <ThemedText variant="body" color="primary">{numbers}</ThemedText>
+                                <ThemedText variant="micro" color="mint">{status}</ThemedText>
+                              </View>
+                              <ThemedText variant="small" color="mint">{when}</ThemedText>
+                              {!!contents && (
+                                <ThemedText variant="small" color="muted" numberOfLines={2}>
+                                  {contents}
+                                </ThemedText>
+                              )}
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </ScrollView>
                     )}
-                    {(() => {
-                      if (!nextGroup) return <PanelHead lead="Nothing on the way" />;
-                      const start =
-                        nextGroup.next.cycle_id != null
-                          ? cycleById.get(nextGroup.next.cycle_id)?.delivery_start
-                          : null;
-                      const date = formatDateOrdinalShort(String(nextGroup.next.dispatch_date));
-                      // When and where carry the link colour: they are the
-                      // answer, the label in front of them is just the question.
-                      return (
-                        <PanelHead
-                          lead="Dispatch scheduled : "
-                          accent={`${start ? `${formatTime12h(start)}, ` : ''}${date}`}
-                        />
-                      );
-                    })()}
-                    <ScrollView style={styles.panelScroll} showsVerticalScrollIndicator={false}>
-                      {/* Grouped by ROW, not flattened. A row is one delivery
-                          with its own status, and the food and the essentials
-                          of the same order move at different speeds — the
-                          flattened list showed six items under one status
-                          that was true of only some of them. The per-row
-                          status only appears when there is more than one, so
-                          a single-delivery order reads exactly as before. */}
-                      {nextRows.map((row) => (
-                        <View key={row.id}>
-                          {nextRows.length > 1 && (
-                            <ThemedText variant="micro" color="mint" style={styles.rowStatus}>
-                              {row.status}
-                            </ThemedText>
-                          )}
-                          {(row.order_items ?? []).map((it: any) => (
-                            <View key={it.id} style={styles.itemLine}>
-                              <ThemedText variant="body" color="primary" style={styles.itemName}>
-                                {it.item_name}
-                              </ThemedText>
-                              <ThemedText variant="body" color="muted">
-                                {'\u00d7'}{it.quantity}
-                              </ThemedText>
-                            </View>
-                          ))}
-                        </View>
-                      ))}
-                    </ScrollView>
 
-                    {/* No count here — the rail's own badge already carries it,
-                        and saying it twice made the two numbers look like
-                        different facts. */}
                     <PanelAction label="Orders" onPress={() => go('Orders')} />
                   </>
                 ) : (
@@ -541,6 +546,16 @@ const styles = StyleSheet.create({
   },
   /** One point down from `subtitle`, and the nested accent has to repeat the
    *  size — a nested Text does not inherit an overridden fontSize. */
+  liveRow: {
+    paddingVertical: Theme.spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Theme.colors.layout.divider,
+  },
+  liveTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
   panelTitle: { flex: 1, fontSize: Theme.typography.sizes.subtitle - 1 },
   panelTitleAccent: { fontSize: Theme.typography.sizes.subtitle - 1 },
   panelScroll: { flexGrow: 0 },
@@ -552,18 +567,7 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: Theme.colors.layout.divider,
   },
-  itemLine: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: Theme.spacing.xs + 2,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: Theme.colors.layout.divider,
-  },
-  itemName: { flex: 1, marginRight: Theme.spacing.sm },
-  rowStatus: { marginTop: Theme.spacing.sm, letterSpacing: 0.3 },
   /** Sits above the title, so it needs no rule of its own. */
-  statusFirst: { paddingBottom: 3 },
   panelAction: {
     paddingTop: Theme.spacing.sm,
     paddingBottom: Theme.spacing.xs,

@@ -5,15 +5,21 @@
  * from the Profile popup.
  *
  * Two tabs:
- *   - Today    — active orders routed to this hub. Status advance flow:
- *                Dispatched      → Received at Hub
- *                Received at Hub → On the Way
- *                On the Way      → Delivered
- *   - History  — last 100 orders for this hub, all statuses, read-only.
+ *   - Today    — the live board: exactly the batch released by the most
+ *                recent kitchen push (via useStaffOrders), rows staying until
+ *                Delivered or until the next push replaces them. Status
+ *                advance flow:
+ *                  Dispatched      → Received at Hub
+ *                  Received at Hub → On the Way
+ *                  On the Way      → Delivered
+ *   - History  — last 100 orders for this hub, all statuses. This is where an
+ *                order goes when it falls off the live board unfinished;
+ *                admin chases it from Orders → Undelivered.
  *
- * Per-row actions (call customer, open in maps with directions, view address)
- * are provided by the shared DeliveryOrderRow component on both tabs.
- * History rows render with readOnly=true → status pill is non-tappable.
+ * Today rows are the shared DeliveryOrderRow (call customer, open in maps,
+ * view address, tap the pill to advance). History rows are the local
+ * read-only HistoryRow below — not DeliveryOrderRow with a flag, which is
+ * what this comment used to claim; there is no such flag.
  */
 
 import React, { useState } from 'react';

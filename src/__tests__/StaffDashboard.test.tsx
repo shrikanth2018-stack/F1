@@ -134,12 +134,21 @@ describe('StaffDashboard — Packing partitions food from essentials', () => {
     expect(screen.queryByText(/#11/)).toBeNull();
   });
 
-  it('keeps a past-dated undelivered order off Packing (D2)', () => {
-    // It is at the delivery stage and belongs to driver / hub, not packers.
+  /**
+   * CHANGED 2026-08-10, deliberately. Packing used to drop a row the moment
+   * it reached Dispatched — it "belonged to driver/hub, not packers".
+   *
+   * The board now keeps every row from the batch, whatever its status, until
+   * it is Delivered or the next push replaces the board. A packer needs to
+   * see that the batch is complete, and a row that vanishes on dispatch takes
+   * that away: the board silently empties and nobody can tell finished from
+   * missing. The row stays; it simply has no action left on it.
+   */
+  it('keeps a dispatched order ON Packing until the next push', () => {
     mockOrders = [order({ id: 33, status: 'Dispatched', dispatch_date: '2020-01-01' })];
     open();
     fireEvent.press(screen.getByText('Packing'));
-    expect(screen.queryByText(/#33/)).toBeNull();
+    expect(screen.getByText(/#33/)).toBeTruthy();
   });
 });
 

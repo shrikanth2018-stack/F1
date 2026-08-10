@@ -15,11 +15,11 @@
  * server — this screen only ever renders figures it was given.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   ScrollView,
-  FlatList,
+  SectionList,
   TouchableOpacity,
   Switch,
   StyleSheet,
@@ -62,8 +62,11 @@ import {
   useMyVendorEarnings,
   useMyVendorPayouts,
   useClaimVendorPayout,
+  splitVendorOrders,
+  summariseUpcoming,
   type VendorItem,
   type VendorOrder,
+  type UpcomingRun,
 } from '../../hooks/useMyVendor';
 import type { CustomerScreenProps } from '../../navigation/types';
 
@@ -73,6 +76,16 @@ const S = Theme.typography.sizes.small + 2;
 const THUMB = 48;
 
 type Tab = 'Supply' | 'Items' | 'Earnings';
+
+/**
+ * A row in the Supply list. Three shapes, because the three sections answer
+ * three different questions — act on this now, buy for this later, this is
+ * what happened. A single row shape would have to be all three at once.
+ */
+type SupplyEntry =
+  | { kind: 'live'; order: VendorOrder }
+  | { kind: 'run'; run: UpcomingRun }
+  | { kind: 'past'; order: VendorOrder };
 
 export function VendorDashboardScreen({ navigation }: CustomerScreenProps<'VendorDashboard'>) {
   const [tab, setTab] = useState<Tab>('Supply');
@@ -110,6 +123,35 @@ export function VendorDashboardScreen({ navigation }: CustomerScreenProps<'Vendo
   const [addOpen, setAddOpen] = useState(false);
 
   const queryClient = useQueryClient();
+
+  /**
+   * The Supply tab's three sections.
+   *
+   * Built HERE, above the early return below — a useMemo placed after it
+   * changes the hook count between renders the moment the vendor record
+   * loads, which is the "rendered fewer hooks" crash CartScreen already hit.
+   *
+   * An empty section is dropped rather than rendered with a header and no
+   * rows: "Upcoming" over nothing reads as a fault, not as calm.
+   */
+  const supplySections = useMemo(() => {
+    const split = splitVendorOrders(orders.data ?? []);
+    const sections: { title: string; data: SupplyEntry[] }[] = [
+      {
+        title: 'Now',
+        data: split.now.map((order) => ({ kind: 'live' as const, order })),
+      },
+      {
+        title: 'Upcoming',
+        data: summariseUpcoming(split.upcoming).map((run) => ({ kind: 'run' as const, run })),
+      },
+      {
+        title: 'History',
+        data: split.history.map((order) => ({ kind: 'past' as const, order })),
+      },
+    ];
+    return sections.filter((s) => s.data.length > 0);
+  }, [orders.data]);
 
   if (isLoading || !vendor) {
     return (
@@ -306,18 +348,36 @@ export function VendorDashboardScreen({ navigation }: CustomerScreenProps<'Vendo
         ]}
       />
 
-      {/* ── Orders — what to make ready, like the hub operator's list ── */}
+      {/* ── Orders — three sections, one rule ──────────────────
+           Now       the batch every other board is looking at. The only
+                     rows with an action on them.
+           Upcoming  not released yet — the vendor's lead time, aggregated
+                     into a shopping list per run rather than listed per
+                     order, because stock is bought by quantity.
+           History   finished, or left the boards unfinished. Read-only.
+           The bucket is decided server-side from kitchen_push_log, so this
+           screen cannot drift from Kitchen / Packing / Driver / Hub. */}
       {tab === 'Supply' && (
-        <FlatList
-          data={orders.data ?? []}
-          keyExtractor={(o: VendorOrder) => String(o.order_id)}
+        <SectionList
+          sections={supplySections}
+          keyExtractor={(item: SupplyEntry) =>
+            item.kind === 'run' ? `run-${item.run.key}` : `ord-${item.order.order_id}`
+          }
           ItemSeparatorComponent={() => <Divider />}
           contentContainerStyle={styles.list}
+          stickySectionHeadersEnabled={false}
           ListHeaderComponent={
             <ThemedText variant="small" color="muted" style={styles.hint}>
-              Paid orders only, shown as they come in. Each one says whether the
-              customer can still cancel it — buy stock once it reads confirmed.
+              Paid orders only. Each one says whether the customer can still
+              cancel it — buy stock once it reads confirmed.
             </ThemedText>
+          }
+          renderSectionHeader={({ section }) =>
+            section.data.length === 0 ? null : (
+              <ThemedText variant="small" color="mint" style={styles.sectionHead}>
+                {section.title}
+              </ThemedText>
+            )
           }
           // A failed RPC used to render as "No orders yet", which is exactly
           // how the broken return type stayed hidden. An error must look like
@@ -327,7 +387,58 @@ export function VendorDashboardScreen({ navigation }: CustomerScreenProps<'Vendo
               ? <ErrorRetry message="Could not load your orders" onRetry={orders.refetch} />
               : !orders.isLoading ? <EmptyState title="No orders yet" /> : null
           }
-          renderItem={({ item }) => {
+          renderItem={({ item: entry }) => {
+            if (entry.kind === 'run') {
+              const run = entry.run;
+              return (
+                <View style={styles.orderRow}>
+                  <View style={styles.rowTop}>
+                    <ThemedText variant="body" color="primary" style={styles.txt}>
+                      {formatDateShort(run.dispatch_date)}
+                      {run.cycle_name ? ` · ${run.cycle_name}` : ''}
+                    </ThemedText>
+                    <ThemedText variant="small" color="muted" style={styles.sub}>
+                      {run.order_count} order{run.order_count === 1 ? '' : 's'}
+                    </ThemedText>
+                  </View>
+                  {run.items.map((line, i) => (
+                    <ThemedText key={i} variant="body" color="subtitle" style={styles.line}>
+                      {line.item_name}  ×{line.quantity}
+                    </ThemedText>
+                  ))}
+                </View>
+              );
+            }
+
+            if (entry.kind === 'past') {
+              const past = entry.order;
+              const delivered = past.status === 'Delivered';
+              return (
+                <View style={styles.orderRow}>
+                  <View style={styles.rowTop}>
+                    <ThemedText variant="body" color="primary" style={styles.txt}>
+                      #{past.order_id}
+                    </ThemedText>
+                    <ThemedText variant="small" color="muted" style={[styles.sub, styles.flex1]}>
+                      {formatDateShort(past.dispatch_date)}
+                      {past.cycle_name ? ` · ${past.cycle_name}` : ''}
+                    </ThemedText>
+                    <ThemedText variant="small" color={delivered ? 'muted' : 'warning'}>
+                      {past.status}
+                    </ThemedText>
+                  </View>
+                  {(past.items ?? []).map((line, i) => (
+                    <ThemedText key={i} variant="small" color="subtitle" style={styles.line}>
+                      {line.item_name}  ×{line.quantity}
+                    </ThemedText>
+                  ))}
+                </View>
+              );
+            }
+
+            // Reaching here means the row is in the active batch: the live
+            // list, and the only place a Mark-ready action belongs.
+            const item = entry.order;
             const isReady = !!item.ready_at;
             // The vendor sees orders live, well before the kitchen push, so
             // they have real lead time to procure. The flip side is that an
@@ -622,6 +733,14 @@ const styles = StyleSheet.create({
   line: { fontSize: B, marginTop: 2 },
   hint: { fontSize: S, marginBottom: Theme.spacing.xs },
   sectionLabel: { fontSize: S, letterSpacing: 1, marginTop: Theme.spacing.md, marginBottom: Theme.spacing.xs },
+  /** Supply-tab section heading: Now / Upcoming / History. */
+  sectionHead: {
+    fontSize: S,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginTop: Theme.spacing.md,
+    marginBottom: Theme.spacing.xs,
+  },
 
   cycleRow: {
     paddingVertical: Theme.spacing.sm,

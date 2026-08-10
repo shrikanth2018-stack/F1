@@ -42,7 +42,16 @@ export function extractRole(session: Session | null): AuthSession | null {
   try {
     const payload = JSON.parse(atob(jwt.split('.')[1]));
     if (__DEV__) {
-      console.log('[JWT]', JSON.stringify(payload, null, 2));
+      // The five claims that decide routing and permissions — not the whole
+      // payload, which also carries the session and its identifiers and is a
+      // lot of token to put on a shared terminal.
+      console.log('[JWT]', {
+        user_role: payload.user_role,
+        branch_id: payload.branch_id,
+        assigned_hub_id: payload.assigned_hub_id,
+        is_super_admin: payload.is_super_admin,
+        is_driver: payload.is_driver,
+      });
     }
     const role: UserRole = payload.user_role || 'customer';
     const assignedHubId: number | null = payload.assigned_hub_id ?? null;

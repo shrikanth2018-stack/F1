@@ -98,17 +98,3 @@ export function isPastDue(
   if (!start) return true;
   return timeToMinutes(start) <= istMinutesNow();
 }
-
-/**
- * Is this order with the driver or the hub rather than the packers?
- *
- * Packing used to exclude anything `isUnsuccessfulDelivery` flagged, which
- * meant a past-due order that had never been PACKED was hidden from the one
- * screen that could pack it. Stage, not date, is what decides whose job an
- * order is.
- */
-const DELIVERY_STAGE = new Set(['Dispatched', 'Received at Hub', 'On the Way']);
-
-export function isAtDeliveryStage(order: { status?: string | null }): boolean {
-  return DELIVERY_STAGE.has(order.status ?? '');
-}

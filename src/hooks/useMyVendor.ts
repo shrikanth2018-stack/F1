@@ -17,6 +17,7 @@ import { supabase } from '../api/supabaseClient';
 import { QUERY_KEYS, QUERY_STALE_TIME } from '../utils/constants';
 import { useAuth } from './useAuth';
 import type { Vendor } from './useVendors';
+import type { VendorOrderBucket } from '../utils/vendorOrderBuckets';
 
 /** The caller's vendor record, or null if they aren't one. */
 export function useMyVendor() {
@@ -301,6 +302,13 @@ export interface VendorOrder {
    * not be buying stock against this order.
    */
   cancellable_until: string | null;
+  /**
+   * Which of the three sections this row belongs in — decided by the server
+   * from kitchen_push_log, so the vendor's "now" is the same batch Kitchen,
+   * Packing, Driver and Hub are looking at. See
+   * supabase/sql/vendor_orders_batch_scope.sql.
+   */
+  bucket: VendorOrderBucket;
 }
 
 /**
@@ -315,12 +323,28 @@ export function useVendorOrders(enabled: boolean) {
     queryFn: async (): Promise<VendorOrder[]> => {
       const { data, error } = await supabase.rpc('vendor_orders');
       if (error) throw new Error(error.message);
-      return (data ?? []) as unknown as VendorOrder[];
+      const rows = (data ?? []) as unknown as VendorOrder[];
+      // `bucket` arrives only from the batch-scoped RPC. Until that SQL is
+      // applied the column is absent, and treating an undefined bucket as
+      // 'now' keeps the live section behaving exactly as it does today
+      // rather than emptying the vendor's screen on an app-only release.
+      return rows.map((r) => ({ ...r, bucket: r.bucket ?? 'now' }));
     },
     enabled,
     staleTime: QUERY_STALE_TIME,
   });
 }
+
+/**
+ * The Supply tab's shaping lives in src/utils/vendorOrderBuckets.ts — pure,
+ * and therefore testable without the Supabase client and the auth chain this
+ * module pulls in. Re-exported here so the screen has one import.
+ */
+export {
+  splitVendorOrders,
+  summariseUpcoming,
+  type UpcomingRun,
+} from '../utils/vendorOrderBuckets';
 
 /** Vendor marks their part of an order supplied. Never touches order.status. */
 export function useMarkOrderReady() {

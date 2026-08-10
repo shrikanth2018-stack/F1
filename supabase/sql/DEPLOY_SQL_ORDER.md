@@ -1027,3 +1027,65 @@ Vendor Manager footer — directory plus opt-in trading figures, mirroring the
 customer export's filter/column/CSV shape.
 
 **Rollback:** commented block at the bottom of the SQL file.
+
+---
+
+## 30. One batch on every board (2026-08-10)
+
+| # | File | What it does |
+|---|------|--------------|
+| 1 | `vendor_orders_batch_scope.sql` | `vendor_orders()` gains a `bucket` column (`now` / `upcoming` / `history`) derived from `kitchen_push_log`, and the date range widens backwards 60 days so history exists at all. Drops + recreates the function, so the GRANT is re-issued in the same file. |
+| 2 | `undelivered_batch_alert.sql` | New `alert_undelivered_batch(cycle, date)`, the `admin.orders_undelivered` template row, and `push_kitchen_summary` re-created to call it the moment a push replaces the live boards. |
+
+**Run #2 AFTER `kitchen_push_title_2026_08.sql`, always.** Both files carry a
+full copy of `push_kitchen_summary`, so whichever is applied last wins. #2 is
+built on the title file's version and preserves its "Order summary — <cycle>"
+wording; re-running the title file afterwards would drop the undelivered
+alert without any error.
+
+**Why:** every operational board shows exactly one batch and a row leaves it
+when the next push lands. That rule keeps the boards readable, and on its own
+it is also a way to lose an order quietly — the bag nobody delivered simply
+stops being on any screen. #2 closes that: when the board flips, whatever the
+outgoing batch still had open is counted and pushed to admin, landing them on
+Orders → Undelivered.
+
+The vendor is the one surface deliberately NOT put on a strict batch-only
+board — they buy stock before the cutoff, so `upcoming` keeps their lead time,
+aggregated per delivery run rather than per order.
+
+**App-side in the same slice:** the driver board stops carrying past-due
+orders forward and gains a Today | History split (`useDriverOrders.ts`); the
+vendor Supply tab renders the three buckets. Both ship by `eas update`.
+
+**Order of release matters, and only one way round is safe.** `useVendorOrders`
+defaults a missing `bucket` to `now`, so the app works against the old RPC —
+the vendor simply sees everything as live, exactly as today. Apply the SQL
+first and the app follows cleanly either way.
+
+**Verify after applying both:**
+
+```
+supabase db query --linked --file supabase/tests/one_batch_check.sql
+```
+
+Seeds dummy orders covering every bucket, checks them, checks the alert fires
+on a flip and not on a retry, then rolls the lot back. Ends in an error by
+design — read the report. It sends no push: pg_net enqueues into a table, so
+the rollback discards the request too.
+
+**Rollback:** re-run `vendors_fixes_02.sql` (restores the pre-bucket
+`vendor_orders`) and `kitchen_push_title_2026_08.sql` (restores
+`push_kitchen_summary` without the alert). Note that the title file does NOT
+restore the old `get_active_staff_batch`; re-run `get_active_staff_batch.sql`
+if you want the id tiebreak gone too, though there is no reason to.
+`alert_undelivered_batch` is then orphaned and harmless; drop it if you want
+it gone.
+
+**One fix came out of the test.** The first run showed the alert firing on a
+retry as well as a real flip. The trigger was artificial — `now()` is frozen
+inside a transaction, so two seeded pushes shared a `pushed_at` and
+`ORDER BY pushed_at DESC LIMIT 1` picked between them arbitrarily — but the
+ambiguity is real and `get_active_staff_batch` had it too. Both now tiebreak
+on `id`, and the flip test is `xmax = 0` (did this statement insert a row?)
+rather than an inference from ordering.

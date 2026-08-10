@@ -28,8 +28,9 @@ Node 22.
 - `src/navigation/` — `RootNavigator` switches on the JWT role
 - `src/hooks/` — **all** data access (56 hooks); `src/api/` — supabase client,
   `invokeFunction`, query primitives
-- `src/store/` — `cartStore`, `essentialsCartStore` (separate!),
-  `staffQueueStore` (offline queue), `uiStore`, `branchStore`
+- `src/store/` — `cartStore` (ONE cart: food, essentials and plans together,
+  keyed on `(item_id, item_type)`), `staffQueueStore` (offline queue),
+  `uiStore`, `branchStore`
 - `src/utils/` — pure logic; this is what the Jest suites cover
 - `supabase/functions/` — `_shared/orderBuild.ts` + `_shared/dispatch.ts` are
   the money and date brain

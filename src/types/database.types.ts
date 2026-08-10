@@ -1055,6 +1055,7 @@ export type Database = {
       }
       menu_items: {
         Row: {
+          base_quantity: number
           branch_id: number | null
           created_at: string | null
           cycle_id: number | null
@@ -1072,6 +1073,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          base_quantity?: number
           branch_id?: number | null
           created_at?: string | null
           cycle_id?: number | null
@@ -1089,6 +1091,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          base_quantity?: number
           branch_id?: number | null
           created_at?: string | null
           cycle_id?: number | null
@@ -1679,6 +1682,88 @@ export type Database = {
             columns: ["referrer_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      seed_360_registry: {
+        Row: {
+          id: number
+          note: string | null
+          pk: string
+          run_id: number
+          table_name: string
+        }
+        Insert: {
+          id?: number
+          note?: string | null
+          pk: string
+          run_id: number
+          table_name: string
+        }
+        Update: {
+          id?: number
+          note?: string | null
+          pk?: string
+          run_id?: number
+          table_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "seed_360_registry_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "seed_360_run"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      seed_360_run: {
+        Row: {
+          closed_at: string | null
+          id: number
+          note: string | null
+          started_at: string
+        }
+        Insert: {
+          closed_at?: string | null
+          id?: number
+          note?: string | null
+          started_at?: string
+        }
+        Update: {
+          closed_at?: string | null
+          id?: number
+          note?: string | null
+          started_at?: string
+        }
+        Relationships: []
+      }
+      seed_360_wallet_snapshot: {
+        Row: {
+          balance: number
+          points: number
+          run_id: number
+          user_id: string
+        }
+        Insert: {
+          balance: number
+          points: number
+          run_id: number
+          user_id: string
+        }
+        Update: {
+          balance?: number
+          points?: number
+          run_id?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "seed_360_wallet_snapshot_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "seed_360_run"
             referencedColumns: ["id"]
           },
         ]
@@ -2753,20 +2838,20 @@ export type Database = {
         }
         Returns: number
       }
-      admin_create_menu_block:
-        | {
-            Args: { p_branch_id: number; p_name: string; p_price: number }
-            Returns: number
-          }
-        | {
-            Args: {
-              p_branch_id: number
-              p_name: string
-              p_price: number
-              p_unit?: string
-            }
-            Returns: number
-          }
+      admin_create_menu_block: {
+        Args: {
+          p_base_qty?: number
+          p_branch_id: number
+          p_name: string
+          p_price: number
+          p_unit?: string
+        }
+        Returns: number
+      }
+      admin_issue_referral_month_bonus: {
+        Args: { p_referral_id: number }
+        Returns: Json
+      }
       admin_onboard_vendor: {
         Args: {
           p_branch_id?: number
@@ -2821,6 +2906,10 @@ export type Database = {
       }
       alert_cron_failures: { Args: never; Returns: undefined }
       alert_missing_kitchen_pushes: { Args: never; Returns: undefined }
+      alert_undelivered_batch: {
+        Args: { p_cycle_id: number; p_push_date: string }
+        Returns: Json
+      }
       approve_attendance_correction: {
         Args: { p_request_id: number }
         Returns: Json
@@ -3017,6 +3106,7 @@ export type Database = {
         Args: { p_count: number; p_vendor_name: string }
         Returns: undefined
       }
+      notify_attendance_regularization: { Args: never; Returns: undefined }
       place_order_atomic: {
         Args: {
           p_branch_id: number
@@ -3114,6 +3204,7 @@ export type Database = {
       vendor_orders: {
         Args: never
         Returns: {
+          bucket: string
           cancellable_until: string
           customer_name: string
           customer_phone: string
