@@ -78,20 +78,39 @@ export default ({ config }) => {
     slug: '1stOne-F1',
     version: '1.5.0',
     /**
-     * Custom URL scheme. WITHOUT THIS, `1stone://` IS NOT REGISTERED AT ALL.
+     * Custom URL scheme. WITHOUT THIS, the scheme IS NOT REGISTERED AT ALL.
      *
      * Expo only auto-adds the dev-client scheme (`exp+1stone-f1`) when this is
      * absent, so a production build had exactly one VIEW intent-filter and it
-     * was the development one. ReferralScreen shares
-     * `1stone://referral?code=XXXXX` and RootNavigator has working code to read
-     * it — the link simply never reached the app, because Android did not know
-     * the scheme belonged to us. Referral sharing could not work on any
-     * production install.
+     * was the development one. ReferralScreen shares a referral link and
+     * RootNavigator has working code to read it — the link simply never
+     * reached the app, because Android did not know the scheme belonged to us.
+     *
+     * `stone1st`, NOT `1stone`. A URL scheme must begin with a LETTER — RFC
+     * 3986, and the WHATWG parser enforces it. `1stone` broke two things at
+     * once, and the second is the one that settles it:
+     *
+     *   1. `eas update` refuses the manifest outright
+     *      (`'scheme' must match "^[a-z][a-z0-9+.-]*$"`), so from the day it
+     *      was introduced NO OTA could publish at all. Silently — a refused
+     *      publish looks like nothing happening.
+     *   2. `new URL('1stone://referral?code=X')` THROWS. RootNavigator parses
+     *      incoming links with exactly that call, inside a `catch {}`. So even
+     *      with the intent-filter registered, Android would hand the link over
+     *      and the app would drop it without a sound. Registering it natively
+     *      via a plugin — the withAndroidManifest trick used below for Maps —
+     *      would not have helped either.
+     *
+     * So the name had to change; there was no arrangement that kept `1stone://`
+     * working. `stone1st` matches `android.package` (com.stone1st.f1), which
+     * was renamed for the same reason: a Java package segment cannot start
+     * with a digit either.
      *
      * Changing this changes AndroidManifest.xml, so it needs a new build; an
-     * `eas update` cannot deliver it.
+     * `eas update` cannot deliver it. Referral links therefore start working
+     * at the next Play release, not at the next OTA.
      */
-    scheme: '1stone',
+    scheme: 'stone1st',
     orientation: 'portrait',
     icon: './assets/icon.png',
     userInterfaceStyle: 'dark',

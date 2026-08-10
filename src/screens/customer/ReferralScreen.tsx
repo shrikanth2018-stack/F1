@@ -137,9 +137,17 @@ export function ReferralScreen({ navigation }: { navigation: CustomerNavProp }) 
     if (!myCode) return;
     try {
       // Deep link: opens the app directly to the signup screen with code pre-filled.
-      // Format: 1stone://referral?code=XXXXX
+      // Format: stone1st://referral?code=XXXXX
       // Falls back gracefully on devices without the app installed (shows as plain text).
-      const deepLink = `1stone://referral?code=${myCode}`;
+      //
+      // `stone1st`, not `1stone`: a URL scheme must start with a letter, so
+      // `new URL('1stone://…')` throws — and RootNavigator reads incoming
+      // links with exactly that call. See the scheme note in app.config.js.
+      //
+      // This link only opens the app once a build carrying the scheme is on
+      // the device; the intent-filter lives in AndroidManifest.xml and no OTA
+      // can deliver it. Until then it shares as plain text, as it does today.
+      const deepLink = `stone1st://referral?code=${myCode}`;
       const credit = g('referee_signup_credit');
       const result = await Share.share({
         title: 'Join 1stOne — Fresh food daily!',

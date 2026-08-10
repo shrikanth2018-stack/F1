@@ -59,7 +59,7 @@ export function RootNavigator() {
   usePushNotifications();
   const [step, setStep] = useState<AuthStep>('login');
   const [pendingPhone, setPendingPhone] = useState('');
-  /** Referral code carried in from a deep link (1stone://referral?code=XXX) */
+  /** Referral code carried in from a deep link (stone1st://referral?code=XXX) */
   const [pendingReferralCode, setPendingReferralCode] = useState<string | null>(null);
   /** Ensures auto-apply fires once per pending code, not on every session refresh */
   const referralAppliedRef = useRef<string | null>(null);
