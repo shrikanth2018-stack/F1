@@ -191,6 +191,63 @@ BEGIN
   r := r || format('W2 retry of same batch    -> no alert  ... %s%s',
     CASE WHEN v_spy = 0 THEN 'PASS' ELSE 'FAIL ('||v_spy||' spurious alert(s))' END, E'\n');
 
+  -- ── X. the alert and the Undelivered tab must AGREE ─────────
+  -- The bug this catches: the tab asked `dispatch_date < today` while the
+  -- alert reported whatever the replaced batch still had open. An order
+  -- stranded EARLIER THE SAME DAY satisfied the alert and failed the tab, so
+  -- the push named orders the screen it deep-links to could not show. They
+  -- are two readings of one word and they have to come from one source.
+  PERFORM set_config('request.jwt.claims',
+    json_build_object('sub', (SELECT id FROM profiles WHERE role='admin' LIMIT 1),
+                      'role','authenticated')::text, true);
+
+  -- Section W flipped the board on purpose, so o_now's batch is no longer
+  -- live by the time we get here. Put it back at the front before asserting
+  -- that a LIVE batch is not reported as lost — otherwise this checks
+  -- nothing. now() is frozen for the transaction, hence the explicit offsets
+  -- rather than relying on insertion order.
+  INSERT INTO kitchen_push_log (cycle_id, push_date, orders_count, items_summary, status, notified_at, pushed_at)
+  VALUES (v_item.cycle_id, v_today, 1, 'test', 'dispatched', now(), now() + interval '1 min')
+  ON CONFLICT (cycle_id, push_date) DO UPDATE SET pushed_at = now() + interval '1 min';
+
+  -- o_now sits in the batch that is live right now: in progress, not lost.
+  SELECT count(*) INTO v_n FROM admin_undelivered_order_ids() WHERE order_id = o_now;
+  r := r || format('%sX1 active-batch order NOT undelivered  ... %s%s', E'\n',
+    CASE WHEN v_n = 0 THEN 'PASS' ELSE 'FAIL (listed while still live)' END, E'\n');
+
+  -- o_strand was pushed yesterday and superseded — dated in the past.
+  SELECT count(*) INTO v_n FROM admin_undelivered_order_ids() WHERE order_id = o_strand;
+  r := r || format('X2 superseded past-dated  -> listed    ... %s%s',
+    CASE WHEN v_n = 1 THEN 'PASS' ELSE 'FAIL (missing)' END, E'\n');
+
+  -- THE REGRESSION. Strand an order dated TODAY by pushing its cycle and
+  -- then flipping past it. `dispatch_date < today` is false for this row;
+  -- it must still be listed.
+  INSERT INTO kitchen_push_log (cycle_id, push_date, orders_count, items_summary, status, notified_at, pushed_at)
+  VALUES (v_item.cycle_id, v_today + 9, 0, 'test', 'dispatched', now(), now() + interval '2 min')
+  ON CONFLICT (cycle_id, push_date) DO UPDATE SET pushed_at = now() + interval '2 min';
+
+  SELECT count(*) INTO v_n FROM admin_undelivered_order_ids() WHERE order_id = o_now;
+  r := r || format('X3 stranded TODAY         -> listed    ... %s%s',
+    CASE WHEN v_n = 1 THEN 'PASS' ELSE 'FAIL — the tab cannot see it (the 2026-08-10 bug)' END, E'\n');
+
+  -- And the two answers must be the same set, not merely overlapping.
+  SELECT count(*) INTO v_n
+  FROM orders o
+  WHERE o.cycle_id = v_item.cycle_id AND o.dispatch_date = v_today
+    AND o.status NOT IN ('Delivered','Cancelled','Failed')
+    AND o.id NOT IN (SELECT order_id FROM admin_undelivered_order_ids());
+  r := r || format('X4 everything the alert names is listed ... %s%s',
+    CASE WHEN v_n = 0 THEN 'PASS' ELSE 'FAIL ('||v_n||' named but unlistable)' END, E'\n');
+
+  -- A subscription purchase delivers nothing and must never appear.
+  SELECT count(*) INTO v_n FROM admin_undelivered_order_ids() a
+   JOIN orders o ON o.id = a.order_id WHERE o.cycle_id IS NULL;
+  r := r || format('X5 subscription purchases excluded     ... %s%s',
+    CASE WHEN v_n = 0 THEN 'PASS' ELSE 'FAIL ('||v_n||' purchase row(s))' END, E'\n');
+
+  PERFORM set_config('request.jwt.claims', NULL, true);
+
   r := r || E'\n════ rolled back — nothing kept, no push sent ════';
   RAISE EXCEPTION '%', r;
 END $$;

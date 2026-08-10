@@ -56,16 +56,39 @@ type StatusFilter = typeof STATUS_OPTIONS[number];
  * them visible but made every day's list a mixture of that day's work and a
  * backlog of unknown age, and it left them cluttering the live boards too.
  *
- * Now: the day view shows only that day, and everything past its date and
- * still unfinished lives here, with the actions to clear it.
+ * WHICH ORDERS BELONG HERE IS DECIDED BY THE SERVER, and has to be.
+ *
+ * This asked `dispatch_date < today`, which is not what undelivered means.
+ * An order stranded when Lunch replaced Breakfast is dated TODAY, so it
+ * failed that test — it had already left every live board and it could not
+ * appear here either. On no screen at all until midnight, which is the exact
+ * disappearance the one-batch rule exists to prevent. The
+ * undelivered-batch push reported those orders correctly and then landed the
+ * admin on an empty tab.
+ *
+ * admin_undelivered_order_ids() answers it from kitchen_push_log — the same
+ * source the boards and vendor_orders() use — so the notification, this list
+ * and the vendor's History cannot disagree about what happened to an order.
  */
-const UNFINISHED = 'Delivered,Cancelled,Failed';
-
 function useUndeliveredOrders() {
+  // Still keyed on the IST date: the answer changes at midnight even if
+  // nothing else does, because a date passing is one of the two ways in.
   const today = todayIST();
   return useQuery({
     queryKey: ['admin_orders_undelivered', today],
     queryFn: async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: idRows, error: idErr } = await (supabase as any)
+        .rpc('admin_undelivered_order_ids');
+      if (idErr) throw idErr;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const ids = (idRows ?? []).map((r: any) => r.order_id ?? r);
+      if (ids.length === 0) return [];
+
+      // The rows themselves still come from PostgREST, for the nested
+      // address → hub/zone embed the row renders and an RPC would have to
+      // flatten by hand. The RPC narrows WHICH orders; this selects what to
+      // show for them.
       const { data, error } = await supabase
         .from('orders')
         .select(`
@@ -76,9 +99,9 @@ function useUndeliveredOrders() {
             delivery_zones(zone_name)
           )
         `)
-        .lt('dispatch_date', today)
-        .not('status', 'in', `(${UNFINISHED})`)
-        .order('dispatch_date', { ascending: true });
+        .in('id', ids)
+        .order('dispatch_date', { ascending: true })
+        .order('id', { ascending: true });
       if (error) throw error;
       return data ?? [];
     },
