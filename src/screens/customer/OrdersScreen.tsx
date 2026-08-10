@@ -27,7 +27,13 @@ import { EmptyState } from '../../components/EmptyState';
 import { ErrorRetry } from '../../components/ErrorRetry';
 import { useMyOrders, type OrderWithItems } from '../../hooks/useOrders';
 import { formatPriceShort, formatDateShort, formatRelativeTime } from '../../utils/formatters';
-import { ORDER_STATUS_FLOW, orderStatusVariant } from '../../utils/orderStatus';
+import { orderStatusVariant } from '../../utils/orderStatus';
+import {
+  groupIntoDeliveries,
+  rolledUpStatus,
+  formatOrderNumbers,
+  type Delivery,
+} from '../../utils/orderDeliveries';
 
 
 // ── Delivery model ────────────────────────────────────────────
@@ -48,67 +54,12 @@ import { ORDER_STATUS_FLOW, orderStatusVariant } from '../../utils/orderStatus';
 // Same window + same day = one card, contents combined, one status tracker.
 // A different window is a different card.
 
-interface OrderGroup {
-  key: string;
-  primaryId: number;       // lowest row id in this delivery
-  rows: OrderWithItems[];  // the rows making up this one delivery
-  totalAmount: number;     // sum across the delivery
-  createdAt: string;
-}
+type OrderGroup = Delivery<OrderWithItems>;
 
-function groupOrders(orders: OrderWithItems[]): OrderGroup[] {
-  const map = new Map<string, OrderWithItems[]>();
-  for (const o of orders) {
-    // DAILY SUBSCRIPTION DELIVERIES ARE NOT LISTED HERE. A 30-day plan would
-    // add thirty entries the customer never placed, burying the orders they
-    // did. The plan's own purchase entry stays (it is a real purchase with a
-    // real amount), and the running plan is tracked on the Plans rail.
-    if (o.subscription_id != null) continue;
-
-    // One key per DELIVERY: same purchase, same window, same day. A plan
-    // purchase has no window, so it stands alone under its own id.
-    const key = o.cycle_id == null
-      ? `purchase-${o.id}`
-      : `${o.order_group_id ?? `single-${o.id}`}:${o.cycle_id}:${o.dispatch_date}`;
-    const list = map.get(key) ?? [];
-    list.push(o);
-    map.set(key, list);
-  }
-
-  const groups: OrderGroup[] = [];
-  map.forEach((rows) => {
-    const sorted = [...rows].sort((a, b) =>
-      a.dispatch_date < b.dispatch_date ? -1
-        : a.dispatch_date > b.dispatch_date ? 1
-        : a.id - b.id,
-    );
-    groups.push({
-      key: sorted[0].order_group_id ?? `single-${sorted[0].id}`,
-      primaryId: Math.min(...rows.map((r) => r.id)),
-      rows: sorted,
-      totalAmount: rows.reduce((s, r) => s + (Number(r.total_amount) || 0), 0),
-      createdAt: sorted[0].created_at,
-    });
-  });
-
-  // Most recent checkout first.
-  groups.sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0));
-  return groups;
-}
-
-// A multi-cycle order has a status per cycle. The list card shows ONE
-// rolled-up status: the least-advanced of the still-active rows, so the
-// customer sees the slowest part. All rows cancelled → Cancelled.
-function rolledUpStatus(rows: OrderWithItems[]): string {
-  const active = rows.filter((r) => r.status !== 'Cancelled');
-  if (active.length === 0) return 'Cancelled';
-  return active.reduce((least, r) => {
-    const li = ORDER_STATUS_FLOW.indexOf(least as typeof ORDER_STATUS_FLOW[number]);
-    const ri = ORDER_STATUS_FLOW.indexOf(r.status as typeof ORDER_STATUS_FLOW[number]);
-    return ri !== -1 && (li === -1 || ri < li) ? r.status : least;
-  }, active[0].status);
-}
-
+// Grouping, the rolled-up status and the number formatting all live in
+// src/utils/orderDeliveries.ts now — the home rail and the order detail page
+// need the same three, and three copies of "what is one delivery" is how they
+// come to disagree.
 export function OrdersScreen({ navigation }: any) {
   const {
     data,
@@ -130,11 +81,17 @@ export function OrdersScreen({ navigation }: any) {
    * which tore a single purchase in half and hid subscription purchases
    * entirely. Grouping replaced that — first by checkout, now by delivery.
    *
-   * Memoised so groupOrders() only re-runs when the fetched data changes.
+   * Memoised so the grouping only re-runs when the fetched data changes.
    * Placed before the early return below to keep hook order stable.
    */
   const groups = useMemo(
-    () => groupOrders(data?.pages.flat() ?? []),
+    () => groupIntoDeliveries(data?.pages.flat() ?? [], {
+      // A 30-day plan would add thirty entries the customer never placed,
+      // burying the orders they did. The plan's PURCHASE row stays — it is a
+      // real purchase with a real amount — and the running plan is tracked
+      // on the Plans rail.
+      excludeSubscriptionDispatches: true,
+    }),
     [data],
   );
 
@@ -166,7 +123,13 @@ export function OrdersScreen({ navigation }: any) {
         onPress={() => navigation.navigate('OrderDetail', { orderId: item.primaryId })}
       >
         <View style={styles.rowTop}>
-          <ThemedText variant="subtitle" color="primary">Order #{item.primaryId}</ThemedText>
+          {/* EVERY number in the bag, not just the lowest. Each id is real
+              — staff search by it and it is printed on the slip — so showing
+              one left the customer unable to ask about the other half of
+              their own delivery. */}
+          <ThemedText variant="subtitle" color="primary" numberOfLines={1}>
+            {item.ids.length > 1 ? 'Orders ' : 'Order '}{formatOrderNumbers(item.ids)}
+          </ThemedText>
           <DispatchBadge label={status} variant={orderStatusVariant(status)} />
         </View>
 

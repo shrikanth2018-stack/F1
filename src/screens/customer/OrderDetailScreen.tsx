@@ -1,11 +1,18 @@
 /**
  * 1stOne F1 — Order Detail Screen
  *
- * MF-10: a customer "order" can span multiple delivery cycles. This
- * screen resolves the whole order group (via useOrderGroup) and renders
- * ONE schedule section per dispatch row — each with its own status
- * timeline, dispatch date and items — followed by one shared totals /
- * payment block. Cancellation acts on the whole group.
+ * MF-10: a customer "order" can span multiple delivery cycles. This screen
+ * resolves the whole order group (via useOrderGroup) and renders ONE SECTION
+ * PER DELIVERY — followed by one shared totals / payment block.
+ * Cancellation acts on the whole group.
+ *
+ * A SECTION IS A DELIVERY, NOT A ROW. One checkout writes a row per (cycle,
+ * type), so a single morning bag of idli and milk is two rows — and a section
+ * per row gave the customer two trackers, two dates and two headings for one
+ * bag arriving at one door, each reporting a status that was true of only
+ * half of it. Rows sharing a purchase, a window and a day are one section
+ * now, with ONE progress bar following the slower half and every order number
+ * on the heading, because each id is real and staff search by it.
  */
 
 import React, { useState, useCallback, useMemo } from 'react';
@@ -29,6 +36,11 @@ import { formatPriceShort, formatDateLong, getErrorMessage } from '../../utils/f
 import { formatTime12h } from '../../utils/timeEngine';
 import { istDateStr, istDateWithOffset } from '../../utils/istDate';
 import { isOperationalOrder } from '../../utils/orderFilters';
+import {
+  groupIntoDeliveries,
+  rolledUpStatus,
+  formatOrderNumbers,
+} from '../../utils/orderDeliveries';
 import { useReorder } from '../../hooks/useReorder';
 import { useMySubscriptions } from '../../hooks/useSubscriptions';
 import { subscriptionDaysRemaining } from '../../utils/subscriptionMath';
@@ -78,7 +90,12 @@ export function OrderDetailScreen({ route, navigation }: any) {
 
   // ── Group-level derived values (safe on empty — guarded before use) ──
   const groupRows: OrderWithItems[] = useMemo(() => rows ?? [], [rows]);
+  // Sections are DELIVERIES. Subscription dispatches are kept — this screen
+  // has to be able to open one — so no exclusion here, unlike My Orders.
+  const deliveries = useMemo(() => groupIntoDeliveries(groupRows), [groupRows]);
   const primaryId = groupRows.length > 0 ? Math.min(...groupRows.map((r) => r.id)) : orderId;
+  /** Every number in this purchase, for the page title. */
+  const allIds = useMemo(() => groupRows.map((r) => r.id).sort((a, b) => a - b), [groupRows]);
   const allCancelled = groupRows.length > 0 && groupRows.every((r) => r.status === 'Cancelled');
 
   /**
@@ -238,8 +255,13 @@ export function OrderDetailScreen({ route, navigation }: any) {
     );
   }
 
-  const isMulti = groupRows.length > 1;
-  const statusFlow = buildStatusFlow(groupRows[0].order_type, groupRows[0].delivery_method);
+  // "Multi" now means more than one DELIVERY, which is what decides whether a
+  // section needs a cycle name to tell it from its neighbour. Two rows in one
+  // bag are one section and need no such label.
+  const isMulti = deliveries.length > 1;
+  // The status flow is per delivery — see inside the loop. It used to be
+  // computed once from the first row's type, which was wrong the moment a
+  // bag held both food and essentials.
 
   return (
     <SafeAreaView style={styles.container}>
@@ -249,7 +271,12 @@ export function OrderDetailScreen({ route, navigation }: any) {
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <ThemedText variant="body" color="accent">‹ Back</ThemedText>
           </TouchableOpacity>
-          <ThemedText variant="header" color="primary">Order #{primaryId}</ThemedText>
+          {/* Every row number, not just the lowest — see the note at the
+              top of this file. Capped by formatOrderNumbers so a long
+              checkout cannot push the title off the screen. */}
+          <ThemedText variant="header" color="primary" numberOfLines={1} style={styles.headerTitle}>
+            {allIds.length > 1 ? 'Orders ' : 'Order '}{formatOrderNumbers(allIds)}
+          </ThemedText>
           <View style={{ width: 40 }} />
         </View>
 
@@ -270,35 +297,50 @@ export function OrderDetailScreen({ route, navigation }: any) {
           </View>
         )}
 
-        {/* ── One section per dispatch schedule ───────────────── */}
-        {groupRows.map((row) => {
-          const cycle = (cycles ?? []).find((c) => c.id === row.cycle_id);
+        {/* ── One section per DELIVERY ────────────────────────── */}
+        {deliveries.map((delivery) => {
+          const row = delivery.rows[0];           // the delivery's anchor row
+          const cycle = (cycles ?? []).find((c) => c.id === delivery.cycleId);
           const dispatchTime = formatTime12h(cycle?.delivery_start);
-          const currentStatusIndex = statusFlow.indexOf(row.status);
-          const rowCancelled = row.status === 'Cancelled';
 
-          // Per-schedule invoice figures — per-row money model: each row is
-          // self-describing. Pricing is GST-inclusive (T1): tax sits INSIDE
-          // the item prices, so subtotal = total − delivery, and rowTax is
-          // shown only as an informational "incl. GST" note.
-          const rowTax      = Number(row.tax_amount) || 0;
-          const rowDelivery = Number(row.delivery_fee) || 0;
-          const rowTotal    = Number(row.total_amount) || 0;
+          // ONE status for the bag: the least advanced row still running.
+          // The milk is "Packed" off a shelf while the idli is still in the
+          // kitchen, and the customer is waiting for both.
+          const deliveryStatus = rolledUpStatus(delivery.rows);
+          // The flow has to be the SUPERSET the bag actually travels. A bag
+          // holding any food goes through the kitchen, so it shows Ready;
+          // an essentials-only bag never does. Taking the first row's type
+          // would have hidden the Ready step whenever the essentials row
+          // happened to sort first.
+          const statusFlow = buildStatusFlow(
+            delivery.rows.some((r) => r.order_type === 'food') ? 'food' : row.order_type,
+            row.delivery_method,
+          );
+          const currentStatusIndex = statusFlow.indexOf(deliveryStatus);
+          const rowCancelled = deliveryStatus === 'Cancelled';
+
+          // Money is summed across the bag — the delivery fee sits on
+          // whichever row carried it, and the customer paid once. Pricing is
+          // GST-inclusive (T1): tax sits INSIDE the item prices, so
+          // subtotal = total − delivery, and tax is an informational note.
+          const rowTax      = delivery.rows.reduce((t, r) => t + (Number(r.tax_amount) || 0), 0);
+          const rowDelivery = delivery.rows.reduce((t, r) => t + (Number(r.delivery_fee) || 0), 0);
+          const rowTotal    = delivery.totalAmount;
           const rowSubtotal = rowTotal - rowDelivery;
 
           // Hide the dispatch line once the dispatch window has passed.
           const dispatchPassed = (() => {
-            if (!cycle?.delivery_start || !row.dispatch_date) return false;
+            if (!cycle?.delivery_start || !delivery.dispatchDate) return false;
             const [hh, mm] = cycle.delivery_start.split(':').map(Number);
             if (Number.isNaN(hh) || Number.isNaN(mm)) return false;
-            const dispatchAt = new Date(row.dispatch_date);
+            const dispatchAt = new Date(delivery.dispatchDate);
             dispatchAt.setHours(hh, mm, 0, 0);
             return Date.now() > dispatchAt.getTime();
           })();
 
           return (
-            <View key={row.id} style={styles.scheduleSection}>
-              {/* Schedule header — cycle name (multi) + date, then the
+            <View key={delivery.key} style={styles.scheduleSection}>
+              {/* Delivery header — cycle name (multi) + date, then the
                   dispatch line on its own row, right-aligned. */}
               <View style={styles.scheduleHeader}>
                 {isMulti && cycle?.cycle_name && (
@@ -306,14 +348,12 @@ export function OrderDetailScreen({ route, navigation }: any) {
                     {cycle.cycle_name}
                   </ThemedText>
                 )}
-                {/* Each section IS an order row, and each row has its own
-                    number that staff, the driver and the printed slip all
-                    use. Showing only the group's lowest id left the customer
-                    unable to quote the number for anything but the first
-                    part of their own order. */}
-                {isMulti && (
+                {/* EVERY number in this bag. Each is real — staff search by
+                    it, the driver reads it, it is on the printed slip — so
+                    one of them was never enough to quote. */}
+                {(isMulti || delivery.ids.length > 1) && (
                   <ThemedText variant="micro" color="muted" style={styles.rowId}>
-                    #{row.id}
+                    {formatOrderNumbers(delivery.ids)}
                   </ThemedText>
                 )}
                 <ThemedText variant="body" color="subtitle">
@@ -334,13 +374,13 @@ export function OrderDetailScreen({ route, navigation }: any) {
                     This delivery was cancelled
                   </ThemedText>
                 </View>
-              ) : row.status === 'Delivered' ? (
+              ) : deliveryStatus === 'Delivered' ? (
                 <View style={styles.deliveredTag}>
                   <ThemedText variant="body" style={styles.deliveredText}>
                     ✓  Delivered
                   </ThemedText>
                   <TouchableOpacity
-                    onPress={() => navigation.navigate('Feedback', { orderId: row.id })}
+                    onPress={() => navigation.navigate('Feedback', { orderId: delivery.primaryId })}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   >
                     <ThemedText variant="body" color="mint">Leave a Review ›</ThemedText>
@@ -387,19 +427,21 @@ export function OrderDetailScreen({ route, navigation }: any) {
                   for at purchase, so prices here would all be ₹0 and read as
                   a mistake. It states which plan delivered it instead. */}
               <View style={styles.invoiceBlock}>
-                {(row.order_items ?? []).map((item) => (
+                {/* Every line in the bag, across its rows — the food and
+                    the essentials arrive together and belong on one invoice. */}
+                {delivery.rows.flatMap((r) => r.order_items ?? []).map((item) => (
                   <View key={item.id} style={styles.itemRow}>
                     <ThemedText variant="body" color="primary">
                       {item.item_name} x{item.quantity}
                     </ThemedText>
-                    {row.subscription_id == null && (
+                    {delivery.rows.every((r) => r.subscription_id == null) && (
                       <ThemedText variant="body" color="subtitle">
                         {formatPriceShort(item.price_at_time * item.quantity)}
                       </ThemedText>
                     )}
                   </View>
                 ))}
-                {row.subscription_id != null ? (
+                {delivery.rows.some((r) => r.subscription_id != null) ? (
                   <>
                     <View style={styles.invoiceRule} />
                     <ThemedText variant="body" color="mint">
@@ -524,6 +566,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: Theme.spacing.md,
     paddingVertical: Theme.spacing.sm,
   },
+  /** Two order numbers are wider than one — let the title take the slack
+   *  between Back and the right spacer rather than pushing them apart. */
+  headerTitle: { flex: 1, textAlign: 'center', marginHorizontal: Theme.spacing.sm },
   section: { padding: Theme.spacing.md },
   scheduleSection: { paddingTop: Theme.spacing.sm },
   scheduleHeader: {
