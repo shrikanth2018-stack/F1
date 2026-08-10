@@ -22,6 +22,16 @@
 #
 set -euo pipefail
 
+# `npx --yes`, NOT `--no-install`. The first version of this used --no-install
+# so a release could never silently pull a different CLI — but that makes the
+# release depend on npx cache state, and it broke the moment Expo published
+# eas-cli 21.7.1: the cache held 21.7.0, --no-install refused to fetch, and
+# the release aborted for a reason that had nothing to do with the app.
+# --yes fetches when needed and never prompts. The channel-moved check below
+# is what actually guarantees a release landed, so the CLI version does not
+# need to be frozen to make this safe.
+EAS="npx --yes eas-cli"
+
 CHANNEL="${CHANNEL:-production}"
 MESSAGE="${1:-}"
 
@@ -61,7 +71,7 @@ npm run check
 # The update group live on the channel right now. Everything after this is
 # measured against it.
 read_group() {
-  npx --no-install eas-cli channel:view "$CHANNEL" --non-interactive 2>/dev/null \
+  $EAS channel:view "$CHANNEL" --non-interactive 2>/dev/null \
     | awk '/Group ID/ { print $3; exit }'
 }
 BEFORE="$(read_group || true)"
@@ -70,7 +80,7 @@ bold "→ live update group before: ${BEFORE:-<none>}"
 bold "→ eas update --channel $CHANNEL"
 # set -e already aborts on a non-zero exit; this makes the reason unmissable
 # rather than leaving it as the last line of the bundler's output.
-if ! npx --no-install eas-cli update --channel "$CHANNEL" --message "$MESSAGE" --non-interactive; then
+if ! $EAS update --channel "$CHANNEL" --message "$MESSAGE" --non-interactive; then
   red ""
   red "════════════════════════════════════════════════════"
   red "  ✖ OTA FAILED TO PUBLISH — nothing shipped."
