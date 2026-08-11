@@ -15,6 +15,7 @@ import {
 
 const row = (o: Partial<DeliveryRow> & { id: number }): DeliveryRow => ({
   order_group_id: 'grp-1',
+  delivery_address_id: 2,
   cycle_id: 1,
   dispatch_date: '2026-08-11',
   status: 'Confirmed',
@@ -154,6 +155,30 @@ describe("grouping by ARRIVAL (the home rail)", () => {
     expect(groupIntoDeliveries(rows, { by: 'arrival' })).toHaveLength(1);
     // ...while My Orders still sees them as the two purchases they are.
     expect(groupIntoDeliveries(rows, { by: 'purchase' })).toHaveLength(2);
+  });
+
+  it('does NOT merge two doors that share a time slot', () => {
+    // Live on 2026-08-11: #11605 (idli, address 2 "Home", via hub 19,
+    // "Received at Hub") and #11581 (milk, address 6 "Other", direct,
+    // "On the Way") both dispatch 7:30 AM 11 Aug. Keyed without the address
+    // they became ONE arrival showing two contradictory statuses — two doors
+    // and two journeys presented as one trip. The clashing statuses were the
+    // symptom; the missing address was the cause.
+    const out = groupIntoDeliveries([
+      row({ id: 11605, order_group_id: '4bef67a0', delivery_address_id: 2, status: 'Received at Hub' }),
+      row({ id: 11581, order_group_id: '7bf7368f', delivery_address_id: 6, status: 'On the Way' }),
+    ], { by: 'arrival' });
+    expect(out).toHaveLength(2);
+    expect(out.map((d) => d.addressId).sort()).toEqual([2, 6]);
+  });
+
+  it('still merges two purchases to the SAME door in one window', () => {
+    const out = groupIntoDeliveries([
+      row({ id: 11581, order_group_id: 'a', delivery_address_id: 2 }),
+      row({ id: 11605, order_group_id: 'b', delivery_address_id: 2 }),
+    ], { by: 'arrival' });
+    expect(out).toHaveLength(1);
+    expect(out[0].ids).toEqual([11581, 11605]);
   });
 
   it('still keeps different windows apart', () => {

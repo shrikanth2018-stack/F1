@@ -178,6 +178,26 @@ export function HomeRails() {
   }, [activeRows, cycleStarts]);
 
   /**
+   * Name the door, but only when there is more than one.
+   *
+   * An arrival is per address, so a customer expecting breakfast at home AND
+   * somewhere else gets two rows headed "Dispatched by : 7:30 AM, 11th Aug" —
+   * identical, and reading as a duplicate unless each says where it is going.
+   * With a single address the label is noise: there is nothing to tell apart.
+   */
+  const addressLabelById = useMemo(() => {
+    const m = new Map<number, string>();
+    for (const o of activeRows ?? []) {
+      const id = (o as any).delivery_address_id;
+      const label = (o as any).customer_addresses?.label;
+      if (id != null && label) m.set(id, label);
+    }
+    return m;
+  }, [activeRows]);
+  const showAddressLabels =
+    new Set(activeGroups.map((g) => g.addressId).filter((a) => a != null)).size > 1;
+
+  /**
    * The one order the customer is actually waiting on. The panel shows THIS,
    * not a list: "what is coming and when" is a single question with a single
    * answer, and a list of near-identical rows answered it badly.
@@ -330,6 +350,11 @@ export function HomeRails() {
                               >
                                 {when}
                               </ThemedText>
+                              {showAddressLabels && arrival.addressId != null && (
+                                <ThemedText variant="small" color="muted" style={styles.arrivalWhere}>
+                                  to {addressLabelById.get(arrival.addressId) ?? 'your address'}
+                                </ThemedText>
+                              )}
                               {purchases.map((p) => {
                                 // Slowest half governs: a bag of idli and
                                 // milk is two rows on different journeys and
@@ -636,6 +661,8 @@ const styles = StyleSheet.create({
   /** −1 on body: still the loudest line in the panel, one point calmer, and
    *  it buys back some of the width the full label needs. */
   dispatchLine: { fontSize: Theme.typography.sizes.body - 1 },
+  /** Only rendered when the customer has deliveries to more than one address. */
+  arrivalWhere: { marginTop: 1 },
   panelTitle: { flex: 1, fontSize: Theme.typography.sizes.subtitle - 1 },
   panelTitleAccent: { fontSize: Theme.typography.sizes.subtitle - 1 },
   panelScroll: { flexGrow: 0 },

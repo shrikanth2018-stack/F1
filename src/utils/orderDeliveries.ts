@@ -31,6 +31,8 @@ export interface DeliveryRow {
   created_at?: string | null;
   total_amount?: number | string | null;
   subscription_id?: number | null;
+  /** Which door this row goes to. Part of what makes an arrival an arrival. */
+  delivery_address_id?: number | null;
 }
 
 export interface Delivery<T> {
@@ -43,6 +45,8 @@ export interface Delivery<T> {
   rows: T[];
   cycleId: number | null;
   dispatchDate: string | null;
+  /** Null only for a plan purchase, which is delivered nowhere. */
+  addressId: number | null;
   totalAmount: number;
   createdAt: string;
 }
@@ -55,10 +59,18 @@ export interface Delivery<T> {
  *   has one total, one payment and one cancel button. Merging two purchases
  *   would produce a card that cannot be cancelled as a unit.
  *
- * 'arrival'  — same window, same day, whoever bought what. What the home rail
- *   shows, because there the question is "what is coming and when", and two
- *   purchases landing in the same window are ONE trip to your door. Splitting
- *   them told the customer they had two 7:30am deliveries when they had one.
+ * 'arrival'  — same window, same day, SAME ADDRESS, whoever bought what. What
+ *   the home rail shows, because there the question is "what is coming and
+ *   when", and two purchases landing at one door in one window are ONE trip.
+ *   Splitting them told the customer they had two 7:30am deliveries when they
+ *   had one.
+ *
+ *   THE ADDRESS IS NOT OPTIONAL HERE. Without it this merged a hub delivery to
+ *   Home with a direct delivery to another address into a single row that then
+ *   showed two conflicting statuses — "Received at Hub" and "On the Way" — for
+ *   what it claimed was one arrival. Two doors, two journeys, two rows. The
+ *   contradictory statuses were the symptom; the missing address was the
+ *   cause.
  *
  * Named on purpose rather than left to each screen to spell out, so the
  * difference is a decision recorded in one place instead of a divergence
@@ -73,7 +85,9 @@ export type DeliveryGrouping = 'purchase' | 'arrival';
  */
 export function deliveryKeyOf(row: DeliveryRow, by: DeliveryGrouping = 'purchase'): string {
   if (row.cycle_id == null) return `purchase-${row.id}`;
-  if (by === 'arrival') return `${row.cycle_id}:${row.dispatch_date}`;
+  if (by === 'arrival') {
+    return `${row.cycle_id}:${row.dispatch_date}:${row.delivery_address_id ?? 'none'}`;
+  }
   return `${row.order_group_id ?? `single-${row.id}`}:${row.cycle_id}:${row.dispatch_date}`;
 }
 
@@ -114,6 +128,7 @@ export function groupIntoDeliveries<T extends DeliveryRow>(
       rows: sorted,
       cycleId: sorted[0].cycle_id ?? null,
       dispatchDate: sorted[0].dispatch_date ?? null,
+      addressId: sorted[0].delivery_address_id ?? null,
       totalAmount: sorted.reduce((s, r) => s + (Number(r.total_amount) || 0), 0),
       createdAt: sorted[0].created_at ?? '',
     });

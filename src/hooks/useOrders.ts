@@ -65,7 +65,11 @@ export function useActiveOrders() {
     () =>
       supabase
         .from('orders')
-        .select('*, order_items(*)')
+        // The address LABEL comes with the rows: an arrival is per door, so
+        // when a customer has deliveries to more than one of theirs in the
+        // same window the rail has to say which is which — otherwise two
+        // identical "7:30 AM" headings read as a duplicate.
+        .select('*, order_items(*), customer_addresses(label)')
         .eq('user_id', userId)
         .not('cycle_id', 'is', null)
         .not('status', 'in', '("Delivered","Cancelled","Failed")')
