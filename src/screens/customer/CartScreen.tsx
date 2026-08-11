@@ -1,13 +1,21 @@
 /**
  * 1stOne F1 — Cart Screen
  *
- * Food and Essentials shown as separate sections. Within each, items are
- * grouped BY DELIVERY CYCLE — one block per cycle, headed with the cycle name
- * and its dispatch day. This mirrors HomeScreen (cycle-grouped menu) and the
- * order itself (one row per cycle), so the whole flow reads consistently.
+ * ONE BLOCK PER DELIVERY — the bag that actually turns up, headed with its
+ * cycle and dispatch day, in the order the bags go out.
+ *
+ * It used to split FOOD from ESSENTIALS at the top level and group by cycle
+ * inside each. That put "Lunch" on the screen twice and separated the fried
+ * rice from the curd travelling in the same bag — the same thing the rail, My
+ * Orders and the order detail page all now show together. It also sorted
+ * cycles by NAME, so Dinner (7:30 PM) sat above Lunch (12:30 PM).
+ *
+ * Each block carries two things beyond its items: a photo picker to add
+ * something else to that same bag, and — where a plan already delivers what
+ * you are buying — what it would cost on subscription instead.
  */
 
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   View,
   ScrollView,
@@ -16,11 +24,12 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
-import { Divider } from '../../components/Divider';
 import { EmptyState } from '../../components/EmptyState';
 import { useCartStore } from '../../store/cartStore';
+import type { CartItem } from '../../types';
 import { useSmartCart } from '../../hooks/useSmartCart';
 import { useDeliveryCycles } from '../../hooks/useDeliveryCycles';
 import { formatPriceShort, formatDateShort, plural } from '../../utils/formatters';
@@ -29,46 +38,39 @@ import { confirmDialog } from '../../utils/confirmDialog';
 import { useOrderQuote } from '../../hooks/useOrderQuote';
 import { useAddresses } from '../../hooks/useAddresses';
 import { useEssentialsEnabled } from '../../hooks/useEssentialsEnabled';
+import { useMenuItems } from '../../hooks/useMenuItems';
+import { useEssentialsCatalog } from '../../hooks/useEssentials';
+import { useSubscriptionPlans } from '../../hooks/useSubscriptions';
+import { bestCartSaving, humaniseDuration } from '../../utils/subscriptionSavings';
+import { AddExtraStrip } from './components/AddExtraStrip';
+import {
+  groupIntoBlocks,
+  extrasByCycle as buildExtrasByCycle,
+  itemsToday,
+  itemsLater,
+  type DeliveryBlock,
+  type ExtraCandidate,
+} from '../../utils/cartBlocks';
 
 type Scenario = 'A' | 'B' | 'C';
 
-interface CycleGroup<T> {
-  cycleId: number;
-  cycleName: string;
-  scenario: Scenario;
-  items: T[];
-}
+/** See the note where this is used — three named states, not two falsy ones. */
+type ExtrasOpen =
+  | { kind: 'untouched' }
+  | { kind: 'closed' }
+  | { kind: 'open'; cycleId: number };
 
-/** Group cart items by delivery cycle, ordered earliest dispatch day first. */
-function groupByCycle<T extends { cycle_id: number }>(
-  items: T[],
-  scenarioOf: (item: T) => Scenario,
-  cycles: { id: number; cycle_name: string }[],
-): CycleGroup<T>[] {
-  const byCycle = new Map<number, T[]>();
-  for (const it of items) {
-    const list = byCycle.get(it.cycle_id) ?? [];
-    list.push(it);
-    byCycle.set(it.cycle_id, list);
-  }
-  const rank: Record<Scenario, number> = { A: 0, B: 1, C: 2 };
-  const groups: CycleGroup<T>[] = [...byCycle.entries()].map(([cycleId, list]) => ({
-    cycleId,
-    cycleName: cycles.find((c) => c.id === cycleId)?.cycle_name ?? 'Items',
-    scenario: scenarioOf(list[0]),
-    items: list,
-  }));
-  groups.sort((a, b) => rank[a.scenario] - rank[b.scenario] || a.cycleName.localeCompare(b.cycleName));
-  return groups;
-}
+/**
+ * Left to right, horizontally. Declared once as constants because a fresh
+ * object literal per render makes LinearGradient re-evaluate its shader on
+ * every pass.
+ */
+const FADE_START = { x: 0, y: 0 };
+const FADE_END = { x: 1, y: 0 };
 
 const dayLabel = (s: Scenario): string =>
   s === 'A' ? 'Today' : s === 'B' ? 'Tomorrow' : 'Day after tomorrow';
 
-const itemsToday = (groups: CycleGroup<any>[]): number =>
-  groups.filter((g) => g.scenario === 'A').reduce((s, g) => s + g.items.length, 0);
-const itemsLater = (groups: CycleGroup<any>[]): number =>
-  groups.filter((g) => g.scenario !== 'A').reduce((s, g) => s + g.items.length, 0);
 
 export function CartScreen({ navigation, route }: any) {
   const insets = useSafeAreaInsets();
@@ -76,17 +78,12 @@ export function CartScreen({ navigation, route }: any) {
 
   const allItems = useCartStore((s) => s.items);
   const cartPlans = useCartStore((s) => s.plans);
+  const addItem = useCartStore((s) => s.addItem);
   const updateQty = useCartStore((s) => s.updateQuantity);
   const removeCartItem = useCartStore((s) => s.removeItem);
   const removeCartPlan = useCartStore((s) => s.removePlan);
   const clearCart = useCartStore((s) => s.clearCart);
   const cartTotal = useCartStore((s) => s.getDisplayTotal());
-
-  // ONE cart, split for DISPLAY only. The server groups by (cycle, type) and
-  // writes one row per group, so these two arrays mirror the rows the order
-  // will actually become.
-  const foodItems = useMemo(() => allItems.filter((i) => i.item_type === 'food'), [allItems]);
-  const essItems = useMemo(() => allItems.filter((i) => i.item_type === 'essential'), [allItems]);
 
   const { evaluations } = useSmartCart();
   const { data: cycles } = useDeliveryCycles();
@@ -138,18 +135,96 @@ export function CartScreen({ navigation, route }: any) {
         ?.scenario ?? 'A',
     [evaluations],
   );
-  const foodGroups = useMemo(
-    () => groupByCycle(foodItems, scenarioOf, cycles ?? []),
-    [foodItems, scenarioOf, cycles],
+  // ONE list of bags, food and essentials together. `essentialsEnabled`
+  // still excludes essentials from the view when the module is off, exactly
+  // as the separate ESSENTIALS section used to.
+  const visibleItems = useMemo(
+    () => (essentialsEnabled ? allItems : allItems.filter((i) => i.item_type === 'food')),
+    [allItems, essentialsEnabled],
   );
-  const essGroups = useMemo(
-    () => groupByCycle(essItems, scenarioOf, cycles ?? []),
-    [essItems, scenarioOf, cycles],
+  const blocks = useMemo(
+    () => groupIntoBlocks(visibleItems, scenarioOf, cycles ?? []),
+    [visibleItems, scenarioOf, cycles],
   );
 
   // Any cycle with a missed cutoff → one-line banner.
-  const anyMissedCutoff =
-    foodGroups.some((g) => g.scenario !== 'A') || essGroups.some((g) => g.scenario !== 'A');
+  const anyMissedCutoff = blocks.some((b) => b.scenario !== 'A');
+
+  // ── Catalogue, for the add-extra picker and the savings maths ──
+  const cycleIds = useMemo(() => (cycles ?? []).map((c) => c.id), [cycles]);
+  const { data: menuItems } = useMenuItems(cycleIds.length > 0 ? cycleIds : undefined);
+  const { data: essentialsCatalog } = useEssentialsCatalog();
+  const { data: plans } = useSubscriptionPlans();
+
+  /** Today's price for any catalogue item, either side. Null when unknown. */
+  const priceOf = useCallback(
+    (itemId: number): number | null => {
+      const m = (menuItems ?? []).find((x) => x.id === itemId);
+      if (m) return Number(m.price);
+      const e = (essentialsCatalog ?? []).find((x) => x.id === itemId);
+      if (e) return Number(e.price);
+      return null;
+    },
+    [menuItems, essentialsCatalog],
+  );
+
+  /**
+   * Which delivery's picker is open. ONE at a time, cart-wide: three open
+   * pickers is three unresolved decisions on screen, which is what made a
+   * multi-cycle cart unreadable.
+   *
+   * THREE STATES, and the third is the point:
+   *
+   *   untouched — the customer has not decided, so the SOONEST delivery is
+   *               open. That single rule gives both behaviours: a one-cycle
+   *               cart simply has its picker open, and a busy one opens the
+   *               bag going out first, which is the last one still worth
+   *               adding to.
+   *   closed    — they closed it. It must STAY closed; springing open again
+   *               on the next render (an item added, a quantity nudged)
+   *               reads as the screen fighting them.
+   *   open      — the one they picked.
+   *
+   * A union rather than `number | null | undefined`, deliberately. Those two
+   * empty values are both falsy and both look like "nothing", so the next
+   * person to tidy this writes `useState<number | null>(null)`, it compiles,
+   * and the default-open quietly dies — a change no test would catch, since
+   * a default is not a behaviour anything asserts. Named states cannot be
+   * conflated by accident. Same shape as BuildResult in orderBuild.ts.
+   */
+  const [extrasOpen, setExtrasOpen] = useState<ExtrasOpen>({ kind: 'untouched' });
+
+  const openCycleId: number | null =
+    extrasOpen.kind === 'open' ? extrasOpen.cycleId
+      : extrasOpen.kind === 'closed' ? null
+        : blocks[0]?.cycleId ?? null;
+
+  /**
+   * ONE subscription offer for the cart, shown below the total.
+   *
+   * It used to sit under each matching item, where it wrapped to two lines,
+   * pushed the item away from its own "Add something else?", and repeated the
+   * same argument down the page. Below the total it is read once, at the
+   * moment the customer is deciding what to pay — and only the biggest saving
+   * appears, because three competing offers make each of them smaller.
+   */
+  const cartSaving = useMemo(
+    () => bestCartSaving(visibleItems, plans ?? [], priceOf),
+    [visibleItems, plans, priceOf],
+  );
+
+  /** See extrasByCycle — the filtering and ordering live in cartBlocks.ts. */
+  const extrasByCycle = useMemo(
+    () => buildExtrasByCycle(menuItems ?? [], essentialsCatalog ?? [], allItems, essentialsEnabled),
+    [menuItems, essentialsCatalog, allItems, essentialsEnabled],
+  );
+
+  const addExtra = useCallback((c: ExtraCandidate) => {
+    addItem({
+      item_id: c.item_id, item_type: c.item_type, cycle_id: c.cycle_id,
+      name: c.name, display_price: c.price, unit: c.unit ?? undefined,
+    });
+  }, [addItem]);
 
   // ONE checkout for the whole cart. There used to be two buttons —
   // "Checkout Food · ₹50" and "Checkout Essentials · ₹35" — so ₹85 of
@@ -157,9 +232,8 @@ export function CartScreen({ navigation, route }: any) {
   // always accepted a mixed cart; only this screen did not.
   const confirmCheckout = useCallback(
     () => {
-      const groups = [...foodGroups, ...essGroups];
-      const today = itemsToday(groups);
-      const later = itemsLater(groups);
+      const today = itemsToday(blocks);
+      const later = itemsLater(blocks);
 
       if (!(today > 0 && later > 0)) {
         navigation.navigate('Checkout', {});
@@ -175,48 +249,70 @@ export function CartScreen({ navigation, route }: any) {
         ],
       );
     },
-    [foodGroups, essGroups, navigation],
+    [blocks, navigation],
   );
 
-  // ── Shared item-row renderer (DRY — used by food + essentials) ──
-  const renderRow = (
-    key: string,
-    name: string,
-    qty: number,
-    lineTotal: number,
-    onDecrement: () => void,
-    onIncrement: () => void,
-  ) => (
-    <View key={key} style={styles.itemRow}>
-      <View style={styles.itemInfo}>
-        <ThemedText variant="body" color="primary">{name}</ThemedText>
-      </View>
-      <View style={styles.itemRight}>
-        <View style={styles.stepper}>
-          <TouchableOpacity style={styles.stepBtn} onPress={onDecrement}>
-            <ThemedText variant="body" color="primary">−</ThemedText>
-          </TouchableOpacity>
-          <ThemedText variant="body" color="primary" style={styles.qty}>{qty}</ThemedText>
-          <TouchableOpacity style={styles.stepBtn} onPress={onIncrement}>
-            <ThemedText variant="body" color="primary">+</ThemedText>
-          </TouchableOpacity>
+  /**
+   * ONE LINE PER ITEM: name, stepper, price.
+   *
+   * The name used to sit on its own row with the stepper and the price
+   * stacked beneath it on the right — three lines and ~200pt for a single
+   * dish, so a four-item cart did not fit on a screen. Nothing was gained by
+   * the height; the same three facts fit across one row.
+   */
+  const renderRow = (item: CartItem) => {
+    const lineTotal = item.display_price * item.quantity;
+    return (
+      <View key={`${item.item_type}-${item.item_id}`}>
+        <View style={styles.itemRow}>
+          <ThemedText variant="body" color="primary" style={styles.itemName} numberOfLines={1}>
+            {item.name}
+          </ThemedText>
+          <View style={styles.stepper}>
+            <TouchableOpacity
+              style={styles.stepBtn}
+              onPress={() => (item.quantity <= 1
+                ? removeCartItem(item.item_id, item.item_type)
+                : updateQty(item.item_id, item.item_type, item.quantity - 1))}
+            >
+              <ThemedText variant="body" color="primary">−</ThemedText>
+            </TouchableOpacity>
+            <ThemedText variant="body" color="primary" style={styles.qty}>{item.quantity}</ThemedText>
+            <TouchableOpacity
+              style={styles.stepBtn}
+              onPress={() => updateQty(item.item_id, item.item_type, item.quantity + 1)}
+            >
+              <ThemedText variant="body" color="primary">+</ThemedText>
+            </TouchableOpacity>
+          </View>
+          <ThemedText variant="body" color="accent" style={styles.itemPrice}>
+            {formatPriceShort(lineTotal)}
+          </ThemedText>
         </View>
-        <ThemedText variant="body" color="accent">{formatPriceShort(lineTotal)}</ThemedText>
-      </View>
-    </View>
-  );
 
-  /** One cycle block — header (name + dispatch day) then its item rows. */
-  const renderCycleGroup = (g: CycleGroup<any>, rows: React.ReactNode) => (
-    <View key={`cyc-${g.cycleId}`} style={styles.cycleGroup}>
-      <ThemedText variant="small" color="mint" style={styles.cycleName}>{g.cycleName}</ThemedText>
+      </View>
+    );
+  };
+
+  /** One delivery: header, its items, and what else could ride along. */
+  const renderBlock = (b: DeliveryBlock) => (
+    <View key={`cyc-${b.cycleId}`} style={styles.cycleGroup}>
+      <ThemedText variant="small" color="mint" style={styles.cycleName}>{b.cycleName}</ThemedText>
       <ThemedText
         variant="micro"
-        style={[styles.cycleDay, g.scenario !== 'A' && styles.cycleDayMissed]}
+        style={[styles.cycleDay, b.scenario !== 'A' && styles.cycleDayMissed]}
       >
-        {dayLabel(g.scenario)} · dispatch by {getDeliveryTime(g.cycleId)}
+        {dayLabel(b.scenario)} · dispatch by {getDeliveryTime(b.cycleId)}
       </ThemedText>
-      {rows}
+      {b.items.map(renderRow)}
+      <AddExtraStrip
+        candidates={extrasByCycle.get(b.cycleId) ?? []}
+        expanded={openCycleId === b.cycleId}
+        onToggle={() => setExtrasOpen(
+          openCycleId === b.cycleId ? { kind: 'closed' } : { kind: 'open', cycleId: b.cycleId },
+        )}
+        onAdd={addExtra}
+      />
     </View>
   );
 
@@ -265,14 +361,12 @@ export function CartScreen({ navigation, route }: any) {
                   Starts {formatDateShort(subPlan.start_date)} · {subPlan.duration_days} days
                 </ThemedText>
               </View>
-              <View style={styles.itemRight}>
-                <TouchableOpacity onPress={handleRemove} style={styles.removeBtn}>
-                  <ThemedText variant="micro" color="muted">Remove</ThemedText>
-                </TouchableOpacity>
-                <ThemedText variant="body" color="accent">
-                  {formatPriceShort(subPlan.price)}
-                </ThemedText>
-              </View>
+              <TouchableOpacity onPress={handleRemove} style={styles.removeBtn}>
+                <ThemedText variant="micro" color="muted">Remove</ThemedText>
+              </TouchableOpacity>
+              <ThemedText variant="body" color="accent" style={styles.itemPrice}>
+                {formatPriceShort(subPlan.price)}
+              </ThemedText>
             </View>
 
             <View style={styles.sectionFooter}>
@@ -315,9 +409,6 @@ export function CartScreen({ navigation, route }: any) {
     );
   }
 
-  const foodHasContent = foodItems.length > 0;
-  const essHasContent = essentialsEnabled && essItems.length > 0;
-
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -342,101 +433,56 @@ export function CartScreen({ navigation, route }: any) {
 
       {/* Missed-cutoff banner — one line, persistent while any cycle is late */}
       {anyMissedCutoff && (
-        <View style={styles.cutoffBanner}>
+        <LinearGradient
+          colors={[
+            `${Theme.colors.status.warning}26`,
+            `${Theme.colors.status.warning}12`,
+            `${Theme.colors.status.warning}00`,
+          ]}
+          locations={[0, 0.55, 1]}
+          start={FADE_START}
+          end={FADE_END}
+          style={styles.cutoffBanner}
+        >
           <ThemedText variant="small" style={styles.cutoffBannerText}>
             Some items missed today's cutoff — check each cycle's delivery day below.
           </ThemedText>
-        </View>
+        </LinearGradient>
       )}
 
       <ScrollView contentContainerStyle={styles.content}>
 
-        {/* ── FOOD CART ── */}
-        {foodHasContent && (
-          <View style={styles.cartSection}>
-            <View style={styles.sectionHeader}>
-              <ThemedText variant="small" color="muted" style={styles.sectionLabel}>FOOD</ThemedText>
-            </View>
+        {/* ── One block per delivery, soonest first ── */}
+        <View style={styles.cartSection}>
+          {blocks.map(renderBlock)}
 
-            {/* One block per delivery cycle */}
-            {foodGroups.map((g) =>
-              renderCycleGroup(
-                g,
-                g.items.map((item) => renderRow(
-                  `f-${item.item_id}`,
-                  item.name,
-                  item.quantity,
-                  item.display_price * item.quantity,
-                  () => (item.quantity <= 1
-                    ? removeCartItem(item.item_id, 'food')
-                    : updateQty(item.item_id, 'food', item.quantity - 1)),
-                  () => updateQty(item.item_id, 'food', item.quantity + 1),
-                )),
-              ),
-            )}
-
-            {/* Subscription plans — one block; they belong to the cart, not
-                to a food half or an essentials half. */}
-            {cartPlans.length > 0 && (
-              <>
-                {foodItems.length > 0 && <View style={styles.groupDivider} />}
-                <ThemedText variant="small" color="muted" style={styles.planSubLabel}>
-                  SUBSCRIPTION PLANS
-                </ThemedText>
-                {cartPlans.map((p) => (
-                  <View key={`food-plan-${p.plan_id}`} style={styles.itemRow}>
-                    <View style={styles.itemInfo}>
-                      <ThemedText variant="body" color="primary">{p.plan_name}</ThemedText>
-                      <ThemedText variant="small" color="muted">
-                        Starts {formatDateShort(p.start_date)} · {p.duration_days} days
-                      </ThemedText>
-                    </View>
-                    <View style={styles.itemRight}>
-                      <TouchableOpacity onPress={() => removeCartPlan(p.plan_id)} style={styles.removeBtn}>
-                        <ThemedText variant="micro" color="muted">Remove</ThemedText>
-                      </TouchableOpacity>
-                      <ThemedText variant="body" color="accent">
-                        {formatPriceShort(p.price)}
-                      </ThemedText>
-                    </View>
+          {/* Plans belong to the cart, not to any one delivery — a plan is
+              bought once and runs; it is not in a bag going out tonight. */}
+          {cartPlans.length > 0 && (
+            <>
+              {blocks.length > 0 && <View style={styles.groupDivider} />}
+              <ThemedText variant="small" color="muted" style={styles.planSubLabel}>
+                SUBSCRIPTION PLANS
+              </ThemedText>
+              {cartPlans.map((p) => (
+                <View key={`plan-${p.plan_id}`} style={styles.itemRow}>
+                  <View style={styles.itemInfo}>
+                    <ThemedText variant="body" color="primary">{p.plan_name}</ThemedText>
+                    <ThemedText variant="micro" color="muted">
+                      Starts {formatDateShort(p.start_date)} · {p.duration_days} days
+                    </ThemedText>
                   </View>
-                ))}
-              </>
-            )}
-
-          </View>
-        )}
-
-        {foodHasContent && essHasContent && <Divider />}
-
-        {/* ── ESSENTIALS CART ── */}
-        {essHasContent && (
-          <View style={styles.cartSection}>
-            <View style={styles.sectionHeader}>
-              <ThemedText variant="small" color="muted" style={styles.sectionLabel}>ESSENTIALS</ThemedText>
-            </View>
-
-            {essGroups.map((g) =>
-              renderCycleGroup(
-                g,
-                g.items.map((item) => renderRow(
-                  `e-${item.item_id}`,
-                  item.name,
-                  item.quantity,
-                  item.display_price * item.quantity,
-                  () => (item.quantity <= 1
-                    ? removeCartItem(item.item_id, 'essential')
-                    : updateQty(item.item_id, 'essential', item.quantity - 1)),
-                  () => updateQty(item.item_id, 'essential', item.quantity + 1),
-                )),
-              ),
-            )}
-
-            {/* Plans are rendered once, with FOOD above — they belong to the
-                cart, not to either half of it. */}
-
-          </View>
-        )}
+                  <TouchableOpacity onPress={() => removeCartPlan(p.plan_id)} style={styles.removeBtn}>
+                    <ThemedText variant="micro" color="muted">Remove</ThemedText>
+                  </TouchableOpacity>
+                  <ThemedText variant="body" color="accent" style={styles.itemPrice}>
+                    {formatPriceShort(p.price)}
+                  </ThemedText>
+                </View>
+              ))}
+            </>
+          )}
+        </View>
 
         {/* ── ONE total for the whole cart ── */}
         <View style={styles.cartSection}>
@@ -467,6 +513,36 @@ export function CartScreen({ navigation, route }: any) {
               </ThemedText>
             )}
           </View>
+
+          {cartSaving && (
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => navigation.navigate('PlanDetail', { planId: cartSaving.planId })}
+              accessibilityRole="button"
+              accessibilityLabel={`Subscribe and save ${formatPriceShort(cartSaving.totalSaving)} on ${cartSaving.itemName}`}
+            >
+              <LinearGradient
+                colors={[
+                  `${Theme.colors.text.mint}1F`,
+                  `${Theme.colors.text.mint}0F`,
+                  `${Theme.colors.text.mint}00`,
+                ]}
+                locations={[0, 0.55, 1]}
+                start={FADE_START}
+                end={FADE_END}
+                style={styles.saveBanner}
+              >
+                <ThemedText variant="small" color="mint">
+                  Save {formatPriceShort(cartSaving.totalSaving)} over{' '}
+                  {humaniseDuration(cartSaving.durationDays)} on {cartSaving.itemName} with a
+                  subscription!
+                </ThemedText>
+                <ThemedText variant="small" color="mint" style={styles.saveBannerCta}>
+                  Subscribe ›
+                </ThemedText>
+              </LinearGradient>
+            </TouchableOpacity>
+          )}
         </View>
       </ScrollView>
 
@@ -498,15 +574,24 @@ const styles = StyleSheet.create({
     paddingVertical: Theme.spacing.sm,
   },
   content: { paddingBottom: Theme.spacing.xl },
+  /**
+   * Fades out to the right so it reads as a marked passage of the page rather
+   * than a card sitting on it. The solid left edge is what still makes it a
+   * marker; the fill just stops mattering before it reaches the other side.
+   *
+   * Rounded on the LEFT only. A right-hand corner radius describes an edge,
+   * and there is no edge there any more — the whole point is that the reader
+   * cannot say where it ends.
+   */
   cutoffBanner: {
-    backgroundColor: Theme.colors.status.warning + '22',
     borderLeftWidth: 3,
     borderLeftColor: Theme.colors.status.warning,
     marginHorizontal: Theme.spacing.md,
     marginTop: Theme.spacing.xs,
     paddingHorizontal: Theme.spacing.md,
     paddingVertical: Theme.spacing.sm,
-    borderRadius: 6,
+    borderTopLeftRadius: 6,
+    borderBottomLeftRadius: 6,
   },
   cutoffBannerText: { color: Theme.colors.status.warning },
   cartSection: { paddingHorizontal: Theme.spacing.md },
@@ -529,22 +614,27 @@ const styles = StyleSheet.create({
 
   itemRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: Theme.spacing.sm,
+    // xs, not sm: the row is one line now, so the old padding left it
+    // floating in its own paragraph.
+    paddingVertical: Theme.spacing.xs,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: Theme.colors.layout.divider,
   },
   itemInfo: { flex: 1, marginRight: Theme.spacing.sm },
-  itemRight: { alignItems: 'flex-end' },
+  /** Takes the slack, so the stepper and price hold the same column down the
+   *  list however long a dish is called. */
+  itemName: { flex: 1, marginRight: Theme.spacing.sm },
+  itemPrice: { minWidth: 62, textAlign: 'right' },
   stepper: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Theme.colors.background.secondary,
     borderRadius: 8,
-    marginBottom: 4,
   },
-  stepBtn: { paddingHorizontal: 12, paddingVertical: 6 },
+  stepBtn: { paddingHorizontal: 10, paddingVertical: 4 },
+  /** Indented under the item it refers to, not under the block. */
+  savingLine: { paddingBottom: Theme.spacing.xs, paddingRight: Theme.spacing.sm },
   qty: { minWidth: 24, textAlign: 'center' },
   groupDivider: {
     height: 1,
@@ -558,6 +648,19 @@ const styles = StyleSheet.create({
   },
   removeBtn: { paddingHorizontal: 4, paddingVertical: 2, marginBottom: 2 },
   sectionFooter: { paddingVertical: Theme.spacing.sm },
+  /** Sits under the total, where the customer is already weighing the price.
+   *  Tinted so it reads as an offer rather than another totals row, and faded
+   *  to the right so it is not a card. See cutoffBanner. */
+  saveBanner: {
+    borderLeftWidth: 3,
+    borderLeftColor: Theme.colors.text.mint,
+    borderTopLeftRadius: 6,
+    borderBottomLeftRadius: 6,
+    paddingHorizontal: Theme.spacing.sm,
+    paddingVertical: Theme.spacing.sm,
+    marginTop: Theme.spacing.sm,
+  },
+  saveBannerCta: { textAlign: 'right', marginTop: 2 },
   totalRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
