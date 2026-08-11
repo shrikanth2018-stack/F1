@@ -1131,3 +1131,53 @@ The same cases are asserted in TypeScript by
 the plan, TS previews it) and the two must not drift.
 
 **Rollback:** commented block at the foot of the SQL file.
+
+---
+
+## 32. Custom subscription plans — Phase 2: the manifest emits pure rows (2026-08-11)
+
+| # | File | What it does |
+|---|------|--------------|
+| 1 | `manifest_mixed_plan_rows.sql` | Replaces `ux_orders_subscription_dispatch` with `ux_orders_subscription_dispatch_type` (adds `order_type`), and re-creates `generate_daily_manifest` so a plan holding food AND essentials emits one PURE row per type, sharing one `order_group_id`. |
+
+**Supersedes the `generate_daily_manifest` body in `generate_daily_manifest.sql`.**
+Re-apply this file after that one if that one is ever edited — whichever runs
+last wins, exactly like the `push_kitchen_summary` pair in §30.
+
+**Why the index had to move.** It enforced ONE order row per
+(subscription, dispatch_date) — the constraint that actually prevents a
+double dispatch. It also made a mixed plan impossible: the food row inserted,
+the essentials row hit the index, and the per-subscription handler swallowed
+the error. `subs_failed` incremented, no order reached the kitchen, and
+nothing surfaced anywhere a person would look. Adding `order_type` keeps the
+protection at the grain that is now correct — a subscription still cannot
+dispatch the same type twice in a day — while allowing the one legitimate
+case of a food row and an essentials row for one plan on one day.
+
+**Found by the harness, not in production.** Worth stating plainly: the first
+dry run reported `N1 mixed plan -> 2 rows ... FAIL (0)` with everything else
+green, which is what pointed at the constraint.
+
+**Verify:**
+
+```
+supabase db query --linked --file supabase/tests/manifest_mixed_check.sql
+```
+
+13 assertions in two halves — NEW proves a mixed plan splits into pure rows
+with one group id and each line priced from its own catalogue; OLD proves a
+single-type plan is unchanged (one row, right type, a line with no
+`item_type` inheriting the plan's, correct price, and BF-19 zero money). Two
+more check that idempotency survived the split, since a manifest that
+re-dispatches would burn `days_consumed` down in minutes.
+
+**A plan with no lines still produces one row.** Deliberate: the idempotency
+guard is "does an order exist for this (sub, date)", so creating nothing
+would leave it with nothing to find and every tick would re-run the
+subscription and re-increment `days_consumed`.
+
+**Rollback:** re-run `generate_daily_manifest.sql`, then
+`DROP INDEX ux_orders_subscription_dispatch_type;` and recreate
+`ux_orders_subscription_dispatch` on `(subscription_id, dispatch_date)`.
+Do both — the old function cannot emit two rows, but the wider index would
+still permit them.
