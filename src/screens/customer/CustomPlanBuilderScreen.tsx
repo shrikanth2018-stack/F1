@@ -31,6 +31,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  TextInput,
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -65,6 +66,7 @@ export function CustomPlanBuilderScreen({ navigation }: CustomerScreenProps<'Cus
   const [cycleId, setCycleId] = useState<number | null>(null);
   const [chosen, setChosen] = useState<Record<string, Chosen>>({});
   const [days, setDays] = useState(30);
+  const [name, setName] = useState('');
 
   const { data: items = [], isLoading } = useBuilderItems(cycleId);
   const { data: slabs = [] } = useDiscountSlabs();
@@ -114,6 +116,9 @@ export function CustomPlanBuilderScreen({ navigation }: CustomerScreenProps<'Cus
     setChosen((cur) => (cur[k] ? { ...cur, [k]: { ...cur[k], quantity: Math.max(1, q) } } : cur));
   };
 
+  /** What the server will call it if the customer says nothing. */
+  const autoName = activeCycle ? `My ${activeCycle.cycle_name} · ${days} days` : 'My plan';
+
   const blocker =
     cycleId == null ? 'Choose a delivery time'
       : picked.length === 0 ? 'Add at least one item'
@@ -126,6 +131,7 @@ export function CustomPlanBuilderScreen({ navigation }: CustomerScreenProps<'Cus
       const plan = await create({
         cycleId,
         durationDays: days,
+        name,
         items: picked.map((p) => ({
           item_id: p.item.id, item_type: p.item.item_type, quantity: p.quantity,
         })),
@@ -251,6 +257,21 @@ export function CustomPlanBuilderScreen({ navigation }: CustomerScreenProps<'Cus
               ))}
             </View>
 
+            <ThemedText variant="small" color="muted" style={styles.label}>CALL IT</ThemedText>
+            {/* Only this customer will ever see the name — a custom plan never
+                joins the listed range — so it can be whatever helps them
+                recognise it in My Subscriptions. Blank is fine; the server
+                falls back to describing it. */}
+            <TextInput
+              style={styles.nameInput}
+              value={name}
+              onChangeText={setName}
+              placeholder={autoName}
+              placeholderTextColor={Theme.colors.text.muted}
+              maxLength={40}
+              returnKeyType="done"
+            />
+
             {/* ── The money ── */}
             <View style={styles.totals}>
               <View style={styles.totalRow}>
@@ -337,6 +358,15 @@ const styles = StyleSheet.create({
   stepBtn: { paddingHorizontal: 10, paddingVertical: 4 },
   qty: { minWidth: 22, textAlign: 'center' },
   loader: { marginTop: Theme.spacing.lg },
+  nameInput: {
+    color: Theme.colors.text.primary,
+    fontFamily: Theme.typography.fontFamily,
+    fontSize: Theme.typography.sizes.body,
+    backgroundColor: Theme.colors.background.secondary,
+    borderRadius: Theme.components.inputRadius,
+    paddingHorizontal: Theme.spacing.sm,
+    paddingVertical: Theme.spacing.xs,
+  },
   totals: { marginTop: Theme.spacing.md, gap: 4 },
   totalRow: { flexDirection: 'row', justifyContent: 'space-between' },
   floatBtn: {

@@ -417,28 +417,9 @@ export function HomeScreen() {
       {activeHomeTab === 'subscription' && (
         <ScrollView
           style={styles.list}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[styles.listContent, styles.subscribeListContent]}
           showsVerticalScrollIndicator={false}
         >
-          {/* BUILD YOUR OWN, ABOVE THE RANGE. A listed plan is a suggestion;
-              this is the one shaped around what the customer actually eats,
-              so it leads rather than sitting under a list they may not find
-              anything in. It is also the only entry point — the old
-              add-a-plan route from Profile → Subscriptions is gone. */}
-          <TouchableOpacity
-            style={styles.buildOwnRow}
-            activeOpacity={0.8}
-            onPress={() => navigation.navigate('CustomPlanBuilder')}
-          >
-            <View style={styles.flex1}>
-              <ThemedText variant="subtitle" color="primary">Build your own plan</ThemedText>
-              <ThemedText variant="small" color="muted">
-                Pick your dishes, choose how long, save more the longer you go
-              </ThemedText>
-            </View>
-            <ThemedText variant="body" color="mint">›</ThemedText>
-          </TouchableOpacity>
-
           {(plans ?? []).length === 0 && !plansLoading && (
             <EmptyState
               title="No ready-made plans yet"
@@ -454,6 +435,42 @@ export function HomeScreen() {
             />
           ))}
         </ScrollView>
+      )}
+
+      {/* ── Build your own — floating over the Subscribe tab ──
+           A scrim rather than a solid bar. The cart button's own note records
+           that a full-width opaque bar was tried and occluded ~15% of the
+           list; a gradient keeps the plans readable underneath while still
+           giving the action a permanent place, so it is reachable without
+           scrolling to the end of a list the customer may find nothing in.
+
+           Inset on the right to clear the cart button, which stays put: a
+           customer arriving here with items already in their cart must not
+           lose sight of them.
+
+           pointerEvents="box-none" so only the pill itself takes taps — the
+           faded area above it belongs to the list. */}
+      {activeHomeTab === 'subscription' && (
+        <LinearGradient
+          colors={['transparent', `${Theme.colors.background.primary}E6`, Theme.colors.background.primary]}
+          locations={[0, 0.45, 1]}
+          style={[styles.buildScrim, { paddingBottom: insets.bottom + Theme.spacing.md }]}
+          pointerEvents="box-none"
+        >
+          <TouchableOpacity
+            style={styles.buildOwnRow}
+            activeOpacity={0.85}
+            onPress={() => navigation.navigate('CustomPlanBuilder')}
+          >
+            <View style={styles.flex1}>
+              <ThemedText variant="subtitle" color="primary">Build your own plan</ThemedText>
+              <ThemedText variant="small" color="muted" numberOfLines={1}>
+                Your dishes, your length — the longer you go, the more you save
+              </ThemedText>
+            </View>
+            <ThemedText variant="body" color="mint">›</ThemedText>
+          </TouchableOpacity>
+        </LinearGradient>
       )}
 
       {isProfileVisible && <ProfilePopup />}
@@ -510,6 +527,8 @@ const styles = StyleSheet.create({
 
   // ── List ──
   list: { flex: 1 },
+  /** Clears the floating build bar, so the last plan is never trapped under it. */
+  subscribeListContent: { paddingBottom: Theme.spacing.xl * 5 },
   listContent: {
     paddingHorizontal: Theme.spacing.md,
     paddingTop: Theme.spacing.sm,
@@ -517,7 +536,20 @@ const styles = StyleSheet.create({
   },
 
   flex1: { flex: 1 },
-  /** Leads the Subscribe tab — see the note at the call site. */
+  /** Full width so the fade covers the list edge to edge; the pill inside is
+   *  inset on the right to clear the cart button. */
+  buildScrim: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingTop: Theme.spacing.xl,
+    paddingLeft: Theme.spacing.md,
+    // md + the 56pt cart button + a gap.
+    paddingRight: Theme.spacing.md + 56 + Theme.spacing.sm,
+    justifyContent: 'flex-end',
+  },
+  /** Floats over the Subscribe tab — see the note at the call site. */
   buildOwnRow: {
     flexDirection: 'row',
     alignItems: 'center',

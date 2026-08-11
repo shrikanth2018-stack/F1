@@ -237,12 +237,15 @@ export function useCreateCustomPlan() {
       cycleId: number;
       items: { item_id: number; item_type: 'food' | 'essential'; quantity: number }[];
       durationDays: number;
+      /** Blank is fine — the server falls back to describing the plan. */
+      name?: string;
     }): Promise<CreatedPlan> => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error } = await (supabase as any).rpc('create_custom_plan', {
         p_cycle_id: p.cycleId,
         p_items: p.items,
         p_duration_days: p.durationDays,
+        p_plan_name: p.name?.trim() || null,
       });
       if (error) throw new Error(error.message);
       return data as CreatedPlan;

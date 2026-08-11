@@ -130,7 +130,12 @@ export function PlanDetailScreen({ route, navigation }: any) {
     };
     setPlan(cartPlan);
     // Subscription-only cart view — no popup
-    navigation.navigate('Cart', { subscriptionPlanId: plan.id });
+    // STRAIGHT TO CHECKOUT. This used to route through the Cart in its
+    // subscription-only mode, which showed the plan name, the start date, the
+    // duration and the price — every one of them already on this screen, plus
+    // a Remove button that Back does. A confirmation step that confirms
+    // nothing new is just another tap between wanting the plan and having it.
+    navigation.navigate('Checkout', { subscriptionPlanId: plan.id });
   }, [plan, planType, newItemIds, setPlan, navigation]);
 
   const activeSubs: ActiveSubForConflict[] = useMemo(() => {

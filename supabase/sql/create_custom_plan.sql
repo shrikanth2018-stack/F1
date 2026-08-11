@@ -34,10 +34,16 @@ CREATE POLICY subscription_plans_read_all ON public.subscription_plans
   );
 
 
+-- The 3-argument version is dropped rather than left beside this one:
+-- PostgREST resolves by named arguments, and two overloads differing only by
+-- an optional parameter is exactly the ambiguity it cannot settle.
+DROP FUNCTION IF EXISTS public.create_custom_plan(INTEGER, JSONB, INTEGER);
+
 CREATE OR REPLACE FUNCTION public.create_custom_plan(
   p_cycle_id      INTEGER,
   p_items         JSONB,     -- [{item_id, item_type, quantity}]
-  p_duration_days INTEGER
+  p_duration_days INTEGER,
+  p_plan_name     TEXT DEFAULT NULL
 )
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -167,7 +173,17 @@ BEGIN
   v_pct   := plan_discount_percent(p_duration_days);
   v_price := ROUND(v_full * (1 - v_pct / 100.0), 2);
 
-  v_name := format('My %s · %s days', v_cycle.cycle_name, p_duration_days);
+  -- THE CUSTOMER NAMES IT, because they are the only person who will ever see
+  -- it — a custom plan never joins the listed range. Blank falls back to a
+  -- description rather than an empty heading, and the length cap is here
+  -- rather than only on the phone: this function is the boundary, and a name
+  -- reaches order slips and push copy.
+  v_name := NULLIF(btrim(COALESCE(p_plan_name, '')), '');
+  IF v_name IS NULL THEN
+    v_name := format('My %s · %s days', v_cycle.cycle_name, p_duration_days);
+  ELSIF length(v_name) > 40 THEN
+    v_name := left(v_name, 40);
+  END IF;
 
   INSERT INTO subscription_plans (
     plan_name, duration_days, price, savings_amount, plan_type, cycle_id,
@@ -198,7 +214,7 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL   ON FUNCTION public.create_custom_plan(INTEGER, JSONB, INTEGER) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.create_custom_plan(INTEGER, JSONB, INTEGER) TO authenticated;
+REVOKE ALL   ON FUNCTION public.create_custom_plan(INTEGER, JSONB, INTEGER, TEXT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.create_custom_plan(INTEGER, JSONB, INTEGER, TEXT) TO authenticated;
 
 NOTIFY pgrst, 'reload schema';

@@ -161,6 +161,33 @@ BEGIN
   r := r || format('R6 four items             -> refused ... %s%s',
     CASE WHEN v_err = 'refused' THEN 'PASS' ELSE 'FAIL' END, E'\n');
 
+  -- ── N. The customer's own name for it ────────────────────────
+  DELETE FROM subscription_plans WHERE is_custom AND created_by = v_cust;
+  v_res := create_custom_plan(v_cycle,
+    jsonb_build_array(jsonb_build_object('item_id', v_food, 'item_type','food','quantity',1)),
+    30, '  My breakfast plan  ');
+  r := r || format('%sN1 name kept, trimmed             ... %s%s', E'\n',
+    CASE WHEN v_res->>'plan_name' = 'My breakfast plan' THEN 'PASS'
+         ELSE 'FAIL ("'||(v_res->>'plan_name')||'")' END, E'\n');
+
+  DELETE FROM subscription_plans WHERE is_custom AND created_by = v_cust;
+  v_res := create_custom_plan(v_cycle,
+    jsonb_build_array(jsonb_build_object('item_id', v_food, 'item_type','food','quantity',1)),
+    30, '   ');
+  r := r || format('N2 blank name -> described        ... %s%s',
+    CASE WHEN v_res->>'plan_name' LIKE 'My %% days' THEN 'PASS'
+         ELSE 'FAIL ("'||(v_res->>'plan_name')||'")' END, E'\n');
+
+  DELETE FROM subscription_plans WHERE is_custom AND created_by = v_cust;
+  v_res := create_custom_plan(v_cycle,
+    jsonb_build_array(jsonb_build_object('item_id', v_food, 'item_type','food','quantity',1)),
+    30, repeat('x', 200));
+  r := r || format('N3 overlong name capped at 40     ... %s%s',
+    CASE WHEN length(v_res->>'plan_name') = 40 THEN 'PASS'
+         ELSE 'FAIL ('||length(v_res->>'plan_name')||')' END, E'\n');
+
+  DELETE FROM subscription_plans WHERE is_custom AND created_by = v_cust;
+
   -- ── M. The mixed plan the whole feature exists for ───────────
   v_res := create_custom_plan(v_cycle, jsonb_build_array(
     jsonb_build_object('item_id', v_food, 'item_type', 'food',      'quantity', 2),
