@@ -1,9 +1,15 @@
 /**
  * 1stOne F1 — Subscription Plans Manager
  *
- * 2-tab page: Food | Essentials (pipe-separated, same pattern as StaffDashboard).
- * Each tab: cycle toggle → plan list (price edit + enable/disable switch).
- * Footer: Import CSV ›  |  + Add Plan ›
+ * 3-tab page: Food | Essentials | Custom (pipe-separated, same pattern as
+ * StaffDashboard).
+ *
+ * Food / Essentials: cycle toggle → plan list (price edit + enable/disable).
+ *   Footer: Import CSV ›  |  + Add Plan ›
+ * Custom: what governs the CUSTOMER's own plan builder — the length-based
+ *   discount schedule, and which items may go in a plan at all. No cycle
+ *   toggle and no footer there; it configures the builder rather than
+ *   listing plans.
  */
 
 import React, { useState, useMemo } from 'react';
@@ -30,13 +36,19 @@ import {
 import { useAllDeliveryCycles } from '../../hooks/useMenuManagement';
 import { CYCLE_DISPLAY } from '../../hooks/useEssentialsCatalog';
 import { formatPlanLine, type PlanLine } from '../../utils/planItems';
+import { CustomPlanSettingsTab } from './components/CustomPlanSettingsTab';
 import type { AdminNavProp } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
 const P = Theme.typography.sizes.body + 4;
 
-type PlanTab = 'Food' | 'Essentials';
+/**
+ * A third tab, because the custom builder is configured here rather than in
+ * its own screen: what a customer may put in a plan is a decision about the
+ * plan range, and it belongs beside the plans.
+ */
+type PlanTab = 'Food' | 'Essentials' | 'Custom';
 
 function parsePlanItems(raw: string): PlanLine[] {
   try { return JSON.parse(raw) ?? []; } catch { return []; }
@@ -81,7 +93,7 @@ export function PlansManageScreen({ navigation }: { navigation: AdminNavProp }) 
     setEditingId(null);
   };
 
-  const TABS: PlanTab[] = ['Food', 'Essentials'];
+  const TABS: PlanTab[] = ['Food', 'Essentials', 'Custom'];
 
   const renderPlan = ({ item }: { item: SubscriptionPlan }) => {
     const isEditingPrice = editingId === item.id;
@@ -175,56 +187,65 @@ export function PlansManageScreen({ navigation }: { navigation: AdminNavProp }) 
         ))}
       </View>
 
-      {/* Cycle toggle */}
-      <TouchableOpacity
-        style={styles.cycleRow}
-        onPress={() => cycles.length && setCycleIdx((p) => (p + 1) % cycles.length)}
-        activeOpacity={0.7}
-      >
-        <ThemedText variant="body" color="mint" style={styles.cycleText}>
-          {cycleLabel}
-        </ThemedText>
-      </TouchableOpacity>
-
-      {/* Plans list */}
-      <FlatList
-        data={plans}
-        keyExtractor={(item) => String(item.id)}
-        renderItem={renderPlan}
-        ListEmptyComponent={
-          !isLoading ? (
-            <EmptyState
-              title={`No ${activeTab.toLowerCase()} plans for ${selectedCycle?.cycle_name ?? '…'}`}
-              subtitle={'Tap "+ Add Plan" below'}
-            />
-          ) : null
-        }
-        contentContainerStyle={styles.list}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-      />
-
-      {/* Footer */}
-      <View style={styles.footerRow}>
+      {/* Custom configures the BUILDER, not a list of plans — so no cycle
+          toggle and no Add Plan footer, both of which would be answering a
+          question this tab is not asking. */}
+      {activeTab === 'Custom' ? (
+        <CustomPlanSettingsTab />
+      ) : (
+        <>
+        {/* Cycle toggle */}
         <TouchableOpacity
-          onPress={() => navigation.navigate('ImportItems', { type: 'plans' })}
+          style={styles.cycleRow}
+          onPress={() => cycles.length && setCycleIdx((p) => (p + 1) % cycles.length)}
           activeOpacity={0.7}
         >
-          <ThemedText variant="body" color="muted" style={styles.rowText}>Import CSV  ›</ThemedText>
+          <ThemedText variant="body" color="mint" style={styles.cycleText}>
+            {cycleLabel}
+          </ThemedText>
         </TouchableOpacity>
-        <TouchableOpacity
-          activeOpacity={0.7}
-          onPress={() =>
-            navigation.navigate('CreatePlan', {
-              cycleId: selectedCycle?.id,
-              cycleName: selectedCycle?.cycle_name,
-              planType,
-            })
+
+        {/* Plans list */}
+        <FlatList
+          data={plans}
+          keyExtractor={(item) => String(item.id)}
+          renderItem={renderPlan}
+          ListEmptyComponent={
+            !isLoading ? (
+              <EmptyState
+                title={`No ${activeTab.toLowerCase()} plans for ${selectedCycle?.cycle_name ?? '…'}`}
+                subtitle={'Tap "+ Add Plan" below'}
+              />
+            ) : null
           }
-        >
-          <ThemedText variant="body" color="mint" style={styles.rowText}>+ Add Plan  ›</ThemedText>
-        </TouchableOpacity>
-      </View>
+          contentContainerStyle={styles.list}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        />
+
+        {/* Footer */}
+        <View style={styles.footerRow}>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('ImportItems', { type: 'plans' })}
+            activeOpacity={0.7}
+          >
+            <ThemedText variant="body" color="muted" style={styles.rowText}>Import CSV  ›</ThemedText>
+          </TouchableOpacity>
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() =>
+              navigation.navigate('CreatePlan', {
+                cycleId: selectedCycle?.id,
+                cycleName: selectedCycle?.cycle_name,
+                planType,
+              })
+            }
+          >
+            <ThemedText variant="body" color="mint" style={styles.rowText}>+ Add Plan  ›</ThemedText>
+          </TouchableOpacity>
+        </View>
+        </>
+      )}
     </SafeAreaView>
   );
 }

@@ -1089,3 +1089,45 @@ inside a transaction, so two seeded pushes shared a `pushed_at` and
 ambiguity is real and `get_active_staff_batch` had it too. Both now tiebreak
 on `id`, and the flip test is `xmax = 0` (did this statement insert a row?)
 rather than an inference from ordering.
+
+---
+
+## 31. Custom subscription plans — Phase 1: foundations (2026-08-11)
+
+| # | File | What it does |
+|---|------|--------------|
+| 1 | `custom_plan_foundations.sql` | `plan_eligible` on `menu_items` + `essentials_catalog`; `is_custom` + `created_by` on `subscription_plans`; `subscription_discount_slabs` table seeded 10-19/5%, 20-34/8%, 35-45/12%; `plan_discount_percent(days)`; RLS + the column-level UPDATE grants. |
+
+**Behaviour-neutral by design.** Nothing reads these columns yet. Applying it
+changes no screen and no running subscription — the builder and the manifest
+work land in Phases 2 and 3.
+
+**A custom plan will be a row in `subscription_plans`**, flagged `is_custom`.
+`plan_items` is read by two dozen places including `generate_daily_manifest`,
+the conflict check, pause/skip, expiry pushes, admin cancel-with-refund and
+the reports. A separate table would mean teaching all of them about two
+sources, including the daily delivery path; a flag costs three
+`WHERE is_custom = false` clauses on the lists that browse plans.
+
+**The schedule prices CUSTOM plans only.** An admin composing a listed plan
+sees it as a suggestion and may override — pricing a plan below formula as a
+loss-leader is a lever worth keeping. Breakfast 30 stays ₹1,250; nothing here
+reprices an existing plan.
+
+**`plan_discount_percent` returns 0 for an uncovered length rather than
+raising** — a gap in the schedule must mean "no discount", never a failed
+purchase. Overlapping bands take the highest, because an admin can save an
+overlap and the customer should not lose to a config mistake.
+
+**Verify:**
+
+```
+SELECT plan_discount_percent(15), plan_discount_percent(30),
+       plan_discount_percent(45), plan_discount_percent(7);   -- 5, 8, 12, 0
+```
+
+The same cases are asserted in TypeScript by
+`src/__tests__/planDiscountSlabs.test.ts` — the rule exists twice (SQL prices
+the plan, TS previews it) and the two must not drift.
+
+**Rollback:** commented block at the foot of the SQL file.

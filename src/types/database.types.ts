@@ -710,6 +710,7 @@ export type Database = {
           is_active: boolean | null
           listing_status: string
           name: string
+          plan_eligible: boolean
           price: number
           rejection_reason: string | null
           reviewed_at: string | null
@@ -733,6 +734,7 @@ export type Database = {
           is_active?: boolean | null
           listing_status?: string
           name: string
+          plan_eligible?: boolean
           price: number
           rejection_reason?: string | null
           reviewed_at?: string | null
@@ -756,6 +758,7 @@ export type Database = {
           is_active?: boolean | null
           listing_status?: string
           name?: string
+          plan_eligible?: boolean
           price?: number
           rejection_reason?: string | null
           reviewed_at?: string | null
@@ -1067,6 +1070,7 @@ export type Database = {
           is_active: boolean | null
           is_customer_visible: boolean
           name: string
+          plan_eligible: boolean
           price: number
           sort_order: number | null
           unit: string
@@ -1085,6 +1089,7 @@ export type Database = {
           is_active?: boolean | null
           is_customer_visible?: boolean
           name: string
+          plan_eligible?: boolean
           price: number
           sort_order?: number | null
           unit?: string
@@ -1103,6 +1108,7 @@ export type Database = {
           is_active?: boolean | null
           is_customer_visible?: boolean
           name?: string
+          plan_eligible?: boolean
           price?: number
           sort_order?: number | null
           unit?: string
@@ -2115,6 +2121,33 @@ export type Database = {
         }
         Relationships: []
       }
+      subscription_discount_slabs: {
+        Row: {
+          id: number
+          is_active: boolean
+          max_days: number
+          min_days: number
+          percent: number
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          is_active?: boolean
+          max_days: number
+          min_days: number
+          percent: number
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          is_active?: boolean
+          max_days?: number
+          min_days?: number
+          percent?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       subscription_plan_items: {
         Row: {
           id: number
@@ -2151,10 +2184,12 @@ export type Database = {
         Row: {
           branch_id: number | null
           created_at: string | null
+          created_by: string | null
           cycle_id: number | null
           duration_days: number
           id: number
           is_active: boolean | null
+          is_custom: boolean
           plan_items: string | null
           plan_name: string
           plan_type: string | null
@@ -2165,10 +2200,12 @@ export type Database = {
         Insert: {
           branch_id?: number | null
           created_at?: string | null
+          created_by?: string | null
           cycle_id?: number | null
           duration_days: number
           id?: number
           is_active?: boolean | null
+          is_custom?: boolean
           plan_items?: string | null
           plan_name: string
           plan_type?: string | null
@@ -2179,10 +2216,12 @@ export type Database = {
         Update: {
           branch_id?: number | null
           created_at?: string | null
+          created_by?: string | null
           cycle_id?: number | null
           duration_days?: number
           id?: number
           is_active?: boolean | null
+          is_custom?: boolean
           plan_items?: string | null
           plan_name?: string
           plan_type?: string | null
@@ -2196,6 +2235,13 @@ export type Database = {
             columns: ["branch_id"]
             isOneToOne: false
             referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subscription_plans_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
           {
@@ -2900,6 +2946,12 @@ export type Database = {
         }
         Returns: undefined
       }
+      admin_undelivered_order_ids: {
+        Args: never
+        Returns: {
+          order_id: number
+        }[]
+      }
       advance_orders_status: {
         Args: { p_order_ids: number[]; p_status: string }
         Returns: number
@@ -3128,6 +3180,7 @@ export type Database = {
           new_order_id: number
         }[]
       }
+      plan_discount_percent: { Args: { p_days: number }; Returns: number }
       point_in_polygon: {
         Args: { p_lat: number; p_lng: number; p_poly: Json }
         Returns: boolean
