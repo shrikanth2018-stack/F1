@@ -74,20 +74,26 @@ export function CycleGroup({ section, index, onOpenPopup, dayLabel, children }: 
             it — one long line carrying two separate facts. Stacked, the time
             leads and the day qualifies it, which is also the order the
             customer reads them in. */}
-        <TouchableOpacity
-          onPress={() => onOpenPopup(section)}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          style={styles.dispatchBlock}
-        >
-          <ThemedText variant="small" color="muted" style={styles.dispatchLink}>
-            Dispatch by {section.deliveryBy} ›
-          </ThemedText>
-          {dayLabel ? (
-            <ThemedText variant="small" color="mint" style={styles.dispatchDay}>
-              {dayLabel}
+        {/* No dispatch time, no link. The plan tab's catch-all group has no
+            cycle behind it (see buildPlanSections), so there is nothing for
+            the popup to describe and "Dispatch by  ›" would be a broken
+            sentence pointing at an empty sheet. */}
+        {section.deliveryBy ? (
+          <TouchableOpacity
+            onPress={() => onOpenPopup(section)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            style={styles.dispatchBlock}
+          >
+            <ThemedText variant="small" color="muted" style={styles.dispatchLink}>
+              Dispatch by {section.deliveryBy} ›
             </ThemedText>
-          ) : null}
-        </TouchableOpacity>
+            {dayLabel ? (
+              <ThemedText variant="small" color="mint" style={styles.dispatchDay}>
+                {dayLabel}
+              </ThemedText>
+            ) : null}
+          </TouchableOpacity>
+        ) : null}
       </View>
 
       <View style={styles.groupContainer}>

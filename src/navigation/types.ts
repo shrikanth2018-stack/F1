@@ -90,7 +90,6 @@ export type CustomerStackParamList = {
   Wallet: undefined;
   Referral: undefined;
   Feedback: { orderId: number };
-  Plans: { initialTab?: 'food' | 'essentials' } | undefined;
   LoyaltyPoints: undefined;
   HubDashboard: undefined;
   /** Vendor's own store — the same profile-menu arrangement a hub operator has. */

@@ -26,6 +26,7 @@ import { DispatchBadge } from '../../components/DispatchBadge';
 import { EmptyState } from '../../components/EmptyState';
 import { ErrorRetry } from '../../components/ErrorRetry';
 import { useMyOrders, type OrderWithItems } from '../../hooks/useOrders';
+import { useBrowsePlans } from '../../hooks/useBrowsePlans';
 import { formatPriceShort, formatDateShort, formatRelativeTime } from '../../utils/formatters';
 import { orderStatusVariant } from '../../utils/orderStatus';
 import {
@@ -61,6 +62,7 @@ type OrderGroup = Delivery<OrderWithItems>;
 // need the same three, and three copies of "what is one delivery" is how they
 // come to disagree.
 export function OrdersScreen({ navigation }: any) {
+  const browsePlans = useBrowsePlans();
   const {
     data,
     isLoading,
@@ -190,7 +192,7 @@ export function OrdersScreen({ navigation }: any) {
               title="No orders yet"
               subtitle="Browse plans or order a single meal to get started"
               actionLabel="Browse Plans"
-              onAction={() => navigation.navigate('Plans')}
+              onAction={browsePlans}
             />
           ) : null
         }

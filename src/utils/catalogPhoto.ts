@@ -50,15 +50,23 @@ export {
 /**
  * Storage buckets, one per catalogue.
  *
- * Deliberately NOT one shared bucket. Their write rules differ — menu photos
- * are admin-only forever, essentials photos will additionally be writable by
- * the owning vendor once the listing gate lands. One bucket would mean one
- * policy set doing both jobs, and a mistake in the vendor branch would hand
- * vendors write access to the food menu.
+ * Deliberately NOT one shared bucket, for two independent reasons.
+ *
+ * Their write rules differ — menu photos are admin-only forever, essentials
+ * photos will additionally be writable by the owning vendor once the listing
+ * gate lands. One bucket would mean one policy set doing both jobs, and a
+ * mistake in the vendor branch would hand vendors write access to the food
+ * menu.
+ *
+ * And the ids collide. `photoPath` is `<bucket>/<id>.jpg`, but the three id
+ * sequences are independent — plan 26, menu item 26 and essential 26 are
+ * different things. Sharing a bucket would have them overwrite each other's
+ * pictures, silently, in upload order.
  */
 export const PHOTO_BUCKET = {
   menu: 'menu-photos',
   essentials: 'essentials-photos',
+  plans: 'plan-photos',
 } as const;
 
 export type PhotoBucket = (typeof PHOTO_BUCKET)[keyof typeof PHOTO_BUCKET];

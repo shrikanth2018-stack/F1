@@ -23,7 +23,6 @@ import { CustomPlanBuilderScreen } from '../screens/customer/CustomPlanBuilderSc
 import { WalletScreen } from '../screens/customer/WalletScreen';
 import { ReferralScreen } from '../screens/customer/ReferralScreen';
 import { FeedbackScreen } from '../screens/customer/FeedbackScreen';
-import { PlansScreen } from '../screens/customer/PlansScreen';
 import { LoyaltyPointsScreen } from '../screens/customer/LoyaltyPointsScreen';
 import { HubDashboardScreen } from '../screens/customer/HubDashboardScreen';
 import { VendorDashboardScreen } from '../screens/customer/VendorDashboardScreen';
@@ -61,11 +60,6 @@ export function CustomerNavigator() {
       />
       <Stack.Screen name="Referral" component={ReferralScreen} />
       <Stack.Screen name="Feedback" component={FeedbackScreen} />
-      <Stack.Screen
-        name="Plans"
-        component={PlansScreen}
-        options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
-      />
       <Stack.Screen
         name="LoyaltyPoints"
         component={LoyaltyPointsScreen}

@@ -2188,6 +2188,8 @@ export type Database = {
           cycle_id: number | null
           duration_days: number
           id: number
+          image_path: string | null
+          image_updated_at: string | null
           is_active: boolean | null
           is_custom: boolean
           plan_items: string | null
@@ -2204,6 +2206,8 @@ export type Database = {
           cycle_id?: number | null
           duration_days: number
           id?: number
+          image_path?: string | null
+          image_updated_at?: string | null
           is_active?: boolean | null
           is_custom?: boolean
           plan_items?: string | null
@@ -2220,6 +2224,8 @@ export type Database = {
           cycle_id?: number | null
           duration_days?: number
           id?: number
+          image_path?: string | null
+          image_updated_at?: string | null
           is_active?: boolean | null
           is_custom?: boolean
           plan_items?: string | null
@@ -3012,6 +3018,15 @@ export type Database = {
           amount: number
           user_id: string
         }[]
+      }
+      create_custom_plan: {
+        Args: {
+          p_cycle_id: number
+          p_duration_days: number
+          p_items: Json
+          p_plan_name?: string
+        }
+        Returns: Json
       }
       create_hub_commission_claim: { Args: never; Returns: Json }
       create_vendor_payout_claim: { Args: never; Returns: Json }

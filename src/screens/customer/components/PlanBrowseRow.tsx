@@ -16,8 +16,13 @@ import React from 'react';
 import { TouchableOpacity, View, StyleSheet } from 'react-native';
 import { Theme } from '../../../theme';
 import { ThemedText } from '../../../components/ThemedText';
+import { CatalogPhotoThumb } from '../../../components/CatalogPhotoThumb';
+import { PHOTO_BUCKET, PHOTO_PX } from '../../../utils/catalogPhoto';
 import { formatPriceShort } from '../../../utils/formatters';
 import type { SubscriptionPlan } from '../../../types';
+
+/** Matches the food and essentials rows, so the three tabs share one rhythm. */
+const THUMB = 66;
 
 interface Props {
   plan: SubscriptionPlan;
@@ -36,6 +41,16 @@ export function PlanBrowseRow({ plan, isLast, onPress }: Props) {
       onPress={onPress}
       accessibilityRole="button"
     >
+      {/* Calendar, not a plate: a plan is a schedule, and the same dish
+          photographed for its menu row would read as a single meal. */}
+      <CatalogPhotoThumb
+        bucket={PHOTO_BUCKET.plans}
+        item={plan}
+        size={THUMB}
+        requestPx={PHOTO_PX.row}
+        fallbackIcon="calendar-outline"
+      />
+
       <View style={styles.meta}>
         <ThemedText variant="body" color="primary" style={styles.name}>
           {plan.plan_name}
@@ -71,7 +86,7 @@ const styles = StyleSheet.create({
     borderBottomColor: Theme.colors.layout.divider,
   },
   rowLast: { borderBottomWidth: 0 },
-  meta: { flex: 1, marginRight: Theme.spacing.sm },
+  meta: { flex: 1, marginLeft: Theme.spacing.md, marginRight: Theme.spacing.sm },
   name: { fontSize: Theme.typography.sizes.body + 1 },
   sub: { marginTop: 2 },
   priceWrap: { alignItems: 'flex-end', marginRight: Theme.spacing.sm },

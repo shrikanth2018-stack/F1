@@ -1228,3 +1228,38 @@ builder's `cycle_id = p_cycle_id` filter excludes them structurally; the
 **Rollback:** `DROP FUNCTION public.create_custom_plan(INTEGER, JSONB, INTEGER);`
 then restore the open read policy:
 `CREATE POLICY subscription_plans_read_all ON subscription_plans FOR SELECT USING (true);`
+
+---
+
+## `plan_photos.sql` — pictures on the Subscribe tab
+
+*Applied 2026-08-11.*
+
+The Subscribe tab was the only one of Home's three tabs with no pictures.
+Adds `image_path` / `image_updated_at` to `subscription_plans`, a
+`plan-photos` bucket, and the same four storage policies the other two
+catalogues use (public read, admin insert/update/delete).
+
+**Its own bucket, not a shared one.** `photoPath` is `<bucket>/<id>.jpg` and
+the three id sequences are independent — plan 26, menu item 26 and essential
+26 are different things. One bucket would have them overwrite each other's
+photos, silently, in upload order.
+
+**The `GRANT UPDATE (image_path, image_updated_at)` is load-bearing.** Grants
+on this table are per-column. Without it the photo uploads to storage and the
+row is never pointed at it — and a refused RLS write returns zero rows with a
+success code, so it looks exactly like a save.
+
+**Verified by impersonation** (`request.jwt.claims` **plus**
+`SET LOCAL ROLE authenticated`), rolled back: an admin sets a photo (1 row),
+a customer setting a photo is refused (0 rows), and a customer cannot reach
+`price` through the new grant (0 rows).
+
+**Rollback:**
+
+```sql
+DELETE FROM storage.objects WHERE bucket_id = 'plan-photos';
+DELETE FROM storage.buckets WHERE id = 'plan-photos';
+ALTER TABLE public.subscription_plans
+  DROP COLUMN IF EXISTS image_path, DROP COLUMN IF EXISTS image_updated_at;
+```

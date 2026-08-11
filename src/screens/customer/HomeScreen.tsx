@@ -51,7 +51,7 @@ import { PendingPaymentBanner } from '../../components/PendingPaymentBanner';
 import { CycleGroup } from './components/CycleGroup';
 import { CyclePopup } from './components/CyclePopup';
 import { FoodRow, EssentialRow } from './components/ItemRows';
-import { sortByCutoff, buildSections, type SectionMeta } from './components/homeShared';
+import { sortByCutoff, buildSections, buildPlanSections, type SectionMeta } from './components/homeShared';
 import { HomeRails } from './components/HomeRails';
 import { PlanBrowseRow } from './components/PlanBrowseRow';
 import { useCycleDispatch } from '../../hooks/useCycleDispatch';
@@ -63,10 +63,22 @@ const BANNER_URL = assetUrl('banner.png');
 
 const { height: SCREEN_H } = Dimensions.get('window');
 /**
- * How far the build bar sits above the bottom: clear of the 56pt cart button
- * and its own bottom offset, so the two stack rather than overlap.
+ * How far the build bar sits above the bottom — and it depends on whether the
+ * cart button is there at all.
+ *
+ * CartFloatingButton renders `null` on an empty cart, which is the usual
+ * state of the Subscribe tab: somebody browsing plans has typically not added
+ * a dish. The bar was always reserving the full 56pt button plus its offset,
+ * so most of the time it floated 80pt above nothing and read as unmoored from
+ * the bottom of the screen.
+ *
+ * Empty cart: the bar takes the button's own resting place (its 8pt
+ * marginBottom brings the total to the same `spacing.lg` the FAB uses, so the
+ * two sit at an identical height and nothing shifts sideways).
+ * Non-empty: lift clear of the button, as before, so they stack.
  */
-const BUILD_BAR_LIFT = 56 + Theme.spacing.lg + Theme.spacing.sm;
+const BUILD_BAR_LIFT_CLEAR = Theme.spacing.md;
+const BUILD_BAR_LIFT_OVER_CART = 56 + Theme.spacing.lg + Theme.spacing.sm;
 const HERO_H = Math.round(SCREEN_H * 0.32);
 const PILL_MX = 16;
 
@@ -182,6 +194,17 @@ export function HomeScreen() {
     [essentials, essentialsCycles]
   );
 
+  // Plans group by cycle too, so all three tabs read the same way. Against
+  // ALL cycles (foodCycles), not the essentials subset: an essentials plan
+  // still dispatches on its own cycle, and a plan is not an essentials-tab
+  // item. No dayLabel on these groups — a plan's first delivery depends on
+  // the start date chosen later, so the badge that tells a food customer a
+  // true thing would be a guess here.
+  const planSections = useMemo(
+    () => buildPlanSections(plans ?? [], foodCycles),
+    [plans, foodCycles]
+  );
+
   const addItem = useCartStore((s) => s.addItem);
   const updateQuantity = useCartStore((s) => s.updateQuantity);
   const removeItem = useCartStore((s) => s.removeItem);
@@ -203,6 +226,13 @@ export function HomeScreen() {
       cartItems.find((i) => i.item_id === id && i.item_type === 'essential')?.quantity ?? 0,
     [cartItems]
   );
+
+  // The one condition under which the cart button actually occupies the
+  // bottom-right — it returns null on an empty cart, and storm mode withholds
+  // it entirely. Kept in step with the render at the foot of this file: if the
+  // two disagree, the build bar either overlaps the button or floats above a
+  // gap, and both look like a bug rather than a layout rule.
+  const cartFabVisible = !stormMode && cartItems.length > 0;
 
   const handleRefresh = useCallback(() => {
     refetchCycles(); refetchMenu(); refetchEssentials();
@@ -431,13 +461,22 @@ export function HomeScreen() {
               subtitle="Build your own above, or check back for plans we've put together"
             />
           )}
-          {(plans ?? []).map((plan, idx) => (
-            <PlanBrowseRow
-              key={plan.id}
-              plan={plan}
-              isLast={idx === (plans ?? []).length - 1}
-              onPress={() => navigation.navigate('PlanDetail', { planId: plan.id })}
-            />
+          {planSections.map((section, sectionIdx) => (
+            <CycleGroup
+              key={section.cycleId}
+              section={section}
+              index={sectionIdx}
+              onOpenPopup={setPopupCycle}
+            >
+              {section.data.map((plan, idx) => (
+                <PlanBrowseRow
+                  key={plan.id}
+                  plan={plan}
+                  isLast={idx === section.data.length - 1}
+                  onPress={() => navigation.navigate('PlanDetail', { planId: plan.id })}
+                />
+              ))}
+            </CycleGroup>
           ))}
         </ScrollView>
       )}
@@ -460,7 +499,14 @@ export function HomeScreen() {
         <LinearGradient
           colors={['transparent', `${Theme.colors.background.primary}E6`, Theme.colors.background.primary]}
           locations={[0, 0.45, 1]}
-          style={[styles.buildScrim, { paddingBottom: insets.bottom + BUILD_BAR_LIFT }]}
+          style={[
+            styles.buildScrim,
+            {
+              paddingBottom:
+                insets.bottom +
+                (cartFabVisible ? BUILD_BAR_LIFT_OVER_CART : BUILD_BAR_LIFT_CLEAR),
+            },
+          ]}
           pointerEvents="box-none"
         >
           <TouchableOpacity
@@ -484,7 +530,7 @@ export function HomeScreen() {
       {/* Rails render above the list but below the profile popup: they are a
           persistent affordance, not a modal. */}
       <HomeRails />
-      {!stormMode && <CartFloatingButton onPress={() => navigation.navigate('Cart')} />}
+      {cartFabVisible && <CartFloatingButton onPress={() => navigation.navigate('Cart')} />}
     </View>
   );
 }

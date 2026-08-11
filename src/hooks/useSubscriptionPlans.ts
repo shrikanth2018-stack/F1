@@ -38,6 +38,9 @@ export interface SubscriptionPlan {
   is_active: boolean;
   plan_items: string; // JSON string of PlanItem[]
   branch_id: number | null;
+  /** Plan photo — see `catalogPhoto.ts`. Set from this screen. */
+  image_path?: string | null;
+  image_updated_at?: string | null;
 }
 
 export function useAllPlans(cycleId?: number, type?: PlanType) {

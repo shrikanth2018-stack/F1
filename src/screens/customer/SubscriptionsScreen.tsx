@@ -1,10 +1,19 @@
 /**
  * 1stOne F1 — My Subscriptions Screen
  *
- * Food | Essentials tabs.
- * Flat rows: plan name + pause toggle on right.
+ * Grouped by delivery cycle, the same shape as all three Home tabs.
+ * Rows: plan name + pause toggle on right.
  * Shared calendar at bottom — dots for scheduled deliveries,
  * tap a day to skip or resume that day's delivery.
+ *
+ * THE FOOD | ESSENTIALS TABS ARE GONE. They filtered on
+ * `subscription_plans.plan_type`, which stopped describing a plan's contents
+ * the day the custom builder shipped: a custom plan must hold at least one
+ * meal, so `create_custom_plan` always writes `'food'`, and a plan of idli
+ * AND milk filed itself under Food with its milk invisible and no way to
+ * reach it from Essentials. The type was never what a customer navigates by
+ * anyway — the cycle is. The delivery calendar below had already reached the
+ * same conclusion on its own and reads across both types deliberately.
  */
 
 import React, { useState, useMemo, useCallback } from 'react';
@@ -32,12 +41,14 @@ import {
   useUndoSkip,
 } from '../../hooks/useSubscriptions';
 import { useDeliveryCycles } from '../../hooks/useDeliveryCycles';
+import { useBrowsePlans } from '../../hooks/useBrowsePlans';
+import { CycleGroup } from './components/CycleGroup';
+import { CyclePopup } from './components/CyclePopup';
+import { sortByCutoff, buildPlanSections, type SectionMeta } from './components/homeShared';
 import { formatDateShort } from '../../utils/formatters';
 import { istDateStr, addDaysToISODate } from '../../utils/istDate';
 import { trackSkipDay, trackSubscriptionPaused } from '../../utils/analytics';
 import type { UserSubscription, CancelledSubscriptionDay } from '../../types';
-
-type SubTab = 'food' | 'essentials';
 
 // One distinct color per subscription slot
 const SUB_COLORS = [
@@ -90,8 +101,9 @@ function subDeliversOn(
 
 export function SubscriptionsScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
-  const [activeTab, setActiveTab] = useState<SubTab>('food');
+  const browsePlans = useBrowsePlans();
   const [modalDate, setModalDate] = useState<Date | null>(null);
+  const [popupCycle, setPopupCycle] = useState<SectionMeta | null>(null);
 
   const { data: rawSubs, isLoading, refetch } = useMySubscriptions();
   const { mutateAsync: togglePause } = usePauseSubscription();
@@ -101,15 +113,18 @@ export function SubscriptionsScreen({ navigation }: any) {
 
   const subs = useMemo(() => (rawSubs ?? []) as EnrichedSub[], [rawSubs]);
 
-  const foodSubs = useMemo(
-    () => subs.filter((s) => s.subscription_plans?.plan_type === 'food'),
-    [subs]
-  );
-  const essentialsSubs = useMemo(
-    () => subs.filter((s) => s.subscription_plans?.plan_type === 'essentials'),
-    [subs]
-  );
-  const activeSubs = activeTab === 'food' ? foodSubs : essentialsSubs;
+  // Grouped by cycle, next open cutoff first — the same ordering and the same
+  // CycleGroup the Home tabs use, so the bounce and the headers match.
+  // buildPlanSections keeps a sub whose cycle is missing or deactivated in a
+  // trailing group rather than dropping it: a plan you are PAYING for must
+  // never vanish from this screen.
+  const subSections = useMemo(() => {
+    const withCycle = subs.map((s) => ({
+      ...s,
+      cycle_id: s.subscription_plans?.cycle_id ?? null,
+    }));
+    return buildPlanSections(withCycle, sortByCutoff(cycles ?? []), 'Other');
+  }, [subs, cycles]);
 
   const allSubIds = useMemo(() => subs.map((s) => s.id), [subs]);
   const { data: allCancelledDays, refetch: refetchCancelled } = useAllCancelledDays(allSubIds);
@@ -178,13 +193,13 @@ export function SubscriptionsScreen({ navigation }: any) {
     refetchCancelled();
   }, [cycles, skipDay, undoSkip, refetchCancelled]);
 
-  const renderSub = ({ item }: { item: EnrichedSub }) => {
+  const renderSub = (item: EnrichedSub) => {
     const plan = item.subscription_plans;
     const isRunning = item.is_active && !item.is_paused;
     const isPendingPayment = !item.is_active && item.payment_method === 'razorpay';
 
     return (
-      <View style={styles.row}>
+      <View key={item.id} style={styles.row}>
         <View style={styles.rowLeft}>
           <ThemedText variant="subtitle" color="primary">
             {plan?.plan_name ?? `Plan #${item.plan_id}`}
@@ -229,41 +244,23 @@ export function SubscriptionsScreen({ navigation }: any) {
         </TouchableOpacity>
       </View>
 
-      {/* Food | Essentials tabs */}
-      <View style={styles.tabs}>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'food' && styles.tabActive]}
-          onPress={() => setActiveTab('food')}
-        >
-          <ThemedText
-            variant="body"
-            color={activeTab === 'food' ? 'primary' : 'muted'}
-            style={activeTab === 'food' ? styles.tabTextActive : undefined}
-          >
-            Food
-          </ThemedText>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'essentials' && styles.tabActive]}
-          onPress={() => setActiveTab('essentials')}
-        >
-          <ThemedText
-            variant="body"
-            color={activeTab === 'essentials' ? 'primary' : 'muted'}
-            style={activeTab === 'essentials' ? styles.tabTextActive : undefined}
-          >
-            Essentials
-          </ThemedText>
-        </TouchableOpacity>
-      </View>
-
       {/* Subscription list — calendar appended as footer, scrolls together */}
       <FlatList
-        data={activeSubs}
-        keyExtractor={(item) => item.id.toString()}
-        renderItem={renderSub}
+        data={subSections}
+        keyExtractor={(section) => String(section.cycleId)}
+        renderItem={({ item: section, index }) => (
+          <CycleGroup section={section} index={index} onOpenPopup={setPopupCycle}>
+            {section.data.map(renderSub)}
+          </CycleGroup>
+        )}
         style={styles.list}
-        contentContainerStyle={{ paddingBottom: insets.bottom + 80 }}
+        // Air between the screen title and the first cycle heading. Without
+        // it the two sit a few points apart and read as one stacked title
+        // rather than a page heading followed by its first group.
+        contentContainerStyle={{
+          paddingTop: Theme.spacing.lg,
+          paddingBottom: insets.bottom + 80,
+        }}
         refreshControl={
           <RefreshControl
             refreshing={isLoading}
@@ -274,10 +271,10 @@ export function SubscriptionsScreen({ navigation }: any) {
         ListEmptyComponent={
           !isLoading ? (
             <EmptyState
-              title={`No ${activeTab} subscriptions`}
+              title="No subscriptions yet"
               subtitle="Subscribe to a plan to lock in your daily meals"
               actionLabel="Browse Plans"
-              onAction={() => navigation.navigate('Plans')}
+              onAction={browsePlans}
             />
           ) : null
         }
@@ -337,11 +334,15 @@ export function SubscriptionsScreen({ navigation }: any) {
       <TouchableOpacity
         style={[styles.addBtn, { bottom: insets.bottom + 16 }]}
         activeOpacity={0.85}
-        onPress={() => navigation.navigate('Plans')}
+        onPress={browsePlans}
       >
         <ThemedText variant="body" style={styles.addBtnText}>+ Add Plan</ThemedText>
         <ThemedText variant="body" style={styles.addBtnText}>›</ThemedText>
       </TouchableOpacity>
+
+      {/* Cycle detail — the same sheet the Home tabs open from a group
+          header, so "Dispatch by 7:30 AM ›" means the same thing here. */}
+      {popupCycle && <CyclePopup cycle={popupCycle} onClose={() => setPopupCycle(null)} />}
 
       {/* Day detail modal */}
       {modalDate && (() => {
@@ -403,25 +404,7 @@ const styles = StyleSheet.create({
     paddingTop: Theme.spacing.md,
     paddingBottom: Theme.spacing.sm,
   },
-  tabs: {
-    flexDirection: 'row',
-    marginHorizontal: Theme.spacing.md,
-    marginBottom: Theme.spacing.sm,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Theme.colors.background.secondary,
-    borderWidth: 1,
-    borderColor: `${Theme.colors.text.mint}4D`,
-    overflow: 'hidden',
-  },
-  tab: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tabActive: {},
-  tabTextActive: {},
-  list: { flex: 1 },
+  list: { flex: 1, paddingHorizontal: Theme.spacing.xs },
   row: {
     flexDirection: 'row',
     alignItems: 'center',

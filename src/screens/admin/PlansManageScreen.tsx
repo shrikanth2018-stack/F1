@@ -26,6 +26,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { EmptyState } from '../../components/EmptyState';
+import { CatalogPhotoThumb } from '../../components/CatalogPhotoThumb';
+import { PHOTO_BUCKET, PHOTO_PX } from '../../utils/catalogPhoto';
+import { pickCatalogPhoto, uploadCatalogPhoto } from '../../utils/catalogPhotoUpload';
+import { infoDialog } from '../../utils/confirmDialog';
+import { getErrorMessage } from '../../utils/formatters';
 import {
   useAllPlans,
   useUpdatePlanPrice,
@@ -34,7 +39,6 @@ import {
   type PlanType,
 } from '../../hooks/useSubscriptionPlans';
 import { useAllDeliveryCycles } from '../../hooks/useMenuManagement';
-import { CYCLE_DISPLAY } from '../../hooks/useEssentialsCatalog';
 import { formatPlanLine, type PlanLine } from '../../utils/planItems';
 import { CustomPlanSettingsTab } from './components/CustomPlanSettingsTab';
 import type { AdminNavProp } from '../../navigation/types';
@@ -44,11 +48,21 @@ const S = Theme.typography.sizes.small + 2;
 const P = Theme.typography.sizes.body + 4;
 
 /**
- * A third tab, because the custom builder is configured here rather than in
- * its own screen: what a customer may put in a plan is a decision about the
- * plan range, and it belongs beside the plans.
+ * ONE LIST FOR BOTH TYPES. Food and Essentials used to be separate tabs, and
+ * for admin-built plans that split was still accurate — the editor offers
+ * food blocks or essentials, never both. It was the wrong thing to organise
+ * by all the same: an admin scanning "what is on offer for Breakfast" had to
+ * check two tabs and hold the answer in their head, and now that a customer's
+ * own plan can hold both, the split had stopped matching how plans are
+ * thought about anywhere else in the app.
+ *
+ * The type has not gone away — it is on each row, and it is still chosen when
+ * a plan is created, which is the only moment it actually decides anything.
+ *
+ * Custom stays its own tab because it is not a list of plans at all: it
+ * configures what a customer may put in one.
  */
-type PlanTab = 'Food' | 'Essentials' | 'Custom';
+type PlanTab = 'Plans' | 'Custom';
 
 function parsePlanItems(raw: string): PlanLine[] {
   try { return JSON.parse(raw) ?? []; } catch { return []; }
@@ -64,7 +78,7 @@ export function PlansManageScreen({ navigation }: { navigation: AdminNavProp }) 
     [rawCycles]
   );
 
-  const [activeTab, setActiveTab] = useState<PlanTab>('Food');
+  const [activeTab, setActiveTab] = useState<PlanTab>('Plans');
   const [cycleIdx, setCycleIdx] = useState(0);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [priceInput, setPriceInput] = useState('');
@@ -73,14 +87,30 @@ export function PlansManageScreen({ navigation }: { navigation: AdminNavProp }) 
   const togglePlan = useTogglePlan();
 
   const selectedCycle = cycles[cycleIdx] as any;
-  const planType: PlanType = activeTab === 'Food' ? 'food' : 'essentials';
-  const { data: plans = [], isLoading } = useAllPlans(selectedCycle?.id, planType);
+  // No type argument — useAllPlans returns both when it is omitted.
+  const { data: plans = [], isLoading, refetch } = useAllPlans(selectedCycle?.id);
 
-  const cycleLabel = selectedCycle
-    ? activeTab === 'Essentials'
-      ? `${CYCLE_DISPLAY[selectedCycle.cycle_name] ?? selectedCycle.cycle_name}  ›`
-      : `${selectedCycle.cycle_name}  ›`
-    : '…';
+  // The cycle's own name, not the essentials alias. One list serves both
+  // types now, so there is no tab to pick an alias from — and the canonical
+  // name is what the rest of the admin app shows.
+  const cycleLabel = selectedCycle ? `${selectedCycle.cycle_name}  ›` : '…';
+
+  const [busyPhotoId, setBusyPhotoId] = useState<number | null>(null);
+
+  const handlePhoto = async (plan: SubscriptionPlan) => {
+    setBusyPhotoId(plan.id);
+    try {
+      const photo = await pickCatalogPhoto();
+      // Cancelled, or permission refused. Ordinary — say nothing.
+      if (!photo) return;
+      await uploadCatalogPhoto(PHOTO_BUCKET.plans, plan.id, photo);
+      await refetch();
+    } catch (e) {
+      infoDialog('Could not set the photo', getErrorMessage(e));
+    } finally {
+      setBusyPhotoId(null);
+    }
+  };
 
   const handlePriceTap = (plan: SubscriptionPlan) => {
     setEditingId(plan.id);
@@ -93,19 +123,61 @@ export function PlansManageScreen({ navigation }: { navigation: AdminNavProp }) 
     setEditingId(null);
   };
 
-  const TABS: PlanTab[] = ['Food', 'Essentials', 'Custom'];
+  /**
+   * Which kind of plan to build. The editor loads a different picker for each
+   * — food blocks or the essentials catalogue — so the choice has to be made
+   * before it opens, and merging the tabs took away the place it used to be
+   * implied. Asked here rather than inside CreatePlan so the editor keeps one
+   * job and the answer arrives with the route.
+   */
+  const handleAddPlan = () => {
+    const go = (planType: PlanType) =>
+      navigation.navigate('CreatePlan', {
+        cycleId: selectedCycle?.id,
+        cycleName: selectedCycle?.cycle_name,
+        planType,
+      });
+    Alert.alert(
+      'New plan',
+      `What goes in this ${selectedCycle?.cycle_name ?? ''} plan?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Essentials', onPress: () => go('essentials') },
+        { text: 'Food', onPress: () => go('food') },
+      ]
+    );
+  };
+
+  const TABS: PlanTab[] = ['Plans', 'Custom'];
 
   const renderPlan = ({ item }: { item: SubscriptionPlan }) => {
     const isEditingPrice = editingId === item.id;
     const planItems = parsePlanItems(item.plan_items);
     return (
       <View style={[styles.row, !item.is_active && styles.rowDim]}>
+        {/* Tap the tile to set or replace the plan's picture — the same
+            gesture as both catalogue managers, so there is one thing to
+            learn. Disabled mid-upload so a double tap cannot start two. */}
+        <TouchableOpacity
+          onPress={() => handlePhoto(item)}
+          disabled={busyPhotoId === item.id}
+          activeOpacity={0.7}
+          style={[styles.thumbWrap, busyPhotoId === item.id && styles.thumbBusy]}
+        >
+          <CatalogPhotoThumb
+            bucket={PHOTO_BUCKET.plans}
+            item={item}
+            size={48}
+            requestPx={PHOTO_PX.admin}
+            fallbackIcon="calendar-outline"
+          />
+        </TouchableOpacity>
         <View style={styles.rowLeft}>
           <ThemedText variant="body" color="primary" style={styles.rowText} numberOfLines={1}>
             {item.plan_name}
           </ThemedText>
           <ThemedText variant="small" color="muted" style={styles.sub}>
-            {item.duration_days} days
+            {item.duration_days} days · {item.plan_type === 'essentials' ? 'Essentials' : 'Food'}
           </ThemedText>
           {planItems.length > 0 && (
             <ThemedText variant="small" color="muted" style={styles.sub} numberOfLines={1}>
@@ -213,7 +285,7 @@ export function PlansManageScreen({ navigation }: { navigation: AdminNavProp }) 
           ListEmptyComponent={
             !isLoading ? (
               <EmptyState
-                title={`No ${activeTab.toLowerCase()} plans for ${selectedCycle?.cycle_name ?? '…'}`}
+                title={`No plans for ${selectedCycle?.cycle_name ?? '…'}`}
                 subtitle={'Tap "+ Add Plan" below'}
               />
             ) : null
@@ -231,16 +303,7 @@ export function PlansManageScreen({ navigation }: { navigation: AdminNavProp }) 
           >
             <ThemedText variant="body" color="muted" style={styles.rowText}>Import CSV  ›</ThemedText>
           </TouchableOpacity>
-          <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={() =>
-              navigation.navigate('CreatePlan', {
-                cycleId: selectedCycle?.id,
-                cycleName: selectedCycle?.cycle_name,
-                planType,
-              })
-            }
-          >
+          <TouchableOpacity activeOpacity={0.7} onPress={handleAddPlan}>
             <ThemedText variant="body" color="mint" style={styles.rowText}>+ Add Plan  ›</ThemedText>
           </TouchableOpacity>
         </View>
@@ -298,6 +361,8 @@ const styles = StyleSheet.create({
     borderBottomColor: Theme.colors.layout.divider,
   },
   rowDim: { opacity: 0.45 },
+  thumbWrap: { marginRight: Theme.spacing.md },
+  thumbBusy: { opacity: 0.4 },
   rowLeft: { flex: 1, marginRight: Theme.spacing.sm },
   rowText: { fontSize: B },
   sub: { fontSize: S, marginTop: 2 },

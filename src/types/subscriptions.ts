@@ -10,6 +10,13 @@ export interface SubscriptionPlan {
   branch_id: number | null;
   created_at: string;
   updated_at: string;
+  /**
+   * Plan photo, same shape as the two catalogues — see `catalogPhoto.ts`.
+   * Optional because it is admin-set and added gradually, and a custom plan
+   * (built by a customer) never has one.
+   */
+  image_path?: string | null;
+  image_updated_at?: string | null;
 }
 
 /**

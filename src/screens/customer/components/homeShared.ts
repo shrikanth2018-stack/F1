@@ -51,3 +51,45 @@ export function buildSections<T extends { cycle_id: number }>(
       data: grouped.get(cycle.id) ?? [],
     }));
 }
+
+/**
+ * The same grouping for subscription plans, plus a catch-all group.
+ *
+ * `buildSections` walks the CYCLES and keeps the ones that have items, so
+ * anything whose cycle is missing from the list is dropped without a trace.
+ * For food and essentials that is correct — an item belongs to a cycle by
+ * construction. A plan does not: `subscription_plans.cycle_id` is nullable,
+ * and a cycle can be deactivated while plans still point at it. Either way
+ * the plan would simply vanish from the storefront, still buyable everywhere
+ * else, with nothing on screen to say so. This app has lost rows to a silent
+ * filter before; a visible leftover group is the cheaper mistake.
+ *
+ * Deliberately no `deliveryBy` for the leftovers — there is no cycle to read
+ * a dispatch time from, and inventing one would be worse than omitting it.
+ */
+export function buildPlanSections<T extends { cycle_id: number | null }>(
+  plans: T[],
+  cycles: DeliveryCycle[],
+  restTitle = 'Other plans'
+): Array<SectionMeta & { data: T[] }> {
+  const known = new Set(cycles.map((c) => c.id));
+  const placed = plans.filter((p) => p.cycle_id != null && known.has(p.cycle_id));
+  const rest = plans.filter((p) => p.cycle_id == null || !known.has(p.cycle_id));
+
+  // The filter above proves cycle_id is a number on every row in `placed`,
+  // which the type system cannot see through a predicate.
+  const sections = buildSections(
+    placed as unknown as Array<T & { cycle_id: number }>,
+    cycles
+  ) as Array<SectionMeta & { data: T[] }>;
+  if (rest.length > 0) {
+    sections.push({
+      title: restTitle,
+      deliveryBy: '',
+      cutoffTime: '',
+      cycleId: -1,
+      data: rest,
+    });
+  }
+  return sections;
+}

@@ -81,9 +81,13 @@ export type { PickedPhoto } from './catalogPhoto';
 const PHOTO_CACHE_SECONDS = 2592000;
 
 /** Table a bucket's rows live in, so one uploader can serve both catalogues. */
-const TABLE_FOR_BUCKET: Record<PhotoBucket, 'menu_items' | 'essentials_catalog'> = {
+const TABLE_FOR_BUCKET: Record<
+  PhotoBucket,
+  'menu_items' | 'essentials_catalog' | 'subscription_plans'
+> = {
   'menu-photos': 'menu_items',
   'essentials-photos': 'essentials_catalog',
+  'plan-photos': 'subscription_plans',
 };
 
 /**
