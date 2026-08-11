@@ -49,6 +49,10 @@ export function useAllPlans(cycleId?: number, type?: PlanType) {
       let query = supabase
         .from('subscription_plans')
         .select('*')
+        // The RANGE, not one customer's plan. Customs are per-person and
+        // one-off: left in, this list would fill with them and the admin
+        // would lose sight of what is actually on offer.
+        .eq('is_custom', false)
         .order('plan_name', { ascending: true });
       if (cycleId) query = query.eq('cycle_id', cycleId);
       if (type === 'essentials') {

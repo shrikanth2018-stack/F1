@@ -1181,3 +1181,50 @@ subscription and re-increment `days_consumed`.
 `ux_orders_subscription_dispatch` on `(subscription_id, dispatch_date)`.
 Do both — the old function cannot emit two rows, but the wider index would
 still permit them.
+
+---
+
+## 33. Custom subscription plans — Phase 3: the builder (2026-08-11)
+
+| # | File | What it does |
+|---|------|--------------|
+| 1 | `create_custom_plan.sql` | `create_custom_plan(cycle, items, days)` — validates, prices from the catalogue + slab, writes the plan. Also tightens `subscription_plans_read_all`: a custom plan is visible only to its owner (or an admin). |
+
+**The phone sends a spec, never a price.** Cycle, items, quantities, length.
+The function re-reads every price and applies the slab itself — same rule as
+the order path.
+
+**The plan row is created at BUILD time, not at checkout.** So the cart
+carries an ordinary `plan_id` and `quote-order` / `place-order` need no
+changes at all — which matters because place-order's payload is not
+backward-compatible and would have forced the app and the functions to ship
+together. The cost is an orphan row if someone builds and never buys:
+invisible to every list, owned by nobody else, sweepable.
+
+**RLS was `USING (true)`** — right for the listed range, wrong the moment a
+row belongs to one person. Now `NOT is_custom OR created_by = auth.uid() OR
+is_admin()`. Every list also filters `is_custom`, but a list is a convention
+and this is the gate.
+
+**Verify:**
+
+```
+supabase db query --linked --file supabase/tests/custom_plan_check.sql
+```
+
+17 assertions: pricing against the slab, the stored price matching the
+returned one, every line carrying `item_type` (which is what lets the Phase 2
+manifest split a mixed plan), and each refusal tested from the outside —
+essentials-only, under 10 days, over 45, a building block flagged eligible on
+purpose, an ineligible item, four items, and a second plan on a cycle that
+already has one running.
+
+**A building block is refused twice over.** `menu_items_shape` already
+forbids a block from having a cycle at all
+(`is_customer_visible AND cycle_id IS NOT NULL, or neither`), so the
+builder's `cycle_id = p_cycle_id` filter excludes them structurally; the
+`is_customer_visible` test is the second guard.
+
+**Rollback:** `DROP FUNCTION public.create_custom_plan(INTEGER, JSONB, INTEGER);`
+then restore the open read policy:
+`CREATE POLICY subscription_plans_read_all ON subscription_plans FOR SELECT USING (true);`

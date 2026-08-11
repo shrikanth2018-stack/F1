@@ -25,7 +25,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { Divider } from '../../components/Divider';
-import { useSubscriptionPlans, usePlanItems, useMySubscriptions } from '../../hooks/useSubscriptions';
+import { usePlanById, usePlanItems, useMySubscriptions } from '../../hooks/useSubscriptions';
 import { useDeliveryCycles } from '../../hooks/useDeliveryCycles';
 import { useCycleDispatch } from '../../hooks/useCycleDispatch';
 import { useEssentialsEnabled } from '../../hooks/useEssentialsEnabled';
@@ -67,8 +67,9 @@ export function PlanDetailScreen({ route, navigation }: any) {
   const { planId } = route.params;
   const insets = useSafeAreaInsets();
 
-  const { data: plans } = useSubscriptionPlans();
-  const plan = plans?.find((p) => p.id === planId);
+  // By id, not by searching the browse list: that list excludes custom plans
+  // on purpose, so a customer's own plan would have opened to a blank screen.
+  const { data: plan } = usePlanById(planId);
   const { data: planItems } = usePlanItems(planId);
   const { data: cycles } = useDeliveryCycles();
   const essentialsEnabled = useEssentialsEnabled();

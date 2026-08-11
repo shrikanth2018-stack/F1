@@ -19,6 +19,7 @@ import { OrderDetailScreen } from '../screens/customer/OrderDetailScreen';
 import { EditProfileScreen } from '../screens/customer/EditProfileScreen';
 import { AddAddressScreen } from '../screens/customer/AddAddressScreen';
 import { PlanDetailScreen } from '../screens/customer/PlanDetailScreen';
+import { CustomPlanBuilderScreen } from '../screens/customer/CustomPlanBuilderScreen';
 import { WalletScreen } from '../screens/customer/WalletScreen';
 import { ReferralScreen } from '../screens/customer/ReferralScreen';
 import { FeedbackScreen } from '../screens/customer/FeedbackScreen';
@@ -52,6 +53,7 @@ export function CustomerNavigator() {
       <Stack.Screen name="EditProfile" component={EditProfileScreen} />
       <Stack.Screen name="AddAddress" component={AddAddressScreen} />
       <Stack.Screen name="PlanDetail" component={PlanDetailScreen} />
+      <Stack.Screen name="CustomPlanBuilder" component={CustomPlanBuilderScreen} />
       <Stack.Screen
         name="Wallet"
         component={WalletScreen}

@@ -6,7 +6,7 @@
  */
 
 import { supabase } from '../api/supabaseClient';
-import { useSupabaseQuery, useSupabaseMutation } from '../api/useSupabaseQuery';
+import { useSupabaseQuery, useSupabaseSingle, useSupabaseMutation } from '../api/useSupabaseQuery';
 import { QUERY_KEYS } from '../utils/constants';
 import { useAuth } from './useAuth';
 import { useBranchFilter } from './useBranchFilter';
@@ -33,7 +33,11 @@ export function useSubscriptionPlans(cycleId?: number | null) {
   return useSupabaseQuery<SubscriptionPlan>(queryKey, 'subscription_plans', {
     select: '*',
     filter: (query) => {
-      let q = query.eq('is_active', true).order('price');
+      // LISTED PLANS ONLY. A custom plan belongs to the one customer who
+      // built it; RLS already hides other people's, but without this a
+      // customer would find their own personal plan sitting in the range
+      // alongside the ones on offer.
+      let q = query.eq('is_active', true).eq('is_custom', false).order('price');
       if (cycleId) q = q.eq('cycle_id', cycleId);
       if (bf.isActive && bf.branchId != null) {
         q = q.eq('branch_id', bf.branchId);
@@ -41,6 +45,22 @@ export function useSubscriptionPlans(cycleId?: number | null) {
       return q;
     },
   });
+}
+
+/**
+ * One plan by id, listed or custom.
+ *
+ * PlanDetailScreen used to find its plan inside the browse list, which meant
+ * it could only ever show a plan that was on offer — so a custom plan, which
+ * is deliberately absent from that list, would have opened to nothing. RLS
+ * decides what may be read; this just asks for the row.
+ */
+export function usePlanById(planId?: number) {
+  return useSupabaseSingle<SubscriptionPlan>(
+    [...QUERY_KEYS.SUBSCRIPTION_PLANS, 'by-id', planId ?? 'none'],
+    () => supabase.from('subscription_plans').select('*').eq('id', planId!).limit(1),
+    { enabled: planId != null },
+  );
 }
 
 export function usePlanItems(planId: number) {

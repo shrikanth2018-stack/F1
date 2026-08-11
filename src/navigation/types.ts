@@ -85,6 +85,8 @@ export type CustomerStackParamList = {
   EditProfile: undefined;
   AddAddress: { addressId?: number } | undefined;
   PlanDetail: { planId: number };
+  /** Build your own subscription — the customer's plan builder. */
+  CustomPlanBuilder: undefined;
   Wallet: undefined;
   Referral: undefined;
   Feedback: { orderId: number };

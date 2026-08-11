@@ -98,6 +98,10 @@ export interface EligibleItem {
   cycle_id: number | null;
   plan_eligible: boolean;
   item_type: 'food' | 'essential';
+  unit?: string | null;
+  /** Present on the builder's query; the eligibility list does not select it. */
+  image_path?: string | null;
+  image_updated_at?: string | null;
 }
 
 export const ELIGIBILITY_KEY = ['plan_eligibility'] as const;
@@ -160,5 +164,89 @@ export function useSetPlanEligible() {
       return data[0];
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ELIGIBILITY_KEY }),
+  });
+}
+
+// ── The customer's builder ───────────────────────────────────
+
+/** What a customer may choose from, for one cycle. */
+export function useBuilderItems(cycleId?: number | null) {
+  return useSupabaseQuery<EligibleItem>(
+    ['builder_items', cycleId ?? 'none'],
+    async () => {
+      const [menu, ess] = await Promise.all([
+        supabase
+          .from('menu_items')
+          .select('id, name, price, cycle_id, plan_eligible, image_path, image_updated_at')
+          .eq('is_active', true)
+          // A building block is an ingredient priced for back-office use. The
+          // server refuses one anyway; not offering it is the honest half.
+          .eq('is_customer_visible', true)
+          .eq('plan_eligible', true)
+          .eq('cycle_id', cycleId!)
+          .order('sort_order'),
+        supabase
+          .from('essentials_catalog')
+          .select('id, name, price, cycle_id, plan_eligible, unit, image_path, image_updated_at')
+          .eq('is_active', true)
+          .eq('plan_eligible', true)
+          .eq('cycle_id', cycleId!)
+          .order('sort_order'),
+      ]);
+      const error = menu.error ?? ess.error;
+      if (error) return { data: null, error };
+      return {
+        data: [
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          ...(menu.data ?? []).map((m: any) => ({ ...m, price: Number(m.price), item_type: 'food' as const })),
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          ...(ess.data ?? []).map((e: any) => ({ ...e, price: Number(e.price), item_type: 'essential' as const })),
+        ],
+        error: null,
+      };
+    },
+    { enabled: cycleId != null, staleTime: QUERY_STALE_TIME },
+  );
+}
+
+export interface CreatedPlan {
+  plan_id: number;
+  plan_name: string;
+  cycle_id: number;
+  cycle_name: string;
+  duration_days: number;
+  daily_total: number;
+  full_price: number;
+  discount_percent: number;
+  price: number;
+  savings: number;
+}
+
+/**
+ * Build the plan. The phone sends a SPEC — cycle, items, quantities, length —
+ * and never a price: the server re-reads every price from the catalogue and
+ * applies the slab itself. Same rule as the order path.
+ *
+ * Every refusal comes back as the server's own sentence, so the customer is
+ * told which rule they hit rather than "something went wrong".
+ */
+export function useCreateCustomPlan() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (p: {
+      cycleId: number;
+      items: { item_id: number; item_type: 'food' | 'essential'; quantity: number }[];
+      durationDays: number;
+    }): Promise<CreatedPlan> => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase as any).rpc('create_custom_plan', {
+        p_cycle_id: p.cycleId,
+        p_items: p.items,
+        p_duration_days: p.durationDays,
+      });
+      if (error) throw new Error(error.message);
+      return data as CreatedPlan;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['builder_items'] }),
   });
 }

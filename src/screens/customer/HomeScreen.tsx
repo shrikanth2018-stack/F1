@@ -420,10 +420,29 @@ export function HomeScreen() {
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
         >
+          {/* BUILD YOUR OWN, ABOVE THE RANGE. A listed plan is a suggestion;
+              this is the one shaped around what the customer actually eats,
+              so it leads rather than sitting under a list they may not find
+              anything in. It is also the only entry point — the old
+              add-a-plan route from Profile → Subscriptions is gone. */}
+          <TouchableOpacity
+            style={styles.buildOwnRow}
+            activeOpacity={0.8}
+            onPress={() => navigation.navigate('CustomPlanBuilder')}
+          >
+            <View style={styles.flex1}>
+              <ThemedText variant="subtitle" color="primary">Build your own plan</ThemedText>
+              <ThemedText variant="small" color="muted">
+                Pick your dishes, choose how long, save more the longer you go
+              </ThemedText>
+            </View>
+            <ThemedText variant="body" color="mint">›</ThemedText>
+          </TouchableOpacity>
+
           {(plans ?? []).length === 0 && !plansLoading && (
             <EmptyState
-              title="No plans available"
-              subtitle="Subscription plans will appear here once they go live"
+              title="No ready-made plans yet"
+              subtitle="Build your own above, or check back for plans we've put together"
             />
           )}
           {(plans ?? []).map((plan, idx) => (
@@ -495,6 +514,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: Theme.spacing.md,
     paddingTop: Theme.spacing.sm,
     paddingBottom: Theme.spacing.xl * 3,
+  },
+
+  flex1: { flex: 1 },
+  /** Leads the Subscribe tab — see the note at the call site. */
+  buildOwnRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Theme.spacing.sm,
+    paddingVertical: Theme.spacing.sm,
+    paddingHorizontal: Theme.spacing.sm,
+    marginBottom: Theme.spacing.sm,
+    borderRadius: Theme.components.inputRadius,
+    borderWidth: 1,
+    borderColor: `${Theme.colors.text.mint}4D`,
+    backgroundColor: `${Theme.colors.text.mint}0F`,
   },
 
   // ── Misc banners ──
