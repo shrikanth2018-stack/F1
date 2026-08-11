@@ -62,6 +62,11 @@ const LOGO_URL = assetUrl('logo.png');
 const BANNER_URL = assetUrl('banner.png');
 
 const { height: SCREEN_H } = Dimensions.get('window');
+/**
+ * How far the build bar sits above the bottom: clear of the 56pt cart button
+ * and its own bottom offset, so the two stack rather than overlap.
+ */
+const BUILD_BAR_LIFT = 56 + Theme.spacing.lg + Theme.spacing.sm;
 const HERO_H = Math.round(SCREEN_H * 0.32);
 const PILL_MX = 16;
 
@@ -438,23 +443,24 @@ export function HomeScreen() {
       )}
 
       {/* ── Build your own — floating over the Subscribe tab ──
-           A scrim rather than a solid bar. The cart button's own note records
-           that a full-width opaque bar was tried and occluded ~15% of the
-           list; a gradient keeps the plans readable underneath while still
-           giving the action a permanent place, so it is reachable without
-           scrolling to the end of a list the customer may find nothing in.
+           FULL WIDTH, and the earlier objection does not apply here. A
+           full-width bar was rejected once for occluding the list, but that
+           was when it sat over the food and essentials menus; this tab holds
+           nothing but plans, and building one is the primary act on it.
 
-           Inset on the right to clear the cart button, which stays put: a
-           customer arriving here with items already in their cart must not
-           lose sight of them.
+           It STACKS ABOVE the cart button rather than replacing it. Hiding
+           the cart on this tab would repeat the exact fault its own note
+           records — a customer who added an idli, switched tab and saw the
+           button disappear reasonably concluded they had lost it.
 
-           pointerEvents="box-none" so only the pill itself takes taps — the
-           faded area above it belongs to the list. */}
+           A gradient rather than a solid fill so the plans stay legible as
+           they scroll under, and pointerEvents="box-none" so only the bar
+           takes taps — the faded area above belongs to the list. */}
       {activeHomeTab === 'subscription' && (
         <LinearGradient
           colors={['transparent', `${Theme.colors.background.primary}E6`, Theme.colors.background.primary]}
           locations={[0, 0.45, 1]}
-          style={[styles.buildScrim, { paddingBottom: insets.bottom + Theme.spacing.md }]}
+          style={[styles.buildScrim, { paddingBottom: insets.bottom + BUILD_BAR_LIFT }]}
           pointerEvents="box-none"
         >
           <TouchableOpacity
@@ -536,17 +542,14 @@ const styles = StyleSheet.create({
   },
 
   flex1: { flex: 1 },
-  /** Full width so the fade covers the list edge to edge; the pill inside is
-   *  inset on the right to clear the cart button. */
+  /** Full width, fading upward so the list stays readable beneath it. */
   buildScrim: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
     paddingTop: Theme.spacing.xl,
-    paddingLeft: Theme.spacing.md,
-    // md + the 56pt cart button + a gap.
-    paddingRight: Theme.spacing.md + 56 + Theme.spacing.sm,
+    paddingHorizontal: Theme.spacing.md,
     justifyContent: 'flex-end',
   },
   /** Floats over the Subscribe tab — see the note at the call site. */
