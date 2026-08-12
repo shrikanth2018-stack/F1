@@ -115,21 +115,39 @@ export function useClockIn() {
       const netState = await NetInfo.fetch();
       const isOnline = netState.isConnected && netState.isInternetReachable !== false;
 
+      /**
+       * INSERT, NOT UPSERT — and this is the difference between clocking in
+       * and not being able to.
+       *
+       * `column_write_gaps.sql` revoked UPDATE on this table and granted it
+       * back for the three clock-OUT columns only, so `clock_in_time` is
+       * write-once and a shift start cannot be backdated. That rule is right
+       * and it stays.
+       *
+       * But an upsert emits `INSERT … ON CONFLICT DO UPDATE`, and Postgres
+       * checks UPDATE privilege on the STATEMENT — whether or not a conflict
+       * actually occurs. So this failed with "permission denied for table
+       * staff_attendance" on a day with no row at all: nobody could clock in.
+       * Reproduced against production as a real staff member — upsert denied,
+       * plain insert allowed, clock-out update allowed.
+       *
+       * A plain insert is also the honest verb. Clocking in OPENS the day; it
+       * is not a write that might replace something. A second clock-in is
+       * refused by `staff_attendance_staff_date_unique`, which is the intended
+       * outcome and already unreachable from the UI — it shows Clock Out once
+       * a row exists.
+       */
       if (isOnline) {
         const { error } = await supabase
           .from('staff_attendance')
-          .upsert(payload, { onConflict: 'staff_id,date' });
+          .insert(payload);
 
         if (error) throw error;
       } else {
         enqueue({
           table: 'staff_attendance',
-          operation: 'upsert',
+          operation: 'insert',
           payload,
-          // Same conflict target as the online call above. Without it the
-          // replay falls back to the primary key and becomes a plain insert,
-          // which staff_attendance_staff_date_unique then rejects.
-          onConflict: 'staff_id,date',
           userId: session.user.id,
         });
       }

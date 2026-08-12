@@ -112,8 +112,25 @@ export function useOfflineSync() {
         }
 
         const { data: affected, error } = await query.select('id');
-        if (error) {
+        /**
+         * A UNIQUE VIOLATION ON A QUEUED INSERT IS SUCCESS, not failure.
+         *
+         * The row this mutation wanted to create already exists — someone
+         * clocked in from another device, or an earlier replay landed and the
+         * response was lost. The end state the staffer asked for is the end
+         * state on the server, so retrying can only fail again: five attempts,
+         * then dropped to Sentry as data loss it is not.
+         *
+         * 23505 is Postgres's unique_violation. Narrow on purpose — every
+         * other error still retries.
+         */
+        const alreadyThere =
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          mutation.operation === 'insert' && (error as any)?.code === '23505';
+        if (error && !alreadyThere) {
           incrementRetry(mutation.id);
+        } else if (alreadyThere) {
+          dequeue(mutation.id);
         } else {
           dequeue(mutation.id);
           // An order status change made offline still owes the customer their
