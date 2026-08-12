@@ -329,7 +329,7 @@ export function ProfilePopup() {
 
 const styles = StyleSheet.create({
   backdrop: {
-    backgroundColor: '#000000',
+    backgroundColor: Theme.colors.layout.black,
   },
   panel: {
     position: 'absolute',
@@ -341,7 +341,7 @@ const styles = StyleSheet.create({
     borderWidth: 0.5,
     borderColor: Theme.colors.layout.divider,
     overflow: 'hidden',
-    shadowColor: '#000',
+    shadowColor: Theme.colors.layout.black,
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.5,
     shadowRadius: 20,

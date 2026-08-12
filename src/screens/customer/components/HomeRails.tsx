@@ -656,7 +656,7 @@ const styles = StyleSheet.create({
 
   scrim: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#00000080',
+    backgroundColor: Theme.colors.layout.overlayMedium,
     // Top-aligned: the panel's marginTop is computed to line up with whichever
     // rail was tapped, so it appears to open FROM that button.
     justifyContent: 'flex-start',

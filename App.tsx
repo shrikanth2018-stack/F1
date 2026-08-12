@@ -30,6 +30,7 @@ import { PhotoCropHost } from './src/components/PhotoCropHost';
 import { useUIStore } from './src/store/uiStore';
 import { useOTAUpdates } from './src/hooks/useOTAUpdates';
 import { QUERY_STALE_TIME } from './src/utils/constants';
+import { Theme } from './src/theme';
 import { initSentry } from './src/utils/sentry';
 import { initAnalytics } from './src/utils/analytics';
 
@@ -100,7 +101,7 @@ function AppContent() {
 
   return (
     <>
-      <StatusBar barStyle="light-content" backgroundColor="#151515" />
+      <StatusBar barStyle="light-content" backgroundColor={Theme.colors.background.primary} />
       <OfflineBanner />
       <RootNavigator />
       <LoadingOverlay visible={isGlobalLoading} message={globalLoadingMessage} />

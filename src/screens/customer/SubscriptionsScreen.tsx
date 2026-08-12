@@ -494,7 +494,7 @@ const modal = StyleSheet.create({
     borderWidth: 1,
     borderColor: Theme.colors.text.mint,
     padding: Theme.spacing.md,
-    shadowColor: '#000',
+    shadowColor: Theme.colors.layout.black,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.4,
     shadowRadius: 12,

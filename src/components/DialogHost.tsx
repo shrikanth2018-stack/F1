@@ -115,7 +115,7 @@ export function DialogHost() {
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.65)',
+    backgroundColor: Theme.colors.layout.scrim,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 32,

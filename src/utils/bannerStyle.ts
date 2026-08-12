@@ -95,7 +95,7 @@ export const SUBTITLE_SIZE: Record<BannerSize, number> = {
  * colour swatches were not the answer to "the picture makes it unreadable".
  */
 export const TEXT_SHADOW = {
-  textShadowColor: 'rgba(0,0,0,0.85)',
+  textShadowColor: Theme.colors.layout.textShadow,
   textShadowOffset: { width: 0, height: 1 },
   textShadowRadius: 6,
 } as const;

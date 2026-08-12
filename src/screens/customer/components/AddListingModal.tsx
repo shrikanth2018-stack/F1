@@ -317,7 +317,7 @@ export function AddListingModal({
 const s = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
+    backgroundColor: Theme.colors.layout.scrim,
     justifyContent: 'center',
     padding: Theme.spacing.md,
   },

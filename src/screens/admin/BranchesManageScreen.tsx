@@ -464,7 +464,7 @@ const styles = StyleSheet.create({
   // ── Modal ──
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.55)',
+    backgroundColor: Theme.colors.layout.overlayMid,
     justifyContent: 'center',
     paddingHorizontal: Theme.spacing.lg,
   },

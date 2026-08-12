@@ -95,7 +95,7 @@ const popup = StyleSheet.create({
     backgroundColor: Theme.colors.background.secondary,
     borderRadius: Theme.components.inputRadius,
     overflow: 'hidden',
-    shadowColor: '#000',
+    shadowColor: Theme.colors.layout.black,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.35,
     shadowRadius: 12,

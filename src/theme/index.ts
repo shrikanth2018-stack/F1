@@ -30,6 +30,19 @@ export const Theme = {
       info: '#0A84FF',
     },
     layout: {
+      /**
+       * TRUE black — not `background.primary`, which is the app's near-black
+       * #151515. Three roles need real black and were each inventing it:
+       * elevation shadows (four files wrote `shadowColor: '#000'`
+       * independently), the opaque base under the profile panel's backdrop,
+       * and the letterbox behind a photo being cropped.
+       *
+       * ONE token rather than three, because today they are one decision.
+       * They would separate the day a light theme arrives — a shadow stays
+       * black while a scrim would not — and that is the moment to split it,
+       * not before.
+       */
+      black: '#000',
       divider: 'rgba(255, 255, 255, 0.1)',
       /**
        * Edge of a photo tile. Brighter than `divider` on purpose: a photo sits
@@ -41,6 +54,32 @@ export const Theme = {
        * one treatment that reads identically on both platforms.
        */
       photoEdge: 'rgba(255, 255, 255, 0.25)',
+      /**
+       * The wash behind a modal or a dialog. NAMED FOR THE JOB, not for its
+       * opacity — which is the point of it.
+       *
+       * Four surfaces were each carrying their own number: DialogHost at
+       * 0.65, and the menu, menu-item and vendor-listing modals at 0.7.
+       * Neither value was on the ladder below, so neither could be reached
+       * for; the next modal would have invented a fifth. They now share this.
+       *
+       * The ladder below is six near-identical greys grown by whoever needed
+       * one, and adding 0.65 AND 0.7 to it would have made eight — which is
+       * how a palette stops being a palette. A backdrop is a ROLE, so it gets
+       * a role's name and the ladder stops growing.
+       *
+       * 0.7 because three of the four already sat there; DialogHost moved up
+       * five hundredths, agreed on 12 Aug 2026 as the one visible change in
+       * the colour burn-down.
+       */
+      scrim: 'rgba(0,0,0,0.7)',
+      /**
+       * Behind text laid over a photograph — see `bannerStyle.TEXT_SHADOW`.
+       * Heavier than any scrim on purpose: it has to carry a single line of
+       * type against an image nobody has seen yet, and it was the answer to
+       * "the picture makes it unreadable" that more colour swatches were not.
+       */
+      textShadow: 'rgba(0,0,0,0.85)',
       overlayLight: 'rgba(0,0,0,0.4)',
       overlayLightMid: 'rgba(0,0,0,0.45)',
       overlayMedium: 'rgba(0,0,0,0.5)',

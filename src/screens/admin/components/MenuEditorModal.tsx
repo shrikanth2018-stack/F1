@@ -514,7 +514,7 @@ export function MenuEditorModal({ visible, item, cycleId, cycleName, onClose, on
 
 const s = StyleSheet.create({
   backdrop: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.7)',
+    flex: 1, backgroundColor: Theme.colors.layout.scrim,
     justifyContent: 'center', padding: Theme.spacing.md,
   },
   sheet: {

@@ -109,8 +109,17 @@ module.exports = [
         {
           // Colour written into a style object. The one that is always wrong:
           // a literal cannot follow a retheme, ever.
+          //
+          // MATCHED BY PATTERN, NOT BY A LIST. The first version of this rule
+          // enumerated seventeen property names and still missed six that the
+          // app actually uses — textShadowColor, labelColor, textColor,
+          // bgColor, lightColor, accentColor — so it reported zero while
+          // `textShadowColor: 'rgba(0,0,0,0.85)'` and an Android notification
+          // `lightColor: '#38bdf8'` sat in the tree untouched. A hand-kept
+          // list of a platform's property names is a list that is already out
+          // of date. Anything ending in `Color`, plus bare `background`.
           selector:
-            "Property[key.name=/^(color|backgroundColor|borderColor|borderTopColor|borderBottomColor|borderLeftColor|borderRightColor|borderStartColor|borderEndColor|shadowColor|tintColor|textDecorationColor|overlayColor|placeholderTextColor|underlayColor|fillColor|strokeColor|background)$/] > Literal[value=/^(#|rgba?\\()/]",
+            "Property[key.name=/([Cc]olor|^background)$/] > Literal[value=/^(#|rgba?\\()/]",
           message:
             'Hardcoded colour. Use Theme.colors.* — a literal will not follow a retheme.',
         },
@@ -190,5 +199,11 @@ module.exports = [
   {
     files: ['**/*.test.{ts,tsx}', 'src/__tests__/**'],
     languageOptions: { globals: { ...globals.jest } },
+    // A fixture is DATA, not chrome. `bannerStyle.test.ts` builds rows shaped
+    // like the `banners` table, whose `bg_color` column holds whatever colour
+    // an admin picked — a literal there is the point of the test, and routing
+    // it through the theme would be asserting against our own palette instead
+    // of against the value the database will actually hand us.
+    rules: { 'no-restricted-syntax': 'off' },
   },
 ];

@@ -20,6 +20,7 @@ import * as Device from 'expo-device';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import { supabase } from '../api/supabaseClient';
+import { Theme } from '../theme';
 import { useAuth } from './useAuth';
 import { navigationRef } from '../navigation/navigationRef';
 
@@ -58,7 +59,7 @@ async function registerForPushNotifications(): Promise<string | null> {
       name: '1stOne Notifications',
       importance: Notifications.AndroidImportance.HIGH,
       vibrationPattern: [0, 250, 250, 250],
-      lightColor: '#38bdf8',
+      lightColor: Theme.colors.action.primary,
       sound: 'default',
     });
   }

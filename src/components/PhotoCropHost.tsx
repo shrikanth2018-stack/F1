@@ -190,7 +190,7 @@ const S: Record<string, React.CSSProperties> = {
   backdrop: {
     position: 'fixed',
     inset: 0,
-    background: 'rgba(0,0,0,0.75)',
+    background: Theme.colors.layout.overlayHeavy,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -220,7 +220,7 @@ const S: Record<string, React.CSSProperties> = {
     position: 'relative',
     width: '100%',
     aspectRatio: '1 / 1',
-    background: '#000',
+    background: Theme.colors.layout.black,
     borderRadius: Theme.components.inputRadius,
     overflow: 'hidden',
   },
