@@ -213,7 +213,7 @@ const styles = StyleSheet.create({
     paddingVertical: Theme.spacing.lg,
   },
   pointsAmount: {
-    fontSize: 40,
+    fontSize: Theme.typography.sizes.display,
     marginBottom: Theme.spacing.xs,
   },
   redeemSection: {

@@ -86,17 +86,17 @@ module.exports = [
       // including on WalletScreen, which carries seven hardcoded numbers.
       // A comment cannot fail a build, so the mandate never had teeth.
       //
-      // WARN, NOT ERROR, on purpose. `check.yml` runs lint as a real gate
-      // where errors fail and warnings do not, precisely so the build can
-      // only go red on something NEWLY introduced. Landing these as errors
-      // would turn every existing violation into a broken build on an
-      // unrelated PR. The plan is to burn each category down to zero and then
-      // flip THAT selector to error — a ratchet, one category at a time.
+      // ERROR, and it earned that. These landed at `warn` on 12 Aug 2026
+      // against 72 violations, which were then burned down to ZERO — 16
+      // colour call sites and 14 font sizes — before this was flipped.
+      // `check.yml` runs lint as a real gate where errors fail, so from here
+      // a hardcoded colour or font size cannot reach main at all.
       //
-      // Two of the five are ALREADY at zero (`fontFamily`, `fontWeight:
-      // 'bold'`) and can be ratcheted immediately; they are kept here at warn
-      // only because no-restricted-syntax carries one severity for all its
-      // selectors, and splitting it is the next step's job.
+      // One severity covers all five selectors, which is why the flip waited
+      // for every category to reach zero rather than ratcheting one at a
+      // time. If a future category is added with a backlog, add it as a
+      // SECOND rule entry at `warn` rather than dropping this one back —
+      // reopening a closed ratchet gives the whole thing back.
       //
       // What is deliberately NOT restricted: bare numbers for padding,
       // margin, width and height. Those are layout facts, not design tokens —
@@ -105,7 +105,7 @@ module.exports = [
       // shares. The mandate is about values that must MOVE TOGETHER when the
       // design changes: colour, the type scale, leading, radii.
       'no-restricted-syntax': [
-        'warn',
+        'error',
         {
           // Colour written into a style object. The one that is always wrong:
           // a literal cannot follow a retheme, ever.

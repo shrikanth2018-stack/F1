@@ -671,7 +671,7 @@ const emojiRow = StyleSheet.create({
     borderColor: Theme.colors.layout.divider,
   },
   cellActive: { borderColor: Theme.colors.text.mint, borderWidth: 2 },
-  label: { fontSize: 20 },
+  label: { fontSize: Theme.typography.sizes.subtitle + Theme.typography.emphasisStep },
 });
 
 const styles = StyleSheet.create({

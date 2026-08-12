@@ -290,7 +290,7 @@ const formModal = StyleSheet.create({
   clearBtn: { paddingHorizontal: Theme.spacing.sm },
   clearText: {
     color: Theme.colors.text.muted,
-    fontSize: 18,
+    fontSize: Theme.typography.sizes.subtitle,
     lineHeight: 22,
   },
   suggestions: {
@@ -327,7 +327,7 @@ const formModal = StyleSheet.create({
   qtyBtnText: {
     color: Theme.colors.text.mint,
     fontFamily: Theme.typography.fontFamily,
-    fontSize: 18,
+    fontSize: Theme.typography.sizes.subtitle,
     lineHeight: 22,
   },
   qtyNum: {
@@ -343,7 +343,7 @@ const formModal = StyleSheet.create({
   },
   removeText: {
     color: Theme.colors.status.error,
-    fontSize: 18,
+    fontSize: Theme.typography.sizes.subtitle,
     lineHeight: 22,
     fontFamily: Theme.typography.fontFamily,
   },

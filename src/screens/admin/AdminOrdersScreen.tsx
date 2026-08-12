@@ -484,7 +484,7 @@ const styles = StyleSheet.create({
     paddingVertical: Theme.spacing.sm,
   },
   arrowText: {
-    fontSize: 28,
+    fontSize: Theme.typography.sizes.title + Theme.typography.emphasisStep,
     lineHeight: 32,
   },
   dateLabel: {

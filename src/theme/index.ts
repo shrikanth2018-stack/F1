@@ -103,6 +103,16 @@ export const Theme = {
       subtitle: 18,
       header: 22,
       title: 26,
+      /**
+       * The one big figure a screen is ABOUT — a wallet balance, a loyalty
+       * total. Above `title` because it is not a heading: nothing follows it
+       * in a hierarchy, it is the answer the customer opened the screen for.
+       *
+       * A tier rather than two local constants because Wallet and Loyalty
+       * Points had independently arrived at 40 for exactly the same job, and
+       * the next balance screen would have arrived at it again.
+       */
+      display: 40,
     },
     letterSpacing: {
       normal: 0,

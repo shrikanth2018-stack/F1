@@ -85,6 +85,13 @@ export function NumberKeypad({ value, onChange, maxLength = 10 }: NumberKeypadPr
   );
 }
 
+/**
+ * The keypad glyphs are sized to the KEY, not to the type scale — they are
+ * a control's face, not text in a hierarchy, and the scale tops out at 26.
+ * Named here rather than tokenised: nothing else in the app is a keypad.
+ */
+const DIGIT_SIZE = 32;
+
 const styles = StyleSheet.create({
   grid: {
     width: '100%',
@@ -102,13 +109,13 @@ const styles = StyleSheet.create({
   },
   digit: {
     fontFamily: Theme.typography.fontFamily,
-    fontSize: 32,
+    fontSize: DIGIT_SIZE,
     color: Theme.colors.text.primary,
     fontWeight: '300',
   },
   backIcon: {
     fontFamily: Theme.typography.fontFamily,
-    fontSize: 28,
+    fontSize: Theme.typography.sizes.title + Theme.typography.emphasisStep,
     color: Theme.colors.text.muted,
   },
 });

@@ -636,8 +636,8 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     marginHorizontal: 4,
   },
-  qtyBtnText: { fontSize: 18, color: Theme.colors.text.primary, lineHeight: 20 },
-  qtyNum: { width: 28, textAlign: 'center', fontSize: 16, color: Theme.colors.text.primary },
+  qtyBtnText: { fontSize: Theme.typography.sizes.subtitle, color: Theme.colors.text.primary, lineHeight: 20 },
+  qtyNum: { width: 28, textAlign: 'center', fontSize: Theme.typography.sizes.body, color: Theme.colors.text.primary },
   removeBtn: {
     width: 28,
     height: 28,
@@ -645,7 +645,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginLeft: 4,
   },
-  removeText: { fontSize: 20, color: Theme.colors.status.error, lineHeight: 22 },
+  removeText: { fontSize: Theme.typography.sizes.subtitle + Theme.typography.emphasisStep, color: Theme.colors.status.error, lineHeight: 22 },
 
   // Add form
   addForm: {
@@ -671,7 +671,7 @@ const styles = StyleSheet.create({
     marginRight: Theme.spacing.xs,
   },
   catChipActive: { borderColor: Theme.colors.text.mint, backgroundColor: `${Theme.colors.text.mint}15` },
-  catChipText: { fontSize: 13, color: Theme.colors.text.muted },
+  catChipText: { fontSize: Theme.typography.sizes.small, color: Theme.colors.text.muted },
   catChipTextActive: { color: Theme.colors.text.mint },
   addInput: {
     borderWidth: StyleSheet.hairlineWidth,

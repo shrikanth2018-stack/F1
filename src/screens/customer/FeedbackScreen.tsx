@@ -195,6 +195,12 @@ export function FeedbackScreen({ navigation, route }: CustomerScreenProps<'Feedb
   );
 }
 
+/**
+ * A star is a tap target wearing a glyph, so it is sized to the finger
+ * rather than to the type scale. Named rather than tokenised — one use.
+ */
+const STAR_SIZE = 34;
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
   content: { paddingBottom: Theme.spacing.xl },
@@ -219,7 +225,7 @@ const styles = StyleSheet.create({
     gap: Theme.spacing.md,
     marginBottom: Theme.spacing.lg,
   },
-  star: { fontSize: 34 },
+  star: { fontSize: STAR_SIZE },
   commentsInput: {
     fontFamily: Theme.typography.fontFamily,
     fontSize: Theme.typography.sizes.body,
