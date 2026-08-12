@@ -18,11 +18,9 @@
 
 import React, { useState } from 'react';
 import {
-  View,
   StyleSheet,
   FlatList,
   RefreshControl,
-  TouchableOpacity,
   ActivityIndicator,
   Alert,
   Text,
@@ -31,7 +29,8 @@ import { getErrorMessage, formatDateShort } from '../../utils/formatters';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
-import { Divider } from '../../components/Divider';
+import { ScreenHeader } from '../../components/ScreenHeader';
+import { ListRow, ListRowSeparator } from '../../components/ListRow';
 import { EmptyState } from '../../components/EmptyState';
 import { ErrorRetry } from '../../components/ErrorRetry';
 import { DeliveryOrderRow } from '../../components/DeliveryOrderRow';
@@ -40,12 +39,11 @@ import { useUpdateOrderStatus } from '../../hooks/useStaffOrders';
 import { useDriverOrders, useDriverOrderHistory } from '../../hooks/useDriverOrders';
 import { useRealtimeOrders } from '../../hooks/useRealtimeOrders';
 import { useStaffNoteForTab } from '../../hooks/useAdminNotes';
-import type { CustomerScreenProps } from '../../navigation/types';
 import type { OrderStatus } from '../../types';
 
 type DriverTab = 'Today' | 'History';
 
-export function DriverDashboardScreen({ navigation }: CustomerScreenProps<'DriverDashboard'>) {
+export function DriverDashboardScreen() {
   const [tab, setTab] = useState<DriverTab>('Today');
 
   const { mutateAsync: updateStatus, isPending: isUpdating } = useUpdateOrderStatus();
@@ -80,13 +78,7 @@ export function DriverDashboardScreen({ navigation }: CustomerScreenProps<'Drive
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <ThemedText variant="body" color="accent">‹ Back</ThemedText>
-        </TouchableOpacity>
-        <ThemedText variant="header" color="primary">My Deliveries</ThemedText>
-        <View style={styles.spacer} />
-      </View>
+      <ScreenHeader title="My Deliveries" />
 
       {/* Admin notes — delivery-specific + broadcasts. Single-line, centered,
           mild yellow. Same pattern as HubDashboard / StaffDashboard. */}
@@ -116,7 +108,7 @@ export function DriverDashboardScreen({ navigation }: CustomerScreenProps<'Drive
           refreshControl={
             <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={Theme.colors.text.mint} />
           }
-          ItemSeparatorComponent={() => <Divider />}
+          ItemSeparatorComponent={ListRowSeparator}
           contentContainerStyle={styles.list}
           ListEmptyComponent={
             !isLoading ? (
@@ -160,55 +152,41 @@ export function DriverDashboardScreen({ navigation }: CustomerScreenProps<'Drive
  * rule has already taken away. An order that ended anywhere other than
  * Delivered says so, because that is the row admin is chasing.
  */
+/**
+ * Two lines, and the status is LABELLED rather than printed raw.
+ *
+ * This list is where an order goes when it falls off the live board
+ * unfinished, so the interesting rows here are exactly the ones nobody
+ * delivered — and it used to show them as "On the Way", the same stale
+ * wording the vendor's store had. Settled reads muted, outstanding reads
+ * amber, the same as My Orders and the admin Undelivered tab.
+ */
 function DriverHistoryRow({ order }: { order: any }) {
-  const items = (order.order_items ?? [])
-    .map((oi: any) => `${oi.item_name} ×${oi.quantity}`)
-    .join(', ') || '—';
-  const delivered = order.status === 'Delivered';
+  const settled =
+    order.status === 'Delivered' ||
+    order.status === 'Cancelled' ||
+    order.status === 'Failed';
   return (
-    <View style={styles.histRow}>
-      <View style={styles.histTop}>
-        <ThemedText variant="subtitle" color="primary">Order #{order.id}</ThemedText>
-        <ThemedText variant="small" color={delivered ? 'muted' : 'warning'}>
-          {order.status}
+    <ListRow
+      title={`Order #${order.id}`}
+      subtitle={order.dispatch_date ? formatDateShort(order.dispatch_date) : '—'}
+      trailing={
+        <ThemedText variant="small" color={settled ? 'muted' : 'warning'}>
+          {settled ? order.status : 'Undelivered'}
         </ThemedText>
-      </View>
-      <ThemedText variant="small" color="muted">
-        {order.dispatch_date ? formatDateShort(order.dispatch_date) : '—'}
-      </ThemedText>
-      <ThemedText variant="small" color="subtitle" numberOfLines={2}>
-        {items}
-      </ThemedText>
-    </View>
+      }
+    />
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.layout.divider,
-  },
-  spacer: { minWidth: 60 },
   tabs: {
     marginHorizontal: Theme.spacing.md,
     marginVertical: Theme.spacing.sm,
   },
-  histRow: {
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-    gap: 2,
-  },
-  histTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
+
+
   list: { paddingBottom: Theme.spacing.xl },
   loader: { marginTop: Theme.spacing.xl },
   noteLine: {

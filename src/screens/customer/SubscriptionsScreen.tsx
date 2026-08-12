@@ -32,6 +32,8 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useFocusEffect } from '@react-navigation/native';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
+import { ListRow, ListRowSeparator } from '../../components/ListRow';
+import { ScreenHeader } from '../../components/ScreenHeader';
 import { EmptyState } from '../../components/EmptyState';
 import {
   useMySubscriptions,
@@ -41,6 +43,7 @@ import {
   useUndoSkip,
 } from '../../hooks/useSubscriptions';
 import { useDeliveryCycles } from '../../hooks/useDeliveryCycles';
+import { subscriptionDaysRemaining } from '../../utils/subscriptionMath';
 import { useBrowsePlans } from '../../hooks/useBrowsePlans';
 import { CycleGroup } from './components/CycleGroup';
 import { CyclePopup } from './components/CyclePopup';
@@ -99,7 +102,7 @@ function subDeliversOn(
   return dateStr >= sub.start_date && dateStr <= endDate && !isSkipped;
 }
 
-export function SubscriptionsScreen({ navigation }: any) {
+export function SubscriptionsScreen() {
   const insets = useSafeAreaInsets();
   const browsePlans = useBrowsePlans();
   const [modalDate, setModalDate] = useState<Date | null>(null);
@@ -193,28 +196,48 @@ export function SubscriptionsScreen({ navigation }: any) {
     refetchCancelled();
   }, [cycles, skipDay, undoSkip, refetchCancelled]);
 
-  const renderSub = (item: EnrichedSub) => {
+  const renderSub = (item: EnrichedSub, idx: number) => {
     const plan = item.subscription_plans;
     const isRunning = item.is_active && !item.is_paused;
     const isPendingPayment = !item.is_active && item.payment_method === 'razorpay';
 
+    /**
+     * WHAT IS LEFT, not what is spent — and worded exactly as the Plans rail
+     * words it. The two describe the same subscription and disagreed: the rail
+     * said "28 left out of 30" while this said "Day 2/30". A customer checking
+     * one against the other had to do the subtraction to see they matched.
+     *
+     * NO CYCLE NAME HERE, deliberately. This list is already grouped by cycle
+     * (buildPlanSections) so the section heading above the row says it; the
+     * rail is a flat list and has to carry it on each line.
+     *
+     * The start date appears only while the plan has not begun. Once it is
+     * running, when it started is history — what remains is the live question,
+     * and the calendar below covers the dates.
+     *
+     * `subscriptionDaysRemaining` rather than a subtraction here: pause and
+     * skip push the end date out, so remaining is not `total - elapsed`. The
+     * rail already uses it and the two must not drift.
+     */
+    const total = plan?.duration_days ?? 0;
+    const left = subscriptionDaysRemaining({ duration_days: total }, item);
+    const notStarted = (item.days_consumed ?? 0) === 0;
+
     return (
-      <View key={item.id} style={styles.row}>
-        <View style={styles.rowLeft}>
-          <ThemedText variant="subtitle" color="primary">
-            {plan?.plan_name ?? `Plan #${item.plan_id}`}
-          </ThemedText>
-          {isPendingPayment ? (
-            <ThemedText variant="body" color="muted" style={styles.rowMeta}>
-              Awaiting payment confirmation
-            </ThemedText>
-          ) : (
-            <ThemedText variant="body" color="subtitle" style={styles.rowMeta}>
-              Starts {formatDateShort(item.start_date)} · Day {item.days_consumed}/{plan?.duration_days ?? '?'}
-            </ThemedText>
-          )}
-        </View>
-        {item.is_active && (
+      <React.Fragment key={item.id}>
+        {idx > 0 && <ListRowSeparator />}
+        <ListRow
+        title={plan?.plan_name ?? `Plan #${item.plan_id}`}
+        subtitle={
+          isPendingPayment
+            ? 'Awaiting payment confirmation'
+            : [
+                item.is_paused ? 'Paused' : null,
+                notStarted ? `Starts ${formatDateShort(item.start_date)}` : null,
+                `${left} left out of ${total}`,
+              ].filter(Boolean).join(' · ')
+        }
+        trailing={item.is_active ? (
           <Switch
             value={isRunning}
             onValueChange={() => {
@@ -229,20 +252,16 @@ export function SubscriptionsScreen({ navigation }: any) {
             }}
             thumbColor={Theme.colors.text.primary}
           />
-        )}
-      </View>
+        ) : undefined}
+        />
+      </React.Fragment>
     );
   };
 
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
-        <ThemedText variant="header" color="primary">My Subscriptions</ThemedText>
-        <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <ThemedText variant="body" color="muted">Close</ThemedText>
-        </TouchableOpacity>
-      </View>
+      <ScreenHeader title="My Subscriptions" />
 
       {/* Subscription list — calendar appended as footer, scrolls together */}
       <FlatList
@@ -396,26 +415,10 @@ export function SubscriptionsScreen({ navigation }: any) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Theme.spacing.md,
-    paddingTop: Theme.spacing.md,
-    paddingBottom: Theme.spacing.sm,
-  },
   list: { flex: 1, paddingHorizontal: Theme.spacing.xs },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm + 2,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.text.mint,
-  },
-  rowLeft: { flex: 1, marginRight: Theme.spacing.sm },
-  rowMeta: { marginTop: 4 },
+
+
+
   calendarWrap: {
     marginTop: Theme.spacing.md,
     paddingTop: Theme.spacing.sm,
@@ -449,14 +452,11 @@ const styles = StyleSheet.create({
   datePillDelivery: {
     borderColor: Theme.colors.text.mint,
   },
-  datePillCancelled: {
-    borderColor: Theme.colors.status.error,
-    opacity: 0.6,
-  },
+
   dotRow: { flexDirection: 'row', gap: 3, height: 8, justifyContent: 'center', alignItems: 'center', marginTop: 2 },
   dot: { width: 5, height: 5, borderRadius: 3 },
-  dotActive: { backgroundColor: Theme.colors.text.mint },
-  dotCancelled: { backgroundColor: Theme.colors.status.error },
+
+
   addBtn: {
     position: 'absolute',
     left: Theme.spacing.md,
@@ -480,6 +480,7 @@ const styles = StyleSheet.create({
 });
 
 const modal = StyleSheet.create({
+  title: { marginBottom: 2 },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: Theme.colors.layout.overlayMid,
@@ -500,7 +501,6 @@ const modal = StyleSheet.create({
     shadowRadius: 12,
     elevation: 10,
   },
-  title: { marginBottom: 2 },
   subtitle: { marginBottom: Theme.spacing.md },
   row: {
     flexDirection: 'row',
@@ -516,8 +516,5 @@ const modal = StyleSheet.create({
     marginRight: Theme.spacing.sm,
   },
   planName: { flex: 1 },
-  closeBtn: {
-    marginTop: Theme.spacing.sm,
-    alignItems: 'center',
-  },
+
 });

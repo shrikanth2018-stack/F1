@@ -14,18 +14,10 @@ import type { MenuItem, EssentialItem } from '../../../types';
 import { CatalogPhotoThumb } from '../../../components/CatalogPhotoThumb';
 import { PHOTO_BUCKET, PHOTO_PX } from '../../../utils/catalogPhoto';
 import { GradientSep } from './GradientSep';
+// The metrics all three Home tabs share — see homeRow.ts for what drifted.
+import { HOME_ROW } from './homeRow';
 
-/**
- * Row photo tile, in points. Was 76 — the size at which the supplied dish and
- * product renders stay identifiable (a thali at 44 is a smudge) — brought down
- * 13% to fit more items on a screen. Both catalogues use the same value so
- * Food and Essentials scroll at the same rhythm.
- *
- * Note this only shortens rows whose TEXT is shorter than the tile. A row
- * carrying a two-line description plus a dispatch label is already taller than
- * the tile, and shrinking the photo does nothing for it.
- */
-const THUMB = 66;
+const THUMB = HOME_ROW.thumb;
 
 interface FoodRowProps {
   item: MenuItem;
@@ -141,26 +133,23 @@ const styles = StyleSheet.create({
   foodRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: Theme.spacing.xs,
-    paddingVertical: Theme.spacing.sm + 2,
+    paddingHorizontal: HOME_ROW.paddingHorizontal,
+    paddingVertical: HOME_ROW.paddingVertical,
   },
   foodMeta: {
     flex: 1,
-    marginLeft: Theme.spacing.md,
-    marginRight: Theme.spacing.sm,
+    marginLeft: HOME_ROW.metaLeft,
+    marginRight: HOME_ROW.metaRight,
   },
   itemName: {
     fontFamily: Theme.typography.fontFamily,
-    // Menu list runs 1pt tighter than the rest of the app: the hero is a
-    // fixed 32% of the screen by design, so this is the only lever left for
-    // how many dishes a customer sees without scrolling.
-    fontSize: Theme.typography.sizes.body + 1,
+    fontSize: HOME_ROW.nameSize,
     color: Theme.colors.text.primary,
     fontWeight: '400',
   },
   itemSub: {
     fontFamily: Theme.typography.fontFamily,
-    fontSize: Theme.typography.sizes.small + 1,
+    fontSize: HOME_ROW.subSize,
     color: Theme.colors.text.muted,
     marginTop: 2,
   },
@@ -174,7 +163,7 @@ const styles = StyleSheet.create({
   },
   itemPrice: {
     fontFamily: Theme.typography.fontFamily,
-    fontSize: Theme.typography.sizes.body + 1,
+    fontSize: HOME_ROW.priceSize,
     color: Theme.colors.text.mint,
     marginRight: Theme.spacing.md,
     flexShrink: 0,

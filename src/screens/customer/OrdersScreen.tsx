@@ -11,9 +11,7 @@
 
 import React, { useCallback, useMemo } from 'react';
 import {
-  View,
   FlatList,
-  TouchableOpacity,
   StyleSheet,
   RefreshControl,
   ActivityIndicator,
@@ -21,13 +19,16 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Theme } from '../../theme';
-import { ThemedText } from '../../components/ThemedText';
+import { ListRow, ListRowSeparator } from '../../components/ListRow';
+import { ScreenHeader } from '../../components/ScreenHeader';
 import { DispatchBadge } from '../../components/DispatchBadge';
 import { EmptyState } from '../../components/EmptyState';
 import { ErrorRetry } from '../../components/ErrorRetry';
 import { useMyOrders, useMyOrderStates, type OrderWithItems } from '../../hooks/useOrders';
 import { useBrowsePlans } from '../../hooks/useBrowsePlans';
-import { formatPriceShort, formatDateShort, formatRelativeTime } from '../../utils/formatters';
+import { useDeliveryCycles } from '../../hooks/useDeliveryCycles';
+import { essentialsCycleLabel } from '../../utils/cycleLabels';
+import { formatPriceShort, formatDateShort } from '../../utils/formatters';
 import { orderStatusVariant } from '../../utils/orderStatus';
 import {
   groupIntoDeliveries,
@@ -63,6 +64,12 @@ type OrderGroup = Delivery<OrderWithItems>;
 // come to disagree.
 export function OrdersScreen({ navigation }: any) {
   const browsePlans = useBrowsePlans();
+  /** Cached app-wide already — naming the window costs no extra request. */
+  const { data: cycles } = useDeliveryCycles();
+  const cycleById = useMemo(
+    () => new Map((cycles ?? []).map((c) => [c.id, c])),
+    [cycles],
+  );
   const {
     data,
     isLoading,
@@ -138,25 +145,46 @@ export function OrdersScreen({ navigation }: any) {
      */
     const undelivered = item.rows.some((r) => orderStates?.get(r.id) === 'undelivered');
     const status = undelivered ? 'Undelivered' : rolledUpStatus(item.rows);
-    const contents = item.rows
-      .flatMap((r) => r.order_items ?? [])
-      .map((i) => i.item_name)
-      .join(', ');
+
+    /**
+     * ONE LINE UNDER THE TITLE. This is a LIST — its job is to get you to the
+     * right row and out again; the detail page is where the detail lives.
+     *
+     * It used to carry three lines: date and price, the time it was placed,
+     * and then every item name. Stacked at the row's own padding that reads as
+     * a wall rather than a list, and two of the three answered questions
+     * nobody asks from a list. "2 hours ago" is when it was ORDERED, which
+     * matters least of all once it is on its way.
+     *
+     * THE CYCLE REPLACES THE CONTENTS, and does the same job better. The item
+     * names were there because a delivery is grouped per (purchase, window,
+     * day), so two rows on one date are two different windows and the date
+     * alone could not tell them apart. Naming the window says that outright,
+     * in two words instead of a list that wraps — and it is the thing the
+     * customer actually thinks in: "the breakfast one".
+     *
+     * Essentials read their own label ("Morning"), the same as everywhere else
+     * a cycle is shown to a customer.
+     */
+    const cycle = item.cycleId != null ? cycleById.get(item.cycleId) : undefined;
+    const cycleName = cycle
+      ? (item.rows[0]?.order_type === 'essential' ? essentialsCycleLabel(cycle) : cycle.cycle_name)
+      : null;
+    const subtitle = isPurchaseOnly
+      ? `Subscription · ${formatPriceShort(item.totalAmount)}`
+      : [cycleName, formatDateShort(item.rows[0].dispatch_date), formatPriceShort(item.totalAmount)]
+          .filter(Boolean).join(' · ');
 
     return (
-      <TouchableOpacity
-        style={styles.row}
-        activeOpacity={0.7}
+      <ListRow
+        /* EVERY number in the bag, not just the lowest. Each id is real —
+           staff search by it and it is printed on the slip — so showing one
+           left the customer unable to ask about the other half of their own
+           delivery. */
+        title={`${item.ids.length > 1 ? 'Orders ' : 'Order '}${formatOrderNumbers(item.ids)}`}
+        subtitle={subtitle}
         onPress={() => navigation.navigate('OrderDetail', { orderId: item.primaryId })}
-      >
-        <View style={styles.rowTop}>
-          {/* EVERY number in the bag, not just the lowest. Each id is real
-              — staff search by it and it is printed on the slip — so showing
-              one left the customer unable to ask about the other half of
-              their own delivery. */}
-          <ThemedText variant="subtitle" color="primary" numberOfLines={1}>
-            {item.ids.length > 1 ? 'Orders ' : 'Order '}{formatOrderNumbers(item.ids)}
-          </ThemedText>
+        trailing={
           <DispatchBadge
             label={status}
             // 'Undelivered' is not in the status vocabulary, so
@@ -171,44 +199,20 @@ export function OrdersScreen({ navigation }: any) {
             // Undelivered tab so both sides of the business read one colour.
             variant={undelivered ? 'warning' : orderStatusVariant(status)}
           />
-        </View>
-
-        <View style={styles.rowMid}>
-          <ThemedText variant="body" color="subtitle">
-            {isPurchaseOnly
-              ? `Subscription · ${formatPriceShort(item.totalAmount)}`
-              : `${formatDateShort(item.rows[0].dispatch_date)} · ${formatPriceShort(item.totalAmount)}`}
-          </ThemedText>
-          <ThemedText variant="small" color="muted">
-            {formatRelativeTime(item.createdAt)}
-          </ThemedText>
-        </View>
-
-        {/* What is actually in the bag — the customer should not have to open
-            the order to know which delivery this card is. */}
-        {!!contents && (
-          <ThemedText variant="small" color="muted" numberOfLines={2} style={styles.contents}>
-            {contents}
-          </ThemedText>
-        )}
-
-      </TouchableOpacity>
+        }
+      />
     );
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <ThemedText variant="header" color="primary">My Orders</ThemedText>
-        <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <ThemedText variant="body" color="muted">Close</ThemedText>
-        </TouchableOpacity>
-      </View>
+      <ScreenHeader title="My Orders" />
 
       <FlatList
         data={groups}
         keyExtractor={(item) => item.key}
         renderItem={renderGroup}
+        ItemSeparatorComponent={ListRowSeparator}
         contentContainerStyle={styles.list}
         refreshControl={
           <RefreshControl
@@ -241,37 +245,14 @@ export function OrdersScreen({ navigation }: any) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
-  contents: { marginTop: 2 },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Theme.spacing.md,
-    paddingTop: Theme.spacing.md,
-    paddingBottom: Theme.spacing.sm,
-  },
+
   list: {
     paddingTop: Theme.spacing.xs,
     paddingBottom: Theme.spacing.xl,
   },
-  row: {
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm + 2,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.text.mint,
-  },
-  rowTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  rowMid: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
+
+
+
   footer: {
     paddingVertical: Theme.spacing.md,
   },

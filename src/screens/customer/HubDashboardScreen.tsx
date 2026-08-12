@@ -37,7 +37,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
-import { Divider } from '../../components/Divider';
+import { ScreenHeader } from '../../components/ScreenHeader';
+import { ListRow, ListRowSeparator } from '../../components/ListRow';
 import { EmptyState } from '../../components/EmptyState';
 import { ErrorRetry } from '../../components/ErrorRetry';
 import { DeliveryOrderRow } from '../../components/DeliveryOrderRow';
@@ -98,20 +99,12 @@ export function HubDashboardScreen({ navigation }: CustomerScreenProps<'HubDashb
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <ThemedText variant="body" color="accent">‹ Back</ThemedText>
-        </TouchableOpacity>
-        {/* The hub's own name, not just "My Hub". An operator running one of
-            several needs to see WHICH one they are looking at — and it is the
-            first thing they check when an order looks wrong. Falls back to the
-            generic label while the name loads, so the header never jumps
-            between two different heights. */}
-        <ThemedText variant="header" color="primary" numberOfLines={1}>
-          {myHub?.hub_name || 'My Hub'}
-        </ThemedText>
-        <View style={styles.spacer} />
-      </View>
+      {/* The hub's own name, not just "My Hub". An operator running one of
+          several needs to see WHICH one they are looking at — and it is the
+          first thing they check when an order looks wrong. Falls back to the
+          generic label while the name loads, so the header never jumps
+          between two different heights. */}
+      <ScreenHeader title={myHub?.hub_name || 'My Hub'} />
 
       {/* Admin notes — hub-specific. Sits above the tab toggle so it
           reads as a header banner rather than interrupting the tab body. */}
@@ -148,7 +141,7 @@ export function HubDashboardScreen({ navigation }: CustomerScreenProps<'HubDashb
               <EmptyState title={isToday ? 'No orders for your hub today' : 'No history yet'} />
             ) : null
           }
-          ItemSeparatorComponent={() => <Divider />}
+          ItemSeparatorComponent={ListRowSeparator}
           renderItem={({ item }) =>
             isToday ? (
               <DeliveryOrderRow
@@ -295,39 +288,28 @@ function CommissionTab() {
 }
 
 // ── History row — minimal display, tap to drill into HubOrderHistoryDetail ──
+/**
+ * Two lines, like every other list in the app. It carried a third holding
+ * every item name, which is detail-page material — tapping the row opens
+ * exactly that.
+ */
 function HistoryRow({ order, onPress }: { order: any; onPress: () => void }) {
-  const itemsSummary = (order.order_items ?? [])
-    .map((oi: any) => `${oi.item_name} ×${oi.quantity}`)
-    .join(', ') || '—';
   return (
-    <TouchableOpacity style={styles.histRow} onPress={onPress} activeOpacity={0.7}>
-      <View style={styles.histTop}>
-        <ThemedText variant="subtitle" color="primary">Order #{order.id}</ThemedText>
-        <ThemedText variant="body" color="subtitle">{formatPriceShort(order.total_amount)}</ThemedText>
-      </View>
-      <ThemedText variant="small" color="muted" style={styles.histSub}>
-        {order.dispatch_date ? formatDateShort(order.dispatch_date) : '—'}
-      </ThemedText>
-      <ThemedText variant="small" color="subtitle" numberOfLines={2} style={styles.histSub}>
-        {itemsSummary}
-      </ThemedText>
-    </TouchableOpacity>
+    <ListRow
+      title={`Order #${order.id}`}
+      subtitle={order.dispatch_date ? formatDateShort(order.dispatch_date) : '—'}
+      trailing={
+        <ThemedText variant="body" color="subtitle">
+          {formatPriceShort(order.total_amount)}
+        </ThemedText>
+      }
+      onPress={onPress}
+    />
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.layout.divider,
-  },
-  spacer: { minWidth: 60 },
-
   tabs: {
     marginHorizontal: Theme.spacing.md,
     marginVertical: Theme.spacing.sm,
@@ -344,18 +326,9 @@ const styles = StyleSheet.create({
   list: { paddingVertical: Theme.spacing.sm },
   loader: { marginTop: Theme.spacing.xl },
 
-  histRow: {
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm + 2,
-  },
-  histTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  histSub: {
-    marginTop: 2,
-  },
+
+
+
 
   // Commission tab
   commList: { paddingBottom: Theme.spacing.xl },

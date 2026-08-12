@@ -20,9 +20,13 @@ import { CatalogPhotoThumb } from '../../../components/CatalogPhotoThumb';
 import { PHOTO_BUCKET, PHOTO_PX } from '../../../utils/catalogPhoto';
 import { formatPriceShort } from '../../../utils/formatters';
 import type { SubscriptionPlan } from '../../../types';
+import { GradientSep } from './GradientSep';
+// Read, not copied. This row had drifted from Food and Essentials on four
+// counts — row height, inset, subtext size and the separator itself. See
+// homeRow.ts.
+import { HOME_ROW } from './homeRow';
 
-/** Matches the food and essentials rows, so the three tabs share one rhythm. */
-const THUMB = 66;
+const THUMB = HOME_ROW.thumb;
 
 interface Props {
   plan: SubscriptionPlan;
@@ -35,8 +39,9 @@ export function PlanBrowseRow({ plan, isLast, onPress }: Props) {
   const perDay = days > 0 ? (plan.price ?? 0) / days : null;
 
   return (
+    <>
     <TouchableOpacity
-      style={[styles.row, isLast && styles.rowLast]}
+      style={styles.row}
       activeOpacity={0.7}
       onPress={onPress}
       accessibilityRole="button"
@@ -74,6 +79,11 @@ export function PlanBrowseRow({ plan, isLast, onPress }: Props) {
 
       <ThemedText variant="body" color="mint" style={styles.chev}>›</ThemedText>
     </TouchableOpacity>
+    {/* The same faded rule Food and Essentials use, between rows and not under
+        the last — this row used to draw a flat hairline border on itself and
+        switch it off with `isLast`. */}
+    {!isLast && <GradientSep />}
+    </>
   );
 }
 
@@ -81,16 +91,14 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: Theme.spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.layout.divider,
+    paddingHorizontal: HOME_ROW.paddingHorizontal,
+    paddingVertical: HOME_ROW.paddingVertical,
   },
-  rowLast: { borderBottomWidth: 0 },
-  meta: { flex: 1, marginLeft: Theme.spacing.md, marginRight: Theme.spacing.sm },
-  name: { fontSize: Theme.typography.sizes.body + 1 },
-  sub: { marginTop: 2 },
+  meta: { flex: 1, marginLeft: HOME_ROW.metaLeft, marginRight: HOME_ROW.metaRight },
+  name: { fontSize: HOME_ROW.nameSize },
+  sub: { marginTop: 2, fontSize: HOME_ROW.subSize },
   priceWrap: { alignItems: 'flex-end', marginRight: Theme.spacing.sm },
-  price: { fontSize: Theme.typography.sizes.body + 1 },
-  perDay: { marginTop: 2 },
+  price: { fontSize: HOME_ROW.priceSize },
+  perDay: { marginTop: 2, fontSize: HOME_ROW.subSize },
   chev: { fontSize: Theme.typography.sizes.subtitle },
 });
