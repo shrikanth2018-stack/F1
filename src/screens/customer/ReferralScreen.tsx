@@ -23,6 +23,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
+import { ScreenHeader } from '../../components/ScreenHeader';
 import { Divider } from '../../components/Divider';
 import {
   useMyReferralCode,
@@ -34,7 +35,6 @@ import {
 } from '../../hooks/useReferrals';
 import { formatDateShort, formatPriceShort } from '../../utils/formatters';
 import { trackReferralApplied, trackReferralShared } from '../../utils/analytics';
-import type { CustomerNavProp } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
@@ -114,7 +114,7 @@ const ms = StyleSheet.create({
 });
 
 // ── Main screen ───────────────────────────────────────────────
-export function ReferralScreen({ navigation }: { navigation: CustomerNavProp }) {
+export function ReferralScreen() {
   const [applyCode, setApplyCode] = useState('');
   const { data: myCode, isLoading: codeLoading } = useMyReferralCode();
   const { data: settings } = useReferralSettings();
@@ -181,12 +181,7 @@ export function ReferralScreen({ navigation }: { navigation: CustomerNavProp }) 
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
-        <ThemedText variant="header" color="primary" style={styles.title}>Referrals</ThemedText>
-        <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <ThemedText variant="body" color="muted">Close</ThemedText>
-        </TouchableOpacity>
-      </View>
+      <ScreenHeader title="Referrals" />
 
       <ScrollView
         contentContainerStyle={styles.scroll}
@@ -347,15 +342,7 @@ export function ReferralScreen({ navigation }: { navigation: CustomerNavProp }) 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
 
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.layout.divider,
-  },
-  title:  { flex: 1, textAlign: 'left' },
+
 
   scroll: { paddingBottom: Theme.spacing.xl * 2 },
 

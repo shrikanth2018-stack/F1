@@ -25,6 +25,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
+import { ScreenHeader } from '../../components/ScreenHeader';
 import { ThemedInput } from '../../components/ThemedInput';
 import { PinMap } from '../../components/PinMap';
 import { useAddAddress, useUpdateAddress, useAddresses, useSetDefaultAddress, useDeleteAddress } from '../../hooks/useAddresses';
@@ -277,12 +278,10 @@ export function AddAddressScreen({ navigation, route, onComplete }: Props) {
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <View style={styles.header}>
-          <ThemedText variant="header" color="primary">{isEditMode ? 'Edit Address' : 'Add Address'}</ThemedText>
-          <TouchableOpacity onPress={() => onComplete ? onComplete() : navigation?.goBack()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <ThemedText variant="body" color="muted">Close</ThemedText>
-          </TouchableOpacity>
-        </View>
+        <ScreenHeader
+          title={isEditMode ? 'Edit Address' : 'Add Address'}
+          onDismiss={() => (onComplete ? onComplete() : navigation?.goBack())}
+        />
 
         {/* Label tabs */}
         <View style={styles.labelRow}>
@@ -402,13 +401,7 @@ export function AddAddressScreen({ navigation, route, onComplete }: Props) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
   content: { paddingBottom: Theme.spacing.md },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.xs,
-  },
+
   hairline: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: Theme.colors.text.mint,

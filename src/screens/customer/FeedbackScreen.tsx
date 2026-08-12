@@ -24,6 +24,7 @@ import { supabase } from '../../api/supabaseClient';
 import { useSupabaseQuery } from '../../api/useSupabaseQuery';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
+import { ScreenHeader } from '../../components/ScreenHeader';
 import { useAuth } from '../../hooks/useAuth';
 import { trackFeedbackSubmitted } from '../../utils/analytics';
 import type { CustomerScreenProps } from '../../navigation/types';
@@ -128,12 +129,7 @@ export function FeedbackScreen({ navigation, route }: CustomerScreenProps<'Feedb
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <View style={styles.header}>
-          <ThemedText variant="header" color="primary">{headingText}</ThemedText>
-          <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <ThemedText variant="body" color="muted">Close</ThemedText>
-          </TouchableOpacity>
-        </View>
+        <ScreenHeader title={headingText} />
 
         {/* Per-item ratings — only when rating a specific order */}
         {hasItemContext && (
@@ -204,13 +200,6 @@ const STAR_SIZE = 34;
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
   content: { paddingBottom: Theme.spacing.xl },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-  },
   section: { padding: Theme.spacing.md },
   sectionLabel: { letterSpacing: 1, marginBottom: Theme.spacing.sm },
   question: { marginBottom: Theme.spacing.md },

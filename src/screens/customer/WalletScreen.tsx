@@ -15,10 +15,12 @@ import {
   Platform,
   StyleSheet,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import RazorpayCheckout from '../../utils/razorpay';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
+import { ListRow, ListRowSeparator } from '../../components/ListRow';
+import { ScreenHeader } from '../../components/ScreenHeader';
 import { Divider } from '../../components/Divider';
 import { EmptyState } from '../../components/EmptyState';
 import {
@@ -34,11 +36,10 @@ import { trackWalletTopUp } from '../../utils/analytics';
 import { RAZORPAY_KEY_ID } from '../../utils/env';
 import { formatPriceShort } from '../../utils/formatters';
 import { infoDialog } from '../../utils/confirmDialog';
-import type { CustomerNavProp } from '../../navigation/types';
 
 const QUICK_AMOUNTS = [500, 1000, 2000];
 
-export function WalletScreen({ navigation }: { navigation: CustomerNavProp }) {
+export function WalletScreen() {
   const [customAmount, setCustomAmount] = useState('');
   const insets = useSafeAreaInsets();
 
@@ -127,17 +128,10 @@ export function WalletScreen({ navigation }: { navigation: CustomerNavProp }) {
   };
 
   return (
-    <View style={[styles.card, { paddingBottom: insets.bottom || Theme.spacing.lg }]}>
-      {/* Drag handle */}
-      <View style={styles.handle} />
+    <SafeAreaView style={[styles.page, { paddingBottom: insets.bottom || Theme.spacing.lg }]}>
 
       {/* Header row */}
-      <View style={styles.header}>
-        <ThemedText variant="header" color="primary">My Wallet</ThemedText>
-        <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <ThemedText variant="body" color="muted">Close</ThemedText>
-        </TouchableOpacity>
-      </View>
+      <ScreenHeader title="My Wallet" />
 
       {/* Balance — prominent, centred */}
       <View style={styles.balanceSection}>
@@ -207,59 +201,49 @@ export function WalletScreen({ navigation }: { navigation: CustomerNavProp }) {
         ) : (
           (transactions ?? []).map((tx, idx) => (
             <React.Fragment key={tx.id}>
-              {idx > 0 && <View style={styles.txSep} />}
-              <View style={styles.txRow}>
-                <View style={styles.txInfo}>
-                  <ThemedText variant="body" color="primary">{tx.description}</ThemedText>
-                  <ThemedText variant="small" color="muted">
-                    {new Date(tx.created_at).toLocaleDateString('en-IN', {
-                      day: 'numeric', month: 'short',
-                      hour: '2-digit', minute: '2-digit',
-                    })}
+              {idx > 0 && <ListRowSeparator />}
+              <ListRow
+                title={tx.description}
+                subtitle={new Date(tx.created_at).toLocaleDateString('en-IN', {
+                  day: 'numeric', month: 'short',
+                  hour: '2-digit', minute: '2-digit',
+                })}
+                trailing={
+                  <ThemedText
+                    variant="subtitle"
+                    style={[styles.txAmount, {
+                      color: tx.transaction_type === 'credit'
+                        ? Theme.colors.status.success
+                        : Theme.colors.status.error,
+                    }]}
+                  >
+                    {tx.transaction_type === 'credit' ? '+' : '-'}{formatPriceShort(Math.abs(tx.amount))}
                   </ThemedText>
-                </View>
-                <ThemedText
-                  variant="subtitle"
-                  style={[styles.txAmount, {
-                    color: tx.transaction_type === 'credit'
-                      ? Theme.colors.status.success
-                      : Theme.colors.status.error,
-                  }]}
-                >
-                  {tx.transaction_type === 'credit' ? '+' : '-'}{formatPriceShort(Math.abs(tx.amount))}
-                </ThemedText>
-              </View>
+                }
+              />
             </React.Fragment>
           ))
         )}
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
+  /**
+   * A PAGE, not a sheet. This was `card` — flex:1 with a 60pt top margin and
+   * rounded top corners, so a strip of Home showed above it and the whole
+   * thing read as a panel lifted over the app. That was right while it was
+   * presented as a bottom sheet; as a page the margin is a gap against nothing
+   * and the radius is a corner with no edge to sit on.
+   *
+   * `background.primary` rather than the sheet's `secondary`: every other page
+   * reached from the profile menu uses primary, and matching them is the
+   * point.
+   */
+  page: {
     flex: 1,
-    backgroundColor: Theme.colors.background.secondary,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    marginTop: 60,          // leaves a sliver of the screen behind visible
-  },
-  handle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: Theme.colors.layout.divider,
-    alignSelf: 'center',
-    marginTop: Theme.spacing.sm,
-    marginBottom: Theme.spacing.xs,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
+    backgroundColor: Theme.colors.background.primary,
   },
   balanceSection: {
     alignItems: 'center',
@@ -313,21 +297,10 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: Theme.spacing.md,
   },
-  txRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: Theme.spacing.sm,
-  },
-  txSep: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: Theme.colors.layout.divider,
-  },
+
+
   txAmount: {
     fontSize: Theme.typography.sizes.subtitle + 2,
   },
-  txInfo: {
-    flex: 1,
-    marginRight: Theme.spacing.sm,
-  },
+
 });

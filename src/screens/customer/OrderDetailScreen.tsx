@@ -27,6 +27,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
+import { ScreenHeader } from '../../components/ScreenHeader';
 import { Divider } from '../../components/Divider';
 import { ErrorRetry } from '../../components/ErrorRetry';
 import { useOrderGroup, useCancelOrder, type OrderWithItems } from '../../hooks/useOrders';
@@ -267,18 +268,10 @@ export function OrderDetailScreen({ route, navigation }: any) {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
         {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <ThemedText variant="body" color="accent">‹ Back</ThemedText>
-          </TouchableOpacity>
-          {/* Every row number, not just the lowest — see the note at the
-              top of this file. Capped by formatOrderNumbers so a long
-              checkout cannot push the title off the screen. */}
-          <ThemedText variant="header" color="primary" numberOfLines={1} style={styles.headerTitle}>
-            {allIds.length > 1 ? 'Orders ' : 'Order '}{formatOrderNumbers(allIds)}
-          </ThemedText>
-          <View style={{ width: 40 }} />
-        </View>
+        {/* Every row number, not just the lowest — see the note at the top of
+            this file. Capped by formatOrderNumbers so a long checkout cannot
+            push the title off the screen. */}
+        <ScreenHeader title={`${allIds.length > 1 ? 'Orders ' : 'Order '}${formatOrderNumbers(allIds)}`} />
 
         {/* Cancelled banner — whole group cancelled */}
         {allCancelled && (
@@ -559,16 +552,10 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
   content: { paddingBottom: Theme.spacing.xl },
   loading: { textAlign: 'center', marginTop: Theme.spacing.xl },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-  },
+
   /** Two order numbers are wider than one — let the title take the slack
    *  between Back and the right spacer rather than pushing them apart. */
-  headerTitle: { flex: 1, textAlign: 'center', marginHorizontal: Theme.spacing.sm },
+
   section: { padding: Theme.spacing.md },
   scheduleSection: { paddingTop: Theme.spacing.sm },
   scheduleHeader: {

@@ -15,7 +15,6 @@
 
 import React, { useState, useEffect } from 'react';
 import {
-  View,
   ScrollView,
   TouchableOpacity,
   TextInput,
@@ -25,6 +24,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
+import { ScreenHeader } from '../../components/ScreenHeader';
 import { Divider } from '../../components/Divider';
 import { infoDialog } from '../../utils/confirmDialog';
 import { getErrorMessage } from '../../utils/formatters';
@@ -98,13 +98,7 @@ export function VendorRegistrationScreen({ navigation }: CustomerScreenProps<'Ve
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <ThemedText variant="body" color="accent" style={styles.txt}>‹ Back</ThemedText>
-        </TouchableOpacity>
-        <ThemedText variant="header" color="primary" style={styles.title}>Vendor Registration</ThemedText>
-        <View style={styles.spacer} />
-      </View>
+      <ScreenHeader title="Vendor Registration" />
 
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         {awaitingReview && (
@@ -214,16 +208,6 @@ export function VendorRegistrationScreen({ navigation }: CustomerScreenProps<'Ve
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.layout.divider,
-  },
-  title: { flex: 1, textAlign: 'center' },
-  spacer: { minWidth: 60 },
   loader: { marginTop: Theme.spacing.xl },
 
   scroll: { paddingHorizontal: Theme.spacing.md, paddingBottom: Theme.spacing.xl * 2 },

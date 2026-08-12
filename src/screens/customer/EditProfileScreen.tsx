@@ -35,6 +35,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { infoDialog } from '../../utils/confirmDialog';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
+import { ScreenHeader } from '../../components/ScreenHeader';
 import { ThemedInput } from '../../components/ThemedInput';
 import { useAuth } from '../../hooks/useAuth';
 import { useSupabaseMutation } from '../../api/useSupabaseQuery';
@@ -184,12 +185,7 @@ export function EditProfileScreen({ navigation }: any) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <ThemedText variant="header" color="primary">Edit Profile</ThemedText>
-        <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <ThemedText variant="body" color="muted">Close</ThemedText>
-        </TouchableOpacity>
-      </View>
+      <ScreenHeader title="Edit Profile" />
 
       <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
         {/* Name */}
@@ -343,13 +339,6 @@ export function EditProfileScreen({ navigation }: any) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-  },
   body: {
     paddingBottom: Theme.spacing.xl,
   },

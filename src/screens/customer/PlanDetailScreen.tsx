@@ -24,6 +24,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
+import { ScreenHeader } from '../../components/ScreenHeader';
 import { Divider } from '../../components/Divider';
 import { usePlanById, usePlanItems, useMySubscriptions } from '../../hooks/useSubscriptions';
 import { useDeliveryCycles } from '../../hooks/useDeliveryCycles';
@@ -183,12 +184,7 @@ export function PlanDetailScreen({ route, navigation }: any) {
   if (!plan) {
     return (
       <SafeAreaView style={styles.container}>
-        <View style={styles.header}>
-          <ThemedText variant="header" color="primary" style={styles.headerTitle}>Plan Details</ThemedText>
-          <TouchableOpacity onPress={goHome} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <ThemedText variant="body" color="muted">Close</ThemedText>
-          </TouchableOpacity>
-        </View>
+        <ScreenHeader title="Plan Details" onDismiss={goHome} label="Close" />
         <ThemedText variant="body" color="subtitle" style={styles.loading}>
           Loading...
         </ThemedText>
@@ -203,12 +199,7 @@ export function PlanDetailScreen({ route, navigation }: any) {
   if (!essentialsEnabled && planType === 'essentials') {
     return (
       <SafeAreaView style={styles.container}>
-        <View style={styles.header}>
-          <ThemedText variant="header" color="primary" style={styles.headerTitle}>Plan Details</ThemedText>
-          <TouchableOpacity onPress={goHome} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <ThemedText variant="body" color="muted">Close</ThemedText>
-          </TouchableOpacity>
-        </View>
+        <ScreenHeader title="Plan Details" onDismiss={goHome} label="Close" />
         <ThemedText variant="body" color="subtitle" style={styles.loading}>
           Essentials subscriptions are currently unavailable.
         </ThemedText>
@@ -225,12 +216,7 @@ export function PlanDetailScreen({ route, navigation }: any) {
   return (
     <SafeAreaView style={styles.container}>
       {/* Header — close-only */}
-      <View style={styles.header}>
-        <ThemedText variant="header" color="primary" style={styles.headerTitle}>Plan Details</ThemedText>
-        <TouchableOpacity onPress={goHome} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <ThemedText variant="body" color="muted">Close</ThemedText>
-        </TouchableOpacity>
-      </View>
+      <ScreenHeader title="Plan Details" onDismiss={goHome} label="Close" />
 
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 90 }]}>
         {/* Structured plan info */}
@@ -346,14 +332,8 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
   content: {},
   loading: { textAlign: 'center', marginTop: Theme.spacing.xl },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-  },
-  headerTitle: { flex: 1, textAlign: 'left' },
+
+
   section: { padding: Theme.spacing.md },
   sectionLabel: { letterSpacing: 1, marginBottom: Theme.spacing.sm },
   infoRow: {

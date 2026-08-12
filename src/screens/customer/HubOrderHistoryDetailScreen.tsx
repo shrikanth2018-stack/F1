@@ -15,13 +15,13 @@ import {
   View,
   ScrollView,
   StyleSheet,
-  TouchableOpacity,
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
+import { ScreenHeader } from '../../components/ScreenHeader';
 import { Divider } from '../../components/Divider';
 import { ErrorRetry } from '../../components/ErrorRetry';
 import { supabase } from '../../api/supabaseClient';
@@ -31,7 +31,7 @@ import type { CustomerScreenProps } from '../../navigation/types';
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
 
-export function HubOrderHistoryDetailScreen({ route, navigation }: CustomerScreenProps<'HubOrderHistoryDetail'>) {
+export function HubOrderHistoryDetailScreen({ route }: CustomerScreenProps<'HubOrderHistoryDetail'>) {
   const { orderId } = route.params;
 
   const { data, isLoading, error, refetch } = useQuery({
@@ -59,13 +59,7 @@ export function HubOrderHistoryDetailScreen({ route, navigation }: CustomerScree
   if (isLoading || !data) {
     return (
       <SafeAreaView style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <ThemedText variant="body" color="accent">‹ Back</ThemedText>
-          </TouchableOpacity>
-          <ThemedText variant="header" color="primary">Order</ThemedText>
-          <View style={styles.spacer} />
-        </View>
+        <ScreenHeader title="Order" />
         <ActivityIndicator style={{ marginTop: Theme.spacing.xl }} color={Theme.colors.text.mint} />
       </SafeAreaView>
     );
@@ -79,13 +73,7 @@ export function HubOrderHistoryDetailScreen({ route, navigation }: CustomerScree
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <ThemedText variant="body" color="accent">‹ Back</ThemedText>
-        </TouchableOpacity>
-        <ThemedText variant="header" color="primary">Order #{order.id}</ThemedText>
-        <View style={styles.spacer} />
-      </View>
+      <ScreenHeader title={`Order #${order.id}`} />
 
       <ScrollView contentContainerStyle={styles.scroll}>
 
@@ -187,16 +175,8 @@ function Row({ label, value, last = false }: { label: string; value: string; las
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.layout.divider,
-  },
-  spacer: { minWidth: 60 },
+
+
 
   scroll: { paddingBottom: Theme.spacing.xl * 2 },
 

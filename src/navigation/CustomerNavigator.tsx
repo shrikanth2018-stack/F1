@@ -40,7 +40,7 @@ export function CustomerNavigator() {
       screenOptions={{
         headerShown: false,
         contentStyle: { backgroundColor: Theme.colors.background.primary },
-        animation: 'slide_from_right',
+        animation: Theme.motion.screen,
       }}
     >
       <Stack.Screen name="Home" component={HomeScreen} />
@@ -53,18 +53,10 @@ export function CustomerNavigator() {
       <Stack.Screen name="AddAddress" component={AddAddressScreen} />
       <Stack.Screen name="PlanDetail" component={PlanDetailScreen} />
       <Stack.Screen name="CustomPlanBuilder" component={CustomPlanBuilderScreen} />
-      <Stack.Screen
-        name="Wallet"
-        component={WalletScreen}
-        options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
-      />
+      <Stack.Screen name="Wallet" component={WalletScreen} />
       <Stack.Screen name="Referral" component={ReferralScreen} />
       <Stack.Screen name="Feedback" component={FeedbackScreen} />
-      <Stack.Screen
-        name="LoyaltyPoints"
-        component={LoyaltyPointsScreen}
-        options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
-      />
+      <Stack.Screen name="LoyaltyPoints" component={LoyaltyPointsScreen} />
       <Stack.Screen name="HubDashboard" component={HubDashboardScreen} />
       <Stack.Screen name="VendorDashboard" component={VendorDashboardScreen} />
       <Stack.Screen name="VendorRegistration" component={VendorRegistrationScreen} />

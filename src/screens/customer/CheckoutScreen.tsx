@@ -27,6 +27,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import RazorpayCheckout from '../../utils/razorpay';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
+import { ScreenHeader } from '../../components/ScreenHeader';
 import { ThemedButton } from '../../components/ThemedButton';
 import { Divider } from '../../components/Divider';
 import { DispatchBadge } from '../../components/DispatchBadge';
@@ -416,13 +417,7 @@ export function CheckoutScreen({ navigation, route }: any) {
     return (
       <SafeAreaView style={styles.container}>
         <ScrollView contentContainerStyle={styles.content}>
-          <View style={styles.header}>
-            <TouchableOpacity onPress={() => navigation.goBack()}>
-              <ThemedText variant="body" color="accent">‹ Back</ThemedText>
-            </TouchableOpacity>
-            <ThemedText variant="header" color="primary">Checkout</ThemedText>
-            <View style={{ width: 40 }} />
-          </View>
+          <ScreenHeader title="Checkout" />
           <ThemedText variant="body" color="subtitle" style={{ padding: Theme.spacing.lg, textAlign: 'center' }}>
             Essentials checkout is currently unavailable.
           </ThemedText>
@@ -435,13 +430,7 @@ export function CheckoutScreen({ navigation, route }: any) {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
         {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <ThemedText variant="body" color="accent">‹ Back</ThemedText>
-          </TouchableOpacity>
-          <ThemedText variant="header" color="primary">Checkout</ThemedText>
-          <View style={{ width: 40 }} />
-        </View>
+        <ScreenHeader title="Checkout" />
 
         {/* Address */}
         <View style={styles.section}>
@@ -659,13 +648,7 @@ export function CheckoutScreen({ navigation, route }: any) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
   content: { paddingBottom: 100 },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-  },
+
   section: { padding: Theme.spacing.md },
   sectionLabel: { letterSpacing: 1, marginBottom: Theme.spacing.sm },
   addressCard: {
