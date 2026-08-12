@@ -388,9 +388,18 @@ export function AdminOrdersScreen({ navigation, route }: AdminScreenProps<'Admin
                 >
                   {routingLabel}
                 </ThemedText>
+                {/* On the Undelivered tab the row IS the finding, so it wears
+                    the same amber "Undelivered" mark the customer sees in My
+                    Orders — one word and one colour on both sides of the
+                    business, rather than the admin reading "Received at Hub"
+                    in calm blue for the order a customer was just told never
+                    arrived.
+                    The real status is not lost: it moves to the detail line
+                    below, because where an order stalled is exactly what the
+                    admin needs in order to chase it. */}
                 <DispatchBadge
-                  label={status}
-                  variant={orderStatusVariant(status)}
+                  label={isUndelivered ? 'Undelivered' : status}
+                  variant={isUndelivered ? 'warning' : orderStatusVariant(status)}
                 />
               </View>
               {unsuccessful && !isUndelivered && (
@@ -406,7 +415,7 @@ export function AdminOrdersScreen({ navigation, route }: AdminScreenProps<'Admin
               {isUndelivered && (
                 <>
                   <ThemedText variant="small" color="warning" style={styles.unsuccessfulText}>
-                    Due {formatDateShort(item.dispatch_date)} · {item.payment_method === 'wallet' ? 'paid by wallet' : item.payment_method === 'razorpay' ? 'paid online' : 'unpaid'} · {formatPriceShort(Number(item.total_amount) || 0)}
+                    Due {formatDateShort(item.dispatch_date)} · stalled at {status} · {item.payment_method === 'wallet' ? 'paid by wallet' : item.payment_method === 'razorpay' ? 'paid online' : 'unpaid'} · {formatPriceShort(Number(item.total_amount) || 0)}
                   </ThemedText>
                   {busyId === item.id ? (
                     <ActivityIndicator color={Theme.colors.status.error} size="small" style={styles.undActions} />

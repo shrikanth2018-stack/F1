@@ -23,10 +23,10 @@
  *   Plans  → number of ACTIVE PLANS. A progress fraction ("2/30") was tried
  *            and dropped: it can only ever describe one plan, so the moment a
  *            customer holds two it is quietly reporting the wrong one. A
- *            summed meal count was tried and dropped for the same reason —
- *            28 breakfasts plus 10 snacks is not 38 of anything. How far
- *            through each plan you are belongs in the panel, where there is
- *            room to say it once per plan.
+ *            summed count was tried and dropped for the same reason — 28
+ *            breakfasts plus 10 snacks is not 38 of anything. How far through
+ *            each plan you are belongs in the panel, where there is room to
+ *            say it once per plan.
  *
  * Tapping opens a translucent panel over the list. The panel is intentionally
  * read-mostly: it answers "what is coming and when", and hands off to the
@@ -63,6 +63,7 @@ import { formatDateOrdinalShort } from '../../../utils/formatters';
 import { formatTime12h } from '../../../utils/timeEngine';
 
 type OpenRail = 'orders' | 'subs' | null;
+
 
 const { height: SCREEN_H } = Dimensions.get('window');
 
@@ -194,11 +195,11 @@ export function HomeRails() {
   /**
    * ONE ROW PER SUBSCRIPTION, each with its OWN remaining count.
    *
-   * The panel used to end with a single summed figure — "38 meals left" for a
+   * The panel used to end with a single summed figure — "38 left" for a
    * Breakfast 30 and a Snacks 10 — and that number is not a quantity of
-   * anything the customer can receive. They are different meals at different
-   * times of day; 28 breakfasts and 10 snacks do not add up to 38 of
-   * something. The only useful answer is per plan, so the total is gone.
+   * anything the customer can receive. They arrive at different times of day;
+   * 28 breakfasts and 10 snacks do not add up to 38 of something. The only
+   * useful answer is per plan, so the total is gone.
    *
    * The CYCLE NAME is on every row for the same reason. Plans are named by
    * their owner ("My Snacks · 10 days") or by the office ("Breakfast 30"), and
@@ -418,29 +419,49 @@ export function HomeRails() {
                         still owed. Nothing is added across plans — see
                         activePlans for why a combined total was wrong. */}
                     <ScrollView style={styles.panelScroll} showsVerticalScrollIndicator={false}>
-                      {activePlans.map((p) => (
-                        <View key={p.id} style={styles.linePlain}>
-                          <ThemedText
-                            variant="subtitle"
-                            color="primary"
-                            style={styles.panelTitle}
-                            numberOfLines={1}
-                          >
-                            {p.name}
-                          </ThemedText>
-                          <ThemedText variant="small" color="muted">
-                            {[
-                              p.cycleName,
-                              p.isPaused ? 'Paused' : `Day ${Math.max(0, p.total - p.left)} of ${p.total}`,
-                            ].filter(Boolean).join(' · ')}
-                          </ThemedText>
-                          {/* The count this plan owes, in its own colour so it
-                              is findable at a glance down a list of plans. */}
-                          <ThemedText variant="small" color="mint">
-                            {p.left} meal{p.left === 1 ? '' : 's'} left
-                          </ThemedText>
-                        </View>
-                      ))}
+                      {activePlans.map((p) => {
+                        /**
+                         * TWO LINES: what the plan is called, then when it
+                         * arrives and how much of it is left. Nothing else.
+                         *
+                         * The days-consumed reading ("Day 2 of 30") is gone. It
+                         * answered a question nobody was asking — the customer
+                         * wants to know what they still have, not how much they
+                         * have used — and it forced a third line to carry the
+                         * count that actually matters.
+                         *
+                         * NO UNIT ON THE COUNT, and that is the neat part. A
+                         * plan's daily drop is whatever its lines say: often a
+                         * dish with essentials alongside, sometimes no cooked
+                         * food at all. "28 meals" misnames most of those and
+                         * "28 deliveries" is a mouthful; "28 left out of 30"
+                         * needs no noun and cannot be wrong.
+                         */
+                        const prefix = [p.cycleName, p.isPaused ? 'Paused' : null]
+                          .filter(Boolean).join(' · ');
+                        return (
+                          <View key={p.id} style={styles.linePlain}>
+                            <ThemedText
+                              variant="subtitle"
+                              color="primary"
+                              style={styles.panelTitle}
+                              numberOfLines={1}
+                            >
+                              {p.name}
+                            </ThemedText>
+                            <ThemedText variant="small" color="muted">
+                              {prefix ? `${prefix} · ` : ''}
+                              {/* The count keeps its own colour so it is
+                                  findable down a list of plans. Nested at the
+                                  SAME variant — a nested Text does not inherit
+                                  an overridden size. */}
+                              <ThemedText variant="small" color="mint">
+                                {`${p.left} left out of ${p.total}`}
+                              </ThemedText>
+                            </ThemedText>
+                          </View>
+                        );
+                      })}
                     </ScrollView>
                     <PanelAction
                       label="Manage, skip a day or pause"
@@ -493,7 +514,13 @@ function Rail({
         {label}
       </Text>
       {/* Same shape and white-on-colour treatment as the cart badge, on the
-          corner that hangs over the screen rather than off its edge. */}
+          corner that hangs over the screen rather than off its edge.
+
+          THE FILL IS LOAD-BEARING, not decoration. This corner overhangs the
+          HERO PHOTO, not the bar, so the digits sit on whatever image the
+          admin last uploaded. Tried without it on a device: the numbers were
+          invisible. Do not remove the circle without first moving the count
+          somewhere with a background of its own. */}
       {showBadge && (
         <View style={[styles.railBadge, { backgroundColor: badgeBg }]}>
           <Text style={styles.railBadgeText} numberOfLines={1}>

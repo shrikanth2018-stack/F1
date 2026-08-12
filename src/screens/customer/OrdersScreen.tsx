@@ -162,7 +162,14 @@ export function OrdersScreen({ navigation }: any) {
             // 'Undelivered' is not in the status vocabulary, so
             // orderStatusVariant would fall through to its 'info' default and
             // print it in the same colour as "Preparing".
-            variant={undelivered ? 'error' : orderStatusVariant(status)}
+            //
+            // WARNING, NOT ERROR. Red is what Cancelled and Failed wear, and
+            // those are settled — the order is over and the money decided. An
+            // undelivered order is neither: it is outstanding, somebody still
+            // owes the customer something. Amber says "unresolved", which is
+            // the true state, and it matches the same mark on the admin
+            // Undelivered tab so both sides of the business read one colour.
+            variant={undelivered ? 'warning' : orderStatusVariant(status)}
           />
         </View>
 
