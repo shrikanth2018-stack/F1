@@ -59,8 +59,17 @@ interface Props {
   onAdd: (item: ExtraCandidate) => void;
 }
 
-/** Full size, deliberately: a dish you cannot recognise is not a shortcut. */
-const TILE = 44;
+/**
+ * Full size, deliberately: a dish you cannot recognise is not a shortcut.
+ *
+ * EXPORTED because the plan builder's picker is the same idea wearing the same
+ * clothes — photos across the full width, a `+` on the selected one, a caption
+ * naming it. Its BEHAVIOUR differs (it carries a quantity and a cap, this one
+ * adds and forgets), so the two are separate components; the metric they share
+ * is defined once here rather than typed twice and drifting.
+ */
+export const PICK_TILE = 44;
+const TILE = PICK_TILE;
 
 export function AddExtraStrip({ candidates, expanded, onToggle, onAdd }: Props) {
   const [selectedId, setSelectedId] = useState<number | null>(null);
