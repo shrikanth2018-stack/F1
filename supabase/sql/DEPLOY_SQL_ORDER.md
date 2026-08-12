@@ -1263,3 +1263,54 @@ DELETE FROM storage.buckets WHERE id = 'plan-photos';
 ALTER TABLE public.subscription_plans
   DROP COLUMN IF EXISTS image_path, DROP COLUMN IF EXISTS image_updated_at;
 ```
+
+---
+
+## 34. The customer gets the same batch rule everyone else has (2026-08-12)
+
+| # | File | What it does |
+|---|------|--------------|
+| 1 | `customer_order_states.sql` | Moves the undelivered predicate into `_undelivered_order_ids(user)`; `admin_undelivered_order_ids()` keeps its name, signature, role gate and result and delegates; adds `my_order_states()` for the caller's own orders. |
+
+**Supersedes the function body in `admin_undelivered_orders.sql`.** Re-apply this
+file after that one if that one is ever edited — whichever runs last wins,
+exactly like the `push_kitchen_summary` pair in §30 and the manifest pair in §32.
+
+**Why.** Every operational board is scoped to the batch released by the latest
+kitchen push — Kitchen and Packing via `useStaffOrders`, the driver via an
+explicit `(cycle, date)` filter, the hub via the same staff hook, the vendor via
+`vendor_orders()`. The customer's Home rail was scoped to nothing but
+`status NOT IN (Delivered, Cancelled, Failed)`, which has no time bound: an
+order nobody ever marked Delivered sat there indefinitely still reading
+"Dispatched by : 7:30 AM" — while the *same* order sat on Admin → Orders →
+Undelivered as lost. One order, two screens, opposite meanings. Verified on the
+live database before the change: orders #11581 and #11605 were on both at once.
+
+**"Undelivered" is a LABEL, not a status.** Nothing writes `orders.status` and
+no new status value exists. Making it real would have meant touching the status
+CHECK, `orders_status_no_regress`'s flow array, `advance_orders_status`,
+`alert_undelivered_batch`, `push_kitchen_summary`, `isOperationalOrder`,
+`nextPackingStatus`, `rolledUpStatus`, both colour maps and the vendor-credit
+trigger's guard — and something new would have to WRITE it on the kitchen's
+critical path. The row keeps the status it actually stalled at, which is what
+staff and admin need in order to chase it.
+
+**The admin result is unchanged, and that was asserted rather than assumed.**
+Dry-run inside `BEGIN … ROLLBACK`: the pre-split predicate and
+`_undelivered_order_ids(NULL)` returned the same 4 ids, 0 lost, 0 gained.
+`my_order_states()` was then exercised under `SET LOCAL ROLE authenticated`
+with a real customer's claims — never as superuser, which bypasses RLS and
+would confirm a function that returns nothing for everyone.
+
+**One known edge is preserved deliberately:** where a branch has no
+`kitchen_push_log` row at all, `NOT (lp.cycle_id = … AND lp.push_date = …)` is
+NULL and the order is excluded. That is today's behaviour; extraction and
+correction should not ride in together.
+
+**App coupling:** apply the SQL, then `npm run supabase:gen-types`, then ship
+the OTA. Old app builds never call `my_order_states()` and the admin tab is
+byte-identical, so the SQL is safe to apply well ahead of the app.
+
+**Rollback:** commented block at the foot of the SQL file — drop
+`my_order_states()`, re-apply `admin_undelivered_orders.sql` (which carries the
+original self-contained body), then drop `_undelivered_order_ids()`.

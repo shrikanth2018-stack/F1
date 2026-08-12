@@ -2860,6 +2860,12 @@ export type Database = {
         }[]
       }
       _kitchen_get_secret: { Args: { p_name: string }; Returns: string }
+      _undelivered_order_ids: {
+        Args: { p_user_id?: string }
+        Returns: {
+          order_id: number
+        }[]
+      }
       add_or_merge_supply_order_item: {
         Args: {
           p_added_by: string
@@ -3168,6 +3174,13 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      my_order_states: {
+        Args: never
+        Returns: {
+          order_id: number
+          state: string
+        }[]
       }
       notify_admins_listing_submitted: {
         Args: { p_count: number; p_vendor_name: string }

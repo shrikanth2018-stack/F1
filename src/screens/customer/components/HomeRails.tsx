@@ -14,12 +14,19 @@
  * as one system rather than three inventions.
  *   Orders → number of ORDER GROUPS still in flight. Grouped, because one
  *            checkout spanning breakfast and lunch is one order to the
- *            customer and two rows in the table.
+ *            customer and two rows in the table. "In flight" is decided by
+ *            the server (useMyOrderStates), on the same batch rule the
+ *            Kitchen, Packing, driver, hub and vendor boards already use — an
+ *            order that was released and never delivered leaves this rail the
+ *            moment the next cycle is pushed, and is labelled "Undelivered"
+ *            in My Orders from that instant.
  *   Plans  → number of ACTIVE PLANS. A progress fraction ("2/30") was tried
  *            and dropped: it can only ever describe one plan, so the moment a
- *            customer holds two it is quietly reporting the wrong one. How
- *            far through each plan you are belongs in the panel, where there
- *            is room to say it once per plan.
+ *            customer holds two it is quietly reporting the wrong one. A
+ *            summed meal count was tried and dropped for the same reason —
+ *            28 breakfasts plus 10 snacks is not 38 of anything. How far
+ *            through each plan you are belongs in the panel, where there is
+ *            room to say it once per plan.
  *
  * Tapping opens a translucent panel over the list. The panel is intentionally
  * read-mostly: it answers "what is coming and when", and hands off to the
@@ -54,9 +61,6 @@ import { useDeliveryCycles } from '../../../hooks/useDeliveryCycles';
 import { subscriptionDaysRemaining } from '../../../utils/subscriptionMath';
 import { formatDateOrdinalShort } from '../../../utils/formatters';
 import { formatTime12h } from '../../../utils/timeEngine';
-
-/** Statuses that mean the order is finished and no longer "in flight". */
-const TERMINAL = new Set(['Delivered', 'Cancelled', 'Failed']);
 
 type OpenRail = 'orders' | 'subs' | null;
 
@@ -126,41 +130,31 @@ export function HomeRails() {
     return m;
   }, [cycles]);
 
-  /**
-   * Orders still ON THE WAY, collapsed to one entry per order_group_id.
-   *
-   * Two exclusions, both deliberate:
-   *
-   * - TERMINAL (Delivered / Cancelled / Failed). The rail answers "what is
-   *   coming", so an order stops counting the moment it arrives. A delivered
-   *   order kept here for reordering would make the badge number mean two
-   *   different things at once; reorder belongs on an action in the panel,
-   *   not in the count.
-   *
-   * - SUBSCRIPTION PURCHASES (cycle_id NULL). Buying a 30-day plan is a
-   *   transaction, not a delivery — nothing is on its way because of it. Its
-   *   daily deliveries appear on their own as they are generated. Only the
-   *   purchase group carries a NULL cycle, so that is a safe test.
-   */
   /** Each cycle's delivery time, so arrivals can be ordered within a day. */
   const cycleStarts = useMemo(
     () => Object.fromEntries((cycles ?? []).map((c) => [c.id, c.delivery_start])),
     [cycles],
   );
 
+  /**
+   * Orders still ON THE WAY.
+   *
+   * WHAT COUNTS AS "ON THE WAY" IS NOW THE SERVER'S ANSWER, not a status test
+   * here. `useActiveOrders` asks `my_order_states()` for the 'live' set, which
+   * shares one predicate with the admin Undelivered tab — so an order that was
+   * released and whose batch has since been replaced leaves this rail at the
+   * same instant it appears on that tab. It used to be filtered on status
+   * alone, with no time bound at all, so an order nobody marked Delivered sat
+   * here for ever still promising "Dispatched by : 7:30 AM".
+   *
+   * That leaves ONE rule this surface still owns: a running plan's daily
+   * deliveries are tracked on the Plans rail, not here — otherwise a 30-day
+   * subscription would flood this list with deliveries the customer never
+   * placed. Terminal statuses and subscription PURCHASES cannot reach here at
+   * all; `my_order_states()` does not return either.
+   */
   const activeGroups = useMemo(() => {
-    const rows = (activeRows ?? []).filter((o) => {
-      // The query already excludes these, but keep the guards: they are the
-      // definition of what this rail counts, and a future change to the
-      // query should have to argue with them.
-      if (TERMINAL.has(o.status ?? '')) return false;
-      if (o.cycle_id == null) return false;
-      // A running plan is tracked on the Plans rail, not here — otherwise a
-      // 30-day subscription would flood this list with deliveries the
-      // customer never placed.
-      if (o.subscription_id != null) return false;
-      return true;
-    });
+    const rows = (activeRows ?? []).filter((o) => o.subscription_id == null);
 
     // BY ARRIVAL, not by purchase. This rail answers "what is coming and
     // when", and two separate checkouts landing in the same window are ONE
@@ -198,27 +192,45 @@ export function HomeRails() {
     new Set(activeGroups.map((g) => g.addressId).filter((a) => a != null)).size > 1;
 
   /**
-   * The one order the customer is actually waiting on. The panel shows THIS,
-   * not a list: "what is coming and when" is a single question with a single
-   * answer, and a list of near-identical rows answered it badly.
+   * ONE ROW PER SUBSCRIPTION, each with its OWN remaining count.
+   *
+   * The panel used to end with a single summed figure — "38 meals left" for a
+   * Breakfast 30 and a Snacks 10 — and that number is not a quantity of
+   * anything the customer can receive. They are different meals at different
+   * times of day; 28 breakfasts and 10 snacks do not add up to 38 of
+   * something. The only useful answer is per plan, so the total is gone.
+   *
+   * The CYCLE NAME is on every row for the same reason. Plans are named by
+   * their owner ("My Snacks · 10 days") or by the office ("Breakfast 30"), and
+   * neither convention guarantees the name says when it arrives — which is
+   * the thing that tells two plans apart.
+   *
+   * Filtered to those with meals left: a plan the manifest has run to the end
+   * is deactivated on its last dispatch, but until that tick lands it would
+   * otherwise show as a live plan owing zero meals.
    */
-  const activeSubs = useMemo(
-    () => (subs ?? []).filter((s: any) => s.is_active),
-    [subs],
-  );
-
-  const mealsLeft = useMemo(
+  const activePlans = useMemo(
     () =>
-      activeSubs.reduce(
-        (sum: number, s: any) =>
-          sum + subscriptionDaysRemaining(s.subscription_plans ?? {}, s),
-        0,
-      ),
-    [activeSubs],
+      (subs ?? [])
+        .filter((s: any) => s.is_active)
+        .map((s: any) => {
+          const plan = s.subscription_plans ?? {};
+          return {
+            id: s.id as number,
+            name: (plan.plan_name as string) ?? 'Subscription',
+            cycleName:
+              plan.cycle_id != null ? cycleById.get(plan.cycle_id)?.cycle_name ?? null : null,
+            total: (plan.duration_days as number) ?? 0,
+            left: subscriptionDaysRemaining(plan, s),
+            isPaused: !!s.is_paused,
+          };
+        })
+        .filter((p) => p.left > 0),
+    [subs, cycleById],
   );
 
   const showOrders = activeGroups.length > 0;
-  const showSubs = activeSubs.length > 0 && mealsLeft > 0;
+  const showSubs = activePlans.length > 0;
   if (!showOrders && !showSubs) return null;
 
   const panelTint =
@@ -257,7 +269,7 @@ export function HomeRails() {
         {showSubs && (
           <Rail
             label="Plans"
-            badgeText={String(activeSubs.length)}
+            badgeText={String(activePlans.length)}
             badgeBg={Theme.colors.text.accent}
             tint={Theme.colors.text.accent}
             showBadge={open !== 'subs'}
@@ -401,31 +413,35 @@ export function HomeRails() {
                   </>
                 ) : (
                   <>
-                    {/* Interchanged: the plan and its progress lead, and the
-                        meals-left total follows. The plan is what the customer
-                        recognises; the total is the summary of it. */}
+                    {/* Each plan stands on its own: what it is called, when it
+                        arrives, how far through it is and how many meals are
+                        still owed. Nothing is added across plans — see
+                        activePlans for why a combined total was wrong. */}
                     <ScrollView style={styles.panelScroll} showsVerticalScrollIndicator={false}>
-                      {activeSubs.map((s: any) => {
-                        const plan = s.subscription_plans ?? {};
-                        const left = subscriptionDaysRemaining(plan, s);
-                        const total = plan.duration_days ?? 0;
-                        return (
-                          <View key={s.id} style={styles.linePlain}>
-                            <ThemedText variant="subtitle" color="primary" style={styles.panelTitle}>
-                              {plan.plan_name ?? 'Subscription'}
-                            </ThemedText>
-                            <ThemedText variant="small" color="muted">
-                              {s.is_paused
-                                ? 'Paused'
-                                : `Day ${Math.max(0, total - left)} of ${total} · ${left} left`}
-                            </ThemedText>
-                          </View>
-                        );
-                      })}
+                      {activePlans.map((p) => (
+                        <View key={p.id} style={styles.linePlain}>
+                          <ThemedText
+                            variant="subtitle"
+                            color="primary"
+                            style={styles.panelTitle}
+                            numberOfLines={1}
+                          >
+                            {p.name}
+                          </ThemedText>
+                          <ThemedText variant="small" color="muted">
+                            {[
+                              p.cycleName,
+                              p.isPaused ? 'Paused' : `Day ${Math.max(0, p.total - p.left)} of ${p.total}`,
+                            ].filter(Boolean).join(' · ')}
+                          </ThemedText>
+                          {/* The count this plan owes, in its own colour so it
+                              is findable at a glance down a list of plans. */}
+                          <ThemedText variant="small" color="mint">
+                            {p.left} meal{p.left === 1 ? '' : 's'} left
+                          </ThemedText>
+                        </View>
+                      ))}
                     </ScrollView>
-                    <ThemedText variant="small" color="mint" style={styles.mealsTotal}>
-                      {mealsLeft} meal{mealsLeft === 1 ? '' : 's'} left
-                    </ThemedText>
                     <PanelAction
                       label="Manage, skip a day or pause"
                       onPress={() => go('Subscriptions')}
@@ -669,11 +685,6 @@ const styles = StyleSheet.create({
   /** Rule-free: this block now leads the panel, so a top border would hang
    *  above the first thing on it. */
   linePlain: { paddingBottom: Theme.spacing.sm },
-  mealsTotal: {
-    paddingTop: Theme.spacing.sm,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: Theme.colors.layout.divider,
-  },
   /** Sits above the title, so it needs no rule of its own. */
   panelAction: {
     paddingTop: Theme.spacing.sm,

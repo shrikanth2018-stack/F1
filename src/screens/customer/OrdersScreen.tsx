@@ -25,7 +25,7 @@ import { ThemedText } from '../../components/ThemedText';
 import { DispatchBadge } from '../../components/DispatchBadge';
 import { EmptyState } from '../../components/EmptyState';
 import { ErrorRetry } from '../../components/ErrorRetry';
-import { useMyOrders, type OrderWithItems } from '../../hooks/useOrders';
+import { useMyOrders, useMyOrderStates, type OrderWithItems } from '../../hooks/useOrders';
 import { useBrowsePlans } from '../../hooks/useBrowsePlans';
 import { formatPriceShort, formatDateShort, formatRelativeTime } from '../../utils/formatters';
 import { orderStatusVariant } from '../../utils/orderStatus';
@@ -73,7 +73,20 @@ export function OrdersScreen({ navigation }: any) {
     isFetchingNextPage,
   } = useMyOrders();
 
-  useFocusEffect(useCallback(() => { refetch(); }, [refetch]));
+  /**
+   * Which of these were never delivered — server-decided, shared with the
+   * admin Undelivered tab. See useMyOrderStates.
+   *
+   * The order STAYS in the history. It was paid for; hiding it would leave
+   * the customer with no record of what they are owed and nothing to point at
+   * when they ask. It simply stops claiming to be on its way.
+   */
+  const { data: orderStates, refetch: refetchStates } = useMyOrderStates();
+
+  useFocusEffect(useCallback(() => {
+    refetch();
+    refetchStates();
+  }, [refetch, refetchStates]));
 
 
   /**
@@ -112,7 +125,19 @@ export function OrdersScreen({ navigation }: any) {
      * tracker follows the slower half.
      */
     const isPurchaseOnly = item.rows.every((r) => r.cycle_id == null);
-    const status = rolledUpStatus(item.rows);
+    /**
+     * "Undelivered" is a LABEL, not a status — nothing writes it to the row.
+     * The order keeps the status it actually stalled at (Dispatched, Received
+     * at Hub), which is what staff and admin need in order to chase it; the
+     * customer is told the thing that matters to them, which is that it never
+     * arrived.
+     *
+     * `some`, not `every`: a delivery is one cycle on one date at one door, so
+     * its rows share a batch and are undelivered together. If that ever stops
+     * being true, the honest answer for the bag is still "undelivered".
+     */
+    const undelivered = item.rows.some((r) => orderStates?.get(r.id) === 'undelivered');
+    const status = undelivered ? 'Undelivered' : rolledUpStatus(item.rows);
     const contents = item.rows
       .flatMap((r) => r.order_items ?? [])
       .map((i) => i.item_name)
@@ -132,7 +157,13 @@ export function OrdersScreen({ navigation }: any) {
           <ThemedText variant="subtitle" color="primary" numberOfLines={1}>
             {item.ids.length > 1 ? 'Orders ' : 'Order '}{formatOrderNumbers(item.ids)}
           </ThemedText>
-          <DispatchBadge label={status} variant={orderStatusVariant(status)} />
+          <DispatchBadge
+            label={status}
+            // 'Undelivered' is not in the status vocabulary, so
+            // orderStatusVariant would fall through to its 'info' default and
+            // print it in the same colour as "Preparing".
+            variant={undelivered ? 'error' : orderStatusVariant(status)}
+          />
         </View>
 
         <View style={styles.rowMid}>
