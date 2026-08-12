@@ -74,10 +74,60 @@ export const Theme = {
      * `ThemedText emphasis` bumps a variant's size by this step.
      */
     emphasisStep: 2,
+    /**
+     * Leading, as a RATIO of the font size rather than a fixed number per
+     * variant.
+     *
+     * A ratio because two things already derive sizes from the scale:
+     * `ThemedText emphasis` adds `emphasisStep`, and several screens set
+     * `fontSize: sizes.subtitle + 2`. A per-variant absolute would be
+     * silently wrong for both; a ratio is right at any size.
+     *
+     * NOT READ BY ANYTHING YET, deliberately. `ThemedText` sets no
+     * `lineHeight` at all today — every line spacing in the app is React
+     * Native's per-size default, which is why vertical rhythm differs
+     * between screens. Connecting this changes spacing on all 89 screens at
+     * once, customer, staff and admin, so it is its own slice with its own
+     * visual pass rather than a side effect of adding the token.
+     */
+    lineHeight: {
+      /** Body copy and anything that can wrap onto a second line. */
+      normal: 1.4,
+      /** Headings and single-line labels, where 1.4 reads loose. */
+      tight: 1.25,
+    },
   },
   components: {
     inputRadius: 12,
     inputBorderBottomWidth: 1,
+    /**
+     * The fixed page header — title left, exactly one control right. One
+     * height everywhere, so a page cannot arrive with its title sitting a few
+     * points off where the last page put it.
+     */
+    headerHeight: 52,
+    /**
+     * Smallest a tappable thing may be, in either direction.
+     *
+     * Replaces the per-screen `hitSlop` that some rows carry and others were
+     * never given. A size is easier to get right than a slop: it is visible
+     * in the layout, so a target that is too small looks too small.
+     */
+    touchMin: 44,
+  },
+  /**
+   * How the app moves. One place, so every screen enters the same way and a
+   * change of mind is a change of one value.
+   *
+   * `screen` is a react-navigation native-stack animation name.
+   *
+   * NOT READ BY ANYTHING YET — the navigators still name their own
+   * animation. Wiring it is a visible change and belongs with the screen
+   * work, not with the token that describes it.
+   */
+  motion: {
+    screen: 'fade_from_bottom',
+    durationMs: 200,
   },
   spacing: {
     xs: 4,
