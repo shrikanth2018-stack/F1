@@ -6,10 +6,32 @@
  */
 
 import React from 'react';
-import { Text, TextProps } from 'react-native';
+import { Text, TextProps, StyleSheet, type TextStyle } from 'react-native';
 import { Theme } from '../theme';
 
 type TextVariant = 'micro' | 'small' | 'body' | 'subtitle' | 'header' | 'title';
+
+/**
+ * Leading, per variant.
+ *
+ * React Native sets NO lineHeight by default — it falls back to the font's own
+ * metrics, which vary with size in a way nobody chose. That is why vertical
+ * rhythm differed from screen to screen no matter how carefully padding was
+ * matched: two stacked `small` lines and two stacked `body` lines were spaced
+ * by Tahoma, not by us.
+ *
+ * Running copy gets the looser ratio because it WRAPS and a second line needs
+ * air. Headings get the tighter one: they are usually a single line, and 1.4
+ * on a 22pt heading reads as a gap rather than a line.
+ */
+const VARIANT_LEADING: Record<TextVariant, number> = {
+  micro: Theme.typography.lineHeight.normal,
+  small: Theme.typography.lineHeight.normal,
+  body: Theme.typography.lineHeight.normal,
+  subtitle: Theme.typography.lineHeight.tight,
+  header: Theme.typography.lineHeight.tight,
+  title: Theme.typography.lineHeight.tight,
+};
 type TextColor = 'primary' | 'subtitle' | 'muted' | 'accent' | 'mint' | 'warning';
 
 /**
@@ -43,17 +65,40 @@ export function ThemedText({
   style,
   ...props
 }: ThemedTextProps) {
+  const variantSize =
+    Theme.typography.sizes[variant] + (emphasis ? Theme.typography.emphasisStep : 0);
+
+  /**
+   * THE LINE HEIGHT IS COMPUTED FROM THE SIZE THAT ACTUALLY RENDERS, not from
+   * the variant — and that distinction is load-bearing.
+   *
+   * Callers routinely pass a `style` that overrides `fontSize`: the wallet
+   * balance is `variant="title"` (26) wearing `fontSize: sizes.display` (40).
+   * Deriving leading from the variant would have put a 40pt glyph in a 33pt
+   * line and clipped it. Flattening the incoming style first means the two can
+   * never disagree.
+   *
+   * An explicit `lineHeight` from the caller always wins. A few controls set
+   * one to centre a glyph inside a fixed circle, and that is a deliberate
+   * decision about a specific control, not a typographic default.
+   */
+  const flat = StyleSheet.flatten(style) as TextStyle | undefined;
+  const renderedSize = typeof flat?.fontSize === 'number' ? flat.fontSize : variantSize;
+  const lineHeight =
+    typeof flat?.lineHeight === 'number'
+      ? flat.lineHeight
+      : Math.round(renderedSize * VARIANT_LEADING[variant]);
+
   return (
     <Text
       allowFontScaling={false}
       style={[
         {
           fontFamily: Theme.typography.fontFamily,
-          fontSize:
-            Theme.typography.sizes[variant] +
-            (emphasis ? Theme.typography.emphasisStep : 0),
+          fontSize: variantSize,
           color: TEXT_COLORS[color],
           letterSpacing: Theme.typography.letterSpacing.normal,
+          lineHeight,
         },
         style,
       ]}
