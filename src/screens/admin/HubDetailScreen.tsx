@@ -525,19 +525,11 @@ const styles = StyleSheet.create({
     marginHorizontal: Theme.spacing.md,
   },
 
-  staffSelected: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-  },
-  staffInfo: { flex: 1 },
-  staffName: { fontSize: B, marginBottom: 2 },
-  staffClear: { paddingHorizontal: Theme.spacing.sm },
-  staffPickBtn: {
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm + 2,
-  },
+
+
+
+
+
 
   toggleRow: {
     flexDirection: 'row',

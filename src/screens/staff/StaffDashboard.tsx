@@ -806,13 +806,7 @@ const styles = StyleSheet.create({
     fontSize: Theme.typography.sizes.small,
   },
 
-  messageBanner: {
-    backgroundColor: Theme.colors.background.secondary,
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.xs,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.text.mint,
-  },
+
   noteLine: {
     fontFamily: Theme.typography.fontFamily,
     fontSize: Theme.typography.sizes.body + 3,

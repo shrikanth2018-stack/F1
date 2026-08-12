@@ -668,7 +668,7 @@ const styles = StyleSheet.create({
   },
   back:   { fontSize: B, minWidth: 60 },
   title:  { flex: 1, textAlign: 'center' },
-  spacer: { minWidth: 60 },
+
   export: { minWidth: 60, textAlign: 'right' },
 
   tabRow: {

@@ -531,7 +531,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Theme.spacing.md,
     paddingVertical: Theme.spacing.sm + 2,
   },
-  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+
   clockRow: { flexDirection: 'row', justifyContent: 'space-between', marginVertical: Theme.spacing.sm },
   clockItem: { alignItems: 'center' },
   clockActions: { alignItems: 'flex-start', marginTop: Theme.spacing.xs },

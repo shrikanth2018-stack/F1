@@ -158,16 +158,9 @@ const styles = StyleSheet.create({
     borderBottomColor: Theme.colors.layout.divider,
   },
   title: { flex: 1, textAlign: 'center' },
-  toggleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: Theme.spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.layout.divider,
-  },
-  pipe: { marginHorizontal: Theme.spacing.sm, opacity: 0.4, fontSize: B },
-  active: {  },
+
+
+
   colHeader: {
     flexDirection: 'row',
     paddingHorizontal: Theme.spacing.md,

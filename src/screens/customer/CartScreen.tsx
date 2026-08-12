@@ -27,6 +27,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
+import { ScreenHeader } from '../../components/ScreenHeader';
 import { EmptyState } from '../../components/EmptyState';
 import { useCartStore } from '../../store/cartStore';
 import type { CartItem } from '../../types';
@@ -338,13 +339,9 @@ export function CartScreen({ navigation, route }: any) {
 
     return (
       <SafeAreaView style={styles.container}>
-        <View style={styles.header}>
-          <View style={{ width: 60 }} />
-          <ThemedText variant="header" color="primary">Cart</ThemedText>
-          <TouchableOpacity onPress={goHome} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <ThemedText variant="body" color="muted">Close</ThemedText>
-          </TouchableOpacity>
-        </View>
+        {/* Resets to Home rather than going back, so it is a Close however
+            this was reached — see the label note in ScreenHeader. */}
+        <ScreenHeader title="Cart" onDismiss={goHome} label="Close" />
 
         <ScrollView contentContainerStyle={styles.content}>
           <View style={styles.cartSection}>
@@ -411,13 +408,12 @@ export function CartScreen({ navigation, route }: any) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <ThemedText variant="body" color="accent">‹ Back</ThemedText>
-        </TouchableOpacity>
-        <ThemedText variant="header" color="primary">Cart</ThemedText>
-        <TouchableOpacity
-          onPress={async () => {
+      <ScreenHeader
+        title="Cart"
+        action={{
+          label: 'Clear All',
+          destructive: true,
+          onPress: async () => {
             const ok = await confirmDialog({
               title: 'Clear cart?',
               message: 'This will remove all items and any subscription plans from your cart.',
@@ -425,11 +421,9 @@ export function CartScreen({ navigation, route }: any) {
               destructive: true,
             });
             if (ok) clearCart();
-          }}
-        >
-          <ThemedText variant="small" color="muted">Clear All</ThemedText>
-        </TouchableOpacity>
-      </View>
+          },
+        }}
+      />
 
       {/* Missed-cutoff banner — one line, persistent while any cycle is late */}
       {anyMissedCutoff && (
@@ -566,13 +560,7 @@ export function CartScreen({ navigation, route }: any) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-  },
+
   content: { paddingBottom: Theme.spacing.xl },
   /**
    * Fades out to the right so it reads as a marked passage of the page rather
@@ -634,7 +622,7 @@ const styles = StyleSheet.create({
   },
   stepBtn: { paddingHorizontal: 10, paddingVertical: 4 },
   /** Indented under the item it refers to, not under the block. */
-  savingLine: { paddingBottom: Theme.spacing.xs, paddingRight: Theme.spacing.sm },
+
   qty: { minWidth: 24, textAlign: 'center' },
   groupDivider: {
     height: 1,
