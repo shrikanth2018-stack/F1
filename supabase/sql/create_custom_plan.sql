@@ -53,7 +53,21 @@ AS $$
 DECLARE
   MIN_DAYS  CONSTANT INTEGER := 10;
   MAX_DAYS  CONSTANT INTEGER := 45;
-  MAX_ITEMS CONSTANT INTEGER := 3;
+  /**
+   * Raised 3 → 5 on 12 Aug 2026 with the builder rebuild.
+   *
+   * EDITED IN PLACE, NOT SUPERSEDED BY A NEW FILE. Three functions in this
+   * folder are now defined by two files each — push_kitchen_summary,
+   * generate_daily_manifest, get_kitchen_aggregate — and every one of them
+   * carries a warning about which must be applied last. The runbook's own rule
+   * for an RPC change is to edit its file and re-run it (CREATE OR REPLACE),
+   * and that is what keeps this one having a single definition.
+   *
+   * The app caps the picker at the same number. It is not the gate — this is —
+   * but a customer should meet the limit as a disabled `+`, not as a refusal
+   * after they have filled the whole form in.
+   */
+  MAX_ITEMS CONSTANT INTEGER := 5;
   MAX_QTY   CONSTANT INTEGER := 10;
 
   v_user      UUID := auth.uid();

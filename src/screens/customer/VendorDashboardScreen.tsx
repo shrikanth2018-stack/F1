@@ -29,6 +29,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
+import { ScreenHeader } from '../../components/ScreenHeader';
 import { Divider } from '../../components/Divider';
 import { EmptyState } from '../../components/EmptyState';
 import { ErrorRetry } from '../../components/ErrorRetry';
@@ -68,7 +69,6 @@ import {
   type VendorOrder,
   type UpcomingRun,
 } from '../../hooks/useMyVendor';
-import type { CustomerScreenProps } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
@@ -87,7 +87,7 @@ type SupplyEntry =
   | { kind: 'run'; run: UpcomingRun }
   | { kind: 'past'; order: VendorOrder };
 
-export function VendorDashboardScreen({ navigation }: CustomerScreenProps<'VendorDashboard'>) {
+export function VendorDashboardScreen() {
   const [tab, setTab] = useState<Tab>('Supply');
   const { data: vendor, isLoading } = useMyVendor();
   const vendorId = vendor?.id;
@@ -320,15 +320,7 @@ export function VendorDashboardScreen({ navigation }: CustomerScreenProps<'Vendo
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <ThemedText variant="body" color="accent" style={styles.txt}>‹ Back</ThemedText>
-        </TouchableOpacity>
-        <ThemedText variant="header" color="primary" style={styles.title} numberOfLines={1}>
-          {vendor.business_name || 'My Store'}
-        </ThemedText>
-        <View style={styles.spacer} />
-      </View>
+      <ScreenHeader title={vendor.business_name || 'My Store'} />
 
       {suspended && (
         <ThemedText variant="small" color="muted" style={styles.banner}>
@@ -412,7 +404,31 @@ export function VendorDashboardScreen({ navigation }: CustomerScreenProps<'Vendo
 
             if (entry.kind === 'past') {
               const past = entry.order;
-              const delivered = past.status === 'Delivered';
+              /**
+               * A ROW THAT REACHED HISTORY UNFINISHED IS UNDELIVERED, and says
+               * so — this file's own SQL predicted it: "an unfinished row
+               * landing here is the same row admin is chasing in Orders →
+               * Undelivered."
+               *
+               * It used to print the raw status, so order #11581 read "On the
+               * Way" to the vendor while the customer's My Orders and the
+               * admin's Undelivered tab both called it undelivered. Three
+               * surfaces, one order, and the vendor got the one wording that
+               * suggested it was still coming.
+               *
+               * Derived from the bucket rather than from a second query: an
+               * unfinished row is only IN history because its batch was
+               * superseded, which is exactly the undelivered condition.
+               *
+               * SETTLED IS MUTED, OUTSTANDING IS AMBER. Delivered, Cancelled
+               * and Failed are all decided — nobody owes anybody anything, so
+               * they read quiet. Only the undelivered one is still open, and
+               * it wears the same amber it wears on the other two surfaces.
+               */
+              const settled =
+                past.status === 'Delivered' ||
+                past.status === 'Cancelled' ||
+                past.status === 'Failed';
               return (
                 <View style={styles.orderRow}>
                   <View style={styles.rowTop}>
@@ -423,8 +439,8 @@ export function VendorDashboardScreen({ navigation }: CustomerScreenProps<'Vendo
                       {formatDateShort(past.dispatch_date)}
                       {past.cycle_name ? ` · ${past.cycle_name}` : ''}
                     </ThemedText>
-                    <ThemedText variant="small" color={delivered ? 'muted' : 'warning'}>
-                      {past.status}
+                    <ThemedText variant="small" color={settled ? 'muted' : 'warning'}>
+                      {settled ? past.status : 'Undelivered'}
                     </ThemedText>
                   </View>
                   {(past.items ?? []).map((line, i) => (
@@ -687,16 +703,6 @@ export function VendorDashboardScreen({ navigation }: CustomerScreenProps<'Vendo
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.layout.divider,
-  },
-  title: { flex: 1, textAlign: 'center' },
-  spacer: { minWidth: 60 },
   loader: { marginTop: Theme.spacing.xl },
   banner: { fontSize: S, paddingHorizontal: Theme.spacing.md, paddingTop: Theme.spacing.xs },
   tabs: { marginHorizontal: Theme.spacing.md, marginVertical: Theme.spacing.sm },
@@ -710,7 +716,7 @@ const styles = StyleSheet.create({
     borderBottomColor: Theme.colors.layout.divider,
     gap: Theme.spacing.sm,
   },
-  row2: { flexDirection: 'row', gap: Theme.spacing.sm },
+
   flex1: { flex: 1 },
   sub: { fontSize: S, marginTop: 2 },
   // Matches the admin managers' item tile, so a vendor and the team are
@@ -723,7 +729,7 @@ const styles = StyleSheet.create({
   },
   thumbWrap: { flexShrink: 0 },
   thumbBusy: { opacity: 0.4 },
-  qty: { fontSize: B + 2 },
+
   orderRow: {
     paddingVertical: Theme.spacing.sm,
     borderBottomWidth: StyleSheet.hairlineWidth,
@@ -742,22 +748,8 @@ const styles = StyleSheet.create({
     marginBottom: Theme.spacing.xs,
   },
 
-  cycleRow: {
-    paddingVertical: Theme.spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.text.mint,
-    alignSelf: 'flex-start',
-    marginBottom: Theme.spacing.sm,
-  },
-  input: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.layout.divider,
-    color: Theme.colors.text.primary,
-    fontFamily: Theme.typography.fontFamily,
-    fontSize: B,
-    paddingVertical: Theme.spacing.sm,
-    marginBottom: Theme.spacing.sm,
-  },
+
+
   inlineAction: { paddingVertical: Theme.spacing.sm },
 
   balanceBox: { paddingVertical: Theme.spacing.md },

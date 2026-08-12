@@ -28,8 +28,26 @@ DECLARE
   v_err      TEXT;
   v_plan     INTEGER;
   n          INTEGER;
+  /**
+   * The highest plan id that existed BEFORE this harness ran. Everything the
+   * harness creates is above it, and nothing else is.
+   *
+   * The cleanups below used to be `DELETE ... WHERE is_custom AND created_by =
+   * v_cust`, which is every custom plan that customer owns — not every custom
+   * plan this HARNESS made. The two were the same only while no real customer
+   * had ever built one. The moment one did, the DELETE aimed at their live
+   * plan and the foreign key from user_subscriptions stopped it, aborting the
+   * whole run: 0 assertions, and a health check that cannot report is worse
+   * than one that reports a failure.
+   *
+   * Nothing was ever at risk of being lost — the harness runs inside a
+   * transaction it rolls back — but the statement's INTENT was far wider than
+   * its job, and the FK was the only thing holding it.
+   */
+  v_floor    INTEGER;
 
 BEGIN
+  SELECT COALESCE(MAX(id), 0) INTO v_floor FROM subscription_plans;
   SELECT ca.user_id INTO v_cust FROM customer_addresses ca WHERE ca.is_active LIMIT 1;
   PERFORM set_config('request.jwt.claims',
     json_build_object('sub', v_cust, 'role', 'authenticated')::text, true);
@@ -149,20 +167,37 @@ BEGIN
     CASE WHEN v_err = 'refused' THEN 'PASS' ELSE 'FAIL' END, E'\n');
   UPDATE menu_items SET plan_eligible = TRUE WHERE id = v_food2;
 
-  -- Four items.
+  -- The item cap, from BOTH sides. Raised 3 -> 5 on 12 Aug 2026 with the
+  -- builder rebuild. A cap is only proved by the pair: five must pass AND six
+  -- must not. Asserting the refusal alone would still pass if the limit had
+  -- never been raised at all, which is exactly the regression worth catching.
   BEGIN
     PERFORM create_custom_plan(v_cycle, jsonb_build_array(
       jsonb_build_object('item_id', v_food,  'item_type', 'food',      'quantity', 1),
       jsonb_build_object('item_id', v_food2, 'item_type', 'food',      'quantity', 1),
       jsonb_build_object('item_id', v_ess,   'item_type', 'essential', 'quantity', 1),
-      jsonb_build_object('item_id', v_food,  'item_type', 'food',      'quantity', 1)), 30);
+      jsonb_build_object('item_id', v_food,  'item_type', 'food',      'quantity', 1),
+      jsonb_build_object('item_id', v_food2, 'item_type', 'food',      'quantity', 1)), 30);
     v_err := 'accepted';
   EXCEPTION WHEN OTHERS THEN v_err := 'refused'; END;
-  r := r || format('R6 four items             -> refused ... %s%s',
+  r := r || format('R6 five items             -> accepted ... %s%s',
+    CASE WHEN v_err = 'accepted' THEN 'PASS' ELSE 'FAIL' END, E'\n');
+
+  BEGIN
+    PERFORM create_custom_plan(v_cycle, jsonb_build_array(
+      jsonb_build_object('item_id', v_food,  'item_type', 'food',      'quantity', 1),
+      jsonb_build_object('item_id', v_food2, 'item_type', 'food',      'quantity', 1),
+      jsonb_build_object('item_id', v_ess,   'item_type', 'essential', 'quantity', 1),
+      jsonb_build_object('item_id', v_food,  'item_type', 'food',      'quantity', 1),
+      jsonb_build_object('item_id', v_food2, 'item_type', 'food',      'quantity', 1),
+      jsonb_build_object('item_id', v_ess,   'item_type', 'essential', 'quantity', 1)), 30);
+    v_err := 'accepted';
+  EXCEPTION WHEN OTHERS THEN v_err := 'refused'; END;
+  r := r || format('R7 six items              -> refused  ... %s%s',
     CASE WHEN v_err = 'refused' THEN 'PASS' ELSE 'FAIL' END, E'\n');
 
   -- ── N. The customer's own name for it ────────────────────────
-  DELETE FROM subscription_plans WHERE is_custom AND created_by = v_cust;
+  DELETE FROM subscription_plans WHERE is_custom AND created_by = v_cust AND id > v_floor;
   v_res := create_custom_plan(v_cycle,
     jsonb_build_array(jsonb_build_object('item_id', v_food, 'item_type','food','quantity',1)),
     30, '  My breakfast plan  ');
@@ -170,7 +205,7 @@ BEGIN
     CASE WHEN v_res->>'plan_name' = 'My breakfast plan' THEN 'PASS'
          ELSE 'FAIL ("'||(v_res->>'plan_name')||'")' END, E'\n');
 
-  DELETE FROM subscription_plans WHERE is_custom AND created_by = v_cust;
+  DELETE FROM subscription_plans WHERE is_custom AND created_by = v_cust AND id > v_floor;
   v_res := create_custom_plan(v_cycle,
     jsonb_build_array(jsonb_build_object('item_id', v_food, 'item_type','food','quantity',1)),
     30, '   ');
@@ -178,7 +213,7 @@ BEGIN
     CASE WHEN v_res->>'plan_name' LIKE 'My %% days' THEN 'PASS'
          ELSE 'FAIL ("'||(v_res->>'plan_name')||'")' END, E'\n');
 
-  DELETE FROM subscription_plans WHERE is_custom AND created_by = v_cust;
+  DELETE FROM subscription_plans WHERE is_custom AND created_by = v_cust AND id > v_floor;
   v_res := create_custom_plan(v_cycle,
     jsonb_build_array(jsonb_build_object('item_id', v_food, 'item_type','food','quantity',1)),
     30, repeat('x', 200));
@@ -186,7 +221,7 @@ BEGIN
     CASE WHEN length(v_res->>'plan_name') = 40 THEN 'PASS'
          ELSE 'FAIL ('||length(v_res->>'plan_name')||')' END, E'\n');
 
-  DELETE FROM subscription_plans WHERE is_custom AND created_by = v_cust;
+  DELETE FROM subscription_plans WHERE is_custom AND created_by = v_cust AND id > v_floor;
 
   -- ── M. The mixed plan the whole feature exists for ───────────
   v_res := create_custom_plan(v_cycle, jsonb_build_array(
