@@ -26,6 +26,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
+import { ScreenHeader } from '../../components/ScreenHeader';
 import { Divider } from '../../components/Divider';
 import { EmptyState } from '../../components/EmptyState';
 import {
@@ -37,7 +38,6 @@ import {
 } from '../../hooks/useReferrals';
 import type { ReferralSettings } from '../../types';
 import { formatDateShort } from '../../utils/formatters';
-import type { AdminNavProp } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
@@ -187,7 +187,7 @@ const rr = StyleSheet.create({
 });
 
 // ── Main screen ──────────────────────────────────────────────
-export function ReferralSettingsScreen({ navigation }: { navigation: AdminNavProp }) {
+export function ReferralSettingsScreen() {
   const { data: savedSettings, isLoading } = useReferralSettings();
   const updateSettings = useUpdateReferralSettings();
   const { data: allReferrals = [] } = useAllReferrals();
@@ -229,15 +229,7 @@ export function ReferralSettingsScreen({ navigation }: { navigation: AdminNavPro
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <ThemedText variant="body" color="accent" style={styles.back}>‹ Back</ThemedText>
-        </TouchableOpacity>
-        <ThemedText variant="header" color="primary" style={styles.title}>
-          Referral Settings
-        </ThemedText>
-        <View style={styles.spacer} />
-      </View>
+      <ScreenHeader title="Referral Settings" />
 
       <ScrollView
         contentContainerStyle={styles.scroll}
@@ -348,18 +340,6 @@ export function ReferralSettingsScreen({ navigation }: { navigation: AdminNavPro
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
-
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.layout.divider,
-  },
-  back: { fontSize: B, minWidth: 60 },
-  title: { flex: 1, textAlign: 'center' },
-  spacer: { minWidth: 60 },
 
   scroll: { paddingBottom: Theme.spacing.xl * 2 },
 

@@ -17,6 +17,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
+import { ScreenHeader } from '../../components/ScreenHeader';
 import { EmptyState } from '../../components/EmptyState';
 import {
   useAllFeedback,
@@ -26,7 +27,6 @@ import {
 } from '../../hooks/useCustomerFeedback';
 import { openWhatsApp } from '../../utils/links';
 import { formatDateShort } from '../../utils/formatters';
-import type { AdminNavProp } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
@@ -152,7 +152,7 @@ const row = StyleSheet.create({
   respondTxt: { fontSize: S },
 });
 
-export function CustomerFeedbackScreen({ navigation }: { navigation: AdminNavProp }) {
+export function CustomerFeedbackScreen() {
   const [activeTab, setActiveTab] = useState<FeedbackTab>('Feedback');
   const { data: all = [], isLoading, refetch } = useAllFeedback();
 
@@ -171,15 +171,7 @@ export function CustomerFeedbackScreen({ navigation }: { navigation: AdminNavPro
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <ThemedText variant="body" color="accent" style={styles.back}>‹ Back</ThemedText>
-        </TouchableOpacity>
-        <ThemedText variant="header" color="primary" style={styles.title}>
-          Customer Feedback
-        </ThemedText>
-        <View style={styles.spacer} />
-      </View>
+      <ScreenHeader title="Customer Feedback" />
 
       {/* Tabs */}
       <View style={styles.topTabs}>
@@ -241,18 +233,6 @@ export function CustomerFeedbackScreen({ navigation }: { navigation: AdminNavPro
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
-
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.layout.divider,
-  },
-  back: { fontSize: B, minWidth: 60 },
-  title: { flex: 1, textAlign: 'center' },
-  spacer: { minWidth: 60 },
 
   topTabs: {
     flexDirection: 'row',

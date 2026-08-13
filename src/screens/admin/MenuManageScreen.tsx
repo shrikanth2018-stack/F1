@@ -29,6 +29,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { QUERY_KEYS } from '../../utils/constants';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
+import { ScreenHeader } from '../../components/ScreenHeader';
 import { EmptyState } from '../../components/EmptyState';
 import { SegmentedControl } from '../../components/SegmentedControl';
 import { CatalogPhotoThumb } from '../../components/CatalogPhotoThumb';
@@ -140,13 +141,7 @@ export function MenuManageScreen({ navigation }: { navigation: AdminNavProp }) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <ThemedText variant="body" color="accent" style={styles.back}>‹ Back</ThemedText>
-        </TouchableOpacity>
-        <ThemedText variant="header" color="primary" style={styles.title}>Menu Manager</ThemedText>
-        <View style={styles.spacer} />
-      </View>
+      <ScreenHeader title="Menu Manager" />
 
       <SegmentedControl<Tab>
         style={styles.tabs}
@@ -229,14 +224,7 @@ export function MenuManageScreen({ navigation }: { navigation: AdminNavProp }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
-  header: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: Theme.spacing.md, paddingVertical: Theme.spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: Theme.colors.layout.divider,
-  },
-  back: { fontSize: B, minWidth: 60 },
-  title: { flex: 1, textAlign: 'center' },
-  spacer: { minWidth: 60 },
+
   tabs: { marginHorizontal: Theme.spacing.md, marginVertical: Theme.spacing.sm },
   cycleRow: {
     paddingHorizontal: Theme.spacing.md, paddingVertical: Theme.spacing.sm,

@@ -15,9 +15,9 @@ import {
   StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
+import { ScreenHeader } from '../../components/ScreenHeader';
 import { CalendarPicker } from '../../components/CalendarPicker';
 import {
   useTodayAttendance,
@@ -163,7 +163,6 @@ const cal = StyleSheet.create({
 
 // ── Main Screen ──────────────────────────────────────────
 export function StaffAttendanceScreen() {
-  const navigation = useNavigation<any>();
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
@@ -280,16 +279,7 @@ export function StaffAttendanceScreen() {
     <SafeAreaView style={styles.container}>
       {/* Sticky header — sits OUTSIDE the ScrollView so the title doesn't
           scroll away with the page body. */}
-      <View style={styles.headerRow}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <ThemedText variant="body" color="accent">‹ Back</ThemedText>
-        </TouchableOpacity>
-        <ThemedText variant="header" color="primary" style={styles.title}>
-          Attendance / Leaves
-        </ThemedText>
-        <View style={styles.backBtn} />
-      </View>
-      <View style={styles.hairline} />
+      <ScreenHeader title="Attendance / Leaves" />
 
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
 
@@ -505,14 +495,7 @@ export function StaffAttendanceScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
   content: { paddingBottom: Theme.spacing.xl },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-  },
-  backBtn: { minWidth: 60 },
-  title: { flex: 1, textAlign: 'center', paddingVertical: Theme.spacing.sm },
+
   hairline: { height: StyleSheet.hairlineWidth, backgroundColor: Theme.colors.text.mint },
   hairlineThin: { height: StyleSheet.hairlineWidth, backgroundColor: Theme.colors.layout.divider },
   section: { paddingHorizontal: Theme.spacing.md, paddingVertical: Theme.spacing.sm },

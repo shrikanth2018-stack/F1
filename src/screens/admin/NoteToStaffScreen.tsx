@@ -25,20 +25,20 @@ import { getErrorMessage } from '../../utils/formatters';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
+import { ScreenHeader } from '../../components/ScreenHeader';
 import {
   useAdminNotes,
   useUpsertNote,
   NOTE_TARGETS,
   type NoteTarget,
 } from '../../hooks/useAdminNotes';
-import type { AdminNavProp } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
 
 type NoteState = { text: string; active: boolean };
 
-export function NoteToStaffScreen({ navigation }: { navigation: AdminNavProp }) {
+export function NoteToStaffScreen() {
   const { data: notes = [], isLoading } = useAdminNotes();
   const upsert = useUpsertNote();
 
@@ -98,15 +98,7 @@ export function NoteToStaffScreen({ navigation }: { navigation: AdminNavProp }) 
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <ThemedText variant="body" color="accent" style={styles.back}>‹ Back</ThemedText>
-        </TouchableOpacity>
-        <ThemedText variant="header" color="primary" style={styles.title}>
-          Note to Staff
-        </ThemedText>
-        <View style={styles.spacer} />
-      </View>
+      <ScreenHeader title="Note to Staff" />
 
       <ScrollView
         contentContainerStyle={styles.scroll}
@@ -168,18 +160,6 @@ export function NoteToStaffScreen({ navigation }: { navigation: AdminNavProp }) 
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
-
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.layout.divider,
-  },
-  back: { fontSize: B, minWidth: 60 },
-  title: { flex: 1, textAlign: 'center' },
-  spacer: { minWidth: 60 },
 
   scroll: {
     paddingHorizontal: Theme.spacing.md,

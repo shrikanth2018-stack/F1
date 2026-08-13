@@ -26,6 +26,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
+import { ScreenHeader } from '../../components/ScreenHeader';
 import { Divider } from '../../components/Divider';
 import { DispatchBadge } from '../../components/DispatchBadge';
 import { ErrorRetry } from '../../components/ErrorRetry';
@@ -76,7 +77,7 @@ const STATUS_VARIANT: Record<VendorStatus, 'success' | 'warning' | 'info' | 'err
 const MODELS: SellingModel[] = ['own_brand'];
 const MODES: SupplyMode[] = ['at_hub', 'we_collect', 'they_drop'];
 
-export function AdminVendorDetailScreen({ navigation, route }: AdminScreenProps<'AdminVendorDetail'>) {
+export function AdminVendorDetailScreen({ route }: AdminScreenProps<'AdminVendorDetail'>) {
   const { vendorId } = route.params;
   const { data: vendor, isLoading, error, refetch } = useVendor(vendorId);
   const { data: zones = [] } = useVendorZones(vendorId);
@@ -143,15 +144,7 @@ export function AdminVendorDetailScreen({ navigation, route }: AdminScreenProps<
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <ThemedText variant="body" color="accent" style={styles.txt}>‹ Back</ThemedText>
-        </TouchableOpacity>
-        <ThemedText variant="header" color="primary" style={styles.title} numberOfLines={1}>
-          {vendor.business_name || 'Vendor'}
-        </ThemedText>
-        <View style={styles.spacer} />
-      </View>
+      <ScreenHeader title={vendor.business_name || 'Vendor'} />
 
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         {/* Identity + state */}
@@ -340,16 +333,7 @@ export function AdminVendorDetailScreen({ navigation, route }: AdminScreenProps<
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.layout.divider,
-  },
-  title: { flex: 1, textAlign: 'center' },
-  spacer: { minWidth: 60 },
+
   loader: { marginTop: Theme.spacing.xl },
 
   scroll: { paddingHorizontal: Theme.spacing.md, paddingBottom: Theme.spacing.xl * 2 },

@@ -18,9 +18,10 @@ import {
   StyleSheet,
 } from 'react-native';
 import { getErrorMessage } from '../../utils/formatters';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
+import { ScreenHeader } from '../../components/ScreenHeader';
 import { useBranches } from '../../hooks/useBranches';
 import {
   useCreateBranch,
@@ -31,7 +32,6 @@ import {
 import { useBranchFilter } from '../../hooks/useBranchFilter';
 import { confirmDialog, infoDialog } from '../../utils/confirmDialog';
 import type { Branch } from '../../types';
-import type { AdminScreenProps } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
@@ -52,8 +52,7 @@ const EMPTY_FORM: FormState = {
   essentials_enabled: true,
 };
 
-export function BranchesManageScreen({ navigation }: AdminScreenProps<'BranchesManage'>) {
-  const insets = useSafeAreaInsets();
+export function BranchesManageScreen() {
   const { isSuperAdmin } = useBranchFilter();
 
   const { data: branches, isLoading } = useBranches({ includeInactive: true });
@@ -80,13 +79,7 @@ export function BranchesManageScreen({ navigation }: AdminScreenProps<'BranchesM
   if (!isSuperAdmin) {
     return (
       <SafeAreaView style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <ThemedText variant="body" color="accent" style={styles.back}>‹ Back</ThemedText>
-          </TouchableOpacity>
-          <ThemedText variant="header" color="primary" style={styles.title}>Manage Branches</ThemedText>
-          <View style={styles.headerSpacer} />
-        </View>
+        <ScreenHeader title="Manage Branches" />
         <View style={styles.emptyBox}>
           <ThemedText variant="body" color="muted" style={{ fontSize: B }}>
             Super-admin access only.
@@ -229,15 +222,10 @@ export function BranchesManageScreen({ navigation }: AdminScreenProps<'BranchesM
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
-      <View style={[styles.header, { paddingTop: Math.max(insets.top - 44, 0) }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <ThemedText variant="body" color="accent" style={styles.back}>‹ Back</ThemedText>
-        </TouchableOpacity>
-        <ThemedText variant="header" color="primary" style={styles.title}>Manage Branches</ThemedText>
-        <TouchableOpacity onPress={openAdd}>
-          <ThemedText variant="body" color="mint" style={styles.add}>+ Add</ThemedText>
-        </TouchableOpacity>
-      </View>
+      <ScreenHeader
+        title="Manage Branches"
+        action={{ label: '+ Add', onPress: openAdd }}
+      />
 
       {isLoading ? (
         <View style={styles.emptyBox}>
@@ -419,20 +407,6 @@ function BranchFormModal({
 // ── Styles ──────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
-
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.layout.divider,
-  },
-  back: { fontSize: B, minWidth: 60 },
-  title: { flex: 1, textAlign: 'center' },
-  add: { fontSize: B, minWidth: 60, textAlign: 'right' },
-  headerSpacer: { width: 60 },
 
   scroll: { paddingBottom: Theme.spacing.xl * 2 },
   emptyBox: {

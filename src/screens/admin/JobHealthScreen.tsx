@@ -15,6 +15,7 @@ import { View, ScrollView, StyleSheet, ActivityIndicator, RefreshControl, Toucha
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
+import { ScreenHeader } from '../../components/ScreenHeader';
 import { Divider } from '../../components/Divider';
 import { ErrorRetry } from '../../components/ErrorRetry';
 import { useJobHealth, type CronJobHealth } from '../../hooks/useJobHealth';
@@ -22,7 +23,6 @@ import { sendSentryTestEvent } from '../../utils/sentry';
 import { analyticsStatus } from '../../utils/analytics';
 import { infoDialog } from '../../utils/confirmDialog';
 import { formatRelativeTime, formatDateShort } from '../../utils/formatters';
-import type { AdminNavProp } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
@@ -54,7 +54,7 @@ function SectionLabel({ title }: { title: string }) {
   );
 }
 
-export function JobHealthScreen({ navigation }: { navigation: AdminNavProp }) {
+export function JobHealthScreen() {
   const { data, isLoading, isError, refetch, isRefetching } = useJobHealth();
   // Read once per render — it is env + __DEV__, neither of which changes.
   const analytics = analyticsStatus();
@@ -86,15 +86,7 @@ export function JobHealthScreen({ navigation }: { navigation: AdminNavProp }) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <ThemedText variant="body" color="accent" style={{ fontSize: B, minWidth: 60 }}>‹ Back</ThemedText>
-        </TouchableOpacity>
-        <ThemedText variant="header" color="primary" style={{ flex: 1, textAlign: 'center' }}>
-          System Health
-        </ThemedText>
-        <View style={{ minWidth: 60 }} />
-      </View>
+      <ScreenHeader title="System Health" />
 
       {isLoading ? (
         <ActivityIndicator style={{ marginTop: Theme.spacing.xl }} color={Theme.colors.action.primary} />
@@ -280,14 +272,7 @@ export function JobHealthScreen({ navigation }: { navigation: AdminNavProp }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.layout.divider,
-  },
+
   sectionLabel: {
     fontSize: S,
     letterSpacing: 1,

@@ -33,7 +33,7 @@
  */
 
 import React, { useCallback, useContext } from 'react';
-import { View, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
 import { NavigationContext } from '@react-navigation/native';
 import { Theme } from '../theme';
 import { ThemedText } from './ThemedText';
@@ -66,8 +66,20 @@ interface ScreenHeaderProps {
    *
    * Rendered in accent, or error when destructive, so it cannot be mistaken
    * for the muted chrome of the dismiss word beside it.
+   *
+   * `busy` swaps the label for a spinner and refuses the press. The admin
+   * managers that save from here — Operations Manager, Hub Detail — showed one
+   * in their hand-rolled headers, and dropping it would have made a slow save
+   * look like a dead button. `disabled` is separate: busy means "working",
+   * disabled means "not available", and they read differently.
    */
-  action?: { label: string; onPress: () => void; destructive?: boolean };
+  action?: {
+    label: string;
+    onPress: () => void;
+    destructive?: boolean;
+    busy?: boolean;
+    disabled?: boolean;
+  };
 }
 
 export function ScreenHeader({ title, onDismiss, label, action }: ScreenHeaderProps) {
@@ -117,14 +129,23 @@ export function ScreenHeader({ title, onDismiss, label, action }: ScreenHeaderPr
       {action && (
         <TouchableOpacity
           onPress={action.onPress}
+          disabled={action.busy || action.disabled}
           style={styles.action}
           activeOpacity={0.6}
           accessibilityRole="button"
           accessibilityLabel={action.label}
+          accessibilityState={{ disabled: !!(action.busy || action.disabled), busy: !!action.busy }}
         >
-          <ThemedText variant="body" color={action.destructive ? 'warning' : 'accent'}>
-            {action.label}
-          </ThemedText>
+          {action.busy ? (
+            <ActivityIndicator size="small" color={Theme.colors.text.mint} />
+          ) : (
+            <ThemedText
+              variant="body"
+              color={action.disabled ? 'muted' : action.destructive ? 'warning' : 'accent'}
+            >
+              {action.label}
+            </ThemedText>
+          )}
         </TouchableOpacity>
       )}
       <TouchableOpacity

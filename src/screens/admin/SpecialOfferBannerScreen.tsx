@@ -26,6 +26,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { decode } from 'base64-arraybuffer';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
+import { ScreenHeader } from '../../components/ScreenHeader';
 import { Divider } from '../../components/Divider';
 import { supabase } from '../../api/supabaseClient';
 import { sendPush } from '../../api/sendPush';
@@ -435,15 +436,7 @@ export function SpecialOfferBannerScreen({ navigation }: { navigation: AdminNavP
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <ThemedText variant="body" color="accent" style={styles.back}>‹ Back</ThemedText>
-        </TouchableOpacity>
-        <ThemedText variant="header" color="primary" style={styles.title}>
-          Special Offer Banner
-        </ThemedText>
-        <View style={styles.spacer} />
-      </View>
+      <ScreenHeader title="Special Offer Banner" />
 
       {/* Tabs */}
       <View style={styles.topTabs}>
@@ -677,18 +670,6 @@ const emojiRow = StyleSheet.create({
 const styles = StyleSheet.create({
   footerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
-
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.layout.divider,
-  },
-  back: { fontSize: B, minWidth: 60 },
-  title: { flex: 1, textAlign: 'center' },
-  spacer: { minWidth: 60 },
 
   topTabs: {
     flexDirection: 'row',

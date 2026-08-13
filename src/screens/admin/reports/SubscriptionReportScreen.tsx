@@ -18,11 +18,11 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../../theme';
 import { ThemedText } from '../../../components/ThemedText';
+import { ScreenHeader } from '../../../components/ScreenHeader';
 import { EmptyState } from '../../../components/EmptyState';
 import { ErrorRetry } from '../../../components/ErrorRetry';
 import { printHtml, sharePdf } from '../../../utils/printHtml';
 import { useSubscriptionReport, useSubscriptionPlanReport } from '../../../hooks/useReports';
-import type { AdminNavProp } from '../../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
@@ -65,7 +65,7 @@ async function handleDownload(html: string) {
   }
 }
 
-export function SubscriptionReportScreen({ navigation }: { navigation: AdminNavProp }) {
+export function SubscriptionReportScreen() {
   const { data: overview, isLoading, isError, refetch } = useSubscriptionReport();
   const { data: plans = [] } = useSubscriptionPlanReport();
 
@@ -79,13 +79,7 @@ export function SubscriptionReportScreen({ navigation }: { navigation: AdminNavP
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <ThemedText variant="body" color="accent" style={styles.txt}>‹ Back</ThemedText>
-        </TouchableOpacity>
-        <ThemedText variant="header" color="primary" style={styles.title}>Subscriptions</ThemedText>
-        <View style={{ minWidth: 60 }} />
-      </View>
+      <ScreenHeader title="Subscriptions" />
 
       <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
         {/* A failed fetch is not an empty period. Rendering the empty state
@@ -166,16 +160,7 @@ export function SubscriptionReportScreen({ navigation }: { navigation: AdminNavP
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.layout.divider,
-  },
-  title: { flex: 1, textAlign: 'center' },
+
   sectionLabel: {
     paddingHorizontal: Theme.spacing.md,
     paddingTop: Theme.spacing.md,

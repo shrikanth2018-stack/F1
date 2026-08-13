@@ -28,11 +28,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { infoDialog } from '../../utils/confirmDialog';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
+import { ScreenHeader } from '../../components/ScreenHeader';
 import { useBranches } from '../../hooks/useBranches';
 import { useVendorExport, type VendorExportRow } from '../../hooks/useVendorExport';
 import { STATUS_LABEL, type VendorStatus } from '../../hooks/useVendors';
 import { exportCsv } from '../../utils/exportCsv';
-import type { AdminScreenProps } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
@@ -96,7 +96,7 @@ const STATUS_OPTIONS: Array<{ key: VendorStatus | 'all'; label: string }> = [
   { key: 'rejected',  label: 'Rejected' },
 ];
 
-export function AdminVendorExportScreen({ navigation }: AdminScreenProps<'AdminVendorExport'>) {
+export function AdminVendorExportScreen() {
   const [status, setStatus] = useState<VendorStatus | 'all'>('all');
   const [branchId, setBranchId] = useState<number | null>(null);
   const [selectedCols, setSelectedCols] = useState<Set<ColumnKey>>(new Set(DEFAULT_COL_KEYS));
@@ -144,13 +144,7 @@ export function AdminVendorExportScreen({ navigation }: AdminScreenProps<'AdminV
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <ThemedText variant="body" color="accent" style={styles.back}>‹ Back</ThemedText>
-        </TouchableOpacity>
-        <ThemedText variant="header" color="primary" style={styles.title}>Export Vendors</ThemedText>
-        <View style={styles.spacer} />
-      </View>
+      <ScreenHeader title="Export Vendors" />
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <ThemedText variant="small" color="muted" style={styles.sectionLabel}>FILTERS</ThemedText>
@@ -266,17 +260,6 @@ function stamp(): string {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.layout.divider,
-  },
-  back: { fontSize: B, minWidth: 60 },
-  title: { flex: 1, textAlign: 'center' },
-  spacer: { minWidth: 60 },
 
   scroll: {
     paddingHorizontal: Theme.spacing.md,

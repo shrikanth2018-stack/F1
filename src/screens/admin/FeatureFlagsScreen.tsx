@@ -10,18 +10,17 @@ import {
   View,
   FlatList,
   Switch,
-  TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
+import { ScreenHeader } from '../../components/ScreenHeader';
 import { useFeatureFlags } from '../../hooks/useFeatureFlag';
 import { useUpdateFeatureFlag, useUpdateStoreConfig } from '../../hooks/useStaffManagement';
 import { useStoreConfig } from '../../hooks/useStoreConfig';
 import { useBranchFilter } from '../../hooks/useBranchFilter';
-import type { AdminNavProp } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
@@ -44,7 +43,7 @@ const SUPER_ADMIN_ONLY_FLAGS = new Set(['branch_management_active']);
 // Per-flag helper notes shown on the admin row (empty object = no notes today).
 const FLAG_NOTES: Record<string, string> = {};
 
-export function FeatureFlagsScreen({ navigation }: { navigation: AdminNavProp }) {
+export function FeatureFlagsScreen() {
   const { data: flags = [], isLoading } = useFeatureFlags();
   const updateFlag = useUpdateFeatureFlag();
   const { data: storeConfig } = useStoreConfig();
@@ -105,15 +104,7 @@ export function FeatureFlagsScreen({ navigation }: { navigation: AdminNavProp })
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <ThemedText variant="body" color="accent" style={{ fontSize: B, minWidth: 60 }}>‹ Back</ThemedText>
-        </TouchableOpacity>
-        <ThemedText variant="header" color="primary" style={{ flex: 1, textAlign: 'center' }}>
-          Feature Flags
-        </ThemedText>
-        <View style={{ minWidth: 60 }} />
-      </View>
+      <ScreenHeader title="Feature Flags" />
 
       {isLoading ? (
         <ActivityIndicator style={{ marginTop: Theme.spacing.xl }} color={Theme.colors.action.primary} />
@@ -191,15 +182,6 @@ export function FeatureFlagsScreen({ navigation }: { navigation: AdminNavProp })
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
-
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.layout.divider,
-  },
 
   flagRow: {
     flexDirection: 'row',

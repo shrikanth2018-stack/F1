@@ -29,6 +29,7 @@ import { confirmDialog, infoDialog } from '../../utils/confirmDialog';
 import { getErrorMessage } from '../../utils/formatters';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
+import { ScreenHeader } from '../../components/ScreenHeader';
 import { EmptyState } from '../../components/EmptyState';
 import { CatalogPhotoThumb } from '../../components/CatalogPhotoThumb';
 import { PHOTO_BUCKET, PHOTO_PX } from '../../utils/catalogPhoto';
@@ -214,15 +215,7 @@ export function EssentialsCatalogManageScreen({ navigation }: { navigation: Admi
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <ThemedText variant="body" color="accent" style={styles.back}>‹ Back</ThemedText>
-        </TouchableOpacity>
-        <ThemedText variant="header" color="primary" style={styles.title}>
-          Essentials Manager
-        </ThemedText>
-        <View style={styles.spacer} />
-      </View>
+      <ScreenHeader title="Essentials Manager" />
 
       {/* Cycle toggle — Morning/Noon/Afternoon/Evening */}
       <TouchableOpacity style={styles.cycleRow} onPress={handleCycleToggle} activeOpacity={0.7}>
@@ -273,18 +266,6 @@ export function EssentialsCatalogManageScreen({ navigation }: { navigation: Admi
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
-
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.layout.divider,
-  },
-  back: { fontSize: B, minWidth: 60 },
-  title: { flex: 1, textAlign: 'center' },
-  spacer: { minWidth: 60 },
 
   cycleRow: {
     paddingHorizontal: Theme.spacing.md,

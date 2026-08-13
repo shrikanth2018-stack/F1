@@ -20,6 +20,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
+import { ScreenHeader } from '../../components/ScreenHeader';
 import { Divider } from '../../components/Divider';
 import { useStoreConfig } from '../../hooks/useStoreConfig';
 import { useUpdateStoreConfig } from '../../hooks/useStaffManagement';
@@ -210,20 +211,10 @@ export function StoreConfigScreen({ navigation }: { navigation: AdminNavProp }) 
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <ThemedText variant="body" color="accent" style={{ fontSize: B, minWidth: 60 }}>‹ Back</ThemedText>
-        </TouchableOpacity>
-        <ThemedText variant="header" color="primary" style={{ flex: 1, textAlign: 'center' }}>
-          Operations Manager
-        </ThemedText>
-        <TouchableOpacity onPress={handleSave} disabled={updateConfig.isPending} style={{ minWidth: 60, alignItems: 'flex-end' }}>
-          {updateConfig.isPending
-            ? <ActivityIndicator size="small" color={Theme.colors.text.mint} />
-            : <ThemedText variant="body" color="mint" style={{ fontSize: B }}>Save</ThemedText>
-          }
-        </TouchableOpacity>
-      </View>
+      <ScreenHeader
+        title="Operations Manager"
+        action={{ label: 'Save', onPress: handleSave, busy: updateConfig.isPending }}
+      />
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: Theme.spacing.xl * 3 }}>
 
@@ -324,15 +315,6 @@ export function StoreConfigScreen({ navigation }: { navigation: AdminNavProp }) 
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
-
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.layout.divider,
-  },
 
   group: {
     paddingHorizontal: Theme.spacing.md,

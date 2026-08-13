@@ -24,6 +24,7 @@ import { getErrorMessage } from '../../utils/formatters';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
+import { ScreenHeader } from '../../components/ScreenHeader';
 import { Divider } from '../../components/Divider';
 import { ErrorRetry } from '../../components/ErrorRetry';
 import { SegmentedControl } from '../../components/SegmentedControl';
@@ -34,7 +35,6 @@ import {
   useUpdateNotificationTemplate,
   type NotificationTemplate,
 } from '../../hooks/useNotificationTemplates';
-import type { AdminNavProp } from '../../navigation/types';
 
 // The variable list per event now lives on the notification_templates row
 // (column `variables`, audit D21) — no hardcoded client map.
@@ -278,18 +278,12 @@ function TemplateCard({ template }: { template: NotificationTemplate }) {
   );
 }
 
-export function NotificationManagerScreen({ navigation }: { navigation: AdminNavProp }) {
+export function NotificationManagerScreen() {
   const { data: templates, isLoading, error, refetch } = useNotificationTemplates();
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <ThemedText variant="body" color="accent">‹ Back</ThemedText>
-        </TouchableOpacity>
-        <ThemedText variant="header" color="primary">Notifications</ThemedText>
-        <View style={{ width: 50 }} />
-      </View>
+      <ScreenHeader title="Notifications" />
 
       {error ? (
         <ErrorRetry message="Failed to load templates" onRetry={refetch} />
@@ -313,15 +307,7 @@ export function NotificationManagerScreen({ navigation }: { navigation: AdminNav
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.layout.divider,
-  },
+
   loading: { marginTop: Theme.spacing.xl },
   intro: {
     paddingHorizontal: Theme.spacing.md,

@@ -19,6 +19,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../../theme';
 import { ThemedText } from '../../../components/ThemedText';
+import { ScreenHeader } from '../../../components/ScreenHeader';
 import { EmptyState } from '../../../components/EmptyState';
 import { printHtml, sharePdf } from '../../../utils/printHtml';
 import { useHubReport, type HubStat } from '../../../hooks/useHubReport';
@@ -235,7 +236,7 @@ function StatusCell({
 }
 
 // ── Screen ───────────────────────────────────────────────
-export function HubReportScreen({ navigation }: any) {
+export function HubReportScreen() {
   const [period, setPeriod] = useState<Period>('Weekly');
   const [customRange, setCustomRange] = useState<DateRange>(defaultCustomRange);
   const { start, end } = getPeriodRange(period, customRange);
@@ -249,15 +250,7 @@ export function HubReportScreen({ navigation }: any) {
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <ThemedText variant="body" color="accent" style={{ fontSize: B }}>‹ Back</ThemedText>
-        </TouchableOpacity>
-        <ThemedText variant="header" color="primary" style={{ fontSize: B + 2 }}>
-          Hub Report
-        </ThemedText>
-        <View style={{ width: 60 }} />
-      </View>
+      <ScreenHeader title="Hub Report" />
 
       {/* Period picker */}
       <View style={styles.periodRow}>
@@ -375,16 +368,6 @@ function SummaryPill({ label, value }: { label: string; value: string }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
-
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.layout.divider,
-  },
 
   periodRow: {
     flexDirection: 'row',

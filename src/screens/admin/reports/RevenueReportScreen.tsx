@@ -22,11 +22,11 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../../theme';
 import { ThemedText } from '../../../components/ThemedText';
+import { ScreenHeader } from '../../../components/ScreenHeader';
 import { EmptyState } from '../../../components/EmptyState';
 import { ErrorRetry } from '../../../components/ErrorRetry';
 import { printHtml, sharePdf } from '../../../utils/printHtml';
 import { useRevenueDetailReport, type OrderSource } from '../../../hooks/useReports';
-import type { AdminNavProp } from '../../../navigation/types';
 import {
   ReportPeriodPicker,
   defaultCustomRange,
@@ -106,7 +106,7 @@ async function handleDownload(html: string) {
   }
 }
 
-export function RevenueReportScreen({ navigation }: { navigation: AdminNavProp }) {
+export function RevenueReportScreen() {
   const [period, setPeriod] = useState<Period>('Monthly');
   const [customRange, setCustomRange] = useState<DateRange>(defaultCustomRange);
   const [source, setSource] = useState<OrderSource>('all');
@@ -132,13 +132,7 @@ export function RevenueReportScreen({ navigation }: { navigation: AdminNavProp }
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <ThemedText variant="body" color="accent" style={styles.txt}>‹ Back</ThemedText>
-        </TouchableOpacity>
-        <ThemedText variant="header" color="primary" style={styles.title}>Revenue Report</ThemedText>
-        <View style={{ minWidth: 60 }} />
-      </View>
+      <ScreenHeader title="Revenue Report" />
 
       <ReportPeriodPicker
         period={period}
@@ -287,16 +281,7 @@ const styles = StyleSheet.create({
   },
   vendorNote: { marginTop: Theme.spacing.xs },
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.layout.divider,
-  },
-  title: { flex: 1, textAlign: 'center' },
+
   toggleRow: {
     flexDirection: 'row',
     alignItems: 'center',

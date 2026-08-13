@@ -37,6 +37,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
+import { ScreenHeader } from '../../components/ScreenHeader';
 import { Divider } from '../../components/Divider';
 import { EmptyState } from '../../components/EmptyState';
 import { ErrorRetry } from '../../components/ErrorRetry';
@@ -106,13 +107,7 @@ export function AdminVendorManagerScreen({ navigation }: AdminScreenProps<'Admin
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <ThemedText variant="body" color="accent" style={styles.txt}>‹ Back</ThemedText>
-        </TouchableOpacity>
-        <ThemedText variant="header" color="primary" style={styles.title}>Vendor Manager</ThemedText>
-        <View style={styles.spacer} />
-      </View>
+      <ScreenHeader title="Vendor Manager" />
 
       <SegmentedControl<VendorTab>
         style={styles.tabs}
@@ -203,16 +198,6 @@ export function AdminVendorManagerScreen({ navigation }: AdminScreenProps<'Admin
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
   tabs: { marginHorizontal: Theme.spacing.md, marginVertical: Theme.spacing.sm },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.layout.divider,
-  },
-  title: { flex: 1, textAlign: 'center' },
-  spacer: { minWidth: 60 },
 
   chipScroll: { flexGrow: 0, flexShrink: 0 },
   chipRow: {

@@ -26,6 +26,7 @@ import { decode } from 'base64-arraybuffer';
 import { supabase } from '../../api/supabaseClient';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
+import { ScreenHeader } from '../../components/ScreenHeader';
 import { Divider } from '../../components/Divider';
 import type { AdminNavProp } from '../../navigation/types';
 
@@ -211,13 +212,7 @@ function Uploader({
 export function LoginBgScreen({ navigation }: { navigation: AdminNavProp }) {
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <ThemedText variant="body" color="accent" style={{ fontSize: B }}>‹ Back</ThemedText>
-        </TouchableOpacity>
-        <ThemedText variant="header" color="primary" style={styles.title}>Banners &amp; Backgrounds</ThemedText>
-        <View style={{ minWidth: 60 }} />
-      </View>
+      <ScreenHeader title="Banners & Backgrounds" />
 
       <Divider />
 
@@ -276,16 +271,7 @@ export function LoginBgScreen({ navigation }: { navigation: AdminNavProp }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.layout.divider,
-  },
-  title: { flex: 1, textAlign: 'center' },
+
   content: { padding: Theme.spacing.md, paddingBottom: Theme.spacing.xl * 2 },
   sectionLabel: {
     fontSize: Theme.typography.sizes.small,

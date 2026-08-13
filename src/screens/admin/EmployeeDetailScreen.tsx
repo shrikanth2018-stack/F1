@@ -18,6 +18,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
+import { ScreenHeader } from '../../components/ScreenHeader';
 import { Divider } from '../../components/Divider';
 import { useEmployeeLeaves } from '../../hooks/useResourceManager';
 import { useAllStaff } from '../../hooks/useStaffManagement';
@@ -29,7 +30,6 @@ import { LeaveTab } from './components/LeaveTab';
 import { SalaryTab } from './components/SalaryTab';
 
 const B = Theme.typography.sizes.body + 2;
-const S = Theme.typography.sizes.small + 2;
 
 type DetailTab = 'Profile' | 'Attendance' | 'Leave' | 'Salary';
 const DETAIL_TABS: DetailTab[] = ['Profile', 'Attendance', 'Leave', 'Salary'];
@@ -56,20 +56,21 @@ export function EmployeeDetailScreen({ navigation, route }: AdminScreenProps<'Em
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <ThemedText variant="body" color="accent" style={styles.back}>‹ Back</ThemedText>
-        </TouchableOpacity>
-        <View style={styles.headerCenter}>
-          <ThemedText variant="header" color="primary" style={styles.name}>
-            {staff.full_name || staff.phone_number}
-          </ThemedText>
-          <ThemedText variant="small" color="muted" style={styles.subhead}>
-            {[staff.employee_id, staff.designation].filter(Boolean).join('  ·  ')}
-          </ThemedText>
-        </View>
-        <View style={styles.spacer} />
-      </View>
+      <ScreenHeader title={staff.full_name || staff.phone_number} />
+
+      {/* ── Who this is, beneath the name ──
+           This used to be a second line INSIDE the header. `ScreenHeader` is
+           one height on every page — that is the whole reason it exists, so a
+           title never lands a few points off where the last page put it — and
+           a subtitle slot would have given that away for one screen. The
+           employee number and designation are what an admin checks they have
+           opened the right person by, so they stay; they simply sit under the
+           bar instead of in it. */}
+      {!!(staff.employee_id || staff.designation) && (
+        <ThemedText variant="small" color="muted" style={styles.identity}>
+          {[staff.employee_id, staff.designation].filter(Boolean).join('  ·  ')}
+        </ThemedText>
+      )}
 
       {/* Tabs */}
       <View style={styles.tabRow}>
@@ -105,19 +106,7 @@ export function EmployeeDetailScreen({ navigation, route }: AdminScreenProps<'Em
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
 
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.layout.divider,
-  },
-  back:         { fontSize: B, minWidth: 60 },
-  headerCenter: { flex: 1, alignItems: 'center' },
-  name:         { textAlign: 'center' },
-  subhead:      { fontSize: S, marginTop: 2 },
-  spacer:       { minWidth: 60 },
+  identity: { paddingHorizontal: Theme.spacing.md, paddingTop: Theme.spacing.sm },
 
   tabRow: {
     flexDirection: 'row',

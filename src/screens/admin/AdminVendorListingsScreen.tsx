@@ -30,6 +30,7 @@ import { View, ScrollView, TouchableOpacity, TextInput, StyleSheet } from 'react
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
+import { ScreenHeader } from '../../components/ScreenHeader';
 import { Divider } from '../../components/Divider';
 import { EmptyState } from '../../components/EmptyState';
 import { ErrorRetry } from '../../components/ErrorRetry';
@@ -49,7 +50,6 @@ import {
   type PendingListing,
   type PendingChange,
 } from '../../hooks/useVendorListingReview';
-import type { AdminNavProp } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
@@ -374,18 +374,10 @@ export function VendorListingsQueue() {
  * ({ screen: 'AdminVendorListings' }), and a notification should open the
  * queue itself rather than a tab the reader then has to find.
  */
-export function AdminVendorListingsScreen({ navigation }: { navigation: AdminNavProp }) {
+export function AdminVendorListingsScreen() {
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <ThemedText variant="body" color="accent" style={styles.back}>‹ Back</ThemedText>
-        </TouchableOpacity>
-        <ThemedText variant="header" color="primary" style={styles.title}>
-          Vendor Listings
-        </ThemedText>
-        <View style={styles.spacer} />
-      </View>
+      <ScreenHeader title="Vendor Listings" />
       <VendorListingsQueue />
     </SafeAreaView>
   );
@@ -393,17 +385,6 @@ export function AdminVendorListingsScreen({ navigation }: { navigation: AdminNav
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.layout.divider,
-  },
-  back: { fontSize: B, minWidth: 60 },
-  title: { flex: 1, textAlign: 'center' },
-  spacer: { minWidth: 60 },
 
   list: { paddingHorizontal: Theme.spacing.md, paddingBottom: Theme.spacing.xl * 2 },
   sectionLabel: {

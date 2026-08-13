@@ -24,6 +24,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
+import { ScreenHeader } from '../../components/ScreenHeader';
 import { Divider } from '../../components/Divider';
 import { EmptyState } from '../../components/EmptyState';
 import { ErrorRetry } from '../../components/ErrorRetry';
@@ -244,13 +245,7 @@ export function AdminOrdersScreen({ navigation, route }: AdminScreenProps<'Admin
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <ThemedText variant="body" color="accent" style={styles.txt}>‹ Back</ThemedText>
-        </TouchableOpacity>
-        <ThemedText variant="header" color="primary" style={styles.title}>Running Orders</ThemedText>
-        <View style={{ minWidth: 60 }} />
-      </View>
+      <ScreenHeader title="Running Orders" />
 
       {/* Dates apply to the day view only — the Undelivered set spans every
           date and paging through days there would mean nothing. */}
@@ -462,16 +457,7 @@ const styles = StyleSheet.create({
     gap: Theme.spacing.md,
     paddingTop: Theme.spacing.xs,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.layout.divider,
-  },
-  title: { flex: 1, textAlign: 'center' },
+
   dateRow: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -508,7 +494,6 @@ const styles = StyleSheet.create({
   },
   rowId: { fontSize: B, minWidth: 56 },
   rowRouting: { fontSize: S, flex: 1 },
-  txt: { fontSize: B },
 
   chipScrollView: {
     flexGrow: 0,

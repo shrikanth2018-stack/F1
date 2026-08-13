@@ -33,6 +33,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSupabaseSingle } from '../../api/useSupabaseQuery';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
+import { ScreenHeader } from '../../components/ScreenHeader';
 import { Divider } from '../../components/Divider';
 import { ErrorRetry } from '../../components/ErrorRetry';
 import { DispatchBadge } from '../../components/DispatchBadge';
@@ -75,7 +76,6 @@ function useAdminOrderDetail(orderId: number) {
 
 export function AdminOrderDetailScreen({
   route,
-  navigation,
 }: AdminScreenProps<'AdminOrderDetail'>) {
   const { orderId } = route.params;
   const { data: order, isLoading, error, refetch } = useAdminOrderDetail(orderId);
@@ -224,13 +224,7 @@ export function AdminOrderDetailScreen({
   if (isLoading || !order) {
     return (
       <SafeAreaView style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <ThemedText variant="body" color="accent">‹ Back</ThemedText>
-          </TouchableOpacity>
-          <ThemedText variant="header" color="primary">Order #{orderId}</ThemedText>
-          <View style={{ width: 40 }} />
-        </View>
+        <ScreenHeader title={`Order #${orderId}`} />
         <ActivityIndicator
           color={Theme.colors.action.primary}
           style={{ marginTop: Theme.spacing.xl }}
@@ -270,13 +264,7 @@ export function AdminOrderDetailScreen({
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll}>
         {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <ThemedText variant="body" color="accent">‹ Back</ThemedText>
-          </TouchableOpacity>
-          <ThemedText variant="header" color="primary">Order #{o.id}</ThemedText>
-          <View style={{ width: 40 }} />
-        </View>
+        <ScreenHeader title={`Order #${o.id}`} />
 
         {/* Status + Routing */}
         <View style={styles.section}>
@@ -459,15 +447,7 @@ export function AdminOrderDetailScreen({
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
   scroll: { paddingBottom: Theme.spacing.xl },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.layout.divider,
-  },
+
   section: {
     paddingHorizontal: Theme.spacing.md,
     paddingVertical: Theme.spacing.sm,

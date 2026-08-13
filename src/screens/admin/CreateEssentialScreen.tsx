@@ -18,6 +18,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
+import { ScreenHeader } from '../../components/ScreenHeader';
 // Alert.alert is a no-op in react-native-web, so on app.1stone.in this screen
 // silently ignored an empty name, an invalid price and a failed photo upload.
 import { infoDialog } from '../../utils/confirmDialog';
@@ -125,15 +126,7 @@ export function CreateEssentialScreen({ navigation, route }: AdminScreenProps<'C
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <ThemedText variant="body" color="accent" style={styles.back}>‹ Back</ThemedText>
-        </TouchableOpacity>
-        <ThemedText variant="header" color="primary" style={styles.title}>
-          Add Essential Item
-        </ThemedText>
-        <View style={styles.spacer} />
-      </View>
+      <ScreenHeader title="Add Essential Item" />
 
       <ScrollView
         contentContainerStyle={styles.scroll}
@@ -256,17 +249,7 @@ const styles = StyleSheet.create({
   photoRemove: { fontSize: S, marginTop: 6 },
 
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.layout.divider,
-  },
-  back: { fontSize: B, minWidth: 60 },
-  title: { flex: 1, textAlign: 'center' },
-  spacer: { minWidth: 60 },
+
   scroll: { paddingHorizontal: Theme.spacing.md, paddingBottom: Theme.spacing.xl * 2 },
   cycleRow: {
     paddingVertical: Theme.spacing.sm + 2,

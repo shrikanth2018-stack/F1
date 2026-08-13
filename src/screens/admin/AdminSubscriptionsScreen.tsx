@@ -29,6 +29,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
+import { ScreenHeader } from '../../components/ScreenHeader';
 import { Divider } from '../../components/Divider';
 import { EmptyState } from '../../components/EmptyState';
 import { ErrorRetry } from '../../components/ErrorRetry';
@@ -73,7 +74,7 @@ interface CancelTarget {
   proratedAmount: number;
 }
 
-export function AdminSubscriptionsScreen({ navigation }: any) {
+export function AdminSubscriptionsScreen() {
   const { data: subs, isLoading, error, refetch } = useAdminSubscriptions();
   const { mutateAsync: cancelSub } = useAdminCancelSubscription();
   const { data: storeConfig } = useStoreConfig();
@@ -170,13 +171,7 @@ export function AdminSubscriptionsScreen({ navigation }: any) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <ThemedText variant="body" color="accent" style={styles.txt}>‹ Back</ThemedText>
-        </TouchableOpacity>
-        <ThemedText variant="header" color="primary" style={styles.title}>Running Subscriptions</ThemedText>
-        <View style={{ minWidth: 60 }} />
-      </View>
+      <ScreenHeader title="Running Subscriptions" />
 
       <ReportPeriodPicker
         period={period}
@@ -343,16 +338,7 @@ export function AdminSubscriptionsScreen({ navigation }: any) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.layout.divider,
-  },
-  title: { flex: 1, textAlign: 'center' },
+
   list: { paddingBottom: Theme.spacing.xl },
   row: { paddingHorizontal: Theme.spacing.md, paddingVertical: Theme.spacing.sm + 2 },
   rowTop: {

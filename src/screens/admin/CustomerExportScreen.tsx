@@ -21,12 +21,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { infoDialog } from '../../utils/confirmDialog';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
+import { ScreenHeader } from '../../components/ScreenHeader';
 import { useBranches } from '../../hooks/useBranches';
 import { useDeliveryHubs } from '../../hooks/useDeliveryHubs';
 import { useDeliveryZones } from '../../hooks/useDeliveryZones';
 import { useCustomerExport, type CustomerExportRow } from '../../hooks/useCustomerExport';
 import { exportCsv } from '../../utils/exportCsv';
-import type { AdminScreenProps } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
@@ -79,7 +79,7 @@ const STATUS_OPTIONS: Array<{ key: 'active' | 'dormant' | 'all'; label: string }
 ];
 
 // ── Screen ──────────────────────────────────────────────────
-export function CustomerExportScreen({ navigation }: AdminScreenProps<'CustomerExport'>) {
+export function CustomerExportScreen() {
   const [branchId, setBranchId] = useState<number | null>(null);
   const [hubId, setHubId] = useState<number | null>(null);
   const [zoneId, setZoneId] = useState<number | null>(null);
@@ -166,13 +166,7 @@ export function CustomerExportScreen({ navigation }: AdminScreenProps<'CustomerE
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <ThemedText variant="body" color="accent" style={styles.back}>‹ Back</ThemedText>
-        </TouchableOpacity>
-        <ThemedText variant="header" color="primary" style={styles.title}>Export Customers</ThemedText>
-        <View style={styles.spacer} />
-      </View>
+      <ScreenHeader title="Export Customers" />
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
 
@@ -326,18 +320,6 @@ function stamp(): string {
 // ── Styles ──────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
-
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.layout.divider,
-  },
-  back: { fontSize: B, minWidth: 60 },
-  title: { flex: 1, textAlign: 'center' },
-  spacer: { minWidth: 60 },
 
   scroll: {
     paddingHorizontal: Theme.spacing.md,

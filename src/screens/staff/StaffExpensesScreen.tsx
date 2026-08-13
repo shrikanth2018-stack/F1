@@ -18,9 +18,9 @@ import {
   TouchableWithoutFeedback,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
+import { ScreenHeader } from '../../components/ScreenHeader';
 import { EmptyState } from '../../components/EmptyState';
 import {
   useMyExpenses,
@@ -39,7 +39,6 @@ const CATEGORIES: ExpenseCategory[] = [
 const S = Theme.typography.sizes;
 const BODY = S.body + 3;
 const SMALL = S.small + 3;
-const SUBTITLE = S.subtitle + 3;
 
 function statusColor(status: string): string {
   switch (status) {
@@ -50,7 +49,6 @@ function statusColor(status: string): string {
 }
 
 export function StaffExpensesScreen() {
-  const navigation = useNavigation<any>();
   const [showForm, setShowForm] = useState(false);
   const [category, setCategory] = useState<ExpenseCategory>('Grocery');
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -115,15 +113,7 @@ export function StaffExpensesScreen() {
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <ThemedText variant="body" color="accent" style={styles.back}>‹ Back</ThemedText>
-        </TouchableOpacity>
-        <ThemedText variant="header" color="primary" style={styles.title}>
-          My Expenses
-        </ThemedText>
-        <View style={styles.headerSpacer} />
-      </View>
+      <ScreenHeader title="My Expenses" />
 
       {/* Summary rows */}
       <View style={styles.summarySection}>
@@ -242,16 +232,6 @@ export function StaffExpensesScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
-
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-  },
-  back: { fontSize: BODY, minWidth: 60 },
-  title: { flex: 1, textAlign: 'center', fontSize: SUBTITLE + 2 },
-  headerSpacer: { minWidth: 60 },
 
   summarySection: {
     paddingHorizontal: Theme.spacing.md,

@@ -22,14 +22,14 @@ import {
   TextInput,
   Switch,
   TouchableOpacity,
-  ActivityIndicator,
   StyleSheet,
 } from 'react-native';
 import { getErrorMessage } from '../../utils/formatters';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
+import { ScreenHeader } from '../../components/ScreenHeader';
 import { ZoneMap } from '../../components/ZoneMap';
 import { PhonePicker, type PickedProfile } from '../../components/PhonePicker';
 import {
@@ -62,7 +62,6 @@ export function HubDetailScreen({ route, navigation }: AdminScreenProps<'HubDeta
   const existingHub = route.params?.hub;
   const isEditing = existingHub != null;
 
-  const insets = useSafeAreaInsets();
 
   // Map
   const [vertices, setVertices] = useState<{ lat: number; lng: number }[]>(
@@ -254,20 +253,10 @@ export function HubDetailScreen({ route, navigation }: AdminScreenProps<'HubDeta
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
-      <View style={[styles.header, { paddingTop: Math.max(insets.top - 44, 0) }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <ThemedText variant="body" color="accent" style={styles.back}>‹ Back</ThemedText>
-        </TouchableOpacity>
-        <ThemedText variant="header" color="primary" style={styles.title}>
-          {isEditing ? 'Edit Hub' : 'New Hub'}
-        </ThemedText>
-        <TouchableOpacity onPress={handleSave} disabled={saving}>
-          {saving
-            ? <ActivityIndicator color={Theme.colors.text.mint} size="small" />
-            : <ThemedText variant="body" color="mint" style={styles.save}>Save</ThemedText>
-          }
-        </TouchableOpacity>
-      </View>
+      <ScreenHeader
+        title={isEditing ? 'Edit Hub' : 'New Hub'}
+        action={{ label: 'Save', onPress: handleSave, busy: saving }}
+      />
 
       <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         {/* ── Map ── */}
@@ -458,18 +447,6 @@ export function HubDetailScreen({ route, navigation }: AdminScreenProps<'HubDeta
 // ── Styles ────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.layout.divider,
-  },
-  back: { fontSize: B, minWidth: 60 },
-  title: { flex: 1, textAlign: 'center' },
-  save: { fontSize: B, minWidth: 60, textAlign: 'right' },
 
   sectionHeader: {
     paddingHorizontal: Theme.spacing.md,
@@ -523,12 +500,6 @@ const styles = StyleSheet.create({
     backgroundColor: Theme.colors.layout.divider,
     marginHorizontal: Theme.spacing.md,
   },
-
-
-
-
-
-
 
   toggleRow: {
     flexDirection: 'row',

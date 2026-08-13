@@ -32,6 +32,7 @@ import { sharePdf } from '../../utils/printHtml';
 import { confirmDialog, infoDialog } from '../../utils/confirmDialog';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
+import { ScreenHeader } from '../../components/ScreenHeader';
 import { Divider } from '../../components/Divider';
 import {
   useActiveOrderList,
@@ -44,7 +45,6 @@ import {
   buildOrderListHTML,
 } from '../../hooks/useStockManager';
 import type { SupplyOrderItem } from '../../types';
-import type { AdminNavProp } from '../../navigation/types';
 
 type StockTab = 'Current Order' | 'History';
 type Category = 'Vegetables' | 'Grocery' | 'Stationery';
@@ -459,7 +459,7 @@ function AddItemForm({
 
 // ── Main Screen ──────────────────────────────────────────
 
-export function StockManagerScreen({ navigation }: { navigation: AdminNavProp }) {
+export function StockManagerScreen() {
   const [activeTab, setActiveTab] = useState<StockTab>('Current Order');
   const { data: activeItems = [] } = useActiveOrderList();
   const printBatch = usePrintBatch();
@@ -513,13 +513,7 @@ export function StockManagerScreen({ navigation }: { navigation: AdminNavProp })
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <ThemedText variant="body" color="accent" style={[styles.back, { fontSize: B }]}>‹ Back</ThemedText>
-        </TouchableOpacity>
-        <ThemedText variant="header" color="primary" style={styles.title}>Stock Manager</ThemedText>
-        <View style={styles.spacer} />
-      </View>
+      <ScreenHeader title="Stock Manager" />
 
       {/* Pipe-separated tabs */}
       <View style={styles.topTabs}>
@@ -554,19 +548,6 @@ export function StockManagerScreen({ navigation }: { navigation: AdminNavProp })
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
-
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.layout.divider,
-  },
-  back: { minWidth: 60 },
-  title: { flex: 1, textAlign: 'center' },
-  spacer: { minWidth: 60 },
 
   topTabs: {
     flexDirection: 'row',
