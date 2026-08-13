@@ -68,6 +68,7 @@ import { ThemedText } from '../../components/ThemedText';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { PressCard } from '../../components/PressCard';
 import { FooterAction, FOOTER_CLEARANCE } from '../../components/FooterAction';
+import { WizardProgress } from '../../components/Wizard';
 import { EmptyState } from '../../components/EmptyState';
 import { CatalogPhotoThumb } from '../../components/CatalogPhotoThumb';
 import { PHOTO_BUCKET, PHOTO_PX } from '../../utils/catalogPhoto';
@@ -523,9 +524,7 @@ export function CustomPlanBuilderScreen({
            START date, and that is expressed where it belongs: as the first day
            the calendar on the summary offers. */}
       <View style={styles.subHeader}>
-        <View style={styles.progress}>
-          {steps.map((s, i) => <Segment key={s} on={i <= stepIndex} />)}
-        </View>
+        <WizardProgress count={steps.length} index={stepIndex} />
         {activeCycle && (
           <ThemedText variant="small" color="muted" numberOfLines={1}>
             {`Dispatched by ${formatTime12h(activeCycle.delivery_start)}`}
@@ -842,24 +841,6 @@ function StepFade({ dir, children }: { dir: 1 | -1; children: React.ReactNode })
 }
 
 /**
- * One notch of the progress bar.
- *
- * A FILL FADING IN OVER A TRACK, not a colour swap on one view. The track is
- * always there, so the bar always shows how many questions there are — which
- * is half of what a progress bar is for — and only the fill moves.
- */
-function Segment({ on }: { on: boolean }) {
-  const t = useSharedValue(on ? 1 : 0);
-  useEffect(() => { t.value = withTiming(on ? 1 : 0, MOTION); }, [on, t]);
-  const style = useAnimatedStyle(() => ({ opacity: t.value }));
-  return (
-    <View style={styles.segment}>
-      <Animated.View style={[styles.segmentFill, style]} />
-    </View>
-  );
-}
-
-/**
  * The day being composed, held in view for the whole build.
  *
  * THIS IS THE ONE THING ON THE SCREEN THAT IS NOT A CONTROL. A plan is one
@@ -1119,20 +1100,7 @@ const styles = StyleSheet.create({
     paddingTop: Theme.spacing.sm,
     gap: Theme.spacing.xs,
   },
-  progress: { flexDirection: 'row', gap: Theme.spacing.xs },
-  /** The track — always visible, so the bar shows how many questions remain. */
-  segment: {
-    flex: 1,
-    height: 3,
-    borderRadius: 2,
-    overflow: 'hidden',
-    backgroundColor: Theme.colors.layout.divider,
-  },
   /** The fill, faded in over the track. */
-  segmentFill: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: Theme.colors.text.mint,
-  },
 
   // ── The day being composed ──
   tray: {

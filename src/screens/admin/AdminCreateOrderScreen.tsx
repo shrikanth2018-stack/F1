@@ -21,7 +21,7 @@
  * bulk catalog.
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   ScrollView,
@@ -35,8 +35,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { ScreenHeader } from '../../components/ScreenHeader';
-import { Divider } from '../../components/Divider';
-import { confirmDialog, infoDialog } from '../../utils/confirmDialog';
+import { FooterAction, FOOTER_CLEARANCE } from '../../components/FooterAction';
+import { useWizard, WizardProgress } from '../../components/Wizard';
+import { infoDialog } from '../../utils/confirmDialog';
 import { formatPriceShort, formatDateLong, getErrorMessage } from '../../utils/formatters';
 import { toMenuUnit } from '../../utils/menuRecipe';
 import { useAllMenuItems, useAllDeliveryCycles } from '../../hooks/useMenuManagement';
@@ -47,12 +48,21 @@ import {
   useCreateAdminOrder,
   useAdminOrderPreview,
   type AdminOrderPayload,
+  type AdminOrderPreview,
 } from '../../hooks/useAdminOrderEntry';
 import type { MenuItem } from '../../types';
 import type { AdminScreenProps } from '../../navigation/types';
 
 const B = Theme.typography.sizes.body + 2;
 const S = Theme.typography.sizes.small + 2;
+
+/**
+ * The order the questions are actually answered in — and the order the old
+ * submit handler checked them in was almost the reverse, which is how an admin
+ * with no customer selected came to be told about the delivery cycle.
+ */
+type Step = 'customer' | 'delivery' | 'items' | 'charges' | 'payment' | 'review';
+const STEPS: Step[] = ['customer', 'delivery', 'items', 'charges', 'payment', 'review'];
 
 type PaymentMode = 'wallet' | 'link' | 'account';
 type PickedItem = { id: number; name: string; price: number; qty: string };
@@ -98,7 +108,6 @@ export function AdminCreateOrderScreen({ navigation }: AdminScreenProps<'AdminCr
     : targetAddress?.delivery_zones?.zone_name
       ? `Zone · ${targetAddress.delivery_zones.zone_name}`
       : 'No delivery area set';
-  const customerReady = isKnownCustomer && !!targetAddress && addressRoutes;
 
   // ── Cycle + items ─────────────────────────────────────────
   const { data: rawCycles = [] } = useAllDeliveryCycles();
@@ -179,68 +188,41 @@ export function AdminCreateOrderScreen({ navigation }: AdminScreenProps<'AdminCr
     notes: notes.trim() || undefined,
   });
 
-  const handleSubmit = async () => {
-    if (!selectedCycle) {
-      infoDialog('No cycle', 'No delivery cycles are available.');
-      return;
-    }
-    if (picked.length === 0) {
-      infoDialog('No items', 'Add at least one item to the order.');
-      return;
-    }
-    const badQty = picked.find((p) => !(parseInt(p.qty, 10) > 0));
-    if (badQty) {
-      infoDialog('Quantity required', `Enter how many ${badQty.name}.`);
-      return;
-    }
-    if (!isKnownCustomer) {
-      infoDialog('Customer required', 'Find the customer by phone, or register them first.');
-      return;
-    }
-    if (!targetAddress) {
-      infoDialog('Address required', 'This customer has no delivery address. Add one first.');
-      return;
-    }
-    if (!addressRoutes) {
-      infoDialog(
-        'Delivery area required',
-        'This address has no zone or hub, so the order could not be routed. Fix the address first.',
-      );
-      return;
-    }
+  // ── The wizard ─────────────────────────────────────────────
+  const wiz = useWizard<Step>(STEPS, navigation);
 
-    // Ask the server what it would charge — same code path that writes the
-    // order, so the dialog cannot disagree with what gets created.
-    let quote;
-    try {
-      quote = await previewOrder.mutateAsync(buildPayload());
-    } catch (e) {
-      infoDialog('Could not price the order', getErrorMessage(e));
-      return;
-    }
+  /**
+   * THE SERVER'S OWN FIGURES, ON A STEP RATHER THAN IN A DIALOG.
+   *
+   * This screen used to price the order and then read the answer out inside a
+   * confirm dialog — six lines of money in a modal, because there was nowhere
+   * else to put them. A review step is where they belong: it is scrollable,
+   * it can be gone back from without losing the form, and the numbers sit
+   * beside the choices that produced them.
+   *
+   * Priced by `admin-place-order` in preview mode — the same code path that
+   * writes the order — so what is shown here cannot disagree with what gets
+   * created.
+   */
+  const [quote, setQuote] = useState<AdminOrderPreview | null>(null);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
 
-    const walletBalance = found?.wallet_balance ?? 0;
-    const shortfall = paymentMode === 'wallet' && walletBalance < quote.total_amount;
+  useEffect(() => {
+    if (wiz.step !== 'review') return;
+    setQuote(null);
+    setQuoteError(null);
+    previewOrder
+      .mutateAsync(buildPayload())
+      .then(setQuote)
+      .catch((e) => setQuoteError(getErrorMessage(e)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-price on entering review; buildPayload reads current state
+  }, [wiz.step]);
 
-    const ok = await confirmDialog({
-      title: `Total ${formatPriceShort(quote.total_amount)}`,
-      message: [
-        `Items  ${formatPriceShort(quote.subtotal)}` +
-          (quote.discount_percent > 0 ? `  (after ${quote.discount_percent}% off)` : ''),
-        `Delivery  ${quote.delivery_fee === 0 ? 'Free' : formatPriceShort(quote.delivery_fee)}`,
-        `Incl. GST ${formatPriceShort(quote.tax_amount)}`,
-        '',
-        `${quote.cycle_name} · ${formatDateLong(quote.dispatch_date)}`,
-        `Payment: ${PAYMENT_LABEL[paymentMode]}`,
-        ...(shortfall
-          ? [`⚠ Wallet has ${formatPriceShort(walletBalance)} — the order will be created unpaid.`]
-          : []),
-        ...(quote.dispatch_note ? [quote.dispatch_note] : []),
-      ].join('\n'),
-      confirmLabel: 'Create order',
-    });
-    if (!ok) return;
+  const walletBalance = found?.wallet_balance ?? 0;
+  const shortfall = !!quote && paymentMode === 'wallet' && walletBalance < quote.total_amount;
+  const badQty = picked.find((p) => !(parseInt(p.qty, 10) > 0));
 
+  const handleCreate = async () => {
     try {
       const res = await createOrder.mutateAsync(buildPayload());
       const lines = [
@@ -278,12 +260,59 @@ export function AdminCreateOrderScreen({ navigation }: AdminScreenProps<'AdminCr
     }
   };
 
+  /**
+   * The one button, and what it is for on this step.
+   *
+   * EVERY REFUSAL THIS SCREEN CAN MAKE NOW LIVES ON THE STEP THAT OWNS IT.
+   * They were six checks at the top of one submit handler, fired after the
+   * whole form was filled — and in an order that did not match the form, so an
+   * admin who had not chosen a customer was told about the delivery cycle
+   * first. `admin-place-order` still enforces all of them; this only decides
+   * where they are met.
+   */
+  const footer = useMemo((): { label: string; onPress?: () => void } => {
+    switch (wiz.step) {
+      case 'customer':
+        if (!isKnownCustomer) {
+          return { label: phoneComplete ? 'No customer with this number' : "Enter the customer's phone" };
+        }
+        if (!targetAddress) return { label: 'This customer has no delivery address' };
+        if (!addressRoutes) return { label: 'This address has no delivery area' };
+        return { label: 'Next · delivery  ›', onPress: wiz.forward };
+      case 'delivery':
+        if (!selectedCycle) return { label: 'No delivery cycles are available' };
+        return { label: 'Next · items  ›', onPress: wiz.forward };
+      case 'items':
+        if (picked.length === 0) return { label: 'Add at least one item' };
+        if (badQty) return { label: `Enter how many ${badQty.name}` };
+        return { label: 'Next · charges  ›', onPress: wiz.forward };
+      case 'charges':
+        return { label: 'Next · payment  ›', onPress: wiz.forward };
+      case 'payment':
+        return { label: 'Next · review  ›', onPress: wiz.forward };
+      default:
+        if (previewOrder.isPending || (!quote && !quoteError)) return { label: 'Pricing the order…' };
+        if (!quote) return { label: 'Could not price this order' };
+        return {
+          label: `Create order · ${formatPriceShort(quote.total_amount)}  ›`,
+          onPress: handleCreate,
+        };
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- handleCreate is stable enough; it reads current state on call
+  }, [wiz.step, wiz.forward, isKnownCustomer, phoneComplete, targetAddress, addressRoutes,
+      selectedCycle, picked.length, badQty, previewOrder.isPending, quote, quoteError]);
+
   return (
     <SafeAreaView style={styles.container}>
       <ScreenHeader title="Create Order" />
 
+      <View style={styles.progress}>
+        <WizardProgress count={STEPS.length} index={wiz.index} />
+      </View>
+
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-        {/* ── Customer ── */}
+        {/* ── 1. Customer ── */}
+        {wiz.step === 'customer' && (<>
         <ThemedText variant="small" color="muted" style={styles.sectionLabel}>CUSTOMER</ThemedText>
         <TextInput
           style={styles.input}
@@ -354,9 +383,10 @@ export function AdminCreateOrderScreen({ navigation }: AdminScreenProps<'AdminCr
           </View>
         )}
 
-        <Divider />
+        </>)}
 
-        {/* ── Cycle ── */}
+        {/* ── 2. Delivery cycle ── */}
+        {wiz.step === 'delivery' && (<>
         <ThemedText variant="small" color="muted" style={styles.sectionLabel}>DELIVERY CYCLE</ThemedText>
         <View style={styles.cycleLine}>
           <TouchableOpacity style={styles.cycleRow} onPress={handleCycleToggle} activeOpacity={0.7}>
@@ -378,9 +408,10 @@ export function AdminCreateOrderScreen({ navigation }: AdminScreenProps<'AdminCr
           Current run only applies while that run&apos;s kitchen summary has not gone out.
         </ThemedText>
 
-        <Divider />
+        </>)}
 
-        {/* ── Items ── */}
+        {/* ── 3. Items ── */}
+        {wiz.step === 'items' && (<>
         {picked.length > 0 && (
           <>
             <ThemedText variant="small" color="muted" style={styles.sectionLabel}>ORDER</ThemedText>
@@ -476,9 +507,10 @@ export function AdminCreateOrderScreen({ navigation }: AdminScreenProps<'AdminCr
           ))
         )}
 
-        <Divider />
+        </>)}
 
-        {/* ── Money ── */}
+        {/* ── 4. Charges ── */}
+        {wiz.step === 'charges' && (<>
         <ThemedText variant="small" color="muted" style={styles.sectionLabel}>DISCOUNT &amp; DELIVERY</ThemedText>
         <View style={styles.moneyRow}>
           <View style={styles.flex1}>
@@ -505,9 +537,10 @@ export function AdminCreateOrderScreen({ navigation }: AdminScreenProps<'AdminCr
           </View>
         </View>
 
-        <Divider />
+        </>)}
 
-        {/* ── Payment ── */}
+        {/* ── 5. Payment ── */}
+        {wiz.step === 'payment' && (<>
         <ThemedText variant="small" color="muted" style={styles.sectionLabel}>PAYMENT</ThemedText>
         {(['account', 'link', 'wallet'] as const).map((mode) => (
           <TouchableOpacity
@@ -544,22 +577,77 @@ export function AdminCreateOrderScreen({ navigation }: AdminScreenProps<'AdminCr
           onChangeText={setNotes}
           multiline
         />
-      </ScrollView>
+        </>)}
 
-      <TouchableOpacity
-        style={styles.footer}
-        onPress={handleSubmit}
-        disabled={createOrder.isPending || !customerReady}
-        activeOpacity={0.7}
-      >
-        {createOrder.isPending ? (
-          <ActivityIndicator color={Theme.colors.text.mint} />
-        ) : (
-          <ThemedText variant="body" color={customerReady ? 'mint' : 'muted'} style={styles.txt}>
-            Create order  ›
+        {/* ── 6. Review — the server's figures, not ours ── */}
+        {wiz.step === 'review' && (<>
+        <ThemedText variant="small" color="muted" style={styles.sectionLabel}>REVIEW</ThemedText>
+
+        {!quote && !quoteError && (
+          <ActivityIndicator color={Theme.colors.text.mint} style={styles.inlineLoader} />
+        )}
+
+        {quoteError && (
+          <ThemedText variant="body" color="warning" style={styles.txt}>
+            {quoteError}
           </ThemedText>
         )}
-      </TouchableOpacity>
+
+        {quote && (
+          <>
+            <View style={styles.row}>
+              <ThemedText variant="body" color="muted" style={[styles.txt, styles.flex1]}>
+                Items{quote.discount_percent > 0 ? `  (after ${quote.discount_percent}% off)` : ''}
+              </ThemedText>
+              <ThemedText variant="body" color="primary" style={styles.txt}>
+                {formatPriceShort(quote.subtotal)}
+              </ThemedText>
+            </View>
+            <View style={styles.row}>
+              <ThemedText variant="body" color="muted" style={[styles.txt, styles.flex1]}>Delivery</ThemedText>
+              <ThemedText variant="body" color="primary" style={styles.txt}>
+                {quote.delivery_fee === 0 ? 'Free' : formatPriceShort(quote.delivery_fee)}
+              </ThemedText>
+            </View>
+            <View style={styles.row}>
+              <ThemedText variant="body" color="muted" style={[styles.txt, styles.flex1]}>Total</ThemedText>
+              <ThemedText variant="body" color="mint" style={styles.txt}>
+                {formatPriceShort(quote.total_amount)}
+              </ThemedText>
+            </View>
+            <ThemedText variant="small" color="muted" style={styles.hint}>
+              Incl. GST {formatPriceShort(quote.tax_amount)}
+            </ThemedText>
+
+            <ThemedText variant="small" color="muted" style={styles.sectionLabel}>GOES OUT</ThemedText>
+            <ThemedText variant="body" color="primary" style={styles.txt}>
+              {quote.cycle_name} · {formatDateLong(quote.dispatch_date)}
+            </ThemedText>
+            {!!quote.dispatch_note && (
+              <ThemedText variant="small" color="warning" style={styles.hint}>
+                {quote.dispatch_note}
+              </ThemedText>
+            )}
+
+            <ThemedText variant="small" color="muted" style={styles.sectionLabel}>PAYMENT</ThemedText>
+            <ThemedText variant="body" color="primary" style={styles.txt}>
+              {PAYMENT_LABEL[paymentMode]}
+            </ThemedText>
+            {shortfall && (
+              <ThemedText variant="small" color="warning" style={styles.hint}>
+                {`\u26a0 Wallet has ${formatPriceShort(walletBalance)} \u2014 the order will be created unpaid.`}
+              </ThemedText>
+            )}
+          </>
+        )}
+        </>)}
+      </ScrollView>
+
+      <FooterAction
+        label={footer.label}
+        onPress={footer.onPress}
+        busy={createOrder.isPending}
+      />
     </SafeAreaView>
   );
 }
@@ -567,7 +655,8 @@ export function AdminCreateOrderScreen({ navigation }: AdminScreenProps<'AdminCr
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
 
-  scroll: { paddingHorizontal: Theme.spacing.md, paddingBottom: Theme.spacing.xl * 2 },
+  scroll: { paddingHorizontal: Theme.spacing.md, paddingBottom: FOOTER_CLEARANCE },
+  progress: { paddingHorizontal: Theme.spacing.md, paddingTop: Theme.spacing.sm },
 
   sectionLabel: { fontSize: S, letterSpacing: 1, marginTop: Theme.spacing.md, marginBottom: Theme.spacing.xs },
   hint: { fontSize: S, marginTop: 2, marginBottom: Theme.spacing.xs },

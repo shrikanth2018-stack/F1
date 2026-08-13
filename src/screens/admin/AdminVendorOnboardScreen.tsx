@@ -19,7 +19,7 @@
  * details before you can verify and approve them.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   ScrollView,
@@ -32,6 +32,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { ScreenHeader } from '../../components/ScreenHeader';
+import { FooterAction, FOOTER_CLEARANCE } from '../../components/FooterAction';
+import { useWizard, WizardProgress } from '../../components/Wizard';
 import { Divider } from '../../components/Divider';
 import { confirmDialog, infoDialog } from '../../utils/confirmDialog';
 import { formatPriceShort, getErrorMessage } from '../../utils/formatters';
@@ -58,6 +60,14 @@ const S = Theme.typography.sizes.small + 2;
  * built; while it was merely selectable it silently paid the vendor ZERO on
  * every delivered sale.
  */
+/**
+ * Four questions, not six sections: the selling model and the commission are
+ * one negotiation, and the supply mode belongs with them. Splitting a single
+ * decision across three screens is how a wizard becomes a chore.
+ */
+type Step = 'who' | 'business' | 'terms' | 'reach';
+const STEPS: Step[] = ['who', 'business', 'terms', 'reach'];
+
 const MODELS: SellingModel[] = ['own_brand'];
 const MODES: SupplyMode[] = ['at_hub', 'we_collect', 'they_drop'];
 
@@ -81,7 +91,6 @@ export function AdminVendorOnboardScreen({ navigation }: AdminScreenProps<'Admin
   const setZone = useSetVendorZone();
 
   const phoneComplete = phone.replace(/\D/g, '').length >= 10;
-  const canSubmit = !!found && businessName.trim().length > 0;
 
   const handleOnboard = async () => {
     if (!found) {
@@ -160,11 +169,46 @@ export function AdminVendorOnboardScreen({ navigation }: AdminScreenProps<'Admin
     }
   };
 
+  const wiz = useWizard<Step>(STEPS, navigation);
+
+  /**
+   * The refusals `handleOnboard` used to make all at once, moved to the steps
+   * that own them. The submit handler still checks every one — this only
+   * decides where an admin meets them.
+   */
+  const commissionPct = parseFloat(commission) || 0;
+  const footer = useMemo((): { label: string; onPress?: () => void } => {
+    switch (wiz.step) {
+      case 'who':
+        if (!found) {
+          return { label: phoneComplete ? 'Not a registered user' : 'Enter their phone number' };
+        }
+        return { label: 'Next · business  ›', onPress: wiz.forward };
+      case 'business':
+        if (!businessName.trim()) return { label: 'Enter the trading name' };
+        return { label: 'Next · terms  ›', onPress: wiz.forward };
+      case 'terms':
+        if (commission.trim() !== '' && (commissionPct < 0 || commissionPct > 100)) {
+          return { label: 'Commission must be between 0 and 100' };
+        }
+        return { label: 'Next · selling area  ›', onPress: wiz.forward };
+      default:
+        return { label: 'Invite as vendor  ›', onPress: handleOnboard };
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- handleOnboard reads current state on call
+  }, [wiz.step, wiz.forward, found, phoneComplete, businessName, commission, commissionPct]);
+
   return (
     <SafeAreaView style={styles.container}>
       <ScreenHeader title="Onboard Vendor" />
 
+      <View style={styles.progress}>
+        <WizardProgress count={STEPS.length} index={wiz.index} />
+      </View>
+
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+        {/* ── 1. Who ── */}
+        {wiz.step === 'who' && (<>
         <ThemedText variant="small" color="muted" style={styles.sectionLabel}>WHO</ThemedText>
         <ThemedText variant="small" color="muted" style={styles.hint}>
           A vendor must already be a registered user. This elevates them; it does not
@@ -196,8 +240,10 @@ export function AdminVendorOnboardScreen({ navigation }: AdminScreenProps<'Admin
           </View>
         )}
 
-        <Divider />
+        </>)}
 
+        {/* ── 2. Business ── */}
+        {wiz.step === 'business' && (<>
         <ThemedText variant="small" color="muted" style={styles.sectionLabel}>BUSINESS</ThemedText>
         <TextInput
           style={styles.input}
@@ -210,8 +256,10 @@ export function AdminVendorOnboardScreen({ navigation }: AdminScreenProps<'Admin
           GST and FSSAI come from the vendor when they complete their own registration.
         </ThemedText>
 
-        <Divider />
+        </>)}
 
+        {/* ── 3. Terms — model, commission and how goods arrive ── */}
+        {wiz.step === 'terms' && (<>
         <ThemedText variant="small" color="muted" style={styles.sectionLabel}>SELLING MODEL</ThemedText>
         {MODELS.map((m) => (
           <TouchableOpacity
@@ -262,8 +310,10 @@ export function AdminVendorOnboardScreen({ navigation }: AdminScreenProps<'Admin
           </TouchableOpacity>
         ))}
 
-        <Divider />
+        </>)}
 
+        {/* ── 4. Where they may sell ── */}
+        {wiz.step === 'reach' && (<>
         <ThemedText variant="small" color="muted" style={styles.sectionLabel}>WHERE THEY MAY SELL</ThemedText>
         <ThemedText variant="small" color="muted" style={styles.hint}>
           Only customers whose address falls in a granted area will see their items.
@@ -310,20 +360,10 @@ export function AdminVendorOnboardScreen({ navigation }: AdminScreenProps<'Admin
             );
           })}
         </View>
+        </>)}
       </ScrollView>
 
-      <TouchableOpacity
-        style={styles.footer}
-        onPress={handleOnboard}
-        disabled={onboard.isPending || !canSubmit}
-        activeOpacity={0.7}
-      >
-        {onboard.isPending
-          ? <ActivityIndicator color={Theme.colors.text.mint} />
-          : <ThemedText variant="body" color={canSubmit ? 'mint' : 'muted'} style={styles.txt}>
-              Invite as vendor  ›
-            </ThemedText>}
-      </TouchableOpacity>
+      <FooterAction label={footer.label} onPress={footer.onPress} busy={onboard.isPending} />
     </SafeAreaView>
   );
 }
@@ -331,7 +371,8 @@ export function AdminVendorOnboardScreen({ navigation }: AdminScreenProps<'Admin
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
 
-  scroll: { paddingHorizontal: Theme.spacing.md, paddingBottom: Theme.spacing.xl * 2 },
+  scroll: { paddingHorizontal: Theme.spacing.md, paddingBottom: FOOTER_CLEARANCE },
+  progress: { paddingHorizontal: Theme.spacing.md, paddingTop: Theme.spacing.sm },
   sectionLabel: { fontSize: S, letterSpacing: 1, marginTop: Theme.spacing.md, marginBottom: Theme.spacing.xs },
 
   pillWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: Theme.spacing.sm, marginBottom: Theme.spacing.sm },
