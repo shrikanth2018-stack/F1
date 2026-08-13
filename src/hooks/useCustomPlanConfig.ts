@@ -29,7 +29,7 @@ export interface DiscountSlab {
   is_active: boolean;
 }
 
-export const SLABS_KEY = ['subscription_discount_slabs'] as const;
+const SLABS_KEY = ['subscription_discount_slabs'] as const;
 
 export function useDiscountSlabs() {
   return useSupabaseQuery<DiscountSlab>(
@@ -104,7 +104,7 @@ export interface EligibleItem {
   image_updated_at?: string | null;
 }
 
-export const ELIGIBILITY_KEY = ['plan_eligibility'] as const;
+const ELIGIBILITY_KEY = ['plan_eligibility'] as const;
 
 /**
  * Every item an admin could offer to the builder, both catalogues.

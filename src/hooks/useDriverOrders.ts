@@ -43,7 +43,7 @@ const ORDER_SELECT = `
  * Its own query so the live board and History resolve the assignment once
  * between them instead of twice, and so switching tabs does not re-read it.
  */
-export function useDriverAssignment() {
+function useDriverAssignment() {
   const { session } = useAuth();
   const userId = session?.user.id ?? '';
 

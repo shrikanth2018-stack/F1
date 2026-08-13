@@ -28,7 +28,7 @@ import type { EssentialItem } from '../types';
  * Fetched separately rather than embedded because PostgREST can only embed
  * through a foreign key, and there is no FK to a view.
  */
-export function useVendorNames() {
+function useVendorNames() {
   return useQuery({
     queryKey: ['vendor_public_names'],
     queryFn: async (): Promise<Map<number, string>> => {

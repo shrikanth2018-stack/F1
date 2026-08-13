@@ -95,7 +95,7 @@ function planCovers(planType: string | null | undefined, itemType: 'food' | 'ess
  * problem that is on its way out. Left as one named number so a thin saving
  * can be hidden with a one-line change if it ever grates before then.
  */
-export const MIN_SAVING_RUPEES = 0;
+const MIN_SAVING_RUPEES = 0;
 
 /**
  * The best plan for this cart line, or null.

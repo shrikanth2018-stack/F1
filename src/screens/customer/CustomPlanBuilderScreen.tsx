@@ -75,6 +75,7 @@ import { PHOTO_BUCKET, PHOTO_PX } from '../../utils/catalogPhoto';
 import { formatPriceShort, formatDateShort, getErrorMessage, plural } from '../../utils/formatters';
 import { formatTime12h } from '../../utils/timeEngine';
 import { istDateStr } from '../../utils/istDate';
+import { durationOptionsFromSlabs } from '../../utils/planDurations';
 import { tapAdd, tapSelect } from '../../utils/haptics';
 import { useDeliveryCycles } from '../../hooks/useDeliveryCycles';
 import { useCycleDispatch } from '../../hooks/useCycleDispatch';
@@ -133,20 +134,6 @@ const PRESS = { duration: Theme.motion.pressMs, easing: EASE } as const;
 type Step = 'when' | 'food' | 'essentials' | 'basket' | 'length' | 'summary';
 
 interface Chosen { item: EligibleItem; quantity: number }
-
-/**
- * The friendliest length inside a discount band: the largest multiple of five
- * that still falls in it, otherwise the band's top.
- *
- * The bands are the admin's; the round number is for the customer. Against the
- * live schedule (10–19 / 20–34 / 35–45) this yields 15 / 30 / 45 — the same
- * three the screen used to hardcode, and the lengths people actually think in.
- * Change a band and the option moves with it instead of quietly going stale.
- */
-function roundedWithin(min: number, max: number): number {
-  const rounded = Math.floor(max / 5) * 5;
-  return rounded >= min ? rounded : max;
-}
 
 export function CustomPlanBuilderScreen({
   navigation,
@@ -243,18 +230,10 @@ export function CustomPlanBuilderScreen({
    * back to the three lengths this screen has always offered, at whatever
    * discount `discountForDays` then reports — which is 0, honestly.
    */
-  const durationOptions = useMemo<number[]>(() => {
-    const fromSlabs = slabs
-      .filter((s) => s.is_active)
-      .map((s) => {
-        const lo = Math.max(Number(s.min_days) || MIN_DAYS, MIN_DAYS);
-        const hi = Math.min(Number(s.max_days) || MAX_DAYS, MAX_DAYS);
-        return hi >= lo ? roundedWithin(lo, hi) : null;
-      })
-      .filter((d): d is number => d != null);
-    const unique = [...new Set(fromSlabs)].sort((a, b) => b - a);
-    return unique.length > 0 ? unique : [45, 30, 15];
-  }, [slabs]);
+  const durationOptions = useMemo(
+    () => durationOptionsFromSlabs(slabs, MIN_DAYS, MAX_DAYS),
+    [slabs],
+  );
 
   const pct = days == null ? 0 : discountForDays(days, slabs);
   const full = days == null ? 0 : Math.round(daily * days * 100) / 100;

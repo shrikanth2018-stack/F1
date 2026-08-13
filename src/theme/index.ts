@@ -132,12 +132,11 @@ export const Theme = {
      * `fontSize: sizes.subtitle + 2`. A per-variant absolute would be
      * silently wrong for both; a ratio is right at any size.
      *
-     * NOT READ BY ANYTHING YET, deliberately. `ThemedText` sets no
-     * `lineHeight` at all today — every line spacing in the app is React
-     * Native's per-size default, which is why vertical rhythm differs
-     * between screens. Connecting this changes spacing on all 89 screens at
-     * once, customer, staff and admin, so it is its own slice with its own
-     * visual pass rather than a side effect of adding the token.
+     * Read by `ThemedText`, which computes leading from the size that
+     * ACTUALLY RENDERS rather than from the variant — a caller passing
+     * `fontSize` in a style would otherwise get a glyph too big for its line.
+     * Before that, every line spacing in the app was React Native's per-size
+     * default, which is why vertical rhythm used to differ between screens.
      */
     lineHeight: {
       /** Body copy and anything that can wrap onto a second line. */
