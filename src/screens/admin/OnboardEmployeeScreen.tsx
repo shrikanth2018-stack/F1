@@ -65,7 +65,7 @@ function ChipPicker<T extends string>({
   return (
     <View style={cp.container}>
       <ThemedText variant="small" color="muted" style={cp.label}>{label}</ThemedText>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={cp.row}>
+      <ScrollView keyboardDismissMode="on-drag" horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={cp.row}>
         {options.map((opt) => (
           <TouchableOpacity
             key={opt}
@@ -238,7 +238,7 @@ export function OnboardEmployeeScreen({ navigation }: { navigation: AdminNavProp
       {/* Header */}
       <ScreenHeader title="Onboard Employee" />
 
-      <ScrollView
+      <ScrollView keyboardDismissMode="on-drag"
         contentContainerStyle={styles.scroll}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}

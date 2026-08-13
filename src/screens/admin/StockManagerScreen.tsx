@@ -151,7 +151,7 @@ function OrderListTab({
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={{ flex: 1 }}
     >
-      <ScrollView
+      <ScrollView keyboardDismissMode="on-drag"
         style={styles.tabContent}
         contentContainerStyle={styles.listPad}
         keyboardShouldPersistTaps="handled"
@@ -299,7 +299,7 @@ function HistoryTab() {
   }
 
   return (
-    <FlatList
+    <FlatList keyboardDismissMode="on-drag"
       data={batches}
       keyExtractor={(b) => String(b.id)}
       contentContainerStyle={styles.listPad}
@@ -399,7 +399,7 @@ function AddItemForm({
       </View>
 
       {/* Category chips */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: Theme.spacing.sm }}>
+      <ScrollView keyboardDismissMode="on-drag" horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: Theme.spacing.sm }}>
         {CATEGORIES.map((cat) => (
           <TouchableOpacity
             key={cat}

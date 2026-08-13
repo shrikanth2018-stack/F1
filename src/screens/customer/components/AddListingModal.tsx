@@ -48,6 +48,7 @@ import {
 import { infoDialog } from '../../../utils/confirmDialog';
 import { getErrorMessage } from '../../../utils/formatters';
 import { essentialsCycleLabel } from '../../../utils/cycleLabels';
+import { formatTime12h } from '../../../utils/timeEngine';
 import { useCreateDraftListing, useSubmitListings } from '../../../hooks/useMyVendor';
 import type { DeliveryCycle } from '../../../types';
 
@@ -201,8 +202,29 @@ export function AddListingModal({
     <Modal visible={visible} transparent animationType="fade" onRequestClose={closeAll}>
       <View style={s.backdrop}>
         <View style={s.sheet}>
+          {/* ── The title names the delivery it is going into ──
+               It read "Add an item", with the delivery time a tappable row
+               further down — so the one thing that decides WHEN the goods are
+               wanted was the least prominent thing on the sheet. It leads now,
+               with the dispatch time under it as the fact a vendor plans
+               against. The row below still changes it.
+
+               MORNING / NOON / EVENING here, not Breakfast / Lunch: this is
+               the essentials catalogue, and `essentials_label` is the word
+               customers see for a cycle everywhere essentials appear. */}
           <View style={s.head}>
-            <ThemedText variant="subtitle" color="primary">Add an item</ThemedText>
+            <View style={s.headText}>
+              <ThemedText variant="subtitle" color="primary" numberOfLines={1}>
+                {selectedCycle
+                  ? `Add an item to ${essentialsCycleLabel(selectedCycle)} delivery`
+                  : 'Add an item'}
+              </ThemedText>
+              {selectedCycle?.delivery_start ? (
+                <ThemedText variant="small" color="muted">
+                  {`Dispatched by ${formatTime12h(selectedCycle.delivery_start)}`}
+                </ThemedText>
+              ) : null}
+            </View>
             <TouchableOpacity onPress={closeAll} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
               <ThemedText variant="body" color="muted" style={s.close}>×</ThemedText>
             </TouchableOpacity>
@@ -214,7 +236,7 @@ export function AddListingModal({
             </ThemedText>
           ) : null}
 
-          <ScrollView keyboardShouldPersistTaps="handled" style={s.body}>
+          <ScrollView keyboardDismissMode="on-drag" keyboardShouldPersistTaps="handled" style={s.body}>
             {/* Delivery time — tap to cycle, same as everywhere else here. */}
             <TouchableOpacity
               style={s.cycleRow}
@@ -327,6 +349,8 @@ const s = StyleSheet.create({
     padding: Theme.spacing.md,
     maxHeight: '88%',
   },
+  /** Title + dispatch line; the close control keeps its own place. */
+  headText: { flex: 1, marginRight: Theme.spacing.sm },
   head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   close: { fontSize: B + 8, lineHeight: B + 10 },
   queued: { marginTop: 2 },

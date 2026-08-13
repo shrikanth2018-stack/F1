@@ -187,17 +187,24 @@ export function EditProfileScreen({ navigation }: any) {
     <SafeAreaView style={styles.container}>
       <ScreenHeader title="Edit Profile" />
 
-      <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
-        {/* Name */}
+      <ScrollView keyboardDismissMode="on-drag" contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+        {/* ── Name ──
+             Label and field on ONE line. It was a section heading above an
+             input, which is the right shape for a group of fields and wasteful
+             for a single short one — two lines and a lot of air to say
+             "Name: One Customer". The other sections below keep the heading,
+             because they hold lists. */}
         <View style={styles.section}>
-          <ThemedText variant="small" color="subtitle" style={styles.sectionLabel}>Name</ThemedText>
-          <ThemedInput
-            mode="underline"
-            value={name}
-            onChangeText={(t) => { setName(t); setNameDirty(true); }}
-            placeholder="Your full name"
-            style={styles.nameInput}
-          />
+          <View style={styles.nameRow}>
+            <ThemedText variant="small" color="subtitle">Name</ThemedText>
+            <ThemedInput
+              mode="underline"
+              value={name}
+              onChangeText={(t) => { setName(t); setNameDirty(true); }}
+              placeholder="Your full name"
+              style={styles.nameInput}
+            />
+          </View>
           {nameDirty && (
             <TouchableOpacity
               onPress={handleSaveName}
@@ -349,7 +356,15 @@ const styles = StyleSheet.create({
   sectionLabel: {
     marginBottom: Theme.spacing.xs,
   },
+  /** Label and field on one line — see the note at the call site. */
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Theme.spacing.sm,
+  },
+  /** Takes the rest of the row, so a long name has the width to show. */
   nameInput: {
+    flex: 1,
     color: Theme.colors.text.mint,
   },
   rowBetween: {

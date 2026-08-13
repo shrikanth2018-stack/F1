@@ -209,7 +209,7 @@ export function AdminCreateCustomerScreen({
     <SafeAreaView style={styles.container}>
       <ScreenHeader title={editAddressId != null ? 'Edit Address' : 'Add Customer'} />
 
-      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+      <ScrollView keyboardDismissMode="on-drag" contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <ThemedText variant="small" color="muted" style={styles.sectionLabel}>CUSTOMER</ThemedText>
         <TextInput
           style={styles.input}

@@ -49,7 +49,7 @@ export function CompactFieldWithSuggestions({
         editable={editable}
       />
       {editable && suggestions.length > 0 && (
-        <ScrollView
+        <ScrollView keyboardDismissMode="on-drag"
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.row}

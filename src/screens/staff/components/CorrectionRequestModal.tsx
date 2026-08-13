@@ -101,7 +101,7 @@ export function CorrectionRequestModal({ visible, onClose, onSubmitted }: Props)
             shift; admin will approve.
           </ThemedText>
 
-          <ScrollView style={st.body} keyboardShouldPersistTaps="handled">
+          <ScrollView keyboardDismissMode="on-drag" style={st.body} keyboardShouldPersistTaps="handled">
             <TouchableOpacity
               style={st.row}
               onPress={() => setPickerOpen(true)}

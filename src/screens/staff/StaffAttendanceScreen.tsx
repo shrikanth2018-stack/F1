@@ -281,7 +281,7 @@ export function StaffAttendanceScreen() {
           scroll away with the page body. */}
       <ScreenHeader title="Attendance / Leaves" />
 
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView keyboardDismissMode="on-drag" contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
 
         {/* Today */}
         <View style={styles.section}>

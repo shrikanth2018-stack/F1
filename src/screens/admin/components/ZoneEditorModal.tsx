@@ -251,7 +251,7 @@ export function ZoneEditorModal({ visible, editingZone, onClose }: ZoneEditorMod
           </TouchableOpacity>
         )}
 
-        <ScrollView style={em.form} keyboardShouldPersistTaps="handled">
+        <ScrollView keyboardDismissMode="on-drag" style={em.form} keyboardShouldPersistTaps="handled">
           {/* Zone name */}
           <View style={em.fieldRow}>
             <ThemedText variant="small" color="muted" style={em.fieldLabel}>Zone Name</ThemedText>

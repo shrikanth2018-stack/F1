@@ -179,7 +179,7 @@ export function OrderFormModal({
 
         {/* Suggestions — bounded scroll so a long catalog doesn't push the line-items list off-screen */}
         {showSuggestions && (
-          <ScrollView style={formModal.suggestions} keyboardShouldPersistTaps="handled" nestedScrollEnabled>
+          <ScrollView keyboardDismissMode="on-drag" style={formModal.suggestions} keyboardShouldPersistTaps="handled" nestedScrollEnabled>
             {suggestions.map((item) => (
               <TouchableOpacity
                 key={item.id}
@@ -201,7 +201,7 @@ export function OrderFormModal({
 
         {/* Line items */}
         {lineItems.length > 0 && (
-          <ScrollView style={formModal.lineList} keyboardShouldPersistTaps="handled">
+          <ScrollView keyboardDismissMode="on-drag" style={formModal.lineList} keyboardShouldPersistTaps="handled">
             {lineItems.map((item) => (
               <View key={item.id} style={formModal.lineRow}>
                 <ThemedText variant="body" color="primary" style={{ flex: 1 }}>

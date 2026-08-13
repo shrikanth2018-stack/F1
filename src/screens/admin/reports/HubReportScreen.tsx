@@ -327,7 +327,7 @@ export function HubReportScreen() {
           subtitle={`No hub-delivery orders found for the selected period.\nEnsure hub_delivery_active is enabled.`}
         />
       ) : (
-        <ScrollView
+        <ScrollView keyboardDismissMode="on-drag"
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
         >

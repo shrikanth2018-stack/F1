@@ -138,7 +138,7 @@ export function LoyaltyPointsScreen() {
         Points History
       </ThemedText>
 
-      <ScrollView style={styles.txList} showsVerticalScrollIndicator={false}>
+      <ScrollView keyboardDismissMode="on-drag" style={styles.txList} showsVerticalScrollIndicator={false}>
         {history.length === 0 ? (
           <EmptyState
             title={historyLoading ? 'Loading…' : 'No points history yet'}

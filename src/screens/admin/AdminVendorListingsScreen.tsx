@@ -219,7 +219,7 @@ export function VendorListingsQueue() {
   const pendingCount = (listings.data?.length ?? 0) + (changes.data?.length ?? 0);
 
   return (
-    <ScrollView contentContainerStyle={styles.list} keyboardShouldPersistTaps="handled">
+    <ScrollView keyboardDismissMode="on-drag" contentContainerStyle={styles.list} keyboardShouldPersistTaps="handled">
       {listings.error ? (
         <ErrorRetry message="Could not load new listings" onRetry={listings.refetch} />
       ) : null}

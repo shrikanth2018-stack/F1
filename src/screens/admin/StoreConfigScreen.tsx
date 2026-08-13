@@ -216,7 +216,7 @@ export function StoreConfigScreen({ navigation }: { navigation: AdminNavProp }) 
         action={{ label: 'Save', onPress: handleSave, busy: updateConfig.isPending }}
       />
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: Theme.spacing.xl * 3 }}>
+      <ScrollView keyboardDismissMode="on-drag" showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: Theme.spacing.xl * 3 }}>
 
         {/* PRICING */}
         <SectionLabel title="Pricing" />

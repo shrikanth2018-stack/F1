@@ -232,7 +232,7 @@ export function BranchesManageScreen() {
           <ActivityIndicator color={Theme.colors.action.primary} />
         </View>
       ) : (
-        <ScrollView
+        <ScrollView keyboardDismissMode="on-drag"
           contentContainerStyle={styles.scroll}
           showsVerticalScrollIndicator={false}
         >

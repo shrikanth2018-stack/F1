@@ -277,7 +277,7 @@ export function AddAddressScreen({ navigation, route, onComplete }: Props) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView keyboardDismissMode="on-drag" contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <ScreenHeader
           title={isEditMode ? 'Edit Address' : 'Add Address'}
           onDismiss={() => (onComplete ? onComplete() : navigation?.goBack())}

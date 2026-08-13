@@ -206,7 +206,7 @@ export function AdminSubscriptionsScreen() {
         <ActivityIndicator color={Theme.colors.action.primary} style={{ marginTop: Theme.spacing.xl }} />
       )}
 
-      <FlatList
+      <FlatList keyboardDismissMode="on-drag"
         data={filtered}
         keyExtractor={(item) => item.id.toString()}
         contentContainerStyle={styles.list}

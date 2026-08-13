@@ -195,7 +195,7 @@ export function WalletScreen() {
         Recent Transactions
       </ThemedText>
 
-      <ScrollView style={styles.txList} showsVerticalScrollIndicator={false}>
+      <ScrollView keyboardDismissMode="on-drag" style={styles.txList} showsVerticalScrollIndicator={false}>
         {(transactions ?? []).length === 0 ? (
           <EmptyState title="No transactions yet" />
         ) : (

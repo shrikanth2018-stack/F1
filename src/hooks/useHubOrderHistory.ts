@@ -13,6 +13,9 @@
 import { supabase } from '../api/supabaseClient';
 import { useSupabaseQuery } from '../api/useSupabaseQuery';
 import { useAuth } from './useAuth';
+// Never `toISOString()` for a business date — between 00:00 and 05:30 IST it
+// gives yesterday, which here would hide a delivery the hub actually handled.
+import { todayIST } from '../utils/istDate';
 
 const HISTORY_LIMIT = 100;
 
@@ -31,6 +34,18 @@ export function useHubOrderHistory() {
           customer_addresses(*, delivery_zones(driver_code, zone_name), delivery_hubs(driver_code, hub_name)),
           profiles(phone_number)
         `)
+        /**
+         * HISTORY IS THE PAST. Nothing here bounded the date, so a bulk order
+         * an admin created for a FUTURE day — routed to this hub, status
+         * Confirmed — sat in "History" before it had happened. Reported
+         * 13 Aug against orders #11658/9 and #11667, all dispatch 14 Aug.
+         *
+         * A future order now appears on no hub screen until its batch is
+         * released, which is what every other board already does: the Today
+         * board is scoped to the cycle the kitchen push let out, and nothing
+         * reaches an operator earlier than that.
+         */
+        .lte('dispatch_date', todayIST())
         .order('dispatch_date', { ascending: false })
         .order('created_at', { ascending: false })
         .limit(HISTORY_LIMIT),

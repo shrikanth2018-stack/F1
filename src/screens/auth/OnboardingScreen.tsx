@@ -239,7 +239,7 @@ export function OnboardingScreen({ phone, onComplete, onBack }: OnboardingScreen
         style={styles.kav}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <ScrollView keyboardDismissMode="on-drag" contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <View style={styles.header}>
             <ThemedText variant="header" color="primary">Welcome to 1stOne</ThemedText>
             <TouchableOpacity onPress={onBack} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>

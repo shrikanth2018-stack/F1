@@ -59,7 +59,7 @@ export function SalaryTab({ staffId }: { staffId: string }) {
   }
 
   return (
-    <ScrollView contentContainerStyle={tab.scroll} showsVerticalScrollIndicator={false}>
+    <ScrollView keyboardDismissMode="on-drag" contentContainerStyle={tab.scroll} showsVerticalScrollIndicator={false}>
       {records.length === 0 ? (
         <EmptyState title="No salary records yet" />
       ) : (

@@ -100,7 +100,7 @@ export function VendorRegistrationScreen({ navigation }: CustomerScreenProps<'Ve
     <SafeAreaView style={styles.container}>
       <ScreenHeader title="Vendor Registration" />
 
-      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+      <ScrollView keyboardDismissMode="on-drag" contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         {awaitingReview && (
           <ThemedText variant="small" color="mint" style={styles.hint}>
             Your details are with us for verification. We will confirm shortly — get in

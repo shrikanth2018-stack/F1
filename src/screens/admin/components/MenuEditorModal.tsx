@@ -344,7 +344,7 @@ export function MenuEditorModal({ visible, item, cycleId, cycleName, onClose, on
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={s.body} keyboardShouldPersistTaps="handled">
+          <ScrollView keyboardDismissMode="on-drag" style={s.body} keyboardShouldPersistTaps="handled">
             {/* Price sits beside the name because those two are what actually
                 get changed; everything below is set once and left alone. */}
             <View style={s.nameRow}>

@@ -127,7 +127,7 @@ export function FeedbackScreen({ navigation, route }: CustomerScreenProps<'Feedb
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView keyboardDismissMode="on-drag" contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <ScreenHeader title={headingText} />
 
         {/* Per-item ratings — only when rating a specific order */}

@@ -271,7 +271,7 @@ export function PlansManageScreen({ navigation }: { navigation: AdminNavProp }) 
         </TouchableOpacity>
 
         {/* Plans list */}
-        <FlatList
+        <FlatList keyboardDismissMode="on-drag"
           data={plans}
           keyExtractor={(item) => String(item.id)}
           renderItem={renderPlan}

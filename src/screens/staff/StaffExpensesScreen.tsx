@@ -143,7 +143,7 @@ export function StaffExpensesScreen() {
 
       {/* Claim form */}
       {showForm && (
-        <ScrollView
+        <ScrollView keyboardDismissMode="on-drag"
           style={styles.formScroll}
           keyboardShouldPersistTaps="handled"
           bounces={false}
@@ -215,7 +215,7 @@ export function StaffExpensesScreen() {
 
       {/* Claims list */}
       {!showForm && (
-        <FlatList
+        <FlatList keyboardDismissMode="on-drag"
           data={expenses ?? []}
           keyExtractor={(item) => String(item.id)}
           renderItem={renderExpense}

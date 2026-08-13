@@ -258,7 +258,7 @@ export function HubDetailScreen({ route, navigation }: AdminScreenProps<'HubDeta
         action={{ label: 'Save', onPress: handleSave, busy: saving }}
       />
 
-      <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+      <ScrollView keyboardDismissMode="on-drag" showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         {/* ── Map ── */}
         <View style={styles.sectionHeader}>
           <ThemedText variant="small" color="muted" style={styles.sectionLabel}>SERVICE AREA</ThemedText>

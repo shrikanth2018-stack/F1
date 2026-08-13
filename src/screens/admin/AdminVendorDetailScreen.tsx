@@ -146,7 +146,7 @@ export function AdminVendorDetailScreen({ route }: AdminScreenProps<'AdminVendor
     <SafeAreaView style={styles.container}>
       <ScreenHeader title={vendor.business_name || 'Vendor'} />
 
-      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+      <ScrollView keyboardDismissMode="on-drag" contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         {/* Identity + state */}
         <View style={styles.statusRow}>
           <DispatchBadge label={STATUS_LABEL[vendor.status]} variant={STATUS_VARIANT[vendor.status]} />

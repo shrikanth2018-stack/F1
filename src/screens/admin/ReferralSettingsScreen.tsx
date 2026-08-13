@@ -231,7 +231,7 @@ export function ReferralSettingsScreen() {
       {/* Header */}
       <ScreenHeader title="Referral Settings" />
 
-      <ScrollView
+      <ScrollView keyboardDismissMode="on-drag"
         contentContainerStyle={styles.scroll}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}

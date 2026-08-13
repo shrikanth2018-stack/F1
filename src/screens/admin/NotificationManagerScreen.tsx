@@ -290,7 +290,7 @@ export function NotificationManagerScreen() {
       ) : isLoading ? (
         <ActivityIndicator color={Theme.colors.text.mint} style={styles.loading} />
       ) : (
-        <ScrollView contentContainerStyle={styles.list}>
+        <ScrollView keyboardDismissMode="on-drag" contentContainerStyle={styles.list}>
           <CustomPushComposer />
           <ThemedText variant="small" color="muted" style={styles.intro}>
             Customize push text per event or toggle any event off. Variables like {'{{order_id}}'} get replaced at send time.

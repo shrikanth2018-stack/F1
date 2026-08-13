@@ -119,8 +119,23 @@ export function HomeRails() {
   // is the one that has to be live.
   useRealtimeOrders(true);
   const { data: activeRows, refetch: refetchOrders } = useActiveOrders();
-  useFocusEffect(useCallback(() => { refetchOrders(); }, [refetchOrders]));
-  const { data: subs } = useMySubscriptions();
+  /**
+   * BOTH RAILS REFRESH ON FOCUS, and until 13 Aug only the orders one did.
+   *
+   * The plans rail fired its query once on mount and had nothing to re-run it,
+   * so on a cold start — where the session restores after the first render — it
+   * could settle empty and stay that way. It then appeared only once something
+   * else refetched the shared cache, which in practice meant visiting My
+   * Subscriptions, whose own focus effect does exactly this. Reported as "the
+   * Plans rail only appears after visiting my subscription page".
+   *
+   * The two are the same kind of thing and now behave the same way.
+   */
+  const { data: subs, refetch: refetchSubs } = useMySubscriptions();
+  useFocusEffect(useCallback(() => {
+    refetchOrders();
+    refetchSubs();
+  }, [refetchOrders, refetchSubs]));
   const { data: cycles } = useDeliveryCycles();
 
   const cycleById = useMemo(() => {

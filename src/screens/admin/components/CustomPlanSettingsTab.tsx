@@ -168,7 +168,7 @@ export function CustomPlanSettingsTab() {
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+    <ScrollView keyboardDismissMode="on-drag" contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       {/* ── Discount schedule ── */}
       <ThemedText variant="small" color="muted" style={styles.sectionLabel}>
         DISCOUNT BY LENGTH

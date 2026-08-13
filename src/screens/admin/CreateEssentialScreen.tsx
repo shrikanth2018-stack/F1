@@ -128,7 +128,7 @@ export function CreateEssentialScreen({ navigation, route }: AdminScreenProps<'C
     <SafeAreaView style={styles.container}>
       <ScreenHeader title="Add Essential Item" />
 
-      <ScrollView
+      <ScrollView keyboardDismissMode="on-drag"
         contentContainerStyle={styles.scroll}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}

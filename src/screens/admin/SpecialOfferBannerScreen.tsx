@@ -461,7 +461,7 @@ export function SpecialOfferBannerScreen({ navigation }: { navigation: AdminNavP
       {/* ── Upload Image tab ── */}
       {activeTab === 'Upload Image' && (
         <>
-          <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+          <ScrollView keyboardDismissMode="on-drag" contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
 
             {/* Current banner */}
             <ThemedText variant="small" color="muted" style={styles.sectionLabel}>CURRENT BANNER</ThemedText>
@@ -519,7 +519,7 @@ export function SpecialOfferBannerScreen({ navigation }: { navigation: AdminNavP
       {/* ── Custom Banner tab ── */}
       {activeTab === 'Custom Banner' && (
         <>
-          <ScrollView
+          <ScrollView keyboardDismissMode="on-drag"
             contentContainerStyle={styles.scroll}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}

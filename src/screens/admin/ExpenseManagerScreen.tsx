@@ -139,7 +139,7 @@ function ClaimsTab() {
   }
 
   return (
-    <ScrollView contentContainerStyle={tab.scroll} showsVerticalScrollIndicator={false}>
+    <ScrollView keyboardDismissMode="on-drag" contentContainerStyle={tab.scroll} showsVerticalScrollIndicator={false}>
 
       {/* Pending */}
       <ThemedText variant="small" color="muted" style={tab.sectionLabel}>
@@ -338,7 +338,7 @@ function ExpensesTab({ showForm, onCloseForm }: { showForm: boolean; onCloseForm
   }
 
   return (
-    <ScrollView
+    <ScrollView keyboardDismissMode="on-drag"
       contentContainerStyle={tab.scroll}
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
@@ -348,7 +348,7 @@ function ExpensesTab({ showForm, onCloseForm }: { showForm: boolean; onCloseForm
         <View style={ef.container}>
           <ThemedText variant="small" color="muted" style={ef.heading}>ADD EXPENSE</ThemedText>
 
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={ef.chipRow}>
+          <ScrollView keyboardDismissMode="on-drag" horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={ef.chipRow}>
             {EXPENSE_CATEGORIES.map((cat) => (
               <TouchableOpacity
                 key={cat}

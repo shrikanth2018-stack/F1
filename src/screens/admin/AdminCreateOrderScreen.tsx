@@ -317,7 +317,7 @@ export function AdminCreateOrderScreen({ navigation }: AdminScreenProps<'AdminCr
         <WizardProgress count={STEPS.length} index={wiz.index} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+      <ScrollView keyboardDismissMode="on-drag" contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         {/* ── 1. Customer ── */}
         {wiz.step === 'customer' && (<>
         <ThemedText variant="small" color="muted" style={styles.sectionLabel}>CUSTOMER</ThemedText>

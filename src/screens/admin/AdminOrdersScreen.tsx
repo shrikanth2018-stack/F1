@@ -284,7 +284,7 @@ export function AdminOrdersScreen({ navigation, route }: AdminScreenProps<'Admin
       </View>
 
       {/* Status filter chips */}
-      <ScrollView
+      <ScrollView keyboardDismissMode="on-drag"
         horizontal
         showsHorizontalScrollIndicator={false}
         style={styles.chipScrollView}
@@ -346,7 +346,7 @@ export function AdminOrdersScreen({ navigation, route }: AdminScreenProps<'Admin
         <ActivityIndicator color={Theme.colors.action.primary} style={{ marginTop: Theme.spacing.xl }} />
       )}
 
-      <FlatList
+      <FlatList keyboardDismissMode="on-drag"
         data={filteredOrders}
         keyExtractor={(item: any) => item.id.toString()}
         contentContainerStyle={styles.list}

@@ -282,7 +282,7 @@ export function CreatePlanScreen({ navigation, route }: AdminScreenProps<'Create
     <SafeAreaView style={styles.container}>
       <ScreenHeader title={`Create ${typeLabel} Plan`} />
 
-      <ScrollView
+      <ScrollView keyboardDismissMode="on-drag"
         contentContainerStyle={styles.scroll}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}

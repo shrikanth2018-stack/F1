@@ -146,7 +146,7 @@ export function ProfileTab({ staff, navigation }: { staff: Profile; navigation: 
   };
 
   return (
-    <ScrollView
+    <ScrollView keyboardDismissMode="on-drag"
       contentContainerStyle={tab.scroll}
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}

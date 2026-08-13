@@ -91,7 +91,7 @@ export function AdminCustomerLookupScreen({ navigation }: AdminScreenProps<'Admi
       {customer && loadingOrders && <ActivityIndicator color={Theme.colors.text.mint} style={styles.loader} />}
 
       {customer && !loadingOrders && (
-        <FlatList
+        <FlatList keyboardDismissMode="on-drag"
           data={orders ?? []}
           keyExtractor={(o: AdminCustomerOrder) => String(o.id)}
           ItemSeparatorComponent={() => <Divider />}

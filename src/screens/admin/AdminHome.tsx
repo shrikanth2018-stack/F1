@@ -131,7 +131,7 @@ function ReportsTab() {
   }
 
   return (
-    <ScrollView
+    <ScrollView keyboardDismissMode="on-drag"
       style={styles.tabContent}
       contentContainerStyle={styles.tabScroll}
       refreshControl={
@@ -250,7 +250,7 @@ function ManageTab() {
     : [];
 
   return (
-    <ScrollView
+    <ScrollView keyboardDismissMode="on-drag"
       style={styles.tabContent}
       contentContainerStyle={styles.tabScroll}
       showsVerticalScrollIndicator={false}

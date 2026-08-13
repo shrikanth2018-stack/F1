@@ -210,7 +210,7 @@ export function AdminVendorOnboardScreen({ navigation }: AdminScreenProps<'Admin
         <WizardProgress count={STEPS.length} index={wiz.index} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+      <ScrollView keyboardDismissMode="on-drag" contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         {/* ── 1. Who ── */}
         {wiz.step === 'who' && (<>
         <ThemedText variant="small" color="muted" style={styles.sectionLabel}>WHO</ThemedText>

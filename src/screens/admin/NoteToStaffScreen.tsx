@@ -100,7 +100,7 @@ export function NoteToStaffScreen() {
       {/* Header */}
       <ScreenHeader title="Note to Staff" />
 
-      <ScrollView
+      <ScrollView keyboardDismissMode="on-drag"
         contentContainerStyle={styles.scroll}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}

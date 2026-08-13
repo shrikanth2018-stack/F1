@@ -13,7 +13,7 @@
 import React, { useState, useMemo } from 'react';
 import {
   View,
-  FlatList,
+  SectionList,
   TouchableOpacity,
   TextInput,
   Switch,
@@ -31,6 +31,7 @@ import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { EmptyState } from '../../components/EmptyState';
+import { useVendors } from '../../hooks/useVendors';
 import { CatalogPhotoThumb } from '../../components/CatalogPhotoThumb';
 import { PHOTO_BUCKET, PHOTO_PX } from '../../utils/catalogPhoto';
 import {
@@ -152,6 +153,49 @@ export function EssentialsCatalogManageScreen({ navigation }: { navigation: Admi
     toggleItem.mutate({ id, is_active: !current });
   };
 
+  /**
+   * GROUPED BY WHOSE STOCK IT IS — 1stOne's own first, then one section per
+   * vendor.
+   *
+   * The list was flat and named nobody, so an admin scanning the essentials
+   * catalogue could not tell our milk from a vendor's without opening each
+   * row. That matters more than it sounds: a vendor's row behaves differently
+   * (they set its photo themselves, it needs approval, and removing the photo
+   * takes it off the customer menu immediately), and the screen gave no clue
+   * which kind was in front of you.
+   *
+   * `vendor_id IS NULL` is 1stOne's own — the same rule the order builder and
+   * the daily-cap guard use, so there is one definition of "ours".
+   */
+  const { data: vendors = [] } = useVendors('all');
+  const vendorName = useMemo(() => {
+    const m = new Map<number, string>();
+    for (const v of vendors) m.set(v.id, v.business_name || `Vendor #${v.id}`);
+    return m;
+  }, [vendors]);
+
+  const sections = useMemo(() => {
+    const own: EssentialItem[] = [];
+    const byVendor = new Map<number, EssentialItem[]>();
+    for (const it of items) {
+      const vid = (it as { vendor_id?: number | null }).vendor_id ?? null;
+      if (vid == null) own.push(it);
+      else {
+        const list = byVendor.get(vid) ?? [];
+        list.push(it);
+        byVendor.set(vid, list);
+      }
+    }
+    const out: { title: string; data: EssentialItem[] }[] = [];
+    if (own.length) out.push({ title: '1stOne — our own', data: own });
+    for (const [vid, list] of [...byVendor.entries()].sort(
+      (a, b) => (vendorName.get(a[0]) ?? '').localeCompare(vendorName.get(b[0]) ?? ''),
+    )) {
+      out.push({ title: vendorName.get(vid) ?? `Vendor #${vid}`, data: list });
+    }
+    return out;
+  }, [items, vendorName]);
+
   const renderItem = ({ item }: { item: EssentialItem }) => {
     const isEditingPrice = editingId === item.id;
     return (
@@ -225,10 +269,17 @@ export function EssentialsCatalogManageScreen({ navigation }: { navigation: Admi
       </TouchableOpacity>
 
       {/* List */}
-      <FlatList
-        data={items}
+      <SectionList
+        keyboardDismissMode="on-drag"
+        sections={sections}
         keyExtractor={(item) => String(item.id)}
         renderItem={renderItem}
+        renderSectionHeader={({ section }) => (
+          <ThemedText variant="small" color="mint" style={styles.groupLabel}>
+            {section.title}
+          </ThemedText>
+        )}
+        stickySectionHeadersEnabled={false}
         ListEmptyComponent={
           !isLoading ? (
             <EmptyState title={`No essentials for ${displayName}`} subtitle={'Tap "+ Add Essential Item" below'} />
@@ -276,6 +327,12 @@ const styles = StyleSheet.create({
   },
   cycleText: { fontSize: B },
 
+  /** Whose stock the rows beneath belong to. */
+  groupLabel: {
+    letterSpacing: 1,
+    marginTop: Theme.spacing.md,
+    marginBottom: Theme.spacing.xs,
+  },
   list: { paddingBottom: Theme.spacing.xl },
 
   row: {
