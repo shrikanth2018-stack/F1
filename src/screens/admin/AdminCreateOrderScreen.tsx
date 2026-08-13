@@ -241,6 +241,13 @@ export function AdminCreateOrderScreen({ navigation }: AdminScreenProps<'AdminCr
       // "created" adds a tap and, presented mid-transition, can be swallowed
       // entirely (which is what happened on the first run). `replace` keeps
       // Back going to the Manage list rather than into this now-stale form.
+      //
+      // `finish()` FIRST, and the order matters: `replace` removes this screen,
+      // which fires the wizard's back guard. Without it the guard reads the
+      // departure as a stray back press and steps to the previous question —
+      // so the order is created and the admin is left staring at the payment
+      // step of a form they have already submitted.
+      wiz.finish();
       navigation.replace('AdminOrderDetail', { orderId: res.order_id });
 
       // Only genuinely surprising outcomes get a dialog, and it fires after

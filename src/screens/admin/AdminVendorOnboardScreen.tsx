@@ -92,6 +92,8 @@ export function AdminVendorOnboardScreen({ navigation }: AdminScreenProps<'Admin
 
   const phoneComplete = phone.replace(/\D/g, '').length >= 10;
 
+  const wiz = useWizard<Step>(STEPS, navigation);
+
   const handleOnboard = async () => {
     if (!found) {
       infoDialog('Not registered', 'Register this person first, then onboard them as a vendor.');
@@ -153,6 +155,10 @@ export function AdminVendorOnboardScreen({ navigation }: AdminScreenProps<'Admin
         }
       }
 
+      // `finish()` before leaving — `goBack` removes this screen and would
+      // otherwise trip the wizard's back guard, stepping to the previous
+      // question instead of closing a form that has already been submitted.
+      wiz.finish();
       navigation.goBack();
       setTimeout(
         () =>
@@ -168,8 +174,6 @@ export function AdminVendorOnboardScreen({ navigation }: AdminScreenProps<'Admin
       infoDialog('Could not onboard', getErrorMessage(e));
     }
   };
-
-  const wiz = useWizard<Step>(STEPS, navigation);
 
   /**
    * The refusals `handleOnboard` used to make all at once, moved to the steps

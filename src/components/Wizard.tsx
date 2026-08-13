@@ -21,7 +21,7 @@
  * remove.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import Animated, {
@@ -61,6 +61,18 @@ export interface Wizard<T extends string> {
   forward: () => void;
   /** 1 forward, -1 backward — for a screen that animates its steps. */
   direction: 1 | -1;
+  /**
+   * "The form is done — stop guarding the exit."
+   *
+   * CALL THIS BEFORE NAVIGATING AWAY ON SUCCESS, and the back guard below will
+   * let the screen go. Without it, `navigation.replace()` or `goBack()` after a
+   * successful submit fires `beforeRemove`, the guard treats it as a stray back
+   * press and steps BACKWARDS — so the record is created and the admin is
+   * stranded on the previous step, looking at a form they have already
+   * submitted. `navigate()` to a NEW screen pushes rather than removes and was
+   * never affected, which is exactly why this was missed.
+   */
+  finish: () => void;
 }
 
 /**
@@ -73,6 +85,11 @@ export interface Wizard<T extends string> {
 export function useWizard<T extends string>(steps: T[], navigation: WizardNav): Wizard<T> {
   const [step, setStep] = useState<T>(steps[0]);
   const [direction, setDirection] = useState<1 | -1>(1);
+  /**
+   * A ref, not state: it is read inside the `beforeRemove` handler during the
+   * same tick it is set, and a state update would not have landed yet.
+   */
+  const finished = useRef(false);
 
   const index = Math.max(0, steps.indexOf(step));
 
@@ -100,6 +117,8 @@ export function useWizard<T extends string>(steps: T[], navigation: WizardNav): 
    */
   useEffect(() => {
     const unsubscribe = navigation.addListener('beforeRemove', (e: { preventDefault: () => void }) => {
+      // A completed form is free to leave — see `finish`.
+      if (finished.current) return;
       if (index <= 0) return;
       e.preventDefault();
       goTo(steps[index - 1]);
@@ -107,7 +126,9 @@ export function useWizard<T extends string>(steps: T[], navigation: WizardNav): 
     return unsubscribe;
   }, [navigation, index, steps, goTo]);
 
-  return { step, index, isLast: index === steps.length - 1, goTo, back, forward, direction };
+  const finish = useCallback(() => { finished.current = true; }, []);
+
+  return { step, index, isLast: index === steps.length - 1, goTo, back, forward, direction, finish };
 }
 
 /**
