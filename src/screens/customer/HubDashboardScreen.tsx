@@ -51,6 +51,7 @@ import {
   useClaimHubCommission,
 } from '../../hooks/useHubCommission';
 import { confirmDialog, infoDialog } from '../../utils/confirmDialog';
+import { tapCommit } from '../../utils/haptics';
 import { useRealtimeOrders } from '../../hooks/useRealtimeOrders';
 import { useStaffNoteForTab } from '../../hooks/useAdminNotes';
 import { formatDateShort, formatPriceShort, getErrorMessage } from '../../utils/formatters';
@@ -82,6 +83,9 @@ export function HubDashboardScreen({ navigation }: CustomerScreenProps<'HubDashb
     next: OrderStatus,
     customerUserId: string | null,
   ) => {
+    // Fired on the TAP, before the network answers — it says "that
+    // registered", which is what someone standing at a door needs to know.
+    tapCommit();
     try {
       await updateStatus({ orderId, status: next, userId: customerUserId ?? undefined });
     } catch (e) {

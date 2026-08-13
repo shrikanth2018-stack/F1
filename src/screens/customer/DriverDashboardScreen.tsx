@@ -18,6 +18,7 @@
 
 import React, { useState } from 'react';
 import { infoDialog } from '../../utils/confirmDialog';
+import { tapCommit } from '../../utils/haptics';
 import {
   StyleSheet,
   FlatList,
@@ -69,6 +70,9 @@ export function DriverDashboardScreen() {
     next: OrderStatus,
     customerUserId: string | null,
   ) => {
+    // Fired on the TAP, before the network answers — it says "that
+    // registered", which is what someone standing at a door needs to know.
+    tapCommit();
     try {
       await updateStatus({ orderId, status: next, userId: customerUserId ?? undefined });
     } catch (e) {

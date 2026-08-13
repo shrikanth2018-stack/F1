@@ -46,6 +46,7 @@ import {
   removeCatalogPhoto,
 } from '../../utils/catalogPhotoUpload';
 import { confirmDialog, infoDialog } from '../../utils/confirmDialog';
+import { tapCommit, tapSelect } from '../../utils/haptics';
 import { formatPriceShort, formatDateShort, getErrorMessage } from '../../utils/formatters';
 import { istTimeLabel } from '../../utils/istDate';
 import { useDeliveryCycles } from '../../hooks/useDeliveryCycles';
@@ -502,7 +503,10 @@ export function VendorDashboardScreen() {
                 )}
 
                 <TouchableOpacity
-                  onPress={() => markReady.mutate({ orderId: item.order_id, ready: !isReady })}
+                  onPress={() => {
+                    tapCommit();
+                    markReady.mutate({ orderId: item.order_id, ready: !isReady });
+                  }}
                   disabled={suspended}
                   style={styles.inlineAction}
                 >
@@ -590,7 +594,10 @@ export function VendorDashboardScreen() {
                 <Switch
                   value={it.is_active}
                   disabled={suspended || !isLive}
-                  onValueChange={(v) => toggleItem.mutate({ id: it.id, isActive: v })}
+                  onValueChange={(v) => {
+                    tapSelect();
+                    toggleItem.mutate({ id: it.id, isActive: v });
+                  }}
                   trackColor={{ true: Theme.colors.status.success, false: Theme.colors.background.tertiary }}
                   thumbColor={Theme.colors.text.primary}
                 />

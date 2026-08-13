@@ -20,6 +20,7 @@
 
 import React, { useState, useCallback, useMemo } from 'react';
 import { confirmDialog, infoDialog } from '../../utils/confirmDialog';
+import { tapCommit } from '../../utils/haptics';
 import {
   View,
   Image,
@@ -253,6 +254,7 @@ export function StaffDashboard() {
   // ── Handlers ─────────────────────────────────
   const handleStatusUpdate = useCallback((orderId: number, next: OrderStatus) => {
     const order = (orders ?? []).find((o) => o.id === orderId);
+    tapCommit();
     updateStatus.mutate({ orderId, status: next, userId: order?.user_id });
   }, [updateStatus, orders]);
 
@@ -282,7 +284,9 @@ export function StaffDashboard() {
       message: `Mark ${ids.length} order(s) as Ready?`,
       confirmLabel: 'Mark Ready',
     }).then((ok) => {
-      if (ok) bulkAdvance.mutate({ orderIds: ids, status: 'Ready' });
+      if (!ok) return;
+      tapCommit();
+      bulkAdvance.mutate({ orderIds: ids, status: 'Ready' });
     });
   }, [kitchenItems, bulkAdvance]);
 
@@ -298,7 +302,9 @@ export function StaffDashboard() {
       message: `Mark ${toMark.length} order(s) as Packed?`,
       confirmLabel: 'Mark Packed',
     }).then((ok) => {
-      if (ok) bulkAdvance.mutate({ orderIds: toMark.map((o) => o.id), status: 'Packed' });
+      if (!ok) return;
+      tapCommit();
+      bulkAdvance.mutate({ orderIds: toMark.map((o) => o.id), status: 'Packed' });
     });
   }, [packingOrders, bulkAdvance]);
 
@@ -543,7 +549,10 @@ export function StaffDashboard() {
         <TouchableOpacity
           style={[styles.statusToggle, { borderColor: statusColor(item.status) }]}
           disabled={!canAct || bulkAdvance.isPending}
-          onPress={() => bulkAdvance.mutate({ orderIds: item.order_ids, status: 'Ready' })}
+          onPress={() => {
+            tapCommit();
+            bulkAdvance.mutate({ orderIds: item.order_ids, status: 'Ready' });
+          }}
         >
           <Text style={[styles.statusToggleText, { color: statusColor(item.status) }]}>
             {item.status}

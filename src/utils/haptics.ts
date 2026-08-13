@@ -14,3 +14,6 @@ export function tapSelect(): void {}
 
 /** Something was added to what the customer is building. */
 export function tapAdd(): void {}
+
+/** An operational commit — a status advanced, a shift clocked. */
+export function tapCommit(): void {}

@@ -6,6 +6,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { confirmDialog, infoDialog } from '../../utils/confirmDialog';
+import { tapCommit } from '../../utils/haptics';
 import {
   View,
   ScrollView,
@@ -195,6 +196,7 @@ export function StaffAttendanceScreen() {
       confirmLabel: 'Clock in',
     }).then((ok) => {
       if (!ok) return;
+      tapCommit();
       clockIn.mutate(undefined, {
         onError: (e: Error) => infoDialog('Clock in failed', e.message),
       });
@@ -208,6 +210,7 @@ export function StaffAttendanceScreen() {
       confirmLabel: 'Clock out',
     }).then((ok) => {
       if (!ok) return;
+      tapCommit();
       clockOut.mutate(undefined, {
         onError: (e: Error) => infoDialog('Clock out failed', e.message),
       });
