@@ -24,9 +24,9 @@ Node 22.
 
 ## Layout
 
-- `src/screens/{auth,customer,staff,admin}` — 86 screens by persona
+- `src/screens/{auth,customer,staff,admin}` — 89 screens by persona
 - `src/navigation/` — `RootNavigator` switches on the JWT role
-- `src/hooks/` — **all** data access (56 hooks); `src/api/` — supabase client,
+- `src/hooks/` — **all** data access (60 hooks); `src/api/` — supabase client,
   `invokeFunction`, query primitives
 - `src/store/` — `cartStore` (ONE cart: food, essentials and plans together,
   keyed on `(item_id, item_type)`), `staffQueueStore` (offline queue),
@@ -34,7 +34,7 @@ Node 22.
 - `src/utils/` — pure logic; this is what the Jest suites cover
 - `supabase/functions/` — `_shared/orderBuild.ts` + `_shared/dispatch.ts` are
   the money and date brain
-- `supabase/sql/` — 127 idempotent files, applied by hand per
+- `supabase/sql/` — 137 idempotent files, applied by hand per
   `DEPLOY_SQL_ORDER.md`. **No migration runner.**
 - `landing/` — static marketing site (Cloudflare Pages)
 
@@ -108,13 +108,12 @@ the kitchen batch and creates subscription orders; pushes fan out via
   browsing (any active address), `vendor_ids_for_address()` for ordering (the
   one address being delivered to). Change one, check the other.
 
-## Current state (8 Aug 2026)
+## Current state (13 Aug 2026)
 
-- **40 test suites, 526 tests, all passing.** Coverage collected from
-  `src/utils/**` + `src/hooks/**`; 5 screens have tests, ~114 do not.
-- Version **1.5.0**, shipped as an **OTA over the v1.4.0 (build 31) Android
-  binary**. iOS has one build ever — a dev build from 2026-04-07 — and the
-  submit config is still `REPLACE_WITH_…`.
+- **47 test suites, 641 tests, all passing.** Coverage from `src/utils/**` +
+  `src/hooks/**`; 5 screens have tests, ~120 do not.
+- Version **1.5.0**. **A NEW ANDROID BINARY IS DUE** — `expo-haptics` is a
+  native module and cannot reach the 1.4.0 build over the air.
 - **Production ships the Razorpay TEST key** (`rzp_test_…`) in all three EAS
   profiles. Server-side secrets are set. No real money has moved.
 - **One Supabase project** is dev, preview and production.
@@ -122,6 +121,20 @@ the kitchen batch and creates subscription orders; pushes fan out via
 - No order has ever reached `Delivered`, so `vendor_earnings` is empty and the
   credit trigger has never fired.
 - No hub has a `commission_percent`, so no hub commission claim can be raised.
+
+### Shipped 12–13 Aug, NOT yet walked on a device
+
+The plan builder is a six-step wizard; Create Order and Onboard Vendor are too.
+Every OS alert is gone (206 calls, 53 files). `ScreenHeader` is on all 62
+reachable screens — **which moved the back control to the right on 44 admin and
+staff screens**. Haptics on the four operational personas.
+
+**Admin is the most-changed and least-walked part of the app. Start there.**
+
+Two defects were found by opening the app and would not have been found any
+other way: a completed wizard that could not close (`navigation.replace` fired
+the back guard), and a cancelled order that stayed on the Undelivered tab (six
+query keys missing from `invalidateOrderQueries`). Both had a fully green gate.
 
 ## Health checks
 

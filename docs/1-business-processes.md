@@ -25,9 +25,16 @@ kitchen gets a combined prep list, and so the office can sell them in bulk.
 **Essentials.** 8 items — milk, curd, bread, ghee, coriander, a newspaper. Six
 are ours, two come from a vendor.
 
-**Subscription plans.** 2 plans: "Breakfast 30" (30 days, ₹1,250) and
-"Milk 15" (15 days, ₹775). A plan is paid for once, up front, and then delivers
-automatically each day.
+**Subscription plans.** 2 ready-made plans: "Breakfast 30" (30 days, ₹1,250)
+and "Milk 15" (15 days, ₹775). A plan is paid for once, up front, and then
+delivers automatically each day.
+
+**Custom plans.** A customer can also build their own, in six steps: which
+delivery time, which dishes, anything alongside, the basket, how long, and
+then the price. Up to 5 items, 10 to 45 days, at least one meal, and one
+running custom plan per delivery time. The length options and the discount
+they earn both come from the schedule set in Manage → Subscriptions, so
+changing that schedule changes what customers are offered — no code involved.
 
 ## The four delivery times
 
@@ -50,9 +57,10 @@ essentials.
 Anyone who signs in. There are no passwords — sign-in is a phone number and an
 OTP.
 
-A customer can: browse the menu and essentials (two separate carts), place an
-order, buy a subscription, top up a wallet, redeem loyalty points, refer a
-friend, cancel their own order, rate an order, and manage their addresses.
+A customer can: browse the menu, essentials and plans — **one cart holds all
+three** — place an order, buy a ready-made subscription, **build their own
+plan**, top up a wallet, redeem loyalty points, refer a friend, cancel their
+own order, rate an order, and manage their addresses.
 
 They cannot change their own role, wallet balance, loyalty points, or which
 branch or hub they belong to. Those columns are not writable from the app at all.

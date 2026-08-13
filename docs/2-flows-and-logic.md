@@ -16,6 +16,11 @@ does the price preview and the real order, so the two can never disagree.
 
 ## 1. Placing an order
 
+**One cart.** Food, essentials and subscription plans sit in a single cart and
+are paid for once. There used to be two, which surfaced as two Checkout buttons
+on one screen — a customer could see their whole basket and still be asked to
+pay for it twice.
+
 **Step 1 — Preview.** The cart asks the server for a quote. Back comes: which
 delivery time each item falls into, which date it will go out, the tax carved
 out, the delivery fee, and the total.
@@ -128,6 +133,38 @@ wallet is below ₹200, they are prompted to top up.
 **Cancelling.** A customer cannot cancel a subscription themselves. An admin
 does it, and the refund is proportional to the meals not yet delivered:
 `(price ÷ total days) × days remaining`, rounded to the rupee.
+
+---
+
+## 4b. Building your own plan
+
+Six questions, in order, one screen at a time with a bar showing how far
+through you are:
+
+1. **When** — every delivery time listed, each showing when it is dispatched.
+   One you already have a custom plan on is greyed out and says so; so is one
+   with nothing offered for plans yet.
+2. **What food** — tap to add. At least one meal is required: a plan is food
+   with essentials alongside, not a milk round.
+3. **Anything alongside** — optional, and skipped entirely where that delivery
+   time has no essentials on offer.
+4. **The basket** — one day of the plan, with amounts and a per-day total.
+5. **How long** — one option per discount band, each showing the cost per day,
+   the total and the percentage saved.
+6. **Your plan** — the items, the maths, the payable total and the start date.
+
+**Every rule is met where it applies, not at the end.** Up to 5 items, 1 to 10
+of each, 10 to 45 days, one running custom plan per delivery time — the server
+enforces all of them, and the screen states each at the step that owns it.
+
+**The start date is the later of two facts:** the earliest day that delivery
+time can honestly begin (its cutoff may already have passed), and — if the
+plan delivers something a running plan already delivers — the day after that
+one finishes. The calendar simply does not offer a date the purchase would
+refuse.
+
+**The phone sends a spec, never a price.** `create_custom_plan` re-reads every
+price from the catalogue and applies the admin's discount band itself.
 
 ---
 

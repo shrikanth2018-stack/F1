@@ -30,15 +30,15 @@ Maps: `react-native-maps` on phones, `@react-google-maps/api` on web.
 
 | Area | Size |
 |---|---|
-| Screens | 86 files, ~32,000 lines (38 admin + 5 admin reports, 20 customer, 4 staff, 2 auth) |
-| Components | 36 files |
-| Hooks (all data access) | 56 files, ~7,300 lines |
-| Utilities (pure logic) | 36 files, ~3,000 lines |
-| Stores (Zustand) | 5 |
+| Screens | 89 files (38 admin + 5 admin reports, 20 customer, 4 staff, 2 auth) |
+| Components | 41 files |
+| Hooks (all data access) | 60 files |
+| Utilities (pure logic) | 43 files |
+| Stores (Zustand) | 4 |
 | Navigation | 4 files |
 | Edge functions | 17, plus 7 shared modules — ~5,500 lines |
-| SQL files | 127, ~19,200 lines |
-| Tests | **40 suites, 526 tests — all passing** |
+| SQL files | 137 |
+| Tests | **47 suites, 641 tests — all passing** |
 
 ## Commands
 
@@ -63,11 +63,11 @@ src/screens/{auth,customer,staff,admin}   screens, by persona
 src/navigation/                            role-based navigators
 src/hooks/                                 ALL data access lives here
 src/api/                                   supabase client, edge-fn caller, query helpers
-src/store/                                 cart, essentials cart, offline queue, ui, branch
+src/store/                                 cart (ONE), offline queue, ui, branch
 src/utils/                                 pure logic (dates, dispatch labels, validators)
 src/theme/                                 all styling values
 supabase/functions/                        17 edge functions + _shared
-supabase/sql/                              127 SQL files, applied by hand
+supabase/sql/                              137 SQL files, applied by hand
 supabase/tests/                            4 SQL test harnesses
 landing/                                   static marketing site
 ```
@@ -81,6 +81,30 @@ order and back-office orders alike, so they cannot diverge. The role comes from
 the sign-in token, decoded on the phone with no extra query. Server state is
 cached by TanStack Query (2-minute staleness, 2 retries); Zustand holds only
 device state. Background work is all server-side, driven by database cron jobs.
+
+## What every screen shares
+
+Five components carry rules the whole app follows. Changing one changes every
+screen that uses it, which is the point.
+
+| | Owns |
+|---|---|
+| `ScreenHeader` | Title left, exactly ONE control top right. On all 62 screens a customer, staff member or admin can reach. |
+| `FooterAction` | The primary action at the foot of a page, on a gradient the content fades out under. Its label names the blocker when the action is unavailable — never a greyed button with no reason. |
+| `PressCard` | A card you can choose. Selection is drawn by the surface going one shade LIGHTER, because at `#151515` a drop shadow has nothing to darken and a glow renders on iOS only. |
+| `Wizard` | Position and movement for a step-by-step form: the step machine, the progress bar, and back stepping through the form instead of discarding it. Used by the customer's plan builder and the admin's Create Order and Onboard Vendor. |
+| `DialogHost` | Every dialog in the app. **There are no operating-system alerts left** — `Alert.alert` appears nowhere in the source. Three shapes: confirm, info, and a pick-one. |
+
+**Motion has two languages, and the division is the rule.** Content arriving
+(a list appearing on Home) uses a spring and a stagger. A control answering
+the customer (a card pressed, a bar filling) uses `withTiming` on an ease-out
+and never overshoots — a control that wobbles feels loose. Both live in
+`Theme.motion`.
+
+**Haptics** are the only effect that moves nothing: a light tick when a choice
+registers, a heavier one when an operational action commits — a status
+advanced, a shift clocked. Never on a refusal, an error or a completed
+purchase. `expo-haptics` is a native module, so it needs a build, not an OTA.
 
 ## Database
 

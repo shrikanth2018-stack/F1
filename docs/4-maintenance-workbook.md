@@ -74,7 +74,7 @@ database itself is not running its jobs — that is the loudest alarm you have.
 
 ### JavaScript-only change (screens, logic, text)
 
-1. `npm run check` — must pass (40 suites, 526 tests).
+1. `npm run check` — must pass (47 suites, 641 tests).
 2. Commit and push. GitHub Actions runs the same gate.
 3. `eas update --channel production`
 4. Push to `main` — this also deploys the website via Cloudflare.
@@ -204,7 +204,7 @@ partial failure rather than a clean one.
 
 - **One environment.** Development, preview and production all use the same
   Supabase project. Every schema change is a production change.
-- **No migration runner.** The 127 SQL files are applied by hand in the order
+- **No migration runner.** The 137 SQL files are applied by hand in the order
   recorded in `DEPLOY_SQL_ORDER.md`.
 - **Rate limiting counts successes only**, so repeated failures are not
   throttled.
@@ -216,9 +216,15 @@ partial failure rather than a clean one.
   the person's profile, not the hub record.
 - **iOS has never had a production build.** That is not a config tweak; it is
   developer account, first build, TestFlight and review.
-- **Automated tests cover logic, not screens.** 526 tests cover the utilities,
-  hooks and server modules, plus 5 screens. The other ~114 screen files have no
+- **Automated tests cover logic, not screens.** 641 tests cover the utilities,
+  hooks and server modules, plus 5 screens. The other ~120 screen files have no
   automated test — they have been walked by hand instead.
+
+  **Two real defects on 13 Aug got through a fully green gate**: a completed
+  admin wizard that would not close, and a cancelled order that stayed on the
+  Undelivered tab. Neither was reachable by any test in the suite — one needed
+  a navigation event, the other a stale cache. When the gate is green and the
+  change touched a screen, that is the beginning of testing, not the end.
 
 ---
 
