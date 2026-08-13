@@ -28,13 +28,14 @@ import {
   TouchableWithoutFeedback,
   RefreshControl,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { ListRow, ListRowSeparator } from '../../components/ListRow';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { EmptyState } from '../../components/EmptyState';
+import { FooterAction, FOOTER_CLEARANCE } from '../../components/FooterAction';
 import {
   useMySubscriptions,
   usePauseSubscription,
@@ -103,7 +104,6 @@ function subDeliversOn(
 }
 
 export function SubscriptionsScreen() {
-  const insets = useSafeAreaInsets();
   const browsePlans = useBrowsePlans();
   const [modalDate, setModalDate] = useState<Date | null>(null);
   const [popupCycle, setPopupCycle] = useState<SectionMeta | null>(null);
@@ -278,7 +278,7 @@ export function SubscriptionsScreen() {
         // rather than a page heading followed by its first group.
         contentContainerStyle={{
           paddingTop: Theme.spacing.lg,
-          paddingBottom: insets.bottom + 80,
+          paddingBottom: FOOTER_CLEARANCE,
         }}
         refreshControl={
           <RefreshControl
@@ -350,14 +350,11 @@ export function SubscriptionsScreen() {
       />
 
       {/* Floating Add Plan button */}
-      <TouchableOpacity
-        style={[styles.addBtn, { bottom: insets.bottom + 16 }]}
-        activeOpacity={0.85}
+      <FooterAction
+        label="+  Add a plan  ›"
         onPress={browsePlans}
-      >
-        <ThemedText variant="body" style={styles.addBtnText}>+ Add Plan</ThemedText>
-        <ThemedText variant="body" style={styles.addBtnText}>›</ThemedText>
-      </TouchableOpacity>
+        accessibilityLabel="Browse and add a subscription plan"
+      />
 
       {/* Cycle detail — the same sheet the Home tabs open from a group
           header, so "Dispatch by 7:30 AM ›" means the same thing here. */}
@@ -457,26 +454,6 @@ const styles = StyleSheet.create({
   dot: { width: 5, height: 5, borderRadius: 3 },
 
 
-  addBtn: {
-    position: 'absolute',
-    left: Theme.spacing.md,
-    right: Theme.spacing.md,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Theme.colors.background.secondary,
-    borderWidth: 1,
-    borderColor: `${Theme.colors.text.mint}4D`,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: Theme.spacing.md,
-  },
-  addBtnText: {
-    color: Theme.colors.text.mint,
-    fontFamily: Theme.typography.fontFamily,
-    fontSize: Theme.typography.sizes.subtitle + 2,
-    fontWeight: '400',
-  },
 });
 
 const modal = StyleSheet.create({

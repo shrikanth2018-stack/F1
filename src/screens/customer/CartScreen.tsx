@@ -23,12 +23,13 @@ import {
   StyleSheet,
   Alert,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { EmptyState } from '../../components/EmptyState';
+import { FooterAction, FOOTER_CLEARANCE } from '../../components/FooterAction';
 import { useCartStore } from '../../store/cartStore';
 import type { CartItem } from '../../types';
 import { useSmartCart } from '../../hooks/useSmartCart';
@@ -74,7 +75,6 @@ const dayLabel = (s: Scenario): string =>
 
 
 export function CartScreen({ navigation, route }: any) {
-  const insets = useSafeAreaInsets();
   const subscriptionPlanId: number | undefined = route?.params?.subscriptionPlanId;
 
   const allItems = useCartStore((s) => s.items);
@@ -375,20 +375,13 @@ export function CartScreen({ navigation, route }: any) {
           </View>
         </ScrollView>
 
-        <TouchableOpacity
-          style={[styles.floatBtn, { bottom: insets.bottom + 16 }]}
-          activeOpacity={0.85}
+        <FooterAction
+          label={`Pay ${formatPriceShort(subPlan.price)} for subscription  ›`}
           onPress={() => navigation.navigate('Checkout', {
             subscriptionPlanId: subPlan.plan_id,
           })}
-          accessibilityRole="button"
           accessibilityLabel={`Pay ${formatPriceShort(subPlan.price)} for subscription`}
-        >
-          <ThemedText variant="body" style={styles.floatBtnText}>
-            Pay {formatPriceShort(subPlan.price)} for Subscription
-          </ThemedText>
-          <ThemedText variant="body" style={styles.floatBtnText}>›</ThemedText>
-        </TouchableOpacity>
+        />
       </SafeAreaView>
     );
   }
@@ -544,16 +537,11 @@ export function CartScreen({ navigation, route }: any) {
           "Checkout Essentials" — were the clearest symptom of the split
           cart: the customer could see their whole basket and still had to
           pay for it twice. */}
-      <TouchableOpacity
-        style={[styles.floatBtn, { bottom: insets.bottom + 16 }]}
-        activeOpacity={0.85}
+      <FooterAction
+        label={`Checkout · ${formatPriceShort(grandTotal)}  ›`}
         onPress={confirmCheckout}
-      >
-        <ThemedText variant="body" style={styles.floatBtnText}>
-          Checkout · {formatPriceShort(grandTotal)}
-        </ThemedText>
-        <ThemedText variant="body" style={styles.floatBtnText}>›</ThemedText>
-      </TouchableOpacity>
+        accessibilityLabel={`Checkout, ${formatPriceShort(grandTotal)}`}
+      />
     </SafeAreaView>
   );
 }
@@ -561,7 +549,7 @@ export function CartScreen({ navigation, route }: any) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
 
-  content: { paddingBottom: Theme.spacing.xl },
+  content: { paddingBottom: FOOTER_CLEARANCE },
   /**
    * Fades out to the right so it reads as a marked passage of the page rather
    * than a card sitting on it. The solid left edge is what still makes it a
@@ -652,24 +640,5 @@ const styles = StyleSheet.create({
   totalRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-  },
-  floatBtn: {
-    position: 'absolute',
-    left: Theme.spacing.md,
-    right: Theme.spacing.md,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Theme.colors.background.secondary,
-    borderWidth: 1,
-    borderColor: `${Theme.colors.text.mint}4D`,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: Theme.spacing.md,
-  },
-  floatBtnText: {
-    color: Theme.colors.text.mint,
-    fontFamily: Theme.typography.fontFamily,
-    fontSize: Theme.typography.sizes.subtitle + 2,
   },
 });

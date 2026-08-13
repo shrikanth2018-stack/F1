@@ -94,7 +94,11 @@ export function useMySubscriptions() {
     () =>
       supabase
         .from('user_subscriptions')
-        .select('*, subscription_plans(plan_name, duration_days, cycle_id, price, plan_type, plan_items)')
+        // `is_custom` is here for the plan builder: the server allows ONE
+        // running custom plan per cycle, and that refusal used to arrive on
+        // the final button after everything had been chosen. With the flag on
+        // the row, the builder can grey the cycle out at the first question.
+        .select('*, subscription_plans(plan_name, duration_days, cycle_id, price, plan_type, plan_items, is_custom)')
         .eq('user_id', session?.user.id ?? '')
         .order('created_at', { ascending: false }),
     { enabled: !!session?.user.id }

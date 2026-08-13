@@ -19,13 +19,13 @@ import {
   Alert,
   StyleSheet,
   TouchableOpacity,
-  Text,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { Divider } from '../../components/Divider';
+import { FooterAction, FOOTER_CLEARANCE } from '../../components/FooterAction';
 import { usePlanById, usePlanItems, useMySubscriptions } from '../../hooks/useSubscriptions';
 import { useDeliveryCycles } from '../../hooks/useDeliveryCycles';
 import { useCycleDispatch } from '../../hooks/useCycleDispatch';
@@ -66,7 +66,6 @@ function isSameDay(a: Date, b: Date) {
 
 export function PlanDetailScreen({ route, navigation }: any) {
   const { planId } = route.params;
-  const insets = useSafeAreaInsets();
 
   // By id, not by searching the browse list: that list excludes custom plans
   // on purpose, so a customer's own plan would have opened to a blank screen.
@@ -218,7 +217,7 @@ export function PlanDetailScreen({ route, navigation }: any) {
       {/* Header — close-only */}
       <ScreenHeader title="Plan Details" onDismiss={goHome} label="Close" />
 
-      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 90 }]}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: FOOTER_CLEARANCE }]}>
         {/* Structured plan info */}
         <View style={styles.section}>
           <InfoRow label="Plan Name" value={plan.plan_name} />
@@ -299,16 +298,11 @@ export function PlanDetailScreen({ route, navigation }: any) {
       </ScrollView>
 
       {/* BUY — direct to Cart (sub-only mode) */}
-      <TouchableOpacity
-        style={[styles.subscribeBtn, { bottom: insets.bottom + 16 }]}
-        activeOpacity={0.85}
+      <FooterAction
+        label={`Buy · ${formatPriceShort(plan.price)}  ›`}
         onPress={handleBuy}
-      >
-        <Text style={styles.subscribeBtnText}>
-          {`BUY · ${formatPriceShort(plan.price)}`}
-        </Text>
-        <Text style={styles.subscribeBtnText}>›</Text>
-      </TouchableOpacity>
+        accessibilityLabel={`Buy this plan for ${formatPriceShort(plan.price)}`}
+      />
     </SafeAreaView>
   );
 }
@@ -361,29 +355,5 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: Theme.spacing.xs,
-  },
-  subscribeBtn: {
-    position: 'absolute',
-    left: Theme.spacing.md,
-    right: Theme.spacing.md,
-    backgroundColor: Theme.colors.background.secondary,
-    borderRadius: Theme.components.inputRadius,
-    borderWidth: 1,
-    borderColor: Theme.colors.text.mint,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    shadowColor: Theme.colors.text.mint,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  subscribeBtnText: {
-    color: Theme.colors.text.mint,
-    fontFamily: Theme.typography.fontFamily,
-    fontSize: Theme.typography.sizes.body,
   },
 });

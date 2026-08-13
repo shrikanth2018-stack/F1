@@ -23,12 +23,14 @@ import {
   ActivityIndicator,
   Text,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import RazorpayCheckout from '../../utils/razorpay';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { ThemedButton } from '../../components/ThemedButton';
+import { PressCard } from '../../components/PressCard';
+import { FooterAction, FOOTER_CLEARANCE } from '../../components/FooterAction';
 import { Divider } from '../../components/Divider';
 import { DispatchBadge } from '../../components/DispatchBadge';
 import { useQueryClient } from '@tanstack/react-query';
@@ -47,6 +49,7 @@ import { RAZORPAY_KEY_ID } from '../../utils/env';
 import { trackOrderPlaced, trackOrderFailed, trackSubscribed } from '../../utils/analytics';
 import { infoDialog, confirmDialog } from '../../utils/confirmDialog';
 import { newIdempotencyKey } from '../../utils/idempotency';
+import { tapSelect } from '../../utils/haptics';
 import { captureError } from '../../utils/sentry';
 
 type PaymentChoice = 'razorpay' | 'wallet';
@@ -85,7 +88,6 @@ export function CheckoutScreen({ navigation, route }: any) {
   const { data: wallet } = useWalletBalance();
   const { evaluations } = useSmartCart();
 
-  const insets = useSafeAreaInsets();
   const [selectedAddressId, setSelectedAddressId] = useState<number | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<PaymentChoice>('razorpay');
   const [isPlacing, setIsPlacing] = useState(false);
@@ -413,6 +415,23 @@ export function CheckoutScreen({ navigation, route }: any) {
     navigation, setGlobalLoading, queryClient, totalCartCount, grandTotal,
   ]);
 
+  /**
+   * The pay button's two facts: whether it may be pressed, and what it says.
+   *
+   * Order matters — the FIRST unmet condition is the one named, and they are
+   * listed in the order the customer would fix them. `handlePlaceOrder` still
+   * guards every one of these itself; this only decides the wording.
+   */
+  const payBlocked =
+    !selectedAddressId || totalCartCount === 0 || !quote || walletInsufficient;
+  const payLabel =
+    totalCartCount === 0 ? 'Your cart is empty'
+      : !selectedAddressId ? 'Choose a delivery address'
+        : !quote ? 'Calculating your total…'
+          : walletInsufficient
+            ? `Wallet short by ${formatPriceShort(grandTotal - walletBalance)}`
+            : `Pay ${formatPriceShort(quote.grand_total)}  ›`;
+
   if (essentialsBlocked) {
     return (
       <SafeAreaView style={styles.container}>
@@ -439,10 +458,14 @@ export function CheckoutScreen({ navigation, route }: any) {
           </ThemedText>
           {addresses && addresses.length > 0 ? (
             addresses.map((addr) => (
-              <TouchableOpacity
+              <PressCard
                 key={addr.id}
-                style={[styles.addressCard, addr.id === selectedAddressId && styles.addressSelected]}
+                style={styles.stackedCard}
+                selected={addr.id === selectedAddressId}
+                accessibilityRole="radio"
+                accessibilityLabel={`Deliver to ${addr.label}, ${addr.address_line}`}
                 onPress={async () => {
+                  tapSelect();
                   // MF-09: switching to an address in a different branch clears
                   // the cart — its items belong to the previous branch's catalog.
                   const currentBranch = addresses?.find((a) => a.id === selectedAddressId)?.branch_id ?? null;
@@ -473,7 +496,7 @@ export function CheckoutScreen({ navigation, route }: any) {
                 {addr.landmark && (
                   <ThemedText variant="micro" color="muted">{addr.landmark}</ThemedText>
                 )}
-              </TouchableOpacity>
+              </PressCard>
             ))
           ) : (
             <ThemedButton
@@ -581,23 +604,22 @@ export function CheckoutScreen({ navigation, route }: any) {
         {/* Payment */}
         <View style={styles.section}>
           <ThemedText variant="small" color="muted" style={styles.sectionLabel}>PAYMENT</ThemedText>
-          <TouchableOpacity
-            style={[styles.paymentOption, paymentMethod === 'razorpay' && styles.paymentSelected]}
-            onPress={() => setPaymentMethod('razorpay')}
-            activeOpacity={0.7}
+          <PressCard
+            style={styles.stackedCard}
+            selected={paymentMethod === 'razorpay'}
+            onPress={() => { tapSelect(); setPaymentMethod('razorpay'); }}
             accessibilityRole="radio"
             accessibilityLabel="Pay online via Razorpay"
-            accessibilityState={{ selected: paymentMethod === 'razorpay' }}
           >
             <ThemedText variant="body" color="primary">Pay Online (Razorpay)</ThemedText>
             <ThemedText variant="micro" color="muted">UPI, Card, Net Banking</ThemedText>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.paymentOption, paymentMethod === 'wallet' && styles.paymentSelected]}
-            onPress={() => setPaymentMethod('wallet')}
+          </PressCard>
+          <PressCard
+            style={styles.stackedCard}
+            selected={paymentMethod === 'wallet'}
+            onPress={() => { tapSelect(); setPaymentMethod('wallet'); }}
             accessibilityRole="radio"
             accessibilityLabel="Pay from wallet"
-            accessibilityState={{ selected: paymentMethod === 'wallet' }}
           >
             <View style={styles.paymentRow}>
               <ThemedText variant="body" color="primary">Wallet Balance</ThemedText>
@@ -615,51 +637,38 @@ export function CheckoutScreen({ navigation, route }: any) {
                 </TouchableOpacity>
               </View>
             )}
-          </TouchableOpacity>
+          </PressCard>
         </View>
       </ScrollView>
 
-      <TouchableOpacity
-        style={[styles.floatBtn, { bottom: insets.bottom + 16 }]}
-        activeOpacity={0.85}
-        onPress={handlePlaceOrder}
-        disabled={!selectedAddressId || totalCartCount === 0 || isPlacing || !quote || walletInsufficient}
-        accessibilityRole="button"
+      {/* ── Why the label now names the blocker ──
+           This button used to read "Pay ₹…" and simply grey out — so a
+           customer whose wallet was short, or who had not picked an address,
+           met a dead control with no reason on it. Every disabled state here
+           now says which one it is; `handlePlaceOrder` still re-checks all of
+           them, so nothing about the money path has moved. */}
+      <FooterAction
+        label={payLabel}
+        onPress={payBlocked ? undefined : handlePlaceOrder}
+        busy={isPlacing}
         accessibilityLabel={paymentMethod === 'wallet' ? 'Pay from wallet' : 'Pay online'}
-        accessibilityState={{
-          disabled: !selectedAddressId || totalCartCount === 0 || isPlacing || !quote || walletInsufficient,
-          busy: isPlacing,
-        }}
-      >
-        {isPlacing
-          ? <ActivityIndicator color={Theme.colors.text.mint} />
-          : <>
-              <Text style={styles.floatBtnText}>
-                Pay {quote ? formatPriceShort(quote.grand_total) : '…'}
-              </Text>
-              <Text style={styles.floatBtnText}>›</Text>
-            </>
-        }
-      </TouchableOpacity>
+      />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background.primary },
-  content: { paddingBottom: 100 },
+  content: { paddingBottom: FOOTER_CLEARANCE },
 
   section: { padding: Theme.spacing.md },
   sectionLabel: { letterSpacing: 1, marginBottom: Theme.spacing.sm },
-  addressCard: {
-    backgroundColor: Theme.colors.background.secondary,
-    borderRadius: Theme.components.inputRadius,
-    padding: Theme.spacing.sm,
-    marginBottom: Theme.spacing.xs,
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  addressSelected: { borderColor: Theme.colors.action.primary },
+  /**
+   * `PressCard` lays its children in a ROW by default — right for a card whose
+   * content is a label and a chevron. An address and a payment method are
+   * stacked lines, so they say so.
+   */
+  stackedCard: { flexDirection: 'column', alignItems: 'stretch' },
   summaryRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -687,34 +696,5 @@ const styles = StyleSheet.create({
     fontFamily: Theme.typography.fontFamily,
     fontSize: Theme.typography.sizes.small,
   },
-  paymentOption: {
-    backgroundColor: Theme.colors.background.secondary,
-    borderRadius: Theme.components.inputRadius,
-    padding: Theme.spacing.sm,
-    marginBottom: Theme.spacing.xs,
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  paymentSelected: { borderColor: Theme.colors.action.primary },
   paymentRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  floatBtn: {
-    position: 'absolute',
-    left: Theme.spacing.md,
-    right: Theme.spacing.md,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Theme.colors.background.secondary,
-    borderWidth: 1,
-    borderColor: `${Theme.colors.text.mint}4D`,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: Theme.spacing.md,
-  },
-  floatBtnText: {
-    color: Theme.colors.text.mint,
-    fontFamily: Theme.typography.fontFamily,
-    fontSize: Theme.typography.sizes.subtitle + 2,
-    fontWeight: '400',
-  },
 });

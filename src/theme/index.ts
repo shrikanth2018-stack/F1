@@ -165,18 +165,63 @@ export const Theme = {
     touchMin: 44,
   },
   /**
-   * How the app moves. One place, so every screen enters the same way and a
-   * change of mind is a change of one value.
+   * How the app moves.
    *
-   * `screen` is a react-navigation native-stack animation name.
+   * ═══ THERE ARE TWO LANGUAGES, AND THE DIVISION IS THE WHOLE RULE ═══
    *
-   * NOT READ BY ANYTHING YET — the navigators still name their own
-   * animation. Wiring it is a visible change and belongs with the screen
-   * work, not with the token that describes it.
+   *   CONTENT ARRIVES WITH LIFE.  A list of food appearing on Home, a group
+   *   settling into place — these are things showing up, and a spring with a
+   *   little overshoot reads as arrival. Staggered, so a screen composes
+   *   itself rather than materialising all at once.
+   *
+   *   CONTROLS RESPOND WITHOUT IT.  A card under a finger, a selected option,
+   *   a progress bar filling. These are answers to something the customer just
+   *   did, and an answer that wobbles feels loose rather than lively. Always
+   *   `withTiming` on an ease-out: it starts at once, decelerates, and stops.
+   *
+   * Borrowing one for the other is how an interface starts to feel either
+   * lifeless or unserious. If a new animation does not obviously belong to one
+   * of these, that is the thing to settle before writing it.
+   *
+   * `screen` is a react-navigation native-stack animation name. Read by
+   * CustomerNavigator; Admin and Staff still hardcode `slide_from_right`,
+   * which is why the app moves differently depending on who signs in.
    */
   motion: {
     screen: 'fade_from_bottom',
+
+    // ── Controls respond ──
+    /** A control answering: selection, colour, a bar filling. */
     durationMs: 200,
+    /** Contact under a finger. Half, because 200ms of travel reads as lag. */
+    pressMs: 100,
+    /** How far a surface sinks when pressed. 0.94 is a squash you watch
+     *  happen; 0.97 is a surface that answered. */
+    press: 0.97,
+    /** How far a chosen surface rises. Barely arithmetic on purpose — at
+     *  #151515 the lift is carried by the surface going LIGHTER, not by the
+     *  geometry. See `colors.layout.photoEdge` for why shadow is not an
+     *  option here. */
+    select: 1.01,
+
+    // ── Content arrives ──
+    /** A group fading in. */
+    enterMs: 280,
+    /** And leaving — quicker than arriving, as dismissals should be. */
+    exitMs: 140,
+    /** Between one group and the next, so a screen composes itself. */
+    staggerMs: 80,
+    /**
+     * The arrival spring. These exact numbers are CycleGroup's, which is the
+     * entrance on Home the owner asked to keep — so they are the reference,
+     * not an average.
+     *
+     * `SegmentedControl` and `HomeTabStrip` still carry springs of their own
+     * (damping 20/16). Converging them is a visible change to two controls
+     * nobody has complained about, so it wants its own look rather than
+     * riding along with a token.
+     */
+    spring: { damping: 13, stiffness: 170, mass: 0.8 },
   },
   spacing: {
     xs: 4,
