@@ -62,14 +62,19 @@ interface Props {
 /**
  * Full size, deliberately: a dish you cannot recognise is not a shortcut.
  *
- * EXPORTED because the plan builder's picker is the same idea wearing the same
- * clothes — photos across the full width, a `+` on the selected one, a caption
- * naming it. Its BEHAVIOUR differs (it carries a quantity and a cap, this one
- * adds and forgets), so the two are separate components; the metric they share
- * is defined once here rather than typed twice and drifting.
+ * NOT SHARED WITH THE PLAN BUILDER, though it was until 13 Aug 2026. The two
+ * pickers looked alike, so this was exported as one metric for both — and then
+ * the builder became a wizard, where choosing from the shelf IS the step and it
+ * has the screen to itself. It went to 64pt and this stayed at 44, which is
+ * right: here the strip is a secondary offer tucked under a delivery already
+ * being read.
+ *
+ * The lesson is worth the comment. A number shared because two things LOOKED
+ * alike is a coincidence dressed as a rule, and it holds only until one of them
+ * changes job. The tile size follows what the picker is FOR, not what it
+ * resembles.
  */
-export const PICK_TILE = 44;
-const TILE = PICK_TILE;
+const TILE = 44;
 
 export function AddExtraStrip({ candidates, expanded, onToggle, onAdd }: Props) {
   const [selectedId, setSelectedId] = useState<number | null>(null);

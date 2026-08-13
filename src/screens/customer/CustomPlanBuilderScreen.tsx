@@ -107,7 +107,7 @@ const MAX_DAYS = 45;
 const START_WINDOW = 14;
 
 /**
- * The picker tile, bigger than the cart's 44pt `PICK_TILE`.
+ * The picker tile, bigger than the cart's 44pt one.
  *
  * Not shared with it, deliberately. There the strip is a secondary offer
  * tucked under a delivery already being read; here choosing from it IS the
