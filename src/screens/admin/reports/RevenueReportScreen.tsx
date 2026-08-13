@@ -12,11 +12,11 @@
  */
 
 import React, { useState, useMemo } from 'react';
+import { infoDialog } from '../../../utils/confirmDialog';
 import {
   View,
   ScrollView,
   TouchableOpacity,
-  Alert,
   StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -94,7 +94,7 @@ async function handlePrint(html: string) {
   try {
     await printHtml(html);
   } catch {
-    Alert.alert('Print unavailable', 'Could not open the print dialog.');
+    infoDialog('Print unavailable', 'Could not open the print dialog.');
   }
 }
 
@@ -102,7 +102,7 @@ async function handleDownload(html: string) {
   try {
     await sharePdf(html, 'Revenue Report');
   } catch {
-    Alert.alert('PDF unavailable', 'Could not export the PDF.');
+    infoDialog('PDF unavailable', 'Could not export the PDF.');
   }
 }
 

@@ -6,7 +6,8 @@
  */
 
 import React, { useRef, useState } from 'react';
-import { View, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator, Alert, Keyboard } from 'react-native';
+import { infoDialog } from '../utils/confirmDialog';
+import { View, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator, Keyboard } from 'react-native';
 import MapView, { Marker, MapPressEvent, Region } from 'react-native-maps';
 import { Theme } from '../theme';
 import { getErrorMessage } from '../utils/formatters';
@@ -65,12 +66,12 @@ export function PinMap({ latitude, longitude, onLocationChange }: PinMapProps) {
 
       const googleMsg = json?.error_message ? `\n\n${json.error_message}` : '';
       if (status === 'ZERO_RESULTS') {
-        Alert.alert('Not found', `No location matched "${q}".`);
+        infoDialog('Not found', `No location matched "${q}".`);
       } else {
-        Alert.alert(`Search failed — ${status}`, googleMsg || 'Please try a different query.');
+        infoDialog(`Search failed — ${status}`, googleMsg || 'Please try a different query.');
       }
     } catch (err) {
-      Alert.alert('Search failed', getErrorMessage(err));
+      infoDialog('Search failed', getErrorMessage(err));
     } finally {
       setSearching(false);
     }

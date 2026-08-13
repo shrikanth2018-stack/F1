@@ -6,11 +6,11 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { confirmDialog, infoDialog } from '../../../utils/confirmDialog';
 import {
   View,
   ScrollView,
   TouchableOpacity,
-  Alert,
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
@@ -88,7 +88,7 @@ export function ProfileTab({ staff, navigation }: { staff: Profile; navigation: 
       { staffId: staff.id, updates: field },
       {
         onSuccess: () => opts?.onSuccess?.(),
-        onError: (e: any) => Alert.alert('Error', e?.message),
+        onError: (e: any) => infoDialog('Error', e?.message),
       }
     );
 
@@ -127,26 +127,22 @@ export function ProfileTab({ staff, navigation }: { staff: Profile; navigation: 
   };
 
   const confirmOffboard = () => {
-    Alert.alert(
-      'Offboard Employee?',
-      `This will revoke ${staff.full_name || 'this employee'}'s staff access and stamp today as their exit date. Continue?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Offboard',
-          style: 'destructive',
-          onPress: () =>
-            demote.mutate(staff.id, {
-              onSuccess: () => {
-                Alert.alert('Offboarded', `${staff.full_name || 'Employee'} has been offboarded.`);
-                navigation.goBack();
-              },
-              onError: (e: any) =>
-                Alert.alert('Cannot Offboard', e?.message ?? 'Failed to offboard employee'),
-            }),
+    confirmDialog({
+      title: 'Offboard employee?',
+      message: `This will revoke ${staff.full_name || 'this employee'}'s staff access and stamp today as their exit date. Continue?`,
+      confirmLabel: 'Offboard',
+      destructive: true,
+    }).then((ok) => {
+      if (!ok) return;
+      demote.mutate(staff.id, {
+        onSuccess: () => {
+          infoDialog('Offboarded', `${staff.full_name || 'Employee'} has been offboarded.`);
+          navigation.goBack();
         },
-      ]
-    );
+        onError: (e: any) =>
+          infoDialog('Cannot offboard', e?.message ?? 'Failed to offboard employee'),
+      });
+    });
   };
 
   return (

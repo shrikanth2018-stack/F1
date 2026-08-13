@@ -48,13 +48,13 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { infoDialog } from '../../utils/confirmDialog';
 import {
   View,
   ScrollView,
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, {
@@ -458,7 +458,7 @@ export function CustomPlanBuilderScreen({
       navigation.navigate('Checkout', { subscriptionPlanId: plan.plan_id });
     } catch (e) {
       // The server's own sentence — it names the rule that was hit.
-      Alert.alert('Could not build that plan', getErrorMessage(e));
+      infoDialog('Could not build that plan', getErrorMessage(e));
     }
   }, [cycleId, days, picked, create, setPlan, startDate, navigation]);
 

@@ -7,11 +7,11 @@
  */
 
 import React, { useState } from 'react';
+import { infoDialog } from '../../../utils/confirmDialog';
 import {
   View,
   TextInput,
   ScrollView,
-  Alert,
   TouchableOpacity,
   TouchableWithoutFeedback,
   Text,
@@ -117,7 +117,7 @@ export function OrderFormModal({
 
   const handleSubmit = async () => {
     if (lineItems.length === 0) {
-      Alert.alert('Empty order', 'Add at least one item.');
+      infoDialog('Empty order', 'Add at least one item.');
       return;
     }
     setSubmitting(true);
@@ -129,10 +129,10 @@ export function OrderFormModal({
         submitted_by: session?.user.id ?? null,
       });
       if (insertErr) throw insertErr;
-      Alert.alert('Submitted', `${type} order sent to admin for approval.`);
+      infoDialog('Submitted', `${type} order sent to admin for approval.`);
       onClose();
     } catch (e) {
-      Alert.alert('Submit failed', getErrorMessage(e));
+      infoDialog('Submit failed', getErrorMessage(e));
     } finally {
       setSubmitting(false);
     }

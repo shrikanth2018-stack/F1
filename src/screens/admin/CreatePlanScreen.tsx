@@ -36,13 +36,13 @@
  */
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { infoDialog } from '../../utils/confirmDialog';
 import {
   View,
   ScrollView,
   TouchableOpacity,
   TextInput,
   StyleSheet,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
@@ -214,7 +214,7 @@ export function CreatePlanScreen({ navigation, route }: AdminScreenProps<'Create
   const handleStartFromMenu = (menu: MenuItem) => {
     const { lines, adjusted: adj, unmatched } = fromRecipe(menu.ingredients, blocks);
     if (lines.length === 0) {
-      Alert.alert('Nothing to copy', `${menu.name} has no items on it yet.`);
+      infoDialog('Nothing to copy', `${menu.name} has no items on it yet.`);
       return;
     }
     // Merge rather than replace, so two menus can be combined into one plan.
@@ -225,7 +225,7 @@ export function CreatePlanScreen({ navigation, route }: AdminScreenProps<'Create
     setAdjusted(adj);
     setMenuPickerOpen(false);
     if (unmatched.length > 0) {
-      Alert.alert(
+      infoDialog(
         'Some items were skipped',
         `${unmatched.join(', ')} — no matching item on the Menu Items tab.`,
       );
@@ -233,11 +233,11 @@ export function CreatePlanScreen({ navigation, route }: AdminScreenProps<'Create
   };
 
   const handleSave = () => {
-    if (!planName.trim()) { Alert.alert('Error', 'Enter a plan name'); return; }
-    if (isNaN(days) || days <= 0) { Alert.alert('Error', 'Enter a valid number of days'); return; }
-    if (!selectedCycle) { Alert.alert('Error', 'No delivery cycles available'); return; }
+    if (!planName.trim()) { infoDialog('Error', 'Enter a plan name'); return; }
+    if (isNaN(days) || days <= 0) { infoDialog('Error', 'Enter a valid number of days'); return; }
+    if (!selectedCycle) { infoDialog('Error', 'No delivery cycles available'); return; }
     if (selectedItems.length === 0) {
-      Alert.alert('Error', 'Add at least one item to the plan');
+      infoDialog('Error', 'Add at least one item to the plan');
       return;
     }
 
@@ -245,7 +245,7 @@ export function CreatePlanScreen({ navigation, route }: AdminScreenProps<'Create
     // plan can never again be saved at one day's worth for a thirty-day run.
     const finalPrice = parseFloat(priceInput);
     if (isNaN(finalPrice) || finalPrice <= 0) {
-      Alert.alert('Error', 'Enter a valid plan price');
+      infoDialog('Error', 'Enter a valid plan price');
       return;
     }
 
@@ -265,7 +265,7 @@ export function CreatePlanScreen({ navigation, route }: AdminScreenProps<'Create
       },
       {
         onSuccess: () => navigation.goBack(),
-        onError: (e: any) => Alert.alert('Error', e?.message ?? 'Failed to save plan'),
+        onError: (e: any) => infoDialog('Error', e?.message ?? 'Failed to save plan'),
       }
     );
   };

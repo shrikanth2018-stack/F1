@@ -8,12 +8,12 @@
  */
 
 import React, { useState } from 'react';
+import { infoDialog } from '../../utils/confirmDialog';
 import {
   View,
   ScrollView,
   TouchableOpacity,
   TextInput,
-  Alert,
   StyleSheet,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -47,23 +47,23 @@ export function LoyaltyPointsScreen() {
         const res = Array.isArray(data) ? data[0] : data;
         refreshWallet();
         setRedeemInput('');
-        Alert.alert(
+        infoDialog(
           'Points Redeemed',
           `${formatPriceShort(res?.wallet_credited ?? 0)} added to your wallet. ${res?.loyalty_points_remaining ?? 0} points left.`,
         );
       },
-      onError: (e) => Alert.alert('Could not redeem', e.message),
+      onError: (e) => infoDialog('Could not redeem', e.message),
     },
   );
 
   const handleRedeem = () => {
     const n = parseInt(redeemInput, 10);
     if (!Number.isFinite(n) || n <= 0) {
-      Alert.alert('Enter points', 'Enter how many points to redeem.');
+      infoDialog('Enter points', 'Enter how many points to redeem.');
       return;
     }
     if (n > points) {
-      Alert.alert('Not enough points', `You have ${points} points.`);
+      infoDialog('Not enough points', `You have ${points} points.`);
       return;
     }
     redeem.mutate(n);

@@ -11,11 +11,11 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { infoDialog } from '../../utils/confirmDialog';
 import {
   View,
   Image,
   TouchableOpacity,
-  Alert,
   ActivityIndicator,
   StyleSheet,
   ScrollView,
@@ -84,7 +84,7 @@ function Uploader({
   const handlePick = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission required', 'Please allow photo library access to pick an image.');
+      infoDialog('Permission required', 'Please allow photo library access to pick an image.');
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -147,10 +147,10 @@ function Uploader({
       setCurrentUrl(newUrl);
       setPreviewUri(null);
       setPreviewBase64(null);
-      Alert.alert('Success', successMessage);
+      infoDialog('Success', successMessage);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Unknown error';
-      Alert.alert('Upload failed', msg);
+      infoDialog('Upload failed', msg);
     } finally {
       setUploading(false);
     }

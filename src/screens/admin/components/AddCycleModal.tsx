@@ -7,13 +7,13 @@
  */
 
 import React, { useState } from 'react';
+import { infoDialog } from '../../../utils/confirmDialog';
 import {
   View,
   Modal,
   TextInput,
   Switch,
   TouchableOpacity,
-  Alert,
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
@@ -51,9 +51,9 @@ export function AddCycleModal({
   const toHHMMSS = (v: string) => (v.length === 5 ? `${v}:00` : v);
 
   const save = async () => {
-    if (!name.trim()) { Alert.alert('Missing', 'Enter a cycle name'); return; }
-    if (!/^\d{2}:\d{2}(:\d{2})?$/.test(cutoff)) { Alert.alert('Missing', 'Enter cut-off as HH:MM'); return; }
-    if (!/^\d{2}:\d{2}(:\d{2})?$/.test(dispatch)) { Alert.alert('Missing', 'Enter dispatch as HH:MM'); return; }
+    if (!name.trim()) { infoDialog('Missing', 'Enter a cycle name'); return; }
+    if (!/^\d{2}:\d{2}(:\d{2})?$/.test(cutoff)) { infoDialog('Missing', 'Enter cut-off as HH:MM'); return; }
+    if (!/^\d{2}:\d{2}(:\d{2})?$/.test(dispatch)) { infoDialog('Missing', 'Enter dispatch as HH:MM'); return; }
     try {
       await addCycle.mutateAsync({
         cycle_name: name.trim(),
@@ -65,7 +65,7 @@ export function AddCycleModal({
       });
       onClose();
     } catch (e) {
-      Alert.alert('Failed', getErrorMessage(e));
+      infoDialog('Failed', getErrorMessage(e));
     }
   };
 

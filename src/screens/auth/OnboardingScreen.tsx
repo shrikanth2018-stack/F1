@@ -12,10 +12,10 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
+import { infoDialog, choiceDialog } from '../../utils/confirmDialog';
 import {
   View,
   ScrollView,
-  Alert,
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
@@ -106,13 +106,13 @@ export function OnboardingScreen({ phone, onComplete, onBack }: OnboardingScreen
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission Denied', 'Location access is needed to use your current position.');
+        infoDialog('Permission Denied', 'Location access is needed to use your current position.');
         return;
       }
       const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
       await applyLocation(loc.coords.latitude, loc.coords.longitude);
     } catch {
-      Alert.alert('Error', 'Could not fetch location. Please tap the map to set your delivery pin.');
+      infoDialog('Error', 'Could not fetch location. Please tap the map to set your delivery pin.');
     } finally {
       setLocating(false);
     }
@@ -151,28 +151,28 @@ export function OnboardingScreen({ phone, onComplete, onBack }: OnboardingScreen
 
   const handleSubmit = () => {
     if (!isNonEmpty(fullName)) {
-      Alert.alert('Required', 'Please enter your full name');
+      infoDialog('Required', 'Please enter your full name');
       return;
     }
     if (!isNonEmpty(addressLine)) {
-      Alert.alert('Required', 'Please enter your address');
+      infoDialog('Required', 'Please enter your address');
       return;
     }
     if (latitude == null || longitude == null) {
-      Alert.alert('Location Required', 'Please tap the map or use GPS to set your delivery location.');
+      infoDialog('Location Required', 'Please tap the map or use GPS to set your delivery location.');
       return;
     }
 
     if (zoneResult?.result === 'not_serviceable') {
-      Alert.alert(
-        'Outside Delivery Area',
+      choiceDialog(
+        'Outside delivery area',
         "This area isn't in our delivery zone yet, but we'll notify you when we expand. You can still sign up and browse.",
-        [
-          { text: 'Adjust the Pin' },
-          { text: 'Enter Anyway', onPress: () => doSave() },
-          { text: 'Cancel', style: 'cancel' },
-        ],
-      );
+        ['Adjust the pin', 'Enter anyway'],
+      ).then((picked) => {
+        // 'Adjust the pin' and Cancel are both "stay here and change it" —
+        // the only branch that does anything is entering anyway.
+        if (picked === 1) doSave();
+      });
       return;
     }
 
@@ -181,7 +181,7 @@ export function OnboardingScreen({ phone, onComplete, onBack }: OnboardingScreen
 
   const doSave = async () => {
     if (!session?.user.id) {
-      Alert.alert('Session Error', 'Please sign in again.');
+      infoDialog('Session Error', 'Please sign in again.');
       onBack();
       return;
     }
@@ -211,7 +211,7 @@ export function OnboardingScreen({ phone, onComplete, onBack }: OnboardingScreen
       trackSignup('phone_otp');
       onComplete();
     } catch (err) {
-      Alert.alert('Could not complete sign-up', getErrorMessage(err));
+      infoDialog('Could not complete sign-up', getErrorMessage(err));
     } finally {
       setSubmitting(false);
     }

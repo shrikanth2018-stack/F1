@@ -15,7 +15,8 @@
  */
 
 import React from 'react';
-import { View, Text, Image, TouchableOpacity, Alert, Linking, StyleSheet } from 'react-native';
+import { infoDialog } from '../utils/confirmDialog';
+import { View, Text, Image, TouchableOpacity, Linking, StyleSheet } from 'react-native';
 import { Theme } from '../theme';
 
 const ICONS = {
@@ -92,7 +93,7 @@ export function DeliveryOrderRow({
 
   const handleCall = () => {
     if (!phone) {
-      Alert.alert('No phone', 'Customer phone number is missing.');
+      infoDialog('No phone', 'Customer phone number is missing.');
       return;
     }
     Linking.openURL(`tel:${phone}`);
@@ -111,12 +112,12 @@ export function DeliveryOrderRow({
       Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${q}`);
       return;
     }
-    Alert.alert('No location', 'Address information is missing.');
+    infoDialog('No location', 'Address information is missing.');
   };
 
   const handleShowAddress = () => {
     if (!address) {
-      Alert.alert('No address', 'Address details are missing.');
+      infoDialog('No address', 'Address details are missing.');
       return;
     }
     const lines = [
@@ -125,7 +126,7 @@ export function DeliveryOrderRow({
       address.landmark,
       address.city,
     ].filter(Boolean);
-    Alert.alert('Delivery address', lines.join('\n'));
+    infoDialog('Delivery address', lines.join('\n'));
   };
 
   return (

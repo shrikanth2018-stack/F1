@@ -9,13 +9,13 @@
  */
 
 import React, { useState } from 'react';
+import { infoDialog } from '../../../utils/confirmDialog';
 import {
   View,
   Modal,
   ScrollView,
   TouchableOpacity,
   TextInput,
-  Alert,
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
@@ -54,11 +54,11 @@ export function CorrectionRequestModal({ visible, onClose, onSubmitted }: Props)
   const handleSubmit = async () => {
     const cleanReason = reason.trim();
     if (!cleanReason) {
-      Alert.alert('Reason required', 'Tell admin why you need the backfill.');
+      infoDialog('Reason required', 'Tell admin why you need the backfill.');
       return;
     }
     if (dates.length === 0) {
-      Alert.alert('No days selected', 'Tap days on the calendar to mark them.');
+      infoDialog('No days selected', 'Tap days on the calendar to mark them.');
       return;
     }
 
@@ -69,12 +69,12 @@ export function CorrectionRequestModal({ visible, onClose, onSubmitted }: Props)
       });
       const single = Array.isArray(res) ? res[0] : res;
       onSubmitted?.(single?.request_id ?? 0);
-      Alert.alert('Submitted', `${dates.length} day(s) sent to admin for approval.`);
+      infoDialog('Submitted', `${dates.length} day(s) sent to admin for approval.`);
       reset();
       onClose();
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Submission failed.';
-      Alert.alert('Could not submit', msg);
+      infoDialog('Could not submit', msg);
     }
   };
 

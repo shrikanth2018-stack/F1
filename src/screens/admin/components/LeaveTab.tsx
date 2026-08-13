@@ -6,11 +6,11 @@
  */
 
 import React from 'react';
+import { confirmDialog, infoDialog } from '../../../utils/confirmDialog';
 import {
   View,
   ScrollView,
   TouchableOpacity,
-  Alert,
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
@@ -30,18 +30,19 @@ export function LeaveTab({ staffId }: { staffId: string }) {
   const history  = leaves.filter((l) => l.status !== 'Pending');
 
   const handleReview = (leaveId: number, status: 'Approved' | 'Rejected') => {
-    Alert.alert(status, `${status === 'Approved' ? 'Approve' : 'Reject'} this leave request?`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: status,
-        style: status === 'Rejected' ? 'destructive' : 'default',
-        onPress: () =>
-          review.mutate(
-            { leaveId, status },
-            { onError: (e: any) => Alert.alert('Error', e?.message) }
-          ),
-      },
-    ]);
+    confirmDialog({
+      title: status,
+      message: `${status === 'Approved' ? 'Approve' : 'Reject'} this leave request?`,
+      confirmLabel: status,
+      destructive: status === 'Rejected',
+    }).then((ok) => {
+      if (!ok) return;
+      review.mutate(
+        { leaveId, status },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        { onError: (e: any) => infoDialog('Error', e?.message) },
+      );
+    });
   };
 
   if (isLoading) {

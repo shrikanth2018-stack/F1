@@ -21,8 +21,7 @@
  */
 
 import React from 'react';
-import { Alert } from 'react-native';
-import { render, fireEvent, screen } from '@testing-library/react-native';
+import { render, fireEvent, screen, act } from '@testing-library/react-native';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { createTestQueryClient } from './_helpers/queryClient';
 
@@ -54,6 +53,21 @@ jest.mock('@/hooks/useDeliveryCycles', () => ({
 }));
 jest.mock('@/hooks/useAdminNotes', () => ({ useStaffNoteForTab: () => ({ data: [] }) }));
 jest.mock('@/utils/printHtml', () => ({ printHtml: jest.fn() }));
+
+/**
+ * The confirmation is the app's own dialog now, not the OS one. It resolves a
+ * promise rather than handing back a button array, so the test says "yes" by
+ * making that promise resolve true instead of reaching into `Alert.alert`'s
+ * third argument.
+ *
+ * WHAT IS BEING GUARDED HAS NOT MOVED — which orders get advanced. Only the
+ * mechanism the answer arrives through has.
+ */
+jest.mock('@/utils/confirmDialog', () => ({
+  confirmDialog: jest.fn(() => Promise.resolve(true)),
+  infoDialog: jest.fn(() => Promise.resolve()),
+  choiceDialog: jest.fn(() => Promise.resolve(null)),
+}));
 
 // The staff ProfilePopup reaches for useNavigation. Mocked here rather than
 // globally: a test that asserts on navigation should opt into its own stub
@@ -153,28 +167,29 @@ describe('StaffDashboard — Packing partitions food from essentials', () => {
 });
 
 describe('StaffDashboard — "Mark all as Ready" acts on the board, not the batch', () => {
-  /** Press the button, then take the confirm action out of the Alert. */
-  const confirmMarkAllReady = () => {
-    const spy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  /**
+   * Press the button and let the confirmation settle. `confirmDialog` is
+   * mocked to resolve true, so the flush is what runs the `.then()` that
+   * actually dispatches.
+   */
+  const confirmMarkAllReady = async () => {
     fireEvent.press(screen.getByText(/Mark all as Ready/));
-    const buttons = spy.mock.calls[0]?.[2] as { text: string; onPress?: () => void }[] | undefined;
-    buttons?.find((b) => b.text === 'Mark Ready')?.onPress?.();
-    spy.mockRestore();
+    await act(async () => { await Promise.resolve(); });
   };
 
-  it('advances exactly the orders the prep board is showing', () => {
+  it('advances exactly the orders the prep board is showing', async () => {
     mockKitchen = [
       { item_name: 'Rolls',   unit: 'nos', total_quantity: 4,   status: 'Confirmed', order_ids: [11] },
       { item_name: 'Chethey', unit: 'ml',  total_quantity: 250, status: 'Confirmed', order_ids: [11] },
     ];
     mockOrders = [order({ id: 11, order_type: 'food' })];
     open();
-    confirmMarkAllReady();
+    await confirmMarkAllReady();
     // One order, not two entries — the two board rows share it.
     expect(mockBulkAdvance).toHaveBeenCalledWith({ orderIds: [11], status: 'Ready' });
   });
 
-  it('NEVER sweeps in an essentials order — it is not on this board', () => {
+  it('NEVER sweeps in an essentials order — it is not on this board', async () => {
     // Essentials bypass the kitchen (BF-34b) and are packed straight from
     // Confirmed. They are in the same pushed batch, so reading the batch
     // instead of the board marked them Ready and pushed the customer.
@@ -186,20 +201,20 @@ describe('StaffDashboard — "Mark all as Ready" acts on the board, not the batc
       order({ id: 22, order_type: 'essential' }),
     ];
     open();
-    confirmMarkAllReady();
+    await confirmMarkAllReady();
     expect(mockBulkAdvance).toHaveBeenCalledWith({ orderIds: [11], status: 'Ready' });
     expect(mockBulkAdvance).not.toHaveBeenCalledWith(
       expect.objectContaining({ orderIds: expect.arrayContaining([22]) }),
     );
   });
 
-  it('does nothing when every board row is already past Confirmed / Preparing', () => {
+  it('does nothing when every board row is already past Confirmed / Preparing', async () => {
     mockKitchen = [
       { item_name: 'Rolls', unit: 'nos', total_quantity: 4, status: 'Ready', order_ids: [11] },
     ];
     mockOrders = [order({ id: 11, order_type: 'food' })];
     open();
-    confirmMarkAllReady();
+    await confirmMarkAllReady();
     expect(mockBulkAdvance).not.toHaveBeenCalled();
   });
 });

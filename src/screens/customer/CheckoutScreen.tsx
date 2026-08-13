@@ -47,7 +47,7 @@ import { formatPriceShort, formatDateLong, getErrorMessage } from '../../utils/f
 import { supabase } from '../../api/supabaseClient';
 import { RAZORPAY_KEY_ID } from '../../utils/env';
 import { trackOrderPlaced, trackOrderFailed, trackSubscribed } from '../../utils/analytics';
-import { infoDialog, confirmDialog } from '../../utils/confirmDialog';
+import { confirmDialog, infoDialog } from '../../utils/confirmDialog';
 import { newIdempotencyKey } from '../../utils/idempotency';
 import { tapSelect } from '../../utils/haptics';
 import { captureError } from '../../utils/sentry';

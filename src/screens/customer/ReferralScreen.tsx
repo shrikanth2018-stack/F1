@@ -10,13 +10,13 @@
  */
 
 import React, { useState } from 'react';
+import { infoDialog } from '../../utils/confirmDialog';
 import {
   View,
   ScrollView,
   TouchableOpacity,
   TextInput,
   Share,
-  Alert,
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
@@ -162,8 +162,8 @@ export function ReferralScreen() {
 
   const handleGenerate = () =>
     generateCode.mutate(undefined, {
-      onSuccess: (code) => Alert.alert('Code Generated', `Your referral code is: ${code}`),
-      onError: (err: any) => Alert.alert('Error', err.message),
+      onSuccess: (code) => infoDialog('Code Generated', `Your referral code is: ${code}`),
+      onError: (err: any) => infoDialog('Error', err.message),
     });
 
   const handleApply = () => {
@@ -171,10 +171,10 @@ export function ReferralScreen() {
     applyReferral.mutate(applyCode.trim(), {
       onSuccess: () => {
         trackReferralApplied(applyCode.trim());
-        Alert.alert('', 'Referral code applied!');
+        infoDialog('', 'Referral code applied!');
         setApplyCode('');
       },
-      onError: (err: any) => Alert.alert('Error', err.message),
+      onError: (err: any) => infoDialog('Error', err.message),
     });
   };
 

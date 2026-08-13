@@ -5,7 +5,8 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { View, TouchableOpacity, StyleSheet, TextInput, ActivityIndicator, Alert } from 'react-native';
+import { infoDialog } from '../utils/confirmDialog';
+import { View, TouchableOpacity, StyleSheet, TextInput, ActivityIndicator } from 'react-native';
 import MapView, { Polygon, Marker, MapPressEvent, Region } from 'react-native-maps';
 import { Theme } from '../theme';
 import { getErrorMessage } from '../utils/formatters';
@@ -68,20 +69,20 @@ export function ZoneMap({ vertices, onChange, initialRegion }: ZoneMapProps) {
       // Surface Google's real status + message so API-key misconfig is visible.
       const googleMsg = json?.error_message ? `\n\n${json.error_message}` : '';
       if (status === 'ZERO_RESULTS') {
-        Alert.alert('Not found', `No location matched "${q}".`);
+        infoDialog('Not found', `No location matched "${q}".`);
       } else if (status === 'REQUEST_DENIED') {
-        Alert.alert(
+        infoDialog(
           'Geocoding API not enabled',
           `Google returned REQUEST_DENIED.${googleMsg}\n\n` +
           `In Google Cloud Console: enable "Geocoding API" on the project using key ${apiKey.slice(0, 8)}… and make sure the key's API restrictions include it.`
         );
       } else if (status === 'OVER_QUERY_LIMIT') {
-        Alert.alert('Over quota', `Google rate limit hit.${googleMsg}`);
+        infoDialog('Over quota', `Google rate limit hit.${googleMsg}`);
       } else {
-        Alert.alert(`Search failed — ${status}`, googleMsg || 'Unexpected response from Google.');
+        infoDialog(`Search failed — ${status}`, googleMsg || 'Unexpected response from Google.');
       }
     } catch (err) {
-      Alert.alert('Search failed', getErrorMessage(err));
+      infoDialog('Search failed', getErrorMessage(err));
     } finally {
       setSearching(false);
     }

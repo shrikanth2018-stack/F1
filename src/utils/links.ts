@@ -1,4 +1,5 @@
-import { Linking, Alert } from 'react-native';
+import { Linking } from 'react-native';
+import { infoDialog } from '../utils/confirmDialog';
 
 /**
  * Opens a WhatsApp chat with the given number (India country code 91 is
@@ -9,13 +10,13 @@ import { Linking, Alert } from 'react-native';
 export function openWhatsApp(number?: string | null, message?: string): void {
   const n = (number ?? '').trim();
   if (!n) {
-    Alert.alert('Support unavailable', 'WhatsApp support is not configured right now.');
+    infoDialog('Support unavailable', 'WhatsApp support is not configured right now.');
     return;
   }
   const url = message
     ? `https://wa.me/91${n}?text=${encodeURIComponent(message)}`
     : `https://wa.me/91${n}`;
   Linking.openURL(url).catch(() => {
-    Alert.alert('Error', 'Could not open WhatsApp');
+    infoDialog('Error', 'Could not open WhatsApp');
   });
 }

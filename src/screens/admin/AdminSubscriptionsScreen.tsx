@@ -14,13 +14,13 @@
  */
 
 import React, { useState, useCallback, useMemo } from 'react';
+import { infoDialog } from '../../utils/confirmDialog';
 import {
   View,
   FlatList,
   TouchableOpacity,
   Modal,
   TextInput,
-  Alert,
   StyleSheet,
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -153,14 +153,14 @@ export function AdminSubscriptionsScreen({ navigation }: any) {
       // Postgres transaction. If refundAmount = 0, just deactivates.
       await cancelSub({ subscriptionId: target.id, refundAmount });
       setTarget(null);
-      Alert.alert(
+      infoDialog(
         'Subscription Cancelled',
         refundAmount > 0
           ? `${target.customer}'s subscription cancelled.\n₹${refundAmount} credited to wallet.`
           : `${target.customer}'s subscription cancelled.`,
       );
     } catch (e) {
-      Alert.alert('Error', getErrorMessage(e));
+      infoDialog('Error', getErrorMessage(e));
     } finally {
       setIsSaving(false);
     }

@@ -29,7 +29,7 @@ import { ThemedText } from '../../components/ThemedText';
 import { Divider } from '../../components/Divider';
 import { DispatchBadge } from '../../components/DispatchBadge';
 import { ErrorRetry } from '../../components/ErrorRetry';
-import { infoDialog, confirmDialog } from '../../utils/confirmDialog';
+import { confirmDialog, infoDialog } from '../../utils/confirmDialog';
 import { formatPhone, formatDateShort, getErrorMessage } from '../../utils/formatters';
 import { useDeliveryZones } from '../../hooks/useDeliveryZones';
 import { useDeliveryHubs } from '../../hooks/useDeliveryHubs';

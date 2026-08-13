@@ -19,13 +19,13 @@
  */
 
 import React, { useState, useCallback, useMemo } from 'react';
+import { confirmDialog, infoDialog } from '../../utils/confirmDialog';
 import {
   View,
   Image,
   FlatList,
   TouchableOpacity,
   RefreshControl,
-  Alert,
   Linking,
   StyleSheet,
   Text,
@@ -277,13 +277,13 @@ export function StaffDashboard() {
         .flatMap((k) => k.order_ids),
     )];
     if (ids.length === 0) return;
-    Alert.alert('Mark All as Ready', `Mark ${ids.length} order(s) as Ready?`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Mark Ready',
-        onPress: () => bulkAdvance.mutate({ orderIds: ids, status: 'Ready' }),
-      },
-    ]);
+    confirmDialog({
+      title: 'Mark all as Ready',
+      message: `Mark ${ids.length} order(s) as Ready?`,
+      confirmLabel: 'Mark Ready',
+    }).then((ok) => {
+      if (ok) bulkAdvance.mutate({ orderIds: ids, status: 'Ready' });
+    });
   }, [kitchenItems, bulkAdvance]);
 
   const handleMarkAllPacked = useCallback(() => {
@@ -293,14 +293,13 @@ export function StaffDashboard() {
       (o) => nextPackingStatus(o.status, o.order_type) === 'Packed',
     );
     if (toMark.length === 0) return;
-    Alert.alert('Mark All as Packed', `Mark ${toMark.length} order(s) as Packed?`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Mark Packed',
-        onPress: () =>
-          bulkAdvance.mutate({ orderIds: toMark.map((o) => o.id), status: 'Packed' }),
-      },
-    ]);
+    confirmDialog({
+      title: 'Mark all as Packed',
+      message: `Mark ${toMark.length} order(s) as Packed?`,
+      confirmLabel: 'Mark Packed',
+    }).then((ok) => {
+      if (ok) bulkAdvance.mutate({ orderIds: toMark.map((o) => o.id), status: 'Packed' });
+    });
   }, [packingOrders, bulkAdvance]);
 
   const handleCall = (phone?: string) => {
@@ -347,7 +346,7 @@ export function StaffDashboard() {
     try {
       await printHtml(html);
     } catch {
-      Alert.alert('Print Error', 'Could not open print dialog.');
+      infoDialog('Print Error', 'Could not open print dialog.');
     }
   };
 
@@ -434,7 +433,7 @@ export function StaffDashboard() {
   const handlePrintByHub = async () => {
     const hubOrders = packingOrders.filter((o: any) => o.delivery_method === 'hub');
     if (hubOrders.length === 0) {
-      Alert.alert('No hub orders', 'No hub-bound orders to print.');
+      infoDialog('No hub orders', 'No hub-bound orders to print.');
       return;
     }
     const groups = new Map<string, { hubName: string; orders: any[] }>();
@@ -455,13 +454,13 @@ export function StaffDashboard() {
     }).join('');
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${LABEL_STYLES}</style></head><body>${sections}</body></html>`;
     try { await printHtml(html); }
-    catch { Alert.alert('Print Error', 'Could not open print dialog.'); }
+    catch { infoDialog('Print Error', 'Could not open print dialog.'); }
   };
 
   /** One page-break per driver code. Combines direct (zone driver) + hub (branch driver) orders. */
   const handlePrintByDriver = async () => {
     if (packingOrders.length === 0) {
-      Alert.alert('No orders', 'No orders to print.');
+      infoDialog('No orders', 'No orders to print.');
       return;
     }
     const groups = new Map<string, { title: string; orders: any[] }>();
@@ -485,12 +484,12 @@ export function StaffDashboard() {
       }).join('');
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${LABEL_STYLES}</style></head><body>${sections}</body></html>`;
     try { await printHtml(html); }
-    catch { Alert.alert('Print Error', 'Could not open print dialog.'); }
+    catch { infoDialog('Print Error', 'Could not open print dialog.'); }
   };
 
   const handlePrintSummary = async () => {
     if (packingOrders.length === 0) {
-      Alert.alert('No orders', 'No orders to print summary for.');
+      infoDialog('No orders', 'No orders to print summary for.');
       return;
     }
     const rows = packingOrders.map((order: any) => {
@@ -524,7 +523,7 @@ export function StaffDashboard() {
     try {
       await printHtml(html);
     } catch {
-      Alert.alert('Print Error', 'Could not open print dialog.');
+      infoDialog('Print Error', 'Could not open print dialog.');
     }
   };
 

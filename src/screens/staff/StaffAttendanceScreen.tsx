@@ -5,11 +5,11 @@
  */
 
 import React, { useState, useMemo } from 'react';
+import { confirmDialog, infoDialog } from '../../utils/confirmDialog';
 import {
   View,
   ScrollView,
   TouchableOpacity,
-  Alert,
   TextInput,
   StyleSheet,
 } from 'react-native';
@@ -189,32 +189,34 @@ export function StaffAttendanceScreen() {
   });
 
   const handleClockIn = () => {
-    Alert.alert('Clock In', 'Your GPS location will be recorded. Continue?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Clock In',
-        onPress: () => clockIn.mutate(undefined, {
-          onError: (e: Error) => Alert.alert('Clock In Failed', e.message),
-        }),
-      },
-    ]);
+    confirmDialog({
+      title: 'Clock in',
+      message: 'Your GPS location will be recorded. Continue?',
+      confirmLabel: 'Clock in',
+    }).then((ok) => {
+      if (!ok) return;
+      clockIn.mutate(undefined, {
+        onError: (e: Error) => infoDialog('Clock in failed', e.message),
+      });
+    });
   };
 
   const handleClockOut = () => {
-    Alert.alert('Clock Out', 'Confirm clock out for today?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Clock Out',
-        onPress: () => clockOut.mutate(undefined, {
-          onError: (e: Error) => Alert.alert('Clock Out Failed', e.message),
-        }),
-      },
-    ]);
+    confirmDialog({
+      title: 'Clock out',
+      message: 'Confirm clock out for today?',
+      confirmLabel: 'Clock out',
+    }).then((ok) => {
+      if (!ok) return;
+      clockOut.mutate(undefined, {
+        onError: (e: Error) => infoDialog('Clock out failed', e.message),
+      });
+    });
   };
 
   const handleLeaveSubmit = () => {
     if (!leaveStart || !leaveEnd) {
-      Alert.alert('Error', 'Please select start and end dates');
+      infoDialog('Error', 'Please select start and end dates');
       return;
     }
     requestLeave.mutate(
@@ -225,7 +227,7 @@ export function StaffAttendanceScreen() {
           setLeaveStart('');
           setLeaveEnd('');
           setLeaveReason('');
-          Alert.alert('Submitted', 'Leave request sent for approval.');
+          infoDialog('Submitted', 'Leave request sent for approval.');
         },
       }
     );

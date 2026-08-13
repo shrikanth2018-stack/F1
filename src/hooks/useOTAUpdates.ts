@@ -17,7 +17,8 @@
  */
 
 import { useEffect, useRef } from 'react';
-import { Alert, AppState } from 'react-native';
+import { confirmDialog } from '../utils/confirmDialog';
+import { AppState } from 'react-native';
 import * as Updates from 'expo-updates';
 
 export function useOTAUpdates() {
@@ -38,14 +39,14 @@ export function useOTAUpdates() {
         if (cancelled || prompted.current) return;
 
         prompted.current = true;
-        Alert.alert(
-          'Update available',
-          'A new version of 1stOne is ready. Restart now to use it?',
-          [
-            { text: 'Later', style: 'cancel' },
-            { text: 'Restart', onPress: () => { Updates.reloadAsync().catch(() => {}); } },
-          ],
-        );
+        confirmDialog({
+          title: 'Update available',
+          message: 'A new version of 1stOne is ready. Restart now to use it?',
+          confirmLabel: 'Restart',
+          cancelLabel: 'Later',
+        }).then((ok) => {
+          if (ok) Updates.reloadAsync().catch(() => {});
+        });
       } catch {
         // Offline or update server unreachable — ignore; retried next foreground.
       }

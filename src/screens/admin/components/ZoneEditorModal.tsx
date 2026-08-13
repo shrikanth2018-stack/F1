@@ -7,13 +7,13 @@
  */
 
 import React, { useState } from 'react';
+import { infoDialog } from '../../../utils/confirmDialog';
 import {
   View,
   ScrollView,
   TouchableOpacity,
   TextInput,
   Modal,
-  Alert,
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
@@ -162,15 +162,15 @@ export function ZoneEditorModal({ visible, editingZone, onClose }: ZoneEditorMod
 
   const handleSave = async () => {
     if (!zoneName.trim()) {
-      Alert.alert('Required', 'Please enter a zone name.');
+      infoDialog('Required', 'Please enter a zone name.');
       return;
     }
     if (vertices.length < 3) {
-      Alert.alert('Required', 'Tap at least 3 points on the map to define the zone boundary.');
+      infoDialog('Required', 'Tap at least 3 points on the map to define the zone boundary.');
       return;
     }
     if (!driver) {
-      Alert.alert('Required', 'Please assign a driver — orders in this zone need one.');
+      infoDialog('Required', 'Please assign a driver — orders in this zone need one.');
       return;
     }
 
@@ -203,7 +203,7 @@ export function ZoneEditorModal({ visible, editingZone, onClose }: ZoneEditorMod
       }
       onClose();
     } catch (err) {
-      Alert.alert('Error', getErrorMessage(err));
+      infoDialog('Error', getErrorMessage(err));
     }
   };
 

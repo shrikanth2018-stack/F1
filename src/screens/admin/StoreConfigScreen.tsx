@@ -8,12 +8,12 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { infoDialog } from '../../utils/confirmDialog';
 import {
   View,
   ScrollView,
   TextInput,
   TouchableOpacity,
-  Alert,
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
@@ -143,11 +143,11 @@ export function StoreConfigScreen({ navigation }: { navigation: AdminNavProp }) 
 
   const handleBackfill = () => {
     if (!ISO_DATE.test(bfStart) || !ISO_DATE.test(bfEnd)) {
-      Alert.alert('Invalid dates', 'Enter both dates as YYYY-MM-DD.');
+      infoDialog('Invalid dates', 'Enter both dates as YYYY-MM-DD.');
       return;
     }
     if (bfEnd < bfStart) {
-      Alert.alert('Invalid range', 'End date cannot be before start date.');
+      infoDialog('Invalid range', 'End date cannot be before start date.');
       return;
     }
     backfill.mutate(
@@ -155,12 +155,12 @@ export function StoreConfigScreen({ navigation }: { navigation: AdminNavProp }) 
       {
         onSuccess: (data) => {
           const r = Array.isArray(data) ? data[0] : data;
-          Alert.alert(
+          infoDialog(
             'Backfill complete',
             `${r?.total_orders_created ?? 0} order(s) created across ${r?.days_processed ?? 0} day(s).`,
           );
         },
-        onError: (e) => Alert.alert('Backfill failed', e.message),
+        onError: (e) => infoDialog('Backfill failed', e.message),
       },
     );
   };
@@ -180,7 +180,7 @@ export function StoreConfigScreen({ navigation }: { navigation: AdminNavProp }) 
     ];
     for (const f of required) {
       if (f.raw.trim() === '' || Number.isNaN(parseFloat(f.raw))) {
-        Alert.alert('Invalid value', `${f.label} cannot be empty.`);
+        infoDialog('Invalid value', `${f.label} cannot be empty.`);
         return;
       }
     }
@@ -195,7 +195,7 @@ export function StoreConfigScreen({ navigation }: { navigation: AdminNavProp }) 
         loyalty_points_per_rupee: parseFloat(loyaltyRate),
         whatsapp_support_number: whatsappNum || null,
       },
-      { onSuccess: () => Alert.alert('Saved', 'Operations config updated.') },
+      { onSuccess: () => infoDialog('Saved', 'Operations config updated.') },
     );
   };
 

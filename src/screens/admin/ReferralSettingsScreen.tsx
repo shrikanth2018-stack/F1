@@ -13,6 +13,7 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { confirmDialog, infoDialog } from '../../utils/confirmDialog';
 import {
   View,
   ScrollView,
@@ -20,7 +21,6 @@ import {
   TextInput,
   Switch,
   StyleSheet,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -130,21 +130,18 @@ function ReferralRow({
   const monthEligible = tab === 'Ordered' && daysSince >= 30 && !item.month_reward_given;
 
   const handleIssueMonth = () => {
-    Alert.alert(
-      'Issue Month Bonus',
-      `Credit month completion bonus to ${referrerName}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Issue',
-          onPress: () =>
-            issueBonus.mutate(
-              { referralId: item.id, referrerId: item.referrer_id },
-              { onError: (e: any) => Alert.alert('Error', e?.message) }
-            ),
-        },
-      ]
-    );
+    confirmDialog({
+      title: 'Issue month bonus',
+      message: `Credit month completion bonus to ${referrerName}?`,
+      confirmLabel: 'Issue',
+    }).then((ok) => {
+      if (!ok) return;
+      issueBonus.mutate(
+        { referralId: item.id, referrerId: item.referrer_id },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        { onError: (e: any) => infoDialog('Error', e?.message) },
+      );
+    });
   };
 
   return (
@@ -216,8 +213,8 @@ export function ReferralSettingsScreen({ navigation }: { navigation: AdminNavPro
 
   const handleSave = () => {
     updateSettings.mutate(s, {
-      onSuccess: () => Alert.alert('Saved', 'Referral settings updated.'),
-      onError: (e: any) => Alert.alert('Error', e?.message),
+      onSuccess: () => infoDialog('Saved', 'Referral settings updated.'),
+      onError: (e: any) => infoDialog('Error', e?.message),
     });
   };
 

@@ -17,7 +17,8 @@
  */
 
 import React, { useMemo, useState } from 'react';
-import { View, ScrollView, TextInput, Switch, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { infoDialog } from '../../../utils/confirmDialog';
+import { View, ScrollView, TextInput, Switch, TouchableOpacity, StyleSheet } from 'react-native';
 import { Theme } from '../../../theme';
 import { ThemedText } from '../../../components/ThemedText';
 import { Divider } from '../../../components/Divider';
@@ -54,21 +55,21 @@ function SlabRow({ slab }: { slab: DiscountSlab }) {
     const b = parseInt(max, 10);
     const p = parseFloat(pct);
     if (!Number.isFinite(a) || !Number.isFinite(b) || !Number.isFinite(p)) {
-      Alert.alert('Check the numbers', 'Days and percentage must all be numbers.');
+      infoDialog('Check the numbers', 'Days and percentage must all be numbers.');
       return;
     }
     if (b < a) {
-      Alert.alert('Check the range', 'The last day cannot be before the first.');
+      infoDialog('Check the range', 'The last day cannot be before the first.');
       return;
     }
     if (p < 0 || p >= 100) {
-      Alert.alert('Check the discount', 'A discount must be between 0 and 99%.');
+      infoDialog('Check the discount', 'A discount must be between 0 and 99%.');
       return;
     }
     try {
       await save({ id: slab.id, min_days: a, max_days: b, percent: p });
     } catch (e) {
-      Alert.alert('Not saved', getErrorMessage(e));
+      infoDialog('Not saved', getErrorMessage(e));
     }
   };
 
@@ -160,7 +161,7 @@ export function CustomPlanSettingsTab() {
     try {
       await setEligible({ id, item_type, eligible: next });
     } catch (e) {
-      Alert.alert('Not saved', getErrorMessage(e));
+      infoDialog('Not saved', getErrorMessage(e));
     } finally {
       setBusyKey(null);
     }

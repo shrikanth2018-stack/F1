@@ -19,7 +19,8 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Linking, Alert } from 'react-native';
+import { infoDialog } from '../utils/confirmDialog';
+import { Linking } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { useAuth } from '../hooks/useAuth';
 import { useApplyReferralCode } from '../hooks/useReferrals';
@@ -103,8 +104,8 @@ export function RootNavigator() {
     if (referralAppliedRef.current === pendingReferralCode) return;
     referralAppliedRef.current = pendingReferralCode;
     applyReferral.mutate(pendingReferralCode, {
-      onSuccess: () => Alert.alert('Referral Applied', 'Your referral reward has been credited.'),
-      onError: (err) => Alert.alert('Referral Code', err.message || 'Could not apply referral code.'),
+      onSuccess: () => infoDialog('Referral Applied', 'Your referral reward has been credited.'),
+      onError: (err) => infoDialog('Referral Code', err.message || 'Could not apply referral code.'),
       onSettled: () => setPendingReferralCode(null),
     });
   }, [session, pendingReferralCode, applyReferral]);

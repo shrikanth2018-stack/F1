@@ -18,12 +18,12 @@
  */
 
 import React, { useState, useMemo } from 'react';
+import { confirmDialog, infoDialog } from '../../utils/confirmDialog';
 import {
   View,
   ScrollView,
   TouchableOpacity,
   TextInput,
-  Alert,
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
@@ -97,42 +97,41 @@ function ClaimsTab() {
     const name = claim.profiles?.full_name || claim.profiles?.phone_number || 'Staff';
     const payoutNow = status === 'Approved' && isVendorPayout(claim);
 
-    Alert.alert(
-      payoutNow ? 'Approve & pay' : status,
-      payoutNow
+    confirmDialog({
+      title: payoutNow ? 'Approve & pay' : status,
+      message: payoutNow
         ? `Release ₹${claim.amount} to ${name}? Their wallet balance clears now — make the transfer separately.`
         : `${status} ₹${claim.amount} claim from ${name}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: payoutNow ? 'Approve & pay' : status,
-          style: status === 'Rejected' ? 'destructive' : 'default',
-          onPress: () =>
-            payoutNow
-              ? markPaid.mutate(claim.id, {
-                  onError: (e: any) => Alert.alert('Error', e?.message),
-                })
-              : review.mutate(
-                  { claimId: claim.id, status },
-                  { onError: (e: any) => Alert.alert('Error', e?.message) }
-                ),
-        },
-      ],
-    );
+      confirmLabel: payoutNow ? 'Approve & pay' : status,
+      destructive: status === 'Rejected',
+    }).then((ok) => {
+      if (!ok) return;
+      if (payoutNow) {
+        markPaid.mutate(claim.id, {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          onError: (e: any) => infoDialog('Error', e?.message),
+        });
+      } else {
+        review.mutate(
+          { claimId: claim.id, status },
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          { onError: (e: any) => infoDialog('Error', e?.message) },
+        );
+      }
+    });
   };
 
   const handlePaid = (claim: ExpenseClaim & { profiles: any }) => {
     const name = claim.profiles?.full_name || claim.profiles?.phone_number || 'Staff';
-    Alert.alert('Mark Paid', `Mark ₹${claim.amount} to ${name} as paid?`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Mark Paid',
-        onPress: () => markPaid.mutate(
-          claim.id,
-          { onError: (e: any) => Alert.alert('Error', e?.message) }
-        ),
-      },
-    ]);
+    confirmDialog({
+      title: 'Mark paid',
+      message: `Mark ₹${claim.amount} to ${name} as paid?`,
+      confirmLabel: 'Mark paid',
+    }).then((ok) => {
+      if (!ok) return;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      markPaid.mutate(claim.id, { onError: (e: any) => infoDialog('Error', e?.message) });
+    });
   };
 
   if (isLoading) {
@@ -305,28 +304,31 @@ function ExpensesTab({ showForm, onCloseForm }: { showForm: boolean; onCloseForm
   };
 
   const handleAdd = () => {
-    if (!category.trim())    { Alert.alert('', 'Select a category'); return; }
-    if (!description.trim()) { Alert.alert('', 'Enter a description'); return; }
+    if (!category.trim())    { infoDialog('', 'Select a category'); return; }
+    if (!description.trim()) { infoDialog('', 'Enter a description'); return; }
     const amt = parseFloat(amount);
-    if (isNaN(amt) || amt <= 0) { Alert.alert('', 'Enter a valid amount'); return; }
+    if (isNaN(amt) || amt <= 0) { infoDialog('', 'Enter a valid amount'); return; }
     const dmy = date.match(/^(\d{2})-(\d{2})-(\d{4})$/);
-    if (!dmy) { Alert.alert('', 'Date must be DD-MM-YYYY'); return; }
+    if (!dmy) { infoDialog('', 'Date must be DD-MM-YYYY'); return; }
     const expenseIso = `${dmy[3]}-${dmy[2]}-${dmy[1]}`;
 
     add.mutate(
       { category: category.trim(), description: description.trim(), amount: amt, expense_date: expenseIso, vendor: vendor.trim(), is_paid: true },
       {
         onSuccess: resetForm,
-        onError: (e: any) => Alert.alert('Error', e?.message),
+        onError: (e: any) => infoDialog('Error', e?.message),
       }
     );
   };
 
   const handleMarkPaid = (exp: BusinessExpense) =>
-    Alert.alert('Mark Paid', `Mark ${exp.description} (${fmtAmt(exp.amount)}) as paid?`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Mark Paid', onPress: () => markPaid.mutate(exp.id) },
-    ]);
+    confirmDialog({
+      title: 'Mark paid',
+      message: `Mark ${exp.description} (${fmtAmt(exp.amount)}) as paid?`,
+      confirmLabel: 'Mark paid',
+    }).then((ok) => {
+      if (ok) markPaid.mutate(exp.id);
+    });
 
   const unpaid = expenses.filter((e) => !e.is_paid);
   const paid   = expenses.filter((e) => e.is_paid);
@@ -557,7 +559,7 @@ export function ExpenseManagerScreen({ navigation }: { navigation: AdminNavProp 
     try {
       if (tab === 'Claims') {
         if (claims.length === 0) {
-          Alert.alert('Nothing to export', 'No expense claims yet.');
+          infoDialog('Nothing to export', 'No expense claims yet.');
           return;
         }
         const rows = claims.map((c) => [
@@ -577,7 +579,7 @@ export function ExpenseManagerScreen({ navigation }: { navigation: AdminNavProp 
         );
       } else {
         if (businessExpenses.length === 0) {
-          Alert.alert('Nothing to export', 'No business expenses yet.');
+          infoDialog('Nothing to export', 'No business expenses yet.');
           return;
         }
         const rows = businessExpenses.map((e) => [
@@ -596,7 +598,7 @@ export function ExpenseManagerScreen({ navigation }: { navigation: AdminNavProp 
         );
       }
     } catch (e) {
-      Alert.alert('Download failed', getErrorMessage(e));
+      infoDialog('Download failed', getErrorMessage(e));
     }
   };
 

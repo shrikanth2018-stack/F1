@@ -20,11 +20,11 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { confirmDialog, infoDialog } from '../../utils/confirmDialog';
 import {
   View,
   ScrollView,
   TouchableOpacity,
-  Alert,
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
@@ -181,7 +181,7 @@ export function OnboardEmployeeScreen({ navigation }: { navigation: AdminNavProp
 
   const handleOnboard = () => {
     const err = validate();
-    if (err) { Alert.alert('', err); return; }
+    if (err) { infoDialog('', err); return; }
 
     const salary = parseFloat(baseSalary) || 0;
 
@@ -215,22 +215,19 @@ export function OnboardEmployeeScreen({ navigation }: { navigation: AdminNavProp
             `\nPlease log back into the 1stOne app via OTP — you'll see your Staff Dashboard on next login.\n\n` +
             `Kindly forward your employment documents (ID proof, bank details, prior experience) securely to your manager at the earliest.`;
 
-          Alert.alert(
-            'Onboarded',
-            `${name.trim()} (${result.employee_id}) added.${salaryLine}\nSend the welcome WhatsApp now?`,
-            [
-              { text: 'Skip', style: 'cancel', onPress: () => navigation.goBack() },
-              {
-                text: 'Send WhatsApp',
-                onPress: () => {
-                  openWhatsApp(phone, whatsappMsg);
-                  navigation.goBack();
-                },
-              },
-            ]
-          );
+          confirmDialog({
+            title: 'Onboarded',
+            message: `${name.trim()} (${result.employee_id}) added.${salaryLine}\nSend the welcome WhatsApp now?`,
+            confirmLabel: 'Send WhatsApp',
+            cancelLabel: 'Skip',
+          }).then((ok) => {
+            // Leaving happens either way — the question was only whether to
+            // send the message, never whether to stay on the form.
+            if (ok) openWhatsApp(phone, whatsappMsg);
+            navigation.goBack();
+          });
         },
-        onError: (e: any) => Alert.alert('Error', e?.message ?? 'Failed to onboard employee'),
+        onError: (e: any) => infoDialog('Error', e?.message ?? 'Failed to onboard employee'),
       }
     );
   };

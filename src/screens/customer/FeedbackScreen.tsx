@@ -9,12 +9,12 @@
  */
 
 import React, { useState, useMemo } from 'react';
+import { infoDialog } from '../../utils/confirmDialog';
 import {
   View,
   ScrollView,
   TouchableOpacity,
   TextInput,
-  Alert,
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
@@ -114,11 +114,10 @@ export function FeedbackScreen({ navigation, route }: CustomerScreenProps<'Feedb
     },
     onSuccess: () => {
       trackFeedbackSubmitted(overallRating);
-      Alert.alert('Thank you!', 'Your feedback helps us improve.', [
-        { text: 'OK', onPress: () => navigation.goBack() },
-      ]);
+      infoDialog('Thank you!', 'Your feedback helps us improve.')
+        .then(() => navigation.goBack());
     },
-    onError: (err) => Alert.alert('Error', err.message),
+    onError: (err) => infoDialog('Error', err.message),
   });
 
   const headingText = useMemo(

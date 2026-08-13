@@ -32,7 +32,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
 import { ThemedText } from '../../components/ThemedText';
 import { Divider } from '../../components/Divider';
-import { infoDialog, confirmDialog } from '../../utils/confirmDialog';
+import { confirmDialog, infoDialog } from '../../utils/confirmDialog';
 import { formatPriceShort, getErrorMessage } from '../../utils/formatters';
 import { useCustomerByPhone } from '../../hooks/useAdminOrderEntry';
 import { useDeliveryZones } from '../../hooks/useDeliveryZones';

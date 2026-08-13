@@ -45,7 +45,7 @@ import {
   uploadPendingCatalogPhoto,
   removeCatalogPhoto,
 } from '../../utils/catalogPhotoUpload';
-import { infoDialog, confirmDialog } from '../../utils/confirmDialog';
+import { confirmDialog, infoDialog } from '../../utils/confirmDialog';
 import { formatPriceShort, formatDateShort, getErrorMessage } from '../../utils/formatters';
 import { istTimeLabel } from '../../utils/istDate';
 import { useDeliveryCycles } from '../../hooks/useDeliveryCycles';

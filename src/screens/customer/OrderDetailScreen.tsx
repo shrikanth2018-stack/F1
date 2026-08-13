@@ -16,12 +16,12 @@
  */
 
 import React, { useState, useCallback, useMemo } from 'react';
+import { confirmDialog, infoDialog } from '../../utils/confirmDialog';
 import {
   View,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -181,20 +181,19 @@ export function OrderDetailScreen({ route, navigation }: any) {
     try {
       const res = await reorder(groupRows.map((r) => r.id));
       if (res.added === 0) {
-        Alert.alert('Nothing to reorder', 'None of these items is available right now.');
+        infoDialog('Nothing to reorder', 'None of these items is available right now.');
         return;
       }
       if (res.dropped.length > 0) {
-        Alert.alert(
+        infoDialog(
           'Some items unavailable',
           `${res.dropped.join(', ')} ${res.dropped.length === 1 ? 'is' : 'are'} no longer available and ${res.dropped.length === 1 ? 'was' : 'were'} left out.`,
-          [{ text: 'Go to cart', onPress: () => navigation.navigate('Cart') }],
-        );
+        ).then(() => navigation.navigate('Cart'));
         return;
       }
       navigation.navigate('Cart');
     } catch {
-      Alert.alert('Could not reorder', 'Please try again.');
+      infoDialog('Could not reorder', 'Please try again.');
     }
   }, [reorder, groupRows, navigation]);
 
@@ -206,40 +205,38 @@ export function OrderDetailScreen({ route, navigation }: any) {
       ? `${formatPriceShort(groupWallet)} will be returned to your wallet instantly.${razorpayDue > 0 ? ` ${formatPriceShort(razorpayDue)} Razorpay refund will be processed by admin.` : ''}`
       : 'Razorpay refund will be processed by admin.';
 
-    Alert.alert(
-      'Cancel Order?',
-      `This cancels every delivery in this order and cannot be undone.\n\n${refundNote}`,
-      [
-        { text: 'Keep Order', style: 'cancel' },
-        {
-          text: 'Yes, Cancel',
-          style: 'destructive',
-          onPress: async () => {
-            setIsCancelling(true);
-            try {
-              const result = await cancelOrder({ order_id: primaryId });
-              const serverWallet = (result as any)?.wallet_refunded ?? groupWallet;
-              const serverRzp = (result as any)?.razorpay_refund_due ?? 0;
-              refetch();
+    confirmDialog({
+      title: 'Cancel order?',
+      message: `This cancels every delivery in this order and cannot be undone.\n\n${refundNote}`,
+      confirmLabel: 'Yes, cancel',
+      cancelLabel: 'Keep order',
+      destructive: true,
+    }).then(async (ok) => {
+      if (!ok) return;
+      setIsCancelling(true);
+      try {
+        const result = await cancelOrder({ order_id: primaryId });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const serverWallet = (result as any)?.wallet_refunded ?? groupWallet;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const serverRzp = (result as any)?.razorpay_refund_due ?? 0;
+        refetch();
 
-              let msg = 'Your order has been cancelled.';
-              if (serverWallet > 0 && serverRzp > 0) {
-                msg = `${formatPriceShort(serverWallet)} returned to your wallet. ${formatPriceShort(serverRzp)} Razorpay refund will be processed within 5–7 business days.`;
-              } else if (serverWallet > 0) {
-                msg = `${formatPriceShort(serverWallet)} has been returned to your wallet.`;
-              } else if (serverRzp > 0) {
-                msg = `Your order has been cancelled. ${formatPriceShort(serverRzp)} Razorpay refund will be processed within 5–7 business days.`;
-              }
-              Alert.alert('Order Cancelled', msg);
-            } catch (err) {
-              Alert.alert('Cannot Cancel', getErrorMessage(err));
-            } finally {
-              setIsCancelling(false);
-            }
-          },
-        },
-      ]
-    );
+        let msg = 'Your order has been cancelled.';
+        if (serverWallet > 0 && serverRzp > 0) {
+          msg = `${formatPriceShort(serverWallet)} returned to your wallet. ${formatPriceShort(serverRzp)} Razorpay refund will be processed within 5–7 business days.`;
+        } else if (serverWallet > 0) {
+          msg = `${formatPriceShort(serverWallet)} has been returned to your wallet.`;
+        } else if (serverRzp > 0) {
+          msg = `Your order has been cancelled. ${formatPriceShort(serverRzp)} Razorpay refund will be processed within 5–7 business days.`;
+        }
+        infoDialog('Order cancelled', msg);
+      } catch (err) {
+        infoDialog('Cannot cancel', getErrorMessage(err));
+      } finally {
+        setIsCancelling(false);
+      }
+    });
   }, [groupRows, groupTotal, groupWallet, primaryId, cancelOrder, refetch]);
 
   if (error) {

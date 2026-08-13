@@ -20,12 +20,12 @@
  */
 
 import React from 'react';
+import { confirmDialog, infoDialog, choiceDialog } from '../../utils/confirmDialog';
 import {
   View,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
-  Alert,
   ActivityIndicator,
   Linking,
 } from 'react-native';
@@ -87,7 +87,7 @@ export function AdminOrderDetailScreen({
       (order as any)?.customer_addresses?.phone_number ||
       (order as any)?.profiles?.phone_number;
     if (!phone) {
-      Alert.alert('No phone', 'Customer phone number is missing.');
+      infoDialog('No phone', 'Customer phone number is missing.');
       return;
     }
     Linking.openURL(`tel:${phone}`);
@@ -106,34 +106,30 @@ export function AdminOrderDetailScreen({
       Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${q}`);
       return;
     }
-    Alert.alert('No location', 'Address information is missing.');
+    infoDialog('No location', 'Address information is missing.');
   };
 
   const handleAdvance = (next: OrderStatus) => {
     if (!order) return;
     const o: any = order;
-    Alert.alert(
-      'Advance Status?',
-      `Mark order #${o.id} as "${next}"?`,
-      [
-        { text: 'Keep', style: 'cancel' },
-        {
-          text: `Set ${next}`,
-          onPress: async () => {
-            try {
-              await updateStatus({
-                orderId: o.id,
-                status: next,
-                userId: o.user_id ?? undefined,
-              });
-              refetch();
-            } catch (e) {
-              Alert.alert('Error', getErrorMessage(e));
-            }
-          },
-        },
-      ],
-    );
+    confirmDialog({
+      title: 'Advance status?',
+      message: `Mark order #${o.id} as "${next}"?`,
+      confirmLabel: `Set ${next}`,
+      cancelLabel: 'Keep',
+    }).then(async (ok) => {
+      if (!ok) return;
+      try {
+        await updateStatus({
+          orderId: o.id,
+          status: next,
+          userId: o.user_id ?? undefined,
+        });
+        refetch();
+      } catch (e) {
+        infoDialog('Error', getErrorMessage(e));
+      }
+    });
   };
 
   const handleCancel = () => {
@@ -153,7 +149,7 @@ export function AdminOrderDetailScreen({
           userId: o.user_id ?? '',
           reason: 'Cancelled by admin',
         });
-        Alert.alert(
+        infoDialog(
           'Order Cancelled',
           manualRazorpay
             ? `Order #${o.id} cancelled. Refund ₹${rowTotal} to the customer via the Razorpay dashboard.`
@@ -163,7 +159,7 @@ export function AdminOrderDetailScreen({
         );
         refetch();
       } catch (e) {
-        Alert.alert('Error', getErrorMessage(e));
+        infoDialog('Error', getErrorMessage(e));
       }
     };
 
@@ -186,41 +182,41 @@ export function AdminOrderDetailScreen({
           + 'prepared and dispatched). Use the refund option only if the '
           + 'failure was on us.';
 
-      Alert.alert(
-        `Cancel Order #${o.id}?`,
+      choiceDialog(
+        `Cancel order #${o.id}?`,
         message,
         [
-          { text: 'Keep', style: 'cancel' },
-          { text: 'Cancel — no refund', style: 'destructive', onPress: () => doCancel(0, false) },
-          ...(rowTotal > 0
-            ? [{ text: `Cancel + refund ₹${rowTotal} to wallet`, onPress: () => doCancel(rowTotal, false) }]
-            : []),
+          'Cancel — no refund',
+          ...(rowTotal > 0 ? [`Cancel + refund ₹${rowTotal} to wallet`] : []),
         ],
-      );
+      ).then((picked) => {
+        if (picked === 0) doCancel(0, false);
+        else if (picked === 1) doCancel(rowTotal, false);
+      });
     } else if (isRazorpay && rowTotal > 0) {
       // Online payment — admin picks the refund destination. Wallet credit is
       // the default (instant); a manual Razorpay refund is the override.
-      Alert.alert(
-        `Cancel Order #${o.id}?`,
+      choiceDialog(
+        `Cancel order #${o.id}?`,
         `Paid online — ₹${rowTotal}. Choose how to refund the customer.`,
-        [
-          { text: 'Keep', style: 'cancel' },
-          { text: `Refund ₹${rowTotal} to Wallet`, onPress: () => doCancel(rowTotal, false) },
-          { text: 'Cancel — refund via Razorpay', style: 'destructive', onPress: () => doCancel(0, true) },
-        ],
-      );
+        [`Refund ₹${rowTotal} to wallet`, 'Cancel — refund via Razorpay'],
+      ).then((picked) => {
+        if (picked === 0) doCancel(rowTotal, false);
+        else if (picked === 1) doCancel(0, true);
+      });
     } else {
       // Wallet-paid (or zero-value) — the refund goes back to the wallet.
-      Alert.alert(
-        `Cancel Order #${o.id}?`,
-        rowTotal > 0
+      confirmDialog({
+        title: `Cancel order #${o.id}?`,
+        message: rowTotal > 0
           ? `₹${rowTotal} will be refunded to the customer's wallet.`
           : 'No refund due.',
-        [
-          { text: 'Keep', style: 'cancel' },
-          { text: 'Cancel Order', style: 'destructive', onPress: () => doCancel(rowTotal, false) },
-        ],
-      );
+        confirmLabel: 'Cancel order',
+        cancelLabel: 'Keep',
+        destructive: true,
+      }).then((ok) => {
+        if (ok) doCancel(rowTotal, false);
+      });
     }
   };
 

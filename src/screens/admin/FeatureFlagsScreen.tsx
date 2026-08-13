@@ -5,6 +5,7 @@
  */
 
 import React from 'react';
+import { confirmDialog, infoDialog } from '../../utils/confirmDialog';
 import {
   View,
   FlatList,
@@ -12,7 +13,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
@@ -62,21 +62,21 @@ export function FeatureFlagsScreen({ navigation }: { navigation: AdminNavProp })
     if (stormFlagRow) {
       updateFlag.mutate(
         { id: stormFlagRow.id, flag_value: next },
-        { onError: (e: any) => Alert.alert('Partial update', e?.message ?? 'Storm flag sync failed.') },
+        { onError: (e: any) => infoDialog('Partial update', e?.message ?? 'Storm flag sync failed.') },
       );
     }
   };
 
   const handleStormToggle = (next: boolean) => {
     if (next) {
-      Alert.alert(
-        '⚠ Enable Storm Mode?',
-        'This will pause all new orders immediately. Existing orders continue processing.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Enable', style: 'destructive', onPress: () => setStorm(true) },
-        ],
-      );
+      confirmDialog({
+        title: '⚠ Enable storm mode?',
+        message: 'This will pause all new orders immediately. Existing orders continue processing.',
+        confirmLabel: 'Enable',
+        destructive: true,
+      }).then((ok) => {
+        if (ok) setStorm(true);
+      });
     } else {
       setStorm(false);
     }
@@ -85,22 +85,18 @@ export function FeatureFlagsScreen({ navigation }: { navigation: AdminNavProp })
   const handleToggle = (flag: any) => {
     const apply = (value: boolean) => updateFlag.mutate(
       { id: flag.id, flag_value: value },
-      { onError: (e: any) => Alert.alert('Update Failed', e?.message ?? 'Could not update flag.') },
+      { onError: (e: any) => infoDialog('Update Failed', e?.message ?? 'Could not update flag.') },
     );
     const turningOff = flag.flag_value === true;
     if (turningOff) {
-      Alert.alert(
-        `Disable ${flag.flag_key}?`,
-        'Turning this off will immediately affect all users. Are you sure?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Disable',
-            style: 'destructive',
-            onPress: () => apply(false),
-          },
-        ]
-      );
+      confirmDialog({
+        title: `Disable ${flag.flag_key}?`,
+        message: 'Turning this off will immediately affect all users. Are you sure?',
+        confirmLabel: 'Disable',
+        destructive: true,
+      }).then((ok) => {
+        if (ok) apply(false);
+      });
     } else {
       apply(true);
     }

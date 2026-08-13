@@ -6,12 +6,12 @@
  */
 
 import React, { useState } from 'react';
+import { confirmDialog, infoDialog } from '../../../utils/confirmDialog';
 import {
   View,
   ScrollView,
   TouchableOpacity,
   TextInput,
-  Alert,
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
@@ -38,7 +38,7 @@ export function SalaryTab({ staffId }: { staffId: string }) {
     const b = parseFloat(base);
     const d = parseFloat(deductions);
     const bn = parseFloat(bonus);
-    if (isNaN(b) || b <= 0) { Alert.alert('', 'Enter a valid base salary'); return; }
+    if (isNaN(b) || b <= 0) { infoDialog('', 'Enter a valid base salary'); return; }
     addRecord.mutate(
       {
         month: parseInt(addMonth, 10),
@@ -49,7 +49,7 @@ export function SalaryTab({ staffId }: { staffId: string }) {
       },
       {
         onSuccess: () => { setShowAdd(false); setBase(''); setDed('0'); setBonus('0'); },
-        onError:   (e: any) => Alert.alert('Error', e?.message),
+        onError:   (e: any) => infoDialog('Error', e?.message),
       }
     );
   };
@@ -102,10 +102,11 @@ export function SalaryTab({ staffId }: { staffId: string }) {
             {!r.is_paid && (
               <TouchableOpacity
                 onPress={() =>
-                  Alert.alert('Mark Paid', `Mark ₹${r.net_salary.toLocaleString('en-IN')} as paid?`, [
-                    { text: 'Cancel', style: 'cancel' },
-                    { text: 'Mark Paid', onPress: () => markPaid.mutate(r.id) },
-                  ])
+                  confirmDialog({
+                    title: 'Mark paid',
+                    message: `Mark ₹${r.net_salary.toLocaleString('en-IN')} as paid?`,
+                    confirmLabel: 'Mark paid',
+                  }).then((ok) => { if (ok) markPaid.mutate(r.id); })
                 }
                 disabled={markPaid.isPending}
                 activeOpacity={0.7}

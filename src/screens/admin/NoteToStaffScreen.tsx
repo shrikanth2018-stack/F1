@@ -11,6 +11,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { infoDialog } from '../../utils/confirmDialog';
 import {
   View,
   ScrollView,
@@ -18,7 +19,6 @@ import {
   TextInput,
   Switch,
   StyleSheet,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { getErrorMessage } from '../../utils/formatters';
@@ -71,7 +71,7 @@ export function NoteToStaffScreen({ navigation }: { navigation: AdminNavProp }) 
   const handlePush = async () => {
     const targets = NOTE_TARGETS.filter((t) => state[t.key].text.trim());
     if (!targets.length) {
-      Alert.alert('Nothing to save', 'Enter a message for at least one group.');
+      infoDialog('Nothing to save', 'Enter a message for at least one group.');
       return;
     }
 
@@ -89,9 +89,9 @@ export function NoteToStaffScreen({ navigation }: { navigation: AdminNavProp }) 
         )
       );
 
-      Alert.alert('Saved', 'Notes updated. Staff will see the banner now.');
+      infoDialog('Saved', 'Notes updated. Staff will see the banner now.');
     } catch (e) {
-      Alert.alert('Error', getErrorMessage(e));
+      infoDialog('Error', getErrorMessage(e));
     }
   };
 

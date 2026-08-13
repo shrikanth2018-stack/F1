@@ -9,13 +9,13 @@
  */
 
 import React, { useMemo, useState } from 'react';
+import { confirmDialog, infoDialog } from '../../utils/confirmDialog';
 import {
   View,
   FlatList,
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
@@ -255,7 +255,7 @@ export function ResourceManagerScreen({ navigation }: { navigation: AdminNavProp
   const handleExportAttendance = async () => {
     const summary = attendance?.staffSummary ?? [];
     if (summary.length === 0) {
-      Alert.alert('No data', 'No attendance records in the last 30 days.');
+      infoDialog('No data', 'No attendance records in the last 30 days.');
       return;
     }
     setExporting(true);
@@ -267,53 +267,52 @@ export function ResourceManagerScreen({ navigation }: { navigation: AdminNavProp
         rows,
       );
     } catch (e) {
-      Alert.alert('Download failed', getErrorMessage(e));
+      infoDialog('Download failed', getErrorMessage(e));
     } finally {
       setExporting(false);
     }
   };
 
   const handleReview = (leaveId: number, status: 'Approved' | 'Rejected') => {
-    Alert.alert(status, `${status === 'Approved' ? 'Approve' : 'Reject'} this leave request?`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: status,
-        style: status === 'Rejected' ? 'destructive' : 'default',
-        onPress: () => reviewLeave.mutate(
-          { leaveId, status },
-          { onError: (e: any) => Alert.alert('Error', e?.message) }
-        ),
-      },
-    ]);
+    confirmDialog({
+      title: status,
+      message: `${status === 'Approved' ? 'Approve' : 'Reject'} this leave request?`,
+      confirmLabel: status,
+      destructive: status === 'Rejected',
+    }).then((ok) => {
+      if (!ok) return;
+      reviewLeave.mutate(
+        { leaveId, status },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        { onError: (e: any) => infoDialog('Error', e?.message) },
+      );
+    });
   };
 
   const handleReviewCorrection = (req: AttendanceCorrectionRequest, action: 'approve' | 'reject') => {
     const verb = action === 'approve' ? 'Approve' : 'Reject';
     const dayCount = req.days?.length ?? 0;
-    Alert.alert(
-      verb,
-      `${verb} ${dayCount} day${dayCount === 1 ? '' : 's'} of correction for ${req.profiles?.full_name ?? 'staff'}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: verb,
-          style: action === 'reject' ? 'destructive' : 'default',
-          onPress: () => {
-            if (action === 'approve') {
-              approveCorrection.mutate(req.id, {
-                onSuccess: () => Alert.alert('Approved', `${dayCount} day(s) added to attendance.`),
-                onError: (e: any) => Alert.alert('Could not approve', e?.message ?? 'unknown'),
-              });
-            } else {
-              rejectCorrection.mutate(
-                { requestId: req.id },
-                { onError: (e: any) => Alert.alert('Could not reject', e?.message ?? 'unknown') },
-              );
-            }
-          },
-        },
-      ],
-    );
+    confirmDialog({
+      title: verb,
+      message: `${verb} ${dayCount} day${dayCount === 1 ? '' : 's'} of correction for ${req.profiles?.full_name ?? 'staff'}?`,
+      confirmLabel: verb,
+      destructive: action === 'reject',
+    }).then((ok) => {
+      if (!ok) return;
+      if (action === 'approve') {
+        approveCorrection.mutate(req.id, {
+          onSuccess: () => infoDialog('Approved', `${dayCount} day(s) added to attendance.`),
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          onError: (e: any) => infoDialog('Could not approve', e?.message ?? 'unknown'),
+        });
+      } else {
+        rejectCorrection.mutate(
+          { requestId: req.id },
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          { onError: (e: any) => infoDialog('Could not reject', e?.message ?? 'unknown') },
+        );
+      }
+    });
   };
 
   return (

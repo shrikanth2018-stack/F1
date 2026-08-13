@@ -13,10 +13,10 @@
  */
 
 import React, { useState, useMemo, useCallback } from 'react';
+import { confirmDialog } from '../../utils/confirmDialog';
 import {
   View,
   ScrollView,
-  Alert,
   StyleSheet,
   TouchableOpacity,
 } from 'react-native';
@@ -165,14 +165,13 @@ export function PlanDetailScreen({ route, navigation }: any) {
     if (conflict) {
       const afterStr = startAfterDate(conflict);
       const afterDate = new Date(afterStr);
-      Alert.alert(
-        'Subscription Conflict',
-        `"${conflict.plan_name}" is already active and delivers the same item(s). You can queue this plan to start after it ends.`,
-        [
-          { text: `Start After (${formatDateShort(afterStr)})`, onPress: () => pushToCart(afterDate) },
-          { text: 'Cancel', style: 'cancel' },
-        ]
-      );
+      confirmDialog({
+        title: 'Subscription conflict',
+        message: `"${conflict.plan_name}" is already active and delivers the same item(s). You can queue this plan to start after it ends.`,
+        confirmLabel: `Start after ${formatDateShort(afterStr)}`,
+      }).then((ok) => {
+        if (ok) pushToCart(afterDate);
+      });
       return;
     }
     pushToCart(startDate);

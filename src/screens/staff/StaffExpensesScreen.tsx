@@ -6,12 +6,12 @@
  */
 
 import React, { useState } from 'react';
+import { infoDialog } from '../../utils/confirmDialog';
 import {
   View,
   ScrollView,
   TouchableOpacity,
   TextInput,
-  Alert,
   FlatList,
   StyleSheet,
   Modal,
@@ -63,11 +63,11 @@ export function StaffExpensesScreen() {
   const handleSubmit = () => {
     const numAmount = parseFloat(amount);
     if (!numAmount || numAmount <= 0) {
-      Alert.alert('Error', 'Enter a valid amount');
+      infoDialog('Error', 'Enter a valid amount');
       return;
     }
     if (!description.trim()) {
-      Alert.alert('Error', 'Enter a description');
+      infoDialog('Error', 'Enter a description');
       return;
     }
     submitExpense.mutate(
@@ -77,7 +77,7 @@ export function StaffExpensesScreen() {
           setShowForm(false);
           setAmount('');
           setDescription('');
-          Alert.alert('Submitted', 'Expense claim sent for approval.');
+          infoDialog('Submitted', 'Expense claim sent for approval.');
         },
       }
     );

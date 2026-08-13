@@ -17,12 +17,12 @@
  */
 
 import React, { useState } from 'react';
+import { infoDialog } from '../../utils/confirmDialog';
 import {
   StyleSheet,
   FlatList,
   RefreshControl,
   ActivityIndicator,
-  Alert,
   Text,
 } from 'react-native';
 import { getErrorMessage, formatDateShort } from '../../utils/formatters';
@@ -72,7 +72,7 @@ export function DriverDashboardScreen() {
     try {
       await updateStatus({ orderId, status: next, userId: customerUserId ?? undefined });
     } catch (e) {
-      Alert.alert('Could not update status', getErrorMessage(e));
+      infoDialog('Could not update status', getErrorMessage(e));
     }
   };
 

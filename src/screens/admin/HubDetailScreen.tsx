@@ -15,6 +15,7 @@
  */
 
 import React, { useState } from 'react';
+import { infoDialog } from '../../utils/confirmDialog';
 import {
   View,
   ScrollView,
@@ -22,7 +23,6 @@ import {
   Switch,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
   StyleSheet,
 } from 'react-native';
 import { getErrorMessage } from '../../utils/formatters';
@@ -163,15 +163,15 @@ export function HubDetailScreen({ route, navigation }: AdminScreenProps<'HubDeta
 
   const handleSave = async () => {
     if (!hubName.trim()) {
-      Alert.alert('Required', 'Please enter a hub name.');
+      infoDialog('Required', 'Please enter a hub name.');
       return;
     }
     if (!addressDetails.trim()) {
-      Alert.alert('Required', 'Please enter the hub address.');
+      infoDialog('Required', 'Please enter the hub address.');
       return;
     }
     if (!driver) {
-      Alert.alert('Required', 'Please assign a driver — branch driver who delivers to this hub.');
+      infoDialog('Required', 'Please assign a driver — branch driver who delivers to this hub.');
       return;
     }
 
@@ -237,18 +237,17 @@ export function HubDetailScreen({ route, navigation }: AdminScreenProps<'HubDeta
         };
         const count = await assignAddresses.mutateAsync(savedHub);
         if (count > 0) {
-          Alert.alert(
-            isEditing ? 'Hub Saved' : 'Hub Created',
+          infoDialog(
+            isEditing ? 'Hub saved' : 'Hub created',
             `${count} address${count !== 1 ? 'es' : ''} assigned to this hub.`,
-            [{ text: 'OK', onPress: () => navigation.goBack() }]
-          );
+          ).then(() => navigation.goBack());
           return;
         }
       }
 
       navigation.goBack();
     } catch (err) {
-      Alert.alert('Error', getErrorMessage(err));
+      infoDialog('Error', getErrorMessage(err));
     }
   };
 

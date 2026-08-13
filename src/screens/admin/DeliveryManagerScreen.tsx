@@ -11,12 +11,12 @@
  */
 
 import React, { useState } from 'react';
+import { confirmDialog } from '../../utils/confirmDialog';
 import {
   View,
   ScrollView,
   TouchableOpacity,
   Switch,
-  Alert,
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
@@ -69,18 +69,14 @@ function ZonesTab() {
   };
 
   const handleDelete = (zone: DeliveryZone) => {
-    Alert.alert(
-      'Delete Zone',
-      `Delete "${zone.zone_name}"? Existing addresses mapped to this zone will retain their zone_id but the zone won't be used for new serviceability checks.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => deleteZone.mutate({ id: zone.id }),
-        },
-      ]
-    );
+    confirmDialog({
+      title: 'Delete zone',
+      message: `Delete "${zone.zone_name}"? Existing addresses mapped to this zone will retain their zone_id but the zone won't be used for new serviceability checks.`,
+      confirmLabel: 'Delete',
+      destructive: true,
+    }).then((ok) => {
+      if (ok) deleteZone.mutate({ id: zone.id });
+    });
   };
 
   if (isLoading) {
@@ -195,18 +191,14 @@ function HubsTab({ navigation }: { navigation: AdminNavProp }) {
       const count = (data ?? []).length;
 
       if (count > 0) {
-        Alert.alert(
-          'Hub Covers Extended Area',
-          `${count} address${count !== 1 ? 'es' : ''} in this hub's area have no base zone coverage. Disabling may affect their deliveries.\n\nDisable anyway?`,
-          [
-            { text: 'Cancel', style: 'cancel' },
-            {
-              text: 'Disable Hub',
-              style: 'destructive',
-              onPress: () => toggleHub.mutate({ id: hub.id, is_active: false }),
-            },
-          ]
-        );
+        confirmDialog({
+          title: 'Hub covers extended area',
+          message: `${count} address${count !== 1 ? 'es' : ''} in this hub's area have no base zone coverage. Disabling may affect their deliveries.\n\nDisable anyway?`,
+          confirmLabel: 'Disable hub',
+          destructive: true,
+        }).then((ok) => {
+          if (ok) toggleHub.mutate({ id: hub.id, is_active: false });
+        });
       } else {
         toggleHub.mutate({ id: hub.id, is_active: false });
       }
