@@ -5,23 +5,42 @@
  */
 
 import React from 'react';
-import { TextInput, TextInputProps, View, StyleSheet } from 'react-native';
+import {
+  TextInput,
+  TextInputProps,
+  View,
+  StyleSheet,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
 import { Theme } from '../theme';
 import { ThemedText } from './ThemedText';
 
 interface ThemedInputProps extends TextInputProps {
   label?: string;
   mode?: 'filled' | 'underline';
+  /**
+   * Layout for the WRAPPER, not the field.
+   *
+   * `style` reaches the TextInput inside, which is right for colour and size
+   * and useless for anything positional: the wrapper carries a bottom margin
+   * for stacking in a form, and a parent laying this out in a ROW had no way
+   * to reach it. Putting `flex: 1` on the field did nothing, because the box
+   * around it was still sizing to its content — which is how Edit Profile's
+   * "Name" came to sit off-centre beside its label.
+   */
+  containerStyle?: StyleProp<ViewStyle>;
 }
 
 export function ThemedInput({
   label,
   mode = 'filled',
   style,
+  containerStyle,
   ...props
 }: ThemedInputProps) {
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, containerStyle]}>
       {label && (
         <ThemedText variant="small" color="subtitle" style={styles.label}>
           {label}

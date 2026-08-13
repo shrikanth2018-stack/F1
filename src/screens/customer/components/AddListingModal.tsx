@@ -214,11 +214,30 @@ export function AddListingModal({
                customers see for a cycle everywhere essentials appear. */}
           <View style={s.head}>
             <View style={s.headText}>
-              <ThemedText variant="subtitle" color="primary" numberOfLines={1}>
-                {selectedCycle
-                  ? `Add an item to ${essentialsCycleLabel(selectedCycle)} delivery`
-                  : 'Add an item'}
-              </ThemedText>
+              {/* THE DELIVERY TIME IS THE TITLE, and tapping it changes it.
+                  It was a separate row below — so the sheet said the cycle
+                  twice and the control was the quieter of the two. Mint marks
+                  the tappable half, the same way every other cycle switch in
+                  the app does. */}
+              <TouchableOpacity
+                onPress={() => setCycleIdx((prev) => (cycles.length ? (prev + 1) % cycles.length : 0))}
+                activeOpacity={0.7}
+                disabled={cycles.length < 2}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  selectedCycle
+                    ? `Delivery time ${essentialsCycleLabel(selectedCycle)}. Tap to change.`
+                    : 'Choose a delivery time'
+                }
+              >
+                <ThemedText variant="subtitle" color="primary" numberOfLines={1}>
+                  {'Add an item to '}
+                  <ThemedText variant="subtitle" color="mint">
+                    {selectedCycle ? `${essentialsCycleLabel(selectedCycle)} delivery` : '…'}
+                  </ThemedText>
+                  {cycles.length > 1 ? <ThemedText variant="subtitle" color="mint">{'  ›'}</ThemedText> : null}
+                </ThemedText>
+              </TouchableOpacity>
               {selectedCycle?.delivery_start ? (
                 <ThemedText variant="small" color="muted">
                   {`Dispatched by ${formatTime12h(selectedCycle.delivery_start)}`}
@@ -237,17 +256,6 @@ export function AddListingModal({
           ) : null}
 
           <ScrollView keyboardDismissMode="on-drag" keyboardShouldPersistTaps="handled" style={s.body}>
-            {/* Delivery time — tap to cycle, same as everywhere else here. */}
-            <TouchableOpacity
-              style={s.cycleRow}
-              onPress={() => setCycleIdx((p) => (cycles.length ? (p + 1) % cycles.length : 0))}
-              activeOpacity={0.7}
-            >
-              <ThemedText variant="body" color="mint" style={s.txt}>
-                {selectedCycle ? essentialsCycleLabel(selectedCycle) : 'Loading…'}{'  ›'}
-              </ThemedText>
-            </TouchableOpacity>
-
             <TextInput
               style={s.input}
               placeholder="Item name"
@@ -356,13 +364,6 @@ const s = StyleSheet.create({
   queued: { marginTop: 2 },
   body: { marginTop: Theme.spacing.sm },
 
-  cycleRow: {
-    paddingVertical: Theme.spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.text.mint,
-    alignSelf: 'flex-start',
-    marginBottom: Theme.spacing.sm,
-  },
   input: {
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: Theme.colors.layout.divider,

@@ -202,6 +202,9 @@ export function EditProfileScreen({ navigation }: any) {
               value={name}
               onChangeText={(t) => { setName(t); setNameDirty(true); }}
               placeholder="Your full name"
+              // The WRAPPER takes the row and drops the stacking margin; the
+              // field itself only carries colour. See ThemedInput.
+              containerStyle={styles.nameField}
               style={styles.nameInput}
             />
           </View>
@@ -362,11 +365,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Theme.spacing.sm,
   },
-  /** Takes the rest of the row, so a long name has the width to show. */
-  nameInput: {
-    flex: 1,
-    color: Theme.colors.text.mint,
-  },
+  /**
+   * Takes the rest of the row, and drops ThemedInput's stacking margin — that
+   * bottom margin is what pushed the field below its label's centre line.
+   */
+  nameField: { flex: 1, marginBottom: 0 },
+  nameInput: { color: Theme.colors.text.mint },
   rowBetween: {
     flexDirection: 'row',
     justifyContent: 'space-between',
