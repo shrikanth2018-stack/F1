@@ -18,7 +18,6 @@ import {
   TextInput,
   TouchableOpacity,
   RefreshControl,
-  Alert,
   StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -34,7 +33,7 @@ import { useBranchFilter } from '../../hooks/useBranchFilter';
 import { useBranches } from '../../hooks/useBranches';
 import { usePendingListingCount } from '../../hooks/useVendorListingReview';
 import { useBranchStore } from '../../store/branchStore';
-import { confirmDialog } from '../../utils/confirmDialog';
+import { confirmDialog, choiceDialog } from '../../utils/confirmDialog';
 import { assetUrl } from '../../utils/assets';
 
 type AdminTab = 'Reports' | 'Manage';
@@ -84,16 +83,25 @@ function BranchRow() {
 
   const label = selectedBranchName ?? 'All Branches';
 
-  const handlePress = () => {
-    const options: any[] = [
-      { text: 'All Branches', onPress: () => setSelectedBranch(null, null) },
-      ...(branches ?? []).map((b) => ({
-        text: b.branch_name,
-        onPress: () => setSelectedBranch(b.id, b.branch_name),
-      })),
-      { text: 'Cancel', style: 'cancel' },
-    ];
-    Alert.alert('Select Branch', 'Data will be filtered for:', options);
+  /**
+   * The branch picker is an N-WAY CHOICE, not a confirmation — "All Branches"
+   * plus one entry per branch. `choiceDialog` resolves the index, so the
+   * branch list and the label list are built from the same array and cannot
+   * fall out of step.
+   */
+  const handlePress = async () => {
+    const all = branches ?? [];
+    const picked = await choiceDialog(
+      'Select branch',
+      'Data will be filtered for:',
+      ['All Branches', ...all.map((b) => b.branch_name)],
+    );
+    if (picked == null) return;
+    if (picked === 0) setSelectedBranch(null, null);
+    else {
+      const b = all[picked - 1];
+      if (b) setSelectedBranch(b.id, b.branch_name);
+    }
   };
 
   return (

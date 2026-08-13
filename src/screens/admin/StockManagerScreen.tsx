@@ -20,7 +20,6 @@ import {
   FlatList,
   TouchableOpacity,
   TextInput,
-  Alert,
   StyleSheet,
   Text,
   ActivityIndicator,
@@ -81,37 +80,32 @@ function OrderListTab({
   const handleApplyAdjust = (cat: Category) => {
     const pct = parseFloat(adjustPct);
     if (!isFinite(pct) || pct === 0) {
-      Alert.alert('Invalid', 'Enter a non-zero percentage (e.g. -20 to reduce, +10 to increase).');
+      infoDialog('Invalid', 'Enter a non-zero percentage (e.g. -20 to reduce, +10 to increase).');
       return;
     }
     if (pct < -90) {
-      Alert.alert('Too aggressive', 'Reductions below -90% are not allowed.');
+      infoDialog('Too aggressive', 'Reductions below -90% are not allowed.');
       return;
     }
     const catItems = items.filter((i) => i.category === cat);
     if (catItems.length === 0) return;
 
     const factor = 1 + pct / 100;
-    Alert.alert(
-      `Adjust ${cat}?`,
-      `Apply ${pct > 0 ? '+' : ''}${pct}% to ${catItems.length} item${catItems.length !== 1 ? 's' : ''} in ${cat}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Apply',
-          onPress: () => {
-            for (const item of catItems) {
-              const next = Math.max(1, Math.round(item.qty * factor));
-              if (next !== item.qty) {
-                updateQty.mutate({ id: item.id, qty: next });
-              }
-            }
-            setAdjustingCategory(null);
-            setAdjustPct('');
-          },
-        },
-      ],
-    );
+    confirmDialog({
+      title: `Adjust ${cat}?`,
+      message: `Apply ${pct > 0 ? '+' : ''}${pct}% to ${catItems.length} item${catItems.length !== 1 ? 's' : ''} in ${cat}?`,
+      confirmLabel: 'Apply',
+    }).then((ok) => {
+      if (!ok) return;
+      for (const item of catItems) {
+        const next = Math.max(1, Math.round(item.qty * factor));
+        if (next !== item.qty) {
+          updateQty.mutate({ id: item.id, qty: next });
+        }
+      }
+      setAdjustingCategory(null);
+      setAdjustPct('');
+    });
   };
 
   // BF-17 polish: staff-style add. Picking a suggestion (or the
@@ -119,25 +113,27 @@ function OrderListTab({
   // Form stays open so admin can add multiple items in a row.
   const handlePick = (rawName: string) => {
     const name = rawName.trim();
-    if (!name) { Alert.alert('Name required'); return; }
+    if (!name) { infoDialog('Name required'); return; }
     addItem.mutate(
       { name, qty: 1, category: addCat },
       {
         onSuccess: () => { setAddName(''); },
-        onError: (e: any) => Alert.alert('Error', e.message),
+        onError: (e: any) => infoDialog('Error', e.message),
       },
     );
   };
 
   const handleRemove = (item: SupplyOrderItem) => {
-    Alert.alert('Remove', `Remove "${item.name}" from the order list?`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Remove',
-        style: 'destructive',
-        onPress: () => remove.mutate(item.id, { onError: (e: any) => Alert.alert('Error', e.message) }),
-      },
-    ]);
+    confirmDialog({
+      title: 'Remove item',
+      message: `Remove "${item.name}" from the order list?`,
+      confirmLabel: 'Remove',
+      destructive: true,
+    }).then((ok) => {
+      if (!ok) return;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      remove.mutate(item.id, { onError: (e: any) => infoDialog('Error', e.message) });
+    });
   };
 
   const changeQty = (item: SupplyOrderItem, delta: number) => {
@@ -280,7 +276,7 @@ function HistoryTab() {
     try {
       await sharePdf(html, 'Stock Order List');
     } catch {
-      Alert.alert('Error', 'Could not generate PDF.');
+      infoDialog('Error', 'Could not generate PDF.');
     }
   };
 

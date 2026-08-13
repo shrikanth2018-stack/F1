@@ -19,7 +19,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { getErrorMessage } from '../../utils/formatters';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -29,7 +28,7 @@ import { Divider } from '../../components/Divider';
 import { ErrorRetry } from '../../components/ErrorRetry';
 import { SegmentedControl } from '../../components/SegmentedControl';
 import { sendPush } from '../../api/sendPush';
-import { confirmDialog } from '../../utils/confirmDialog';
+import { confirmDialog, infoDialog } from '../../utils/confirmDialog';
 import {
   useNotificationTemplates,
   useUpdateNotificationTemplate,
@@ -104,11 +103,11 @@ function CustomPushComposer() {
       }
 
       if (anySuccess) {
-        Alert.alert('Notification Sent', `Delivered to ${sent} device${sent === 1 ? '' : 's'}.`);
+        infoDialog('Notification Sent', `Delivered to ${sent} device${sent === 1 ? '' : 's'}.`);
         setTitle('');
         setBody('');
       } else {
-        Alert.alert('Send Failed', 'The notification could not be sent. Please try again.');
+        infoDialog('Send Failed', 'The notification could not be sent. Please try again.');
       }
     } finally {
       setIsSending(false);
@@ -159,7 +158,7 @@ function CustomPushComposer() {
 
       <View style={styles.actionRow}>
         <TouchableOpacity
-          onPress={() => Alert.alert(title.trim() || '(empty title)', body.trim() || '(empty body)')}
+          onPress={() => infoDialog(title.trim() || '(empty title)', body.trim() || '(empty body)')}
         >
           <ThemedText variant="body" color="accent">Preview  ›</ThemedText>
         </TouchableOpacity>
@@ -193,7 +192,7 @@ function TemplateCard({ template }: { template: NotificationTemplate }) {
         is_enabled: enabled,
       });
     } catch (e) {
-      Alert.alert('Save Failed', getErrorMessage(e));
+      infoDialog('Save Failed', getErrorMessage(e));
     }
   };
 
@@ -204,7 +203,7 @@ function TemplateCard({ template }: { template: NotificationTemplate }) {
       await update.mutateAsync({ event_key: template.event_key, is_enabled: next });
     } catch (e) {
       setEnabled(!next);
-      Alert.alert('Save Failed', getErrorMessage(e));
+      infoDialog('Save Failed', getErrorMessage(e));
     }
   };
 
@@ -260,7 +259,7 @@ function TemplateCard({ template }: { template: NotificationTemplate }) {
 
       <View style={styles.actionRow}>
         <TouchableOpacity
-          onPress={() => Alert.alert(
+          onPress={() => infoDialog(
             renderSample(title) || '(empty title)',
             renderSample(body) || '(empty body)',
           )}

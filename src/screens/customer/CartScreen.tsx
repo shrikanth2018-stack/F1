@@ -21,7 +21,6 @@ import {
   ScrollView,
   TouchableOpacity,
   StyleSheet,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -240,15 +239,16 @@ export function CartScreen({ navigation, route }: any) {
         navigation.navigate('Checkout', {});
         return;
       }
-      Alert.alert(
-        'Mixed Dispatch',
-        `${plural(today, 'item')} dispatched today\n` +
-        `${plural(later, 'item')} dispatched later\n\nContinue to checkout?`,
-        [
-          { text: 'Alter Order', style: 'cancel' },
-          { text: 'Yes, Continue', onPress: () => navigation.navigate('Checkout', {}) },
-        ],
-      );
+      confirmDialog({
+        title: 'Mixed dispatch',
+        message:
+          `${plural(today, 'item')} dispatched today\n` +
+          `${plural(later, 'item')} dispatched later\n\nContinue to checkout?`,
+        confirmLabel: 'Yes, continue',
+        cancelLabel: 'Alter order',
+      }).then((ok) => {
+        if (ok) navigation.navigate('Checkout', {});
+      });
     },
     [blocks, navigation],
   );

@@ -32,7 +32,6 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
@@ -51,7 +50,7 @@ import {
   useMyHubCommissionClaims,
   useClaimHubCommission,
 } from '../../hooks/useHubCommission';
-import { confirmDialog } from '../../utils/confirmDialog';
+import { confirmDialog, infoDialog } from '../../utils/confirmDialog';
 import { useRealtimeOrders } from '../../hooks/useRealtimeOrders';
 import { useStaffNoteForTab } from '../../hooks/useAdminNotes';
 import { formatDateShort, formatPriceShort, getErrorMessage } from '../../utils/formatters';
@@ -86,7 +85,7 @@ export function HubDashboardScreen({ navigation }: CustomerScreenProps<'HubDashb
     try {
       await updateStatus({ orderId, status: next, userId: customerUserId ?? undefined });
     } catch (e) {
-      Alert.alert('Could not update status', getErrorMessage(e));
+      infoDialog('Could not update status', getErrorMessage(e));
     }
   };
 
@@ -188,9 +187,9 @@ function CommissionTab() {
     if (!ok) return;
     try {
       const res = await claim.mutateAsync();
-      Alert.alert('Claim Submitted', `₹${res.amount} for ${res.period} is now pending admin approval.`);
+      infoDialog('Claim Submitted', `₹${res.amount} for ${res.period} is now pending admin approval.`);
     } catch (e) {
-      Alert.alert('Could not claim', getErrorMessage(e));
+      infoDialog('Could not claim', getErrorMessage(e));
     }
   };
 

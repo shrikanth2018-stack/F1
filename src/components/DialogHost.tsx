@@ -14,7 +14,7 @@
 import React, { useEffect, useState } from 'react';
 import { Modal, View, Text, TouchableOpacity, StyleSheet, BackHandler } from 'react-native';
 import { Theme } from '../theme';
-import { _registerDialogHandler } from '../utils/confirmDialog';
+import { _registerDialogHandler, _registerChoiceHandler } from '../utils/confirmDialog';
 
 interface DialogState {
   title: string;
@@ -26,8 +26,21 @@ interface DialogState {
   resolve: (confirmed: boolean) => void;
 }
 
+/**
+ * A pick-one dialog. Separate state from `DialogState` rather than a widened
+ * union, so nothing about the confirm/info path — which 173 call sites depend
+ * on — changes shape to accommodate it.
+ */
+interface ChoiceState {
+  title: string;
+  message?: string;
+  choices: string[];
+  resolve: (index: number | null) => void;
+}
+
 export function DialogHost() {
   const [state, setState] = useState<DialogState | null>(null);
+  const [choice, setChoice] = useState<ChoiceState | null>(null);
 
   useEffect(() => {
     _registerDialogHandler((opts) => {
@@ -42,18 +55,28 @@ export function DialogHost() {
         });
       });
     });
+    _registerChoiceHandler((opts) => {
+      return new Promise<number | null>((resolve) => {
+        setChoice({
+          title: opts.title,
+          message: opts.message,
+          choices: opts.choices,
+          resolve,
+        });
+      });
+    });
   }, []);
 
   // Hardware back button on Android = cancel, matches Alert.alert behavior
   useEffect(() => {
-    if (!state) return;
+    if (!state && !choice) return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      handleCancel();
+      if (choice) handleChoiceCancel(); else handleCancel();
       return true;
     });
     return () => sub.remove();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-bind on `state` only; handleCancel always reflects current state
-  }, [state]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-bind on the open dialog only; the handlers always reflect current state
+  }, [state, choice]);
 
   const handleConfirm = () => {
     if (!state) return;
@@ -68,6 +91,71 @@ export function DialogHost() {
     setState(null);
     r(false);
   };
+
+  const handleChoiceCancel = () => {
+    if (!choice) return;
+    const r = choice.resolve;
+    setChoice(null);
+    r(null);
+  };
+
+  const handleChoose = (index: number) => {
+    if (!choice) return;
+    const r = choice.resolve;
+    setChoice(null);
+    r(index);
+  };
+
+  /**
+   * The pick-one dialog. Options are STACKED, not laid side by side like the
+   * confirm's two: three buttons in a row on a narrow phone truncates the
+   * labels, and the labels are the whole point of this dialog.
+   *
+   * Rendered before the confirm below, and they are separate states, so the
+   * two can never both be open — whichever was asked for last is the one on
+   * screen.
+   */
+  if (choice) {
+    return (
+      <Modal
+        visible
+        transparent
+        animationType="fade"
+        onRequestClose={handleChoiceCancel}
+        statusBarTranslucent
+      >
+        <View style={styles.backdrop}>
+          <View style={styles.box}>
+            <Text style={styles.title}>{choice.title}</Text>
+            {!!choice.message && <Text style={styles.message}>{choice.message}</Text>}
+            <View style={styles.stack}>
+              {choice.choices.map((label, i) => (
+                <TouchableOpacity
+                  key={label}
+                  style={styles.stackBtn}
+                  activeOpacity={0.6}
+                  onPress={() => handleChoose(i)}
+                  accessibilityRole="button"
+                  accessibilityLabel={label}
+                >
+                  <Text style={styles.confirmText}>{label}</Text>
+                </TouchableOpacity>
+              ))}
+              <TouchableOpacity
+                style={styles.stackBtn}
+                activeOpacity={0.6}
+                onPress={handleChoiceCancel}
+                accessibilityRole="button"
+                accessibilityLabel="Cancel"
+              >
+                <Text style={styles.cancelText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    );
+  }
 
   if (!state) return null;
 
@@ -155,6 +243,18 @@ const styles = StyleSheet.create({
   },
   btnRowSingle: {
     justifyContent: 'center',
+  },
+  /** Options one per line — see the note where this renders. */
+  stack: {
+    marginHorizontal: -22,
+    marginTop: 8,
+  },
+  stackBtn: {
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Theme.colors.layout.divider,
   },
   btn: {
     flex: 1,

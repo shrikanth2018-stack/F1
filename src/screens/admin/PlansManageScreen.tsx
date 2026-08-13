@@ -20,7 +20,6 @@ import {
   TextInput,
   Switch,
   StyleSheet,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../../theme';
@@ -29,7 +28,7 @@ import { EmptyState } from '../../components/EmptyState';
 import { CatalogPhotoThumb } from '../../components/CatalogPhotoThumb';
 import { PHOTO_BUCKET, PHOTO_PX } from '../../utils/catalogPhoto';
 import { pickCatalogPhoto, uploadCatalogPhoto } from '../../utils/catalogPhotoUpload';
-import { infoDialog } from '../../utils/confirmDialog';
+import { confirmDialog, infoDialog, choiceDialog } from '../../utils/confirmDialog';
 import { getErrorMessage } from '../../utils/formatters';
 import {
   useAllPlans,
@@ -137,15 +136,16 @@ export function PlansManageScreen({ navigation }: { navigation: AdminNavProp }) 
         cycleName: selectedCycle?.cycle_name,
         planType,
       });
-    Alert.alert(
+    // Food first: it is what most plans are, and the OS dialog's button order
+    // put it last only because Alert.alert renders its array bottom-up.
+    choiceDialog(
       'New plan',
       `What goes in this ${selectedCycle?.cycle_name ?? ''} plan?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Essentials', onPress: () => go('essentials') },
-        { text: 'Food', onPress: () => go('food') },
-      ]
-    );
+      ['Food', 'Essentials'],
+    ).then((picked) => {
+      if (picked === 0) go('food');
+      else if (picked === 1) go('essentials');
+    });
   };
 
   const TABS: PlanTab[] = ['Plans', 'Custom'];
@@ -207,14 +207,14 @@ export function PlansManageScreen({ navigation }: { navigation: AdminNavProp }) 
           value={item.is_active}
           onValueChange={() => {
             if (item.is_active) {
-              Alert.alert(
-                'Deactivate Plan?',
-                `"${item.plan_name}" will no longer be available for new subscriptions.`,
-                [
-                  { text: 'Cancel', style: 'cancel' },
-                  { text: 'Deactivate', style: 'destructive', onPress: () => togglePlan.mutate({ id: item.id, is_active: false }) },
-                ]
-              );
+              confirmDialog({
+                title: 'Deactivate plan?',
+                message: `"${item.plan_name}" will no longer be available for new subscriptions.`,
+                confirmLabel: 'Deactivate',
+                destructive: true,
+              }).then((ok) => {
+                if (ok) togglePlan.mutate({ id: item.id, is_active: false });
+              });
             } else {
               togglePlan.mutate({ id: item.id, is_active: true });
             }

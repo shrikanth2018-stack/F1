@@ -15,7 +15,6 @@ import {
   Modal,
   Switch,
   ActivityIndicator,
-  Alert,
   StyleSheet,
 } from 'react-native';
 import { getErrorMessage } from '../../utils/formatters';
@@ -30,7 +29,7 @@ import {
   fetchBranchActivityCounts,
 } from '../../hooks/useBranchMutations';
 import { useBranchFilter } from '../../hooks/useBranchFilter';
-import { confirmDialog } from '../../utils/confirmDialog';
+import { confirmDialog, infoDialog } from '../../utils/confirmDialog';
 import type { Branch } from '../../types';
 import type { AdminScreenProps } from '../../navigation/types';
 
@@ -121,7 +120,7 @@ export function BranchesManageScreen({ navigation }: AdminScreenProps<'BranchesM
 
   const handleAdd = async () => {
     if (!form.branch_name.trim()) {
-      Alert.alert('Required', 'Please enter a branch name.');
+      infoDialog('Required', 'Please enter a branch name.');
       return;
     }
     setSaving(true);
@@ -134,7 +133,7 @@ export function BranchesManageScreen({ navigation }: AdminScreenProps<'BranchesM
       });
       closeModals();
     } catch (err) {
-      Alert.alert('Could not save', getErrorMessage(err));
+      infoDialog('Could not save', getErrorMessage(err));
     } finally {
       setSaving(false);
     }
@@ -143,7 +142,7 @@ export function BranchesManageScreen({ navigation }: AdminScreenProps<'BranchesM
   const handleEditSave = async () => {
     if (!editing) return;
     if (!form.branch_name.trim()) {
-      Alert.alert('Required', 'Please enter a branch name.');
+      infoDialog('Required', 'Please enter a branch name.');
       return;
     }
 
@@ -195,7 +194,7 @@ export function BranchesManageScreen({ navigation }: AdminScreenProps<'BranchesM
       await Promise.all(updates);
       closeModals();
     } catch (err) {
-      Alert.alert('Could not save', getErrorMessage(err));
+      infoDialog('Could not save', getErrorMessage(err));
     } finally {
       setSaving(false);
     }

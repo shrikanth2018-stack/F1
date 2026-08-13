@@ -19,7 +19,6 @@ import {
   ActivityIndicator,
   ScrollView,
   TextInput,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
@@ -34,7 +33,7 @@ import { formatDateShort, formatPriceShort, getErrorMessage } from '../../utils/
 import { orderStatusVariant } from '../../utils/orderStatus';
 import { isUnsuccessfulDelivery } from '../../utils/orderFilters';
 import { useAdminCancelOrder } from '../../hooks/useAdminOrders';
-import { confirmDialog } from '../../utils/confirmDialog';
+import { confirmDialog, infoDialog } from '../../utils/confirmDialog';
 import { todayIST, istDateWithOffset } from '../../utils/istDate';
 import type { AdminScreenProps } from '../../navigation/types';
 
@@ -191,7 +190,7 @@ export function AdminOrdersScreen({ navigation, route }: AdminScreenProps<'Admin
       });
       refetchUnd();
     } catch (e) {
-      Alert.alert('Could not cancel', getErrorMessage(e));
+      infoDialog('Could not cancel', getErrorMessage(e));
     } finally {
       setBusyId(null);
     }

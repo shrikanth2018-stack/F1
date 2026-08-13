@@ -15,7 +15,6 @@ import {
   TouchableOpacity,
   TextInput,
   StyleSheet,
-  Alert,
   Image,
   ImageBackground,
   ActivityIndicator,
@@ -36,7 +35,7 @@ import {
 } from 'react-native-reanimated';
 import { OfferOverlay } from '../../components/OfferOverlay';
 import { assetUrl } from '../../utils/assets';
-import { confirmDialog } from '../../utils/confirmDialog';
+import { confirmDialog, infoDialog } from '../../utils/confirmDialog';
 import { useLiveBanner, useUpsertBanner, type CustomBannerContent } from '../../hooks/useBanner';
 import type { AdminNavProp } from '../../navigation/types';
 
@@ -291,7 +290,7 @@ export function SpecialOfferBannerScreen({ navigation }: { navigation: AdminNavP
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission required', 'Please allow photo library access to pick an image.');
+      infoDialog('Permission required', 'Please allow photo library access to pick an image.');
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -352,9 +351,9 @@ export function SpecialOfferBannerScreen({ navigation }: { navigation: AdminNavP
       firePushToCustomers('New Offer!', 'Check out our latest special offer on the home screen.');
       setPreviewUri(null);
       setPreviewBase64(null);
-      Alert.alert('Live!', 'Banner updated and now live on the customer home screen.');
+      infoDialog('Live!', 'Banner updated and now live on the customer home screen.');
     } catch (e) {
-      Alert.alert('Upload failed', getErrorMessage(e));
+      infoDialog('Upload failed', getErrorMessage(e));
     } finally {
       setUploading(false);
     }
@@ -384,7 +383,7 @@ export function SpecialOfferBannerScreen({ navigation }: { navigation: AdminNavP
   const offerIsLive = liveBanner?.banner_type === 'text';
 
   const handleGoLiveCustom = async () => {
-    if (!title.trim()) { Alert.alert('Error', 'Enter a banner title.'); return; }
+    if (!title.trim()) { infoDialog('Error', 'Enter a banner title.'); return; }
     try {
       await upsertBanner.mutateAsync({
         banner_type: 'text',
@@ -397,11 +396,12 @@ export function SpecialOfferBannerScreen({ navigation }: { navigation: AdminNavP
         is_live: true,
       });
       firePushToCustomers(title.trim(), subtitle.trim() || 'Check out our latest offer!');
-      Alert.alert('Live!', 'Custom banner is now live on the customer home screen.', [
-        { text: 'OK', onPress: () => navigation.goBack() },
-      ]);
+      // The dialog is awaited so the screen does not pop out from under it —
+      // Alert.alert's OK-then-goBack read the same way and is preserved.
+      await infoDialog('Live!', 'Custom banner is now live on the customer home screen.');
+      navigation.goBack();
     } catch (e) {
-      Alert.alert('Error', getErrorMessage(e));
+      infoDialog('Error', getErrorMessage(e));
     }
   };
 
@@ -428,7 +428,7 @@ export function SpecialOfferBannerScreen({ navigation }: { navigation: AdminNavP
         is_live: true,
       });
     } catch (e) {
-      Alert.alert('Error', getErrorMessage(e));
+      infoDialog('Error', getErrorMessage(e));
     }
   };
 
