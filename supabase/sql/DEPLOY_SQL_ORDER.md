@@ -1314,3 +1314,60 @@ byte-identical, so the SQL is safe to apply well ahead of the app.
 **Rollback:** commented block at the foot of the SQL file — drop
 `my_order_states()`, re-apply `admin_undelivered_orders.sql` (which carries the
 original self-contained body), then drop `_undelivered_order_ids()`.
+
+---
+
+## 35. A profile is never left without a branch (2026-08-15)
+
+| # | File | What it installs |
+|---|------|------------------|
+| 1 | `profiles_branch_never_null.sql` | `default_branch_id()`, the `trg_profiles_branch_id` BEFORE INSERT/UPDATE trigger, and a one-shot backfill of the 14 stranded profiles. |
+| 2 | `elevate_employee_reonboard.sql` (re-run) | Same file as §25, one line changed: `branch_id = COALESCE(EXCLUDED.branch_id, profiles.branch_id)` so re-onboarding with a NULL branch can no longer blank an existing one. |
+
+Also in this change, deployed separately:
+`supabase functions deploy admin-create-customer --no-verify-jwt` — it now
+stamps `profiles.branch_id` from the zone/hub it just resolved.
+
+**Why.** Onboard Vendor, Onboard Employee and Create Order (Bulk / B2B) all
+look a person up with a client-side read of `profiles` on `phone_number`. That
+read goes through RLS, and `has_branch_access(NULL)` is `NULL = 1` → false
+while branch management is on. So a profile with no branch is invisible to
+every admin except a super-admin, and all three screens report a genuinely
+registered person as **"not a registered user"**.
+
+Only `complete_onboarding_atomic` ever filled `profiles.branch_id`. The stub
+profile written by `handle_new_user` at OTP sign-up, anyone created through
+`admin-create-customer`, and the 14 test logins made on 13 Aug 2026 all had
+none — so anyone who signed in without finishing onboarding was unreachable
+from the back office.
+
+`profiles` was the ONLY table with the hole: every other branch-scoped table
+reads 0 NULLs, because the ones that could drift already have a trigger. This
+file is deliberately the twin of `customer_addresses_branch_id_trigger.sql`.
+
+**Verified by impersonation, never as superuser** (`SET LOCAL ROLE
+authenticated` + `request.jwt.claims`) — a superuser bypasses RLS and would
+have confirmed a policy that denies everybody:
+
+| Signed in as | Finds 918111111111 | Profiles visible |
+|---|---|---|
+| super-admin 7777 (`is_super_admin`) | yes | 23 |
+| branch admin 8888 (branch 1) | **no** | 8 |
+| new admin 9111 (branch NULL) | **no** | **1 — only themself** |
+
+**NOT NULL is not available, and the exception is deliberate.** The
+super-admin's `branch_id` stays NULL: `useBranchFilter` resolves
+`jwtBranchId ?? (isSuperAdmin ? selectedBranchId : …)`, so a JWT branch WINS
+over the branch picker — give the super-admin a branch and their "Viewing
+Branch: All Branches" selector silently stops working. RLS would be fine
+(`has_branch_access` checks `is_super_admin()` first); the app would not. After
+this change exactly one profile has no branch, and the report at the foot of
+the SQL asserts that.
+
+**App coupling: none.** No column, type or signature changes, so no
+`gen-types` and no app build is required. The two SQL files and the edge
+function can be applied in any order.
+
+**Rollback:** commented block at the foot of `profiles_branch_never_null.sql` —
+drop the trigger and the two functions. Capture the id list from the report
+BEFORE applying if the backfill itself is to be reversed.

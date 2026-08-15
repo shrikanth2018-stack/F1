@@ -147,13 +147,44 @@ Deno.serve(async (req: Request) => {
     // The on_auth_user_created trigger writes the stub profile. Fill the name
     // only when the profile has none — an admin registering a B2B account
     // must not silently overwrite a name the customer set themselves.
+    //
+    // AND FILL THE BRANCH. This function used to write the address (whose
+    // branch a trigger stamps) but never the profile's own, so every customer
+    // registered from the back office landed with branch_id NULL — and a
+    // profile with no branch fails `has_branch_access`, which makes it
+    // invisible to every branch admin including the one who just created it.
+    // The customer then reads as "not a registered user" on this very screen,
+    // on Onboard Vendor and on Create Order.
+    //
+    // Derived from the zone/hub already resolved above — hub first, then zone,
+    // the same precedence `derive_address_branch_id` uses on the address. Set
+    // only when the profile has none, so this never moves an existing customer
+    // between branches as a side effect of editing their address.
+    //
+    // `profiles_branch_never_null.sql` also backstops this with a trigger. Both
+    // exist on purpose: the trigger guarantees SOME branch, this decides the
+    // RIGHT one — they only differ once a second branch is live.
     const name = String(full_name ?? '').trim();
-    if (name) {
-      const { data: prof } = await supabase
-        .from('profiles').select('full_name').eq('id', userId).maybeSingle();
-      if (!prof?.full_name) {
-        await supabase.from('profiles').update({ full_name: name }).eq('id', userId);
-      }
+    const { data: prof } = await supabase
+      .from('profiles').select('full_name, branch_id').eq('id', userId).maybeSingle();
+
+    const patch: Record<string, unknown> = {};
+    if (name && !prof?.full_name) patch.full_name = name;
+
+    if (prof && prof.branch_id == null) {
+      const { data: area } = hubId != null
+        ? await supabase.from('delivery_hubs').select('branch_id').eq('id', hubId).maybeSingle()
+        : await supabase.from('delivery_zones').select('branch_id').eq('id', zoneId).maybeSingle();
+      if (area?.branch_id != null) patch.branch_id = area.branch_id;
+    }
+
+    if (Object.keys(patch).length > 0) {
+      const { error: profErr } = await supabase
+        .from('profiles').update(patch).eq('id', userId);
+      // Non-fatal: the address below is the operationally important write, and
+      // the trigger fills a missing branch anyway. Log it rather than losing
+      // the whole registration over a name.
+      if (profErr) console.warn('[admin-create-customer] profile patch failed:', profErr.message);
     }
 
     // ── Write the address ──────────────────────────────────────

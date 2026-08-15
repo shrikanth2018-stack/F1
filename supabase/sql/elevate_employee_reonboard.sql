@@ -23,6 +23,22 @@
 --    corrections and they are 1ST-2026-001, -004, -007. Now the sequence is
 --    only touched when an ID is actually needed.
 --
+-- 3. A NULL BRANCH COULD BLANK AN EXISTING ONE (added 2026-08-15). The upsert
+--    set `branch_id = EXCLUDED.branch_id` unconditionally, so re-onboarding
+--    someone with p_branch_id NULL wiped the branch off their profile — and a
+--    profile with no branch is invisible to every branch admin, which is the
+--    fault profiles_branch_never_null.sql exists to close. OnboardEmployee
+--    sends NULL whenever branch management is off, and its "Please select a
+--    branch" check is a screen guard, not a rule this function enforced.
+--    COALESCE keeps whatever the profile already had.
+--
+--    EDITED IN PLACE rather than superseded by a new file. This file is the
+--    live definition of elevate_to_staff; three other functions in this folder
+--    are each defined by two files and every one of them carries a warning
+--    about which must be applied last. The runbook's rule for an RPC change is
+--    to edit its own file and re-run it, which is what keeps this one having a
+--    single definition.
+--
 -- Behaviour on a FIRST onboarding is identical in every respect.
 --
 -- Deploy: supabase db query --linked --file supabase/sql/elevate_employee_reonboard.sql
@@ -95,7 +111,9 @@ BEGIN
     assigned_hub_id = EXCLUDED.assigned_hub_id,
     monthly_salary  = EXCLUDED.monthly_salary,
     benefits        = EXCLUDED.benefits,
-    branch_id       = EXCLUDED.branch_id,
+    -- COALESCE, not a bare assignment (see item 3 in the header). A NULL
+    -- p_branch_id must never blank a branch this profile already has.
+    branch_id       = COALESCE(EXCLUDED.branch_id, profiles.branch_id),
     updated_at      = NOW();
 
   SELECT employee_id INTO v_employee_id FROM profiles WHERE id = p_user_id;
