@@ -3,32 +3,44 @@
  *
  * Run: deno test supabase/functions/cancel-order/index.test.ts --allow-env
  *
- * Covers:
- *  1. istDateInfo() returns valid IST date strings and minute count
- *  2. Idempotency guard: already-cancelled order returns success WITHOUT
- *     issuing another wallet refund (the core money-safety assertion)
+ * ⚠ THIS FILE IS NOT PART OF THE GATE. `npm run check` runs jest, whose
+ * testMatch is `**\/__tests__\/**`, so nothing here executes on push — and deno
+ * is not installed on the maintainer's machine either. Treat it as a sketch,
+ * not as coverage.
+ *
+ * The real, executed coverage for this function's rules lives in
+ * `src/__tests__/dispatch.test.ts`, which imports `_shared/dispatch.ts`
+ * directly and asserts the cancellation gate over 960 combinations of cycle,
+ * dispatch date and time of day — including an equivalence check against the
+ * logic this function carried before 2026-08-17.
+ *
+ * §1 USED TO TEST `istDateInfo()`, WHICH THIS FUNCTION NO LONGER HAS. The IST
+ * clock and the cross-midnight rule were duplicated here and now come from
+ * `_shared/dispatch.ts`; §1 points at that instead.
+ *
+ * §2 and §3 assert hand-copied transcriptions of the handler's logic rather
+ * than the handler itself, so they can pass while the real code is broken. Left
+ * in place, described honestly.
  */
 
-import { assertEquals, assertMatch } from 'https://deno.land/std@0.168.0/testing/asserts.ts';
-import { istDateInfo } from './index.ts';
+import { assertEquals } from 'https://deno.land/std@0.168.0/testing/asserts.ts';
+import { isCrossMidnightCycle, isCutoffPassedFor, resolveClock } from '../_shared/dispatch.ts';
 
-// ── 1. IST helper ──────────────────────────────────────────────────────────
+// ── 1. The cancellation gate, now shared ───────────────────────────────────
 
-Deno.test('istDateInfo: todayStr is YYYY-MM-DD format', () => {
-  const { todayStr } = istDateInfo();
-  assertMatch(todayStr, /^\d{4}-\d{2}-\d{2}$/);
+Deno.test('cross-midnight is decided in minutes, not string order', () => {
+  assertEquals(isCrossMidnightCycle({ cutoff_time: '22:30:00', delivery_start: '07:30:00' }), true);
+  assertEquals(isCrossMidnightCycle({ cutoff_time: '11:00:00', delivery_start: '12:30:00' }), false);
+  // A missing delivery_start reads as same-day, which is what this function did
+  // before the rule moved out of it.
+  assertEquals(isCrossMidnightCycle({ cutoff_time: '11:00:00', delivery_start: null }), false);
 });
 
-Deno.test('istDateInfo: tomorrowStr is exactly one day after todayStr', () => {
-  const { todayStr, tomorrowStr } = istDateInfo();
-  const today = new Date(todayStr + 'T00:00:00Z');
-  const tomorrow = new Date(tomorrowStr + 'T00:00:00Z');
-  assertEquals(tomorrow.getTime() - today.getTime(), 86_400_000);
-});
-
-Deno.test('istDateInfo: nowMins is within 0–1439', () => {
-  const { nowMins } = istDateInfo();
-  assertEquals(nowMins >= 0 && nowMins < 1440, true);
+Deno.test("a later run stays cancellable even once today's cutoff has passed", () => {
+  const clock = resolveClock(new Date('2026-05-17T09:00:00Z')); // 14:30 IST
+  const lunch = { cutoff_time: '11:00:00', delivery_start: '12:30:00' };
+  assertEquals(isCutoffPassedFor(lunch, clock.todayStr, clock), true);
+  assertEquals(isCutoffPassedFor(lunch, clock.tomorrowStr, clock), false);
 });
 
 // ── 2. Idempotency guard logic ─────────────────────────────────────────────

@@ -26,7 +26,13 @@ export interface DispatchClock {
 
 export interface CycleTiming {
   cutoff_time: string;    // 'HH:MM' or 'HH:MM:SS', IST
-  delivery_start: string; // 'HH:MM' or 'HH:MM:SS', IST
+  /**
+   * 'HH:MM' or 'HH:MM:SS', IST. Nullable because `delivery_cycles` allows it
+   * and `cancel-order` has always tolerated it — see `isCrossMidnightCycle`,
+   * which reads a missing value as "does not cross midnight". `orderBuild`
+   * filters such cycles out long before they reach here.
+   */
+  delivery_start: string | null;
 }
 
 /** "HH:MM[:SS]" → minutes since midnight. */
@@ -82,13 +88,70 @@ export function resolveClock(now: Date): DispatchClock {
  */
 export function getDispatchScenario(cycle: CycleTiming, nowMinutes: number): DispatchScenario {
   const cutoff = timeToMinutes(cycle.cutoff_time);
-  const deliveryStart = timeToMinutes(cycle.delivery_start);
-  const isCrossMidnight = cutoff > deliveryStart;
 
-  if (isCrossMidnight) {
+  if (isCrossMidnightCycle(cycle)) {
     return nowMinutes < cutoff ? 'B' : 'C';
   }
   return nowMinutes < cutoff ? 'A' : 'B';
+}
+
+/**
+ * Does this cycle close on the calendar day BEFORE it delivers?
+ *
+ * Breakfast does: its cutoff is 22:30 and it delivers at 07:30, so today's
+ * breakfast was locked at yesterday's cutoff. Lunch, Snacks and Dinner all
+ * close and deliver on the same day.
+ *
+ * EXTRACTED BECAUSE FOUR PLACES WERE ANSWERING IT SEPARATELY (2026-08-17) —
+ * here, `admin-place-order`, `cancel-order` and the customer's OrderDetail
+ * screen. Two of the four compared the times as STRINGS
+ * (`cutoff_time > delivery_start`), which happens to agree with subtraction
+ * only because Postgres hands back zero-padded `HH:MM:SS`. Hand one of them a
+ * bare `HH:MM` and the agreement is coincidence rather than logic. In minutes
+ * it is arithmetic either way.
+ *
+ * The SQL side answers the same question in five files as
+ * `CASE WHEN cutoff_time > delivery_start THEN 1 ELSE 0`. That is a genuine
+ * second copy which cannot import this one — and it is correct, because
+ * Postgres compares `time` values chronologically rather than as text. If this
+ * definition ever changes, those five change with it.
+ */
+export function isCrossMidnightCycle(cycle: CycleTiming): boolean {
+  // A MISSING delivery_start READS AS "SAME DAY", and that is not a shrug —
+  // it is what `cancel-order` did before this was extracted (its ternary fell
+  // back to `false`), and preserving it is what makes the extraction a pure
+  // refactor rather than a quiet change to when a customer may cancel.
+  if (!cycle.delivery_start) return false;
+  return timeToMinutes(cycle.cutoff_time) > timeToMinutes(cycle.delivery_start);
+}
+
+/**
+ * Has the kitchen already been handed the run that delivers on `dispatchDate`?
+ *
+ * THE CANCELLATION GATE, and the reason it is here rather than in
+ * `cancel-order`: once the kitchen has the batch, the order is being made and
+ * cancelling it would take food off a bench. The same question decides whether
+ * the customer's OrderDetail screen offers a Cancel button at all.
+ *
+ * The date is the whole subtlety. A cutoff time on its own says nothing — 11:00
+ * has passed by 16:00 every day of the year. What matters is whether it has
+ * passed *for the run this order is on*:
+ *
+ *   same-day cycle      the run being locked right now delivers TODAY
+ *   cross-midnight      it delivers TOMORROW
+ *
+ * So an order dispatching next Tuesday is cancellable at any hour, and one
+ * dispatching today stops being cancellable at its cutoff.
+ */
+export function isCutoffPassedFor(
+  cycle: CycleTiming,
+  dispatchDate: string,
+  clock: DispatchClock,
+): boolean {
+  if (clock.nowMinutes < timeToMinutes(cycle.cutoff_time)) return false;
+  return isCrossMidnightCycle(cycle)
+    ? dispatchDate === clock.tomorrowStr
+    : dispatchDate === clock.todayStr;
 }
 
 /** Map a scenario to the IST calendar date it dispatches on. */

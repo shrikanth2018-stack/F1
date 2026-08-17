@@ -30,37 +30,23 @@ import { getUserFromJwt } from '../_shared/auth.ts';
 import { resolveAndSendPush } from '../_shared/notifications.ts';
 import { loadStoreConfig } from '../_shared/storeConfig.ts';
 import { isAllowedOrigin } from '../_shared/cors.ts';
+import { resolveClock, timeToMinutes, isCutoffPassedFor } from '../_shared/dispatch.ts';
 
 // 'Paid' = Razorpay webhook confirmed but kitchen hasn't started yet — still cancellable
 const CANCELLABLE_STATUSES = new Set(['Pending', 'Confirmed', 'Paid', 'Preparing']);
 
-/** Returns today + tomorrow as YYYY-MM-DD strings in IST, plus current time in minutes. */
-export function istDateInfo(): { todayStr: string; tomorrowStr: string; nowMins: number } {
-  const now = new Date();
-
-  const dateFmt = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Kolkata',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  });
-  const todayStr = dateFmt.format(now);
-
-  const tomorrowDate = new Date(now);
-  tomorrowDate.setDate(tomorrowDate.getDate() + 1);
-  const tomorrowStr = dateFmt.format(tomorrowDate);
-
-  const timeParts = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Asia/Kolkata',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).formatToParts(now);
-  const h = Number(timeParts.find((p) => p.type === 'hour')?.value ?? '0');
-  const m = Number(timeParts.find((p) => p.type === 'minute')?.value ?? '0');
-
-  return { todayStr, tomorrowStr, nowMins: h * 60 + m };
-}
+// THE IST CLOCK AND THE CUTOFF RULE USED TO LIVE HERE (removed 2026-08-17).
+//
+// This file carried its own `istDateInfo()` — a second Intl-based IST clock —
+// and its own cross-midnight test comparing `cutoff_time > delivery_start` as
+// STRINGS. `_shared/dispatch.ts` already owned both, in minutes, and is what
+// `quote-order`, `place-order` and `admin-place-order` all use. Two copies of
+// the rule that decides whether an order may still be cancelled is the failure
+// mode this codebase keeps producing, and the string comparison agreed with the
+// arithmetic only because Postgres returns zero-padded `HH:MM:SS`.
+//
+// Nothing about the behaviour changed — the equivalence is asserted over a
+// matrix of cycles, dates and times in src/__tests__/dispatch.test.ts.
 
 Deno.serve(async (req: Request) => {
   const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
@@ -212,35 +198,48 @@ Deno.serve(async (req: Request) => {
       cyclesById = new Map((cycleRows ?? []).map((c: any) => [c.id, c]));
     }
 
-    // Earliest row: min dispatch_date, tie-break on the cycle's cutoff_time.
+    // Earliest row: min dispatch_date, tie-break on the cycle's cutoff time.
     // Over fulfilment rows only — a plan purchase is dated today and carries
     // no cycle, so including it would compare a cutoff that does not exist.
+    //
+    // The tie-break is in MINUTES now, not string order. Since one cart can put
+    // two cycles on the same dispatch date, this tie decides which cutoff the
+    // whole group is judged against, so it should be arithmetic rather than
+    // text that happens to sort correctly. A row whose cycle has vanished sorts
+    // last, as before.
+    const NO_CYCLE = 24 * 60 + 1;
+    const cutoffMinutesOf = (cycleId: number | null): number => {
+      const t = cyclesById.get(cycleId as number)?.cutoff_time;
+      return t ? timeToMinutes(t) : NO_CYCLE;
+    };
     const sortedRows = [...fulfilmentRows].sort((a, b) => {
       if (a.dispatch_date !== b.dispatch_date) {
         return a.dispatch_date < b.dispatch_date ? -1 : 1;
       }
-      const ca = cyclesById.get(a.cycle_id)?.cutoff_time ?? '99:99';
-      const cb = cyclesById.get(b.cycle_id)?.cutoff_time ?? '99:99';
-      return ca < cb ? -1 : ca > cb ? 1 : 0;
+      return cutoffMinutesOf(a.cycle_id) - cutoffMinutesOf(b.cycle_id);
     });
     const earliest = sortedRows[0];
     const earliestCycle = cyclesById.get(earliest.cycle_id);
 
+    // ONE rule, owned by _shared/dispatch.ts — the same module quote-order,
+    // place-order and admin-place-order derive dispatch dates with.
+    //
+    // The condition is `cutoff_time && dispatch_date`, exactly as before, and
+    // NOT `&& delivery_start`: a cycle with no delivery_start used to fall
+    // through the old ternary as "same day" and still be judged. Requiring it
+    // here would have skipped the guard instead, quietly making such an order
+    // cancellable after its cutoff. `isCrossMidnightCycle` keeps that fallback.
     if (earliestCycle?.cutoff_time && earliest.dispatch_date) {
-      const { todayStr, tomorrowStr, nowMins } = istDateInfo();
+      const cutoffPassed = isCutoffPassedFor(
+        {
+          cutoff_time: earliestCycle.cutoff_time,
+          delivery_start: earliestCycle.delivery_start ?? null,
+        },
+        earliest.dispatch_date,
+        resolveClock(new Date()),
+      );
 
-      const [cutH, cutM] = earliestCycle.cutoff_time.split(':').map(Number);
-      const cutoffMins = cutH * 60 + cutM;
-      const cutoffPassed = nowMins >= cutoffMins;
-
-      // Cross-midnight: cutoff_time lexicographically > delivery_start.
-      const isCrossMidnight = earliestCycle.delivery_start
-        ? earliestCycle.cutoff_time > earliestCycle.delivery_start : false;
-
-      const blockedSameDay       = !isCrossMidnight && earliest.dispatch_date === todayStr    && cutoffPassed;
-      const blockedCrossMidnight =  isCrossMidnight && earliest.dispatch_date === tomorrowStr && cutoffPassed;
-
-      if (blockedSameDay || blockedCrossMidnight) {
+      if (cutoffPassed) {
         return json({
           error: 'Order cannot be cancelled — the kitchen has already received today\'s orders.',
         }, 409);

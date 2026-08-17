@@ -12,6 +12,8 @@ import {
   resolveClock,
   getDispatchScenario,
   scenarioToDate,
+  isCrossMidnightCycle,
+  isCutoffPassedFor,
   toPaise,
   cmpDispatch,
   driftedFields,
@@ -182,5 +184,130 @@ describe('driftedFields — the drift path', () => {
   it('flags dispatch drift when group count differs', () => {
     const echo = { total_paise: 25000, dispatches: [fresh.dispatches[0]] };
     expect(driftedFields(fresh, echo)).toEqual(['dispatches']);
+  });
+});
+
+
+// ── The cancellation gate, extracted from cancel-order on 2026-08-17 ──────
+
+describe('isCrossMidnightCycle', () => {
+  it('answers for each real cycle', () => {
+    // The four live cycles, as Postgres returns them.
+    expect(isCrossMidnightCycle({ cutoff_time: '22:30:00', delivery_start: '07:30:00' })).toBe(true);  // Breakfast
+    expect(isCrossMidnightCycle({ cutoff_time: '11:00:00', delivery_start: '12:30:00' })).toBe(false); // Lunch
+    expect(isCrossMidnightCycle({ cutoff_time: '15:00:00', delivery_start: '16:30:00' })).toBe(false); // Snacks
+    expect(isCrossMidnightCycle({ cutoff_time: '18:00:00', delivery_start: '19:30:00' })).toBe(false); // Dinner
+  });
+
+  it('is arithmetic, not string order — mixed HH:MM and HH:MM:SS agree', () => {
+    // This is the reason the rule moved here. A string comparison of
+    // '9:30' > '10:00' is TRUE (because '9' > '1'), and an unpadded hour is
+    // exactly the shape a hand-written config value takes.
+    expect(isCrossMidnightCycle({ cutoff_time: '9:30', delivery_start: '10:00' })).toBe(false);
+    expect('9:30' > '10:00').toBe(true); // the old comparison, wrong here
+    expect(isCrossMidnightCycle({ cutoff_time: '22:30', delivery_start: '07:30:00' })).toBe(true);
+  });
+
+  it('treats an equal cutoff and delivery time as same-day', () => {
+    expect(isCrossMidnightCycle({ cutoff_time: '07:30:00', delivery_start: '07:30' })).toBe(false);
+  });
+
+  it('treats a missing delivery_start as same-day, as cancel-order always did', () => {
+    expect(isCrossMidnightCycle({ cutoff_time: '11:00:00', delivery_start: null })).toBe(false);
+  });
+});
+
+describe('isCutoffPassedFor — may this order still be cancelled?', () => {
+  const clock = resolveClock(new Date('2026-05-17T09:00:00Z')); // 14:30 IST
+  const lunch = { cutoff_time: '11:00:00', delivery_start: '12:30:00' };
+  const dinner = { cutoff_time: '18:00:00', delivery_start: '19:30:00' };
+  const breakfast = { cutoff_time: '22:30:00', delivery_start: '07:30:00' };
+
+  it("blocks a same-day cycle whose cutoff has passed for TODAY's run", () => {
+    // 14:30 IST is past lunch's 11:00 cutoff, and this order goes out today.
+    expect(isCutoffPassedFor(lunch, clock.todayStr, clock)).toBe(true);
+  });
+
+  it('leaves a later run alone even though the clock is past the cutoff', () => {
+    // Same cycle, same time — but tomorrow's lunch has not been locked yet.
+    expect(isCutoffPassedFor(lunch, clock.tomorrowStr, clock)).toBe(false);
+    expect(isCutoffPassedFor(lunch, clock.dayAfterStr, clock)).toBe(false);
+  });
+
+  it('does not block before the cutoff', () => {
+    expect(isCutoffPassedFor(dinner, clock.todayStr, clock)).toBe(false); // 14:30 < 18:00
+  });
+
+  it('blocks a cross-midnight cycle against TOMORROW, not today', () => {
+    // At 23:00 IST, tonight's 22:30 cutoff has locked TOMORROW's breakfast.
+    const late = resolveClock(new Date('2026-05-17T17:30:00Z')); // 23:00 IST
+    expect(isCutoffPassedFor(breakfast, late.tomorrowStr, late)).toBe(true);
+    expect(isCutoffPassedFor(breakfast, late.todayStr, late)).toBe(false);
+  });
+
+  it('treats the cutoff minute itself as passed', () => {
+    const atCutoff = resolveClock(new Date('2026-05-17T05:30:00Z')); // 11:00 IST exactly
+    expect(isCutoffPassedFor(lunch, atCutoff.todayStr, atCutoff)).toBe(true);
+  });
+});
+
+describe('isCutoffPassedFor is exactly what cancel-order used to compute', () => {
+  /**
+   * The logic cancel-order carried until 2026-08-17, transcribed verbatim —
+   * its own IST clock and its cross-midnight test as a STRING comparison.
+   *
+   * Kept here as the proof that moving the rule into dispatch.ts changed no
+   * behaviour. If the two ever disagree on a real cycle, this fails and the
+   * refactor was not a refactor.
+   */
+  const oldCancelOrderLogic = (
+    cycle: { cutoff_time: string; delivery_start: string | null },
+    dispatchDate: string,
+    todayStr: string,
+    tomorrowStr: string,
+    nowMins: number,
+  ): boolean => {
+    const [cutH, cutM] = cycle.cutoff_time.split(':').map(Number);
+    const cutoffMins = cutH * 60 + cutM;
+    const cutoffPassed = nowMins >= cutoffMins;
+    const isCrossMidnight = cycle.delivery_start
+      ? cycle.cutoff_time > cycle.delivery_start
+      : false;
+    const blockedSameDay = !isCrossMidnight && dispatchDate === todayStr && cutoffPassed;
+    const blockedCross = isCrossMidnight && dispatchDate === tomorrowStr && cutoffPassed;
+    return blockedSameDay || blockedCross;
+  };
+
+  it('agrees on every combination of the four live cycles, dates and hours', () => {
+    const cycles = [
+      { cutoff_time: '22:30:00', delivery_start: '07:30:00' }, // Breakfast
+      { cutoff_time: '11:00:00', delivery_start: '12:30:00' }, // Lunch
+      { cutoff_time: '15:00:00', delivery_start: '16:30:00' }, // Snacks
+      { cutoff_time: '18:00:00', delivery_start: '19:30:00' }, // Dinner
+      { cutoff_time: '11:00:00', delivery_start: null },       // the tolerated gap
+    ];
+
+    let compared = 0;
+    // Every half hour of a full IST day, against yesterday / today / tomorrow /
+    // the day after — 5 cycles x 48 instants x 4 dates.
+    for (let minutes = 0; minutes < 24 * 60; minutes += 30) {
+      const utcMs = Date.UTC(2026, 4, 17, 0, 0) + (minutes - 330) * 60_000;
+      const clock = resolveClock(new Date(utcMs));
+      const dates = ['2026-05-16', clock.todayStr, clock.tomorrowStr, clock.dayAfterStr];
+
+      for (const cycle of cycles) {
+        for (const dispatchDate of dates) {
+          const nowRule = isCutoffPassedFor(cycle, dispatchDate, clock);
+          const oldRule = oldCancelOrderLogic(
+            cycle, dispatchDate, clock.todayStr, clock.tomorrowStr, clock.nowMinutes,
+          );
+          expect({ cycle, dispatchDate, minutes, nowRule }).toEqual({
+            cycle, dispatchDate, minutes, nowRule: oldRule,
+          });
+          compared += 1;
+        }
+      }
+    }
+    expect(compared).toBe(5 * 48 * 4);
   });
 });

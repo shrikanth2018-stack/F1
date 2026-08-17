@@ -54,7 +54,7 @@ import { getUserFromJwt } from '../_shared/auth.ts';
 import { resolveAndSendPush } from '../_shared/notifications.ts';
 import { buildAuthoritativeOrder } from '../_shared/orderBuild.ts';
 import { loadStoreConfig } from '../_shared/storeConfig.ts';
-import { resolveClock, getDispatchScenario, scenarioToDate, timeToMinutes, toPaise } from '../_shared/dispatch.ts';
+import { resolveClock, getDispatchScenario, scenarioToDate, isCrossMidnightCycle, toPaise } from '../_shared/dispatch.ts';
 import { isAllowedOrigin } from '../_shared/cors.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -277,8 +277,8 @@ Deno.serve(async (req: Request) => {
     // cycle+date the batch is with the kitchen, so the order rolls forward —
     // the kitchen is never handed a batch that changes under it.
     if (dispatch_target === 'current_run') {
-      const isCrossMidnight =
-        timeToMinutes(cyc.cutoff_time) > timeToMinutes(cyc.delivery_start);
+      // The shared predicate, not a third inline copy of it.
+      const isCrossMidnight = isCrossMidnightCycle(cyc);
       // The date this cycle would have dispatched on had the cutoff not
       // passed: today for a same-day cycle, tomorrow for a cross-midnight one.
       const candidate = scenarioToDate(isCrossMidnight ? 'B' : 'A', clock);
