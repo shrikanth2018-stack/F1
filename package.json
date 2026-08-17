@@ -17,7 +17,8 @@
     "release:ota": "bash scripts/release-ota.sh",
     "supabase:gen-types": "supabase gen types typescript --project-id wcvqxzqqwcxlcgrjyunf --schema public > src/types/database.types.ts.tmp && [ -s src/types/database.types.ts.tmp ] && mv src/types/database.types.ts.tmp src/types/database.types.ts || { rm -f src/types/database.types.ts.tmp; echo 'gen-types failed \u2014 database.types.ts left unchanged' >&2; exit 1; }",
     "schema:snapshot": "bash scripts/schema-snapshot.sh",
-    "schema:check": "bash scripts/schema-drift-check.sh"
+    "schema:check": "bash scripts/schema-drift-check.sh",
+    "schema:rehearse": "bash scripts/schema-rehearse.sh"
   },
   "jest": {
     "preset": "jest-expo",

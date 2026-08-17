@@ -119,19 +119,30 @@ eas build --profile production --platform android
    is a dump of production. Twenty-five functions are defined in more than one
    file in `supabase/sql/`, and whichever ran last silently won — so the file
    you are about to edit may not be the version that is live.
-3. **Dry-run it inside `BEGIN … ROLLBACK` first.** There is only one database —
-   there is no staging, so this is the safety net. Note that a rollback does
-   **not** undo a sequence advance: `nextval()` is not transactional, so
-   dry-running anything that mints an id burns numbers. Note `last_value`
-   first and `setval` it back before the real run.
-4. Apply it.
-5. Record it in `supabase/sql/DEPLOY_SQL_ORDER.md`.
-6. **`npm run schema:snapshot`, and commit `supabase/schema/` with the SQL.**
+3. **Rehearse it away from production: `npm run schema:rehearse <file.sql>`.**
+   Builds a throwaway database from the snapshot, applies the file **twice**,
+   and shows exactly which objects it adds, alters or drops. Proves three
+   things nothing used to check: that it is valid against the real schema, that
+   it applies cleanly, and that it is idempotent — which every file here is
+   required to be. Needs Docker; costs nothing; production is not touched.
+
+   It does **not** test what the change does to your data — the rehearsal
+   database is empty, by design, so no customer data is ever copied to a
+   laptop. That is what step 4 is for.
+4. **Then dry-run it against production inside `BEGIN … ROLLBACK`.** This is
+   the step that proves it does the right thing to the rows that actually
+   exist. Note that a rollback does **not** undo a sequence advance:
+   `nextval()` is not transactional, so dry-running anything that mints an id
+   burns numbers. Note `last_value` first and `setval` it back before the real
+   run.
+5. Apply it.
+6. Record it in `supabase/sql/DEPLOY_SQL_ORDER.md`.
+7. **`npm run schema:snapshot`, and commit `supabase/schema/` with the SQL.**
    Same pairing rule as an OTA and a `git push` — a snapshot that lags is worse
    than none, because it looks authoritative. `npm run schema:check` tells you
    whether they agree.
-7. `npm run supabase:gen-types`
-8. Run both health checks above.
+8. `npm run supabase:gen-types`
+9. Run both health checks above.
 
 ---
 

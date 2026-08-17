@@ -19,9 +19,13 @@ Node 22.
   `.github/workflows/check.yml`. Same command in both on purpose.
 - `npm test` · `npm run lint` · `npm start` · `npm run android|ios|web`
 - `npm run supabase:gen-types` — after any schema change
+- `npm run schema:rehearse <file.sql>` — **before** applying SQL: builds a
+  throwaway DB from the snapshot, applies the file twice, proves it is valid
+  and idempotent, shows what it changes. Empty database, so it does not test
+  data — still dry-run against production inside `BEGIN … ROLLBACK`.
 - `npm run schema:snapshot` — **after applying any SQL to production**, then
   commit `supabase/schema/`. `npm run schema:check` fails if live and repo
-  disagree. Both need Docker running.
+  disagree. All three need Docker running.
 - `supabase functions deploy <name> --no-verify-jwt`
 - `eas update --channel production` — JS-only changes
 
