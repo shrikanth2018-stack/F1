@@ -1,0 +1,82 @@
+# 1stOne F1 — does the repository still describe the database that is running?
+#
+# DELIBERATELY A SEPARATE FILE FROM check.yml. That workflow is the gate every
+# push depends on; this one talks to a live database over the network and needs
+# two secrets. A mistake in here must not be able to take the gate down with
+# it, and in its own file it cannot.
+#
+# INERT UNTIL TWO SECRETS EXIST. It skips with a notice rather than failing, so
+# adding this file changes nothing until somebody decides to switch it on:
+#
+#   SUPABASE_ACCESS_TOKEN   Supabase dashboard → Account → Access Tokens
+#   SUPABASE_DB_PASSWORD    the project's Postgres password
+#
+# Both are needed: the token authorises the CLI, and `supabase db dump` runs
+# pg_dump against the database itself. Locally the password is cached in the
+# CLI's keychain, which is why the scripts need no arguments on a laptop.
+#
+# WHAT A RED RUN MEANS. Production and the committed snapshot disagree. Either
+# SQL was applied without re-snapshotting — normal, fix with
+# `npm run schema:snapshot` and commit — or something changed the database that
+# nobody recorded, which is the case worth stopping for. The job prints the
+# diff and names the object either way.
+#
+# It runs on a schedule as well as on push, because unrecorded changes do not
+# arrive with a commit. That is the entire point: a hand-edit in the dashboard
+# on a Tuesday is exactly what this is for, and no push would ever reveal it.
+name: schema drift
+
+on:
+  push:
+    branches: [main]
+    # Only when something that could move the schema changed. A screen edit
+    # cannot cause drift, and a red run for an unrelated reason is how a check
+    # becomes background noise.
+    paths:
+      - 'supabase/sql/**'
+      - 'supabase/schema/**'
+      - 'scripts/schema-*.sh'
+      - '.github/workflows/schema-drift.yml'
+  schedule:
+    # 04:00 UTC = 09:30 IST, after the overnight jobs have run and before the
+    # working day, so a report is waiting rather than interrupting.
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: schema-drift
+  cancel-in-progress: true
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # The `secrets` context is not available in a job-level `if`, so it is
+      # lifted into env here and every step below tests it. That is the
+      # documented way to make a whole job conditional on a secret.
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      PROJECT_REF: wcvqxzqqwcxlcgrjyunf
+
+    steps:
+      - name: Explain the skip
+        if: env.SUPABASE_ACCESS_TOKEN == '' || env.SUPABASE_DB_PASSWORD == ''
+        run: |
+          echo "::notice title=Schema drift check is not switched on::Add the SUPABASE_ACCESS_TOKEN and SUPABASE_DB_PASSWORD repository secrets to enable it. Until then this job passes without checking anything."
+
+      - uses: actions/checkout@v4
+        if: env.SUPABASE_ACCESS_TOKEN != '' && env.SUPABASE_DB_PASSWORD != ''
+
+      - uses: supabase/setup-cli@v1
+        if: env.SUPABASE_ACCESS_TOKEN != '' && env.SUPABASE_DB_PASSWORD != ''
+        with:
+          version: latest
+
+      - name: Link the project
+        if: env.SUPABASE_ACCESS_TOKEN != '' && env.SUPABASE_DB_PASSWORD != ''
+        run: supabase link --project-ref "$PROJECT_REF"
+
+      - name: Compare the live schema with the committed snapshot
+        if: env.SUPABASE_ACCESS_TOKEN != '' && env.SUPABASE_DB_PASSWORD != ''
+        run: npm run schema:check

@@ -115,12 +115,23 @@ eas build --profile production --platform android
 
 1. Write the change as a new file in `supabase/sql/`, written so it can be run
    twice safely.
-2. **Dry-run it inside `BEGIN … ROLLBACK` first.** There is only one database —
-   there is no staging, so this is the safety net.
-3. Apply it.
-4. Record it in `supabase/sql/DEPLOY_SQL_ORDER.md`.
-5. `npm run supabase:gen-types`
-6. Run both health checks above.
+2. **Check what is actually deployed first.** `supabase/schema/live_schema.sql`
+   is a dump of production. Twenty-five functions are defined in more than one
+   file in `supabase/sql/`, and whichever ran last silently won — so the file
+   you are about to edit may not be the version that is live.
+3. **Dry-run it inside `BEGIN … ROLLBACK` first.** There is only one database —
+   there is no staging, so this is the safety net. Note that a rollback does
+   **not** undo a sequence advance: `nextval()` is not transactional, so
+   dry-running anything that mints an id burns numbers. Note `last_value`
+   first and `setval` it back before the real run.
+4. Apply it.
+5. Record it in `supabase/sql/DEPLOY_SQL_ORDER.md`.
+6. **`npm run schema:snapshot`, and commit `supabase/schema/` with the SQL.**
+   Same pairing rule as an OTA and a `git push` — a snapshot that lags is worse
+   than none, because it looks authoritative. `npm run schema:check` tells you
+   whether they agree.
+7. `npm run supabase:gen-types`
+8. Run both health checks above.
 
 ---
 

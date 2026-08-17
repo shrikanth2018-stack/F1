@@ -19,6 +19,9 @@ Node 22.
   `.github/workflows/check.yml`. Same command in both on purpose.
 - `npm test` · `npm run lint` · `npm start` · `npm run android|ios|web`
 - `npm run supabase:gen-types` — after any schema change
+- `npm run schema:snapshot` — **after applying any SQL to production**, then
+  commit `supabase/schema/`. `npm run schema:check` fails if live and repo
+  disagree. Both need Docker running.
 - `supabase functions deploy <name> --no-verify-jwt`
 - `eas update --channel production` — JS-only changes
 
@@ -34,8 +37,14 @@ Node 22.
 - `src/utils/` — pure logic; this is what the Jest suites cover
 - `supabase/functions/` — `_shared/orderBuild.ts` + `_shared/dispatch.ts` are
   the money and date brain
-- `supabase/sql/` — 137 idempotent files, applied by hand per
-  `DEPLOY_SQL_ORDER.md`. **No migration runner.**
+- `supabase/sql/` — 141 idempotent files, applied by hand per
+  `DEPLOY_SQL_ORDER.md`. **No migration runner.** These are the CHANGELOG, not
+  the schema — twenty-five functions are defined in two to four files each and
+  the last one applied silently wins.
+- `supabase/schema/` — **what is actually deployed.** `live_schema.sql` is a
+  `pg_dump` of production; `live_jobs.txt` holds the cron jobs and extensions
+  the dump excludes. Generated, never hand-edited. This is the file to read to
+  answer "what does the database look like?"
 - `landing/` — static marketing site (Cloudflare Pages)
 
 ## Architecture
@@ -88,8 +97,15 @@ the kitchen batch and creates subscription orders; pushes fan out via
   and the app build together.
 - **`eas update` never ships `supabase/functions/`.** Diff before releasing:
   `git diff --name-only <last-sha>..HEAD -- supabase/functions/`
-- **Live DB > repo `schema.sql`** — trust the live schema. Newer RPCs are called
-  with `(supabase as any).rpc(...)` until types are regenerated.
+- **`supabase/sql/schema.sql` is stale and always will be** — it holds 43 tables
+  and 51 functions; production has 54 and 105. Read `supabase/schema/` instead,
+  which is generated from the live database. Newer RPCs are called with
+  `(supabase as any).rpc(...)` until types are regenerated.
+- **Re-running an old SQL file can silently revert a fix.** Twenty-five
+  functions are defined in more than one file — `assign_hub_operator` in four —
+  and whichever runs last wins with no warning. Check
+  `supabase/schema/live_schema.sql` for the deployed body before re-applying
+  anything.
 - **Web has no Razorpay** — `src/utils/razorpay.ts` throws. Web is wallet-only.
 - **Staff board shows one batch** (latest `kitchen_push_log`) plus anything
   overdue. Empty before the first push of the day is correct.
