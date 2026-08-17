@@ -1371,3 +1371,72 @@ function can be applied in any order.
 **Rollback:** commented block at the foot of `profiles_branch_never_null.sql` —
 drop the trigger and the two functions. Capture the id list from the report
 BEFORE applying if the backfill itself is to be reversed.
+
+---
+
+## 36. Hardening slice — two ungated functions, sixteen unpinned, one stale driver (2026-08-17)
+
+| # | File | What it installs |
+|---|------|------------------|
+| 1 | `harden_privileged_functions.sql` | Admin gates on `assign_hub_operator` and `assign_hub_to_address_ids`; `ALTER FUNCTION … SET search_path` on all 16 unpinned SECURITY DEFINER functions; RLS enabled (no policies) on the three `seed_360_*` harness tables. |
+| 2 | `fk_covering_indexes.sql` | 9 indexes on the foreign keys that sit on tables which will actually grow. |
+| 3 | `driver_code_follows_driver.sql` | Mints the 8 missing employee numbers; makes `driver_code` a database-maintained projection of `driver_user_id` via `derive_driver_code()` + a trigger on `delivery_zones` and `delivery_hubs`; corrects the four stale routes. |
+
+No app change, no `gen-types`, no OTA, no binary. Nothing here alters a flow, a
+price, a date or a screen.
+
+**Why §1.** `assign_hub_operator` and `assign_hub_to_address_ids` were SECURITY
+DEFINER (bypassing RLS) and executable by `authenticated` with no role check,
+while 25 sibling functions gate themselves. **Reproduced as a real plain
+customer by impersonation**, never as superuser: the customer made themselves
+operator of hub 19 — overwriting the hub's operator link and setting their own
+`profiles.assigned_hub_id`, a JWT claim that grants read/write over every order
+through that hub — and forced a write on another customer's address. The same
+UPDATE issued directly is correctly refused by RLS; the function was the way
+around it.
+
+The gate copies the house pattern from `assign_addresses_to_hub`
+(`auth.uid() IS NOT NULL AND …`, so cron and the service role are unaffected)
+but reads `profiles.role` rather than the JWT claim, which is the stronger of
+the two patterns in this schema and means a stale token cannot pass.
+
+**Why `ALTER FUNCTION` and not re-created bodies.** Sixteen functions needed a
+pinned `search_path`, including `increment_wallet_balance`,
+`decrement_wallet_balance_if_sufficient`, `mark_order_paid` and
+`complete_wallet_topup`. `ALTER FUNCTION … SET search_path` touches no line of
+any body, so there is nothing to mis-transcribe, and `RESET` reverses it. The
+two functions that reach `net.` get `public, net`, matching
+`advance_orders_status`.
+
+**Why §3 is a projection, not an app fix.** Driver identity was stored twice —
+`driver_user_id` (the real assignment, read by the driver's own board) and
+`driver_code` (a denormalised copy of that person's `employee_id`, read by the
+packing slip's "By Driver" grouping and the admin order detail). Nothing kept
+them in step and all four routes had drifted to `1ST-2026-001`, the employee
+number of a driver no longer assigned anywhere. **Owner decision: `driver_user_id`
+is the truth**, so `driver_code` becomes a value the database maintains — the
+same shape as `derive_address_branch_id` and `derive_profile_branch_id`, which
+is why those columns do not drift. The slip and the admin screen keep reading
+`driver_code`; it simply can no longer be wrong, and no release is needed.
+
+The trigger deliberately does NOT invent the `D-nnnn` fallback the two admin
+screens use for a driver with no employee number — it corrects what it can
+prove and leaves the rest, because duplicating that format is the very fault
+being removed.
+
+**⚠ `nextval()` is not transactional.** Dry-running file 3 inside
+`BEGIN … ROLLBACK` still burns one employee number per profile it would mint.
+Two dry runs moved `employee_id_seq` from 6 to 22; it was restored with
+`setval('employee_id_seq', 6, true)` before the real run, which then minted
+`1ST-2026-007` upward with no gap. The file's header carries this warning.
+
+**Verified after applying:** the two escalations are refused for a customer and
+still work for an admin and for a no-JWT (cron / service-role) caller; a wallet
+credit + debit round-trip still succeeds after pinning; every route names its
+actual driver; every staff/admin has an employee number.
+`platform_health_check` 37/37 PASS, `subscription_flow_check` 11/11 ok, `tsc`
+clean, 47 suites / 641 tests.
+
+**Rollback:** commented block at the foot of each file. Note the minted employee
+numbers and corrected driver codes are data — capture each file's report before
+reverting, and the sequence cannot un-advance.
