@@ -35,7 +35,11 @@ import { useDeliveryCycles } from '../../hooks/useDeliveryCycles';
 import { useStoreConfig } from '../../hooks/useStoreConfig';
 import { formatPriceShort, formatDateLong, getErrorMessage } from '../../utils/formatters';
 import { formatTime12h } from '../../utils/timeEngine';
-import { istDateStr, istDateWithOffset } from '../../utils/istDate';
+import {
+  resolveClock,
+  timeToMinutes,
+  isCutoffPassedFor,
+} from '../../../supabase/functions/_shared/dispatch';
 import { isOperationalOrder } from '../../utils/orderFilters';
 import {
   groupIntoDeliveries,
@@ -50,6 +54,9 @@ import { subscriptionDaysRemaining } from '../../utils/subscriptionMath';
 // be in this set; the DB constraint dropped it in May 2026 and nothing writes
 // it, so it matched no order and only implied a state that still existed.
 const CANCELLABLE_STATUSES = new Set(['Pending', 'Confirmed', 'Preparing']);
+
+/** Sorts a row whose cycle has vanished last, matching cancel-order's NO_CYCLE. */
+const NO_CYCLE_CUTOFF = 24 * 60 + 1;
 
 // Progress bar flows — per blueprint Sec 5.1.
 // Food shows the kitchen Ready step; Essentials skips it (no cooking).
@@ -140,26 +147,63 @@ export function OrderDetailScreen({ route, navigation }: any) {
   const ageHours = (Date.now() - earliestCreatedMs) / 3_600_000;
   const cancellableRows = groupRows.filter((r) => CANCELLABLE_STATUSES.has(r.status));
 
-  // Earliest-dispatch row governs the cutoff guard (the "1st item" rule).
-  const earliestRow = groupRows[0]; // useOrderGroup sorts by dispatch_date asc
+  /**
+   * Earliest-dispatch row governs the cutoff guard (the "1st item" rule).
+   *
+   * ORDERED THE WAY cancel-order ORDERS IT: dispatch date, then the cycle's
+   * cutoff in MINUTES. This screen used to take `groupRows[0]`, which
+   * `useOrderGroup` sorts by (dispatch_date, id) — and since one cart can put
+   * two cycles on the SAME dispatch date, the two disagreed about which row was
+   * earliest. Snacks (cutoff 15:00) and Dinner (18:00) both going out today,
+   * with the Dinner row holding the lower id: at 16:00 this screen judged the
+   * order against 18:00 and offered Cancel, while the server judged it against
+   * 15:00 and refused with a 409. The customer met an error for tapping a
+   * button we had shown them.
+   */
+  const cutoffMinutesOf = useCallback(
+    (cycleId: number | null | undefined): number => {
+      const t = (cycles ?? []).find((c) => c.id === cycleId)?.cutoff_time;
+      return t ? timeToMinutes(t) : NO_CYCLE_CUTOFF;
+    },
+    [cycles],
+  );
+  const earliestRow = useMemo(() => {
+    return [...groupRows].sort((a, b) => {
+      if (a.dispatch_date !== b.dispatch_date) {
+        return (a.dispatch_date ?? '') < (b.dispatch_date ?? '') ? -1 : 1;
+      }
+      return cutoffMinutesOf(a.cycle_id) - cutoffMinutesOf(b.cycle_id);
+    })[0];
+  }, [groupRows, cutoffMinutesOf]);
   const earliestCycle = (cycles ?? []).find((c) => c.id === earliestRow?.cycle_id);
-  let earliestCutoffPassed = false;
-  if (earliestRow && earliestCycle) {
-    // nowIST is UTC-shifted by +5:30 so its getUTC* fields read as IST
-    // wall-clock — used only for the minutes-of-day cutoff comparison below.
-    const istOffsetMs = 5.5 * 60 * 60 * 1000;
-    const nowIST = new Date(Date.now() + istOffsetMs);
-    const todayISTStr    = istDateStr();
-    const tomorrowISTStr = istDateWithOffset(1);
-    const [cutH, cutM] = earliestCycle.cutoff_time.split(':').map(Number);
-    const cutoffMins = cutH * 60 + cutM;
-    const nowMins = nowIST.getUTCHours() * 60 + nowIST.getUTCMinutes();
-    const isCrossMidnight = earliestCycle.cutoff_time > earliestCycle.delivery_start;
-    const cutoffReached = nowMins >= cutoffMins;
-    earliestCutoffPassed =
-      (!isCrossMidnight && earliestRow.dispatch_date === todayISTStr    && cutoffReached) ||
-      ( isCrossMidnight && earliestRow.dispatch_date === tomorrowISTStr && cutoffReached);
-  }
+
+  /**
+   * THE SAME FUNCTION cancel-order CALLS, not a second copy of its rule.
+   *
+   * This screen used to re-derive the whole thing: its own +5:30 UTC shift for
+   * the IST minutes, its own cutoff parse, and a cross-midnight test comparing
+   * `cutoff_time > delivery_start` as STRINGS. Every part agreed with the
+   * server by coincidence rather than by construction — the string comparison
+   * only works because Postgres returns zero-padded HH:MM:SS.
+   *
+   * `_shared/dispatch.ts` is imported directly rather than mirrored into
+   * `src/utils/`. It holds no imports, touches no Deno API and ships inside the
+   * EAS bundle (`.easignore` excludes only `supabase/.temp/`), so there is one
+   * definition rather than two that have to be kept honest. A test asserts it
+   * stays dependency-free, so a Deno-only import added there fails the gate
+   * instead of the next build.
+   */
+  const earliestCutoffPassed =
+    earliestRow && earliestCycle && earliestRow.dispatch_date
+      ? isCutoffPassedFor(
+          {
+            cutoff_time: earliestCycle.cutoff_time,
+            delivery_start: earliestCycle.delivery_start ?? null,
+          },
+          earliestRow.dispatch_date,
+          resolveClock(new Date()),
+        )
+      : false;
 
   // G7 (UX): subscription-purchase orders aren't customer-cancellable —
   // cancel-order rejects them server-side, but the button was still

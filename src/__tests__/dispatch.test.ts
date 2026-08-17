@@ -1,3 +1,5 @@
+import * as fs from 'fs';
+import * as path from 'path';
 /**
  * Tests for the server-authoritative dispatch logic
  * (supabase/functions/_shared/dispatch.ts) — the IST clock + A/B/C scenario
@@ -309,5 +311,43 @@ describe('isCutoffPassedFor is exactly what cancel-order used to compute', () =>
       }
     }
     expect(compared).toBe(5 * 48 * 4);
+  });
+});
+
+
+// ── This module is bundled into the APP, so it must stay portable ─────────
+
+describe('_shared/dispatch.ts stays safe for the app to import', () => {
+  /**
+   * `OrderDetailScreen` imports this module directly, so the cancellation
+   * cutoff has ONE definition instead of a server copy and an app copy that
+   * have to be kept honest. That is only safe while the file remains portable:
+   * no imports to resolve, no Deno-only API, nothing fetched over HTTP.
+   *
+   * Add `import { x } from 'https://…'` or a `Deno.env.get(...)` here and Metro
+   * cannot bundle it — which would surface as a failed EAS build, or worse, a
+   * runtime crash on the order screen. This turns that into a red test on the
+   * machine of whoever wrote the import.
+   *
+   * If a future change genuinely needs one of those, the answer is to move the
+   * pure rules into `src/utils/` and have the edge functions import THAT — not
+   * to relax this test.
+   */
+  const source = fs.readFileSync(
+    path.resolve(__dirname, '../../supabase/functions/_shared/dispatch.ts'),
+    'utf8',
+  );
+
+  it('has no import statements', () => {
+    const imports = source
+      .split('\n')
+      .filter((l) => /^\s*import\b/.test(l) && !/^\s*import type\b/.test(l));
+    expect(imports).toEqual([]);
+  });
+
+  it('touches no Deno API and fetches nothing over HTTP', () => {
+    expect(source).not.toMatch(/\bDeno\./);
+    expect(source).not.toMatch(/from ['"]https?:\/\//);
+    expect(source).not.toMatch(/\brequire\s*\(/);
   });
 });
