@@ -200,12 +200,15 @@ service-role key — they are not for public use.
 
 | | |
 |---|---|
-| Latest Android production build | **v1.4.0, build 31, 4 Aug 2026** |
-| Latest over-the-air update | **1.5.0**, 7 Aug 2026, runtime `exposdk:54.0.0` |
+| Latest Android production build | **v1.5.0, build 33, 13 Aug 2026** (from `3f684b8`; includes `expo-haptics`) |
+| Latest over-the-air update | **17 Aug 2026**, group `8eb09f71`, runtime `exposdk:54.0.0` |
 | iOS builds ever | **one** — a `development` build, v1.0.0, 7 Apr 2026 |
 | iOS submit config | still `REPLACE_WITH_APPLE_ID` etc. |
 
-So **1.5.0 is running as an over-the-air update on top of the 1.4.0 binary.**
+So **1.5.0 runs as over-the-air updates on top of the 1.5.0 build-33 binary.**
+Builds 32 (8 Aug) and 33 (13 Aug) followed build 31; an earlier version of
+this sheet stopped at build 31 and claimed a new binary was owed for
+`expo-haptics`. It is not — build 33 contains it.
 The update policy is `sdkVersion`, so any SDK-54 binary accepts any SDK-54
 update.
 

@@ -132,8 +132,13 @@ the kitchen batch and creates subscription orders; pushes fan out via
 
 - **47 test suites, 641 tests, all passing.** Coverage from `src/utils/**` +
   `src/hooks/**`; 5 screens have tests, ~120 do not.
-- Version **1.5.0**. **A NEW ANDROID BINARY IS DUE** — `expo-haptics` is a
-  native module and cannot reach the 1.4.0 build over the air.
+- Version **1.5.0**. **NO BINARY IS DUE** — the newest Android build is
+  **v1.5.0 build 33 (13 Aug 2026)**, built from `3f684b8`, and it contains
+  `expo-haptics 15.0.8`. This file used to say a binary was due for haptics;
+  builds 32 and 33 had already shipped and the note was never updated, which
+  nearly caused an unnecessary Play release on 17 Aug. Verify with
+  `eas build:list --platform android`, and check the native surface with
+  `git diff --stat <build-commit>..HEAD -- package.json app.config.js android/ ios/ patches/ eas.json`.
 - **Production ships the Razorpay TEST key** (`rzp_test_…`) in all three EAS
   profiles. Server-side secrets are set. No real money has moved.
 - **One Supabase project** is dev, preview and production.
