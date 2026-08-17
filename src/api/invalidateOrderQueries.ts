@@ -31,6 +31,13 @@
  * in ONE array with the surface each belongs to named beside it. Adding a
  * screen still means adding a line — but the line is here, next to twelve
  * others, rather than implied by a paragraph.
+ *
+ * AND IT IS NOW A RULE, not a convention. `src/__tests__/invalidateOrderQueries.test.ts`
+ * parses every query declaration in hooks/ and screens/, works out which ones
+ * read orders, and fails by file and line if one is not covered here. Verified
+ * to catch it: deleting `['admin_orders_undelivered']` — the omission that
+ * caused the 13 Aug report — turns the suite red and names it. So this comment
+ * no longer has to be read to be obeyed.
  * ─────────────────────────────────────────────────────────────────────────
  */
 
