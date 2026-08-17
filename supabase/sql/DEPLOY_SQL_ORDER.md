@@ -1462,3 +1462,60 @@ clean, 47 suites / 641 tests.
 **Rollback:** commented block at the foot of each file. Note the minted employee
 numbers and corrected driver codes are data — capture each file's report before
 reverting, and the sequence cannot un-advance.
+
+---
+
+## 37. order_items keeps only the grants it needs (2026-08-17)
+
+| # | File | What it does |
+|---|------|--------------|
+| 1 | `order_items_revoke_surplus_grants.sql` | Revokes INSERT, UPDATE, DELETE and TRUNCATE on `public.order_items` from `anon` and `authenticated`. SELECT, and everything `service_role` holds, are untouched. |
+
+**Why.** `CLAUDE.md` says a client cannot write `order_items` at all, and in
+effect that was true — but it was true because of the POLICIES, not the grants.
+`authenticated` held DELETE and TRUNCATE; `anon` held INSERT, UPDATE, DELETE and
+TRUNCATE. There is no UPDATE or DELETE policy, so RLS refused them; the grants
+were redundant.
+
+Two pieces of that were worth removing rather than leaving:
+
+1. **TRUNCATE is not subject to row-level security at all.** Before this change
+   it was refused only because `order_item_ratings.order_item_id` happens to
+   reference the table. That is luck, not design — restructure that foreign key
+   and a signed-in user holds a grant that empties every order line in the
+   business. It is not reachable through PostgREST, so the exposure was any
+   future path running arbitrary SQL as `authenticated`.
+2. `anon` holding INSERT/UPDATE bought nothing: `auth.uid()` is NULL for anon so
+   the INSERT policy can never pass, and no UPDATE policy exists.
+
+**Verified as a real customer by impersonation**, before and after, never as
+superuser. After: DELETE / INSERT / UPDATE / TRUNCATE all fail with *"permission
+denied for table order_items"* — refused by the grant rather than by RLS or by a
+foreign key. Reading a customer's own order line still works (losing SELECT
+would blank every order screen, the printed slip and the vendor board), and
+`service_role` can still insert.
+
+**Rehearsed first, and the rehearsal earned its place.** `npm run
+schema:rehearse` failed the first attempt: in a database rebuilt from the
+snapshot, `authenticated` held INSERT/UPDATE that production does not. The cause
+is worth knowing — the Supabase Postgres image grants ALL on a newly created
+table through default privileges, and a `pg_dump` restore only ever ADDS grants;
+it carries no REVOKE for a privilege production simply never granted. So a
+rebuilt copy holds MORE privilege than production. The file is therefore written
+as the END STATE rather than as a delta, which makes it produce the same result
+wherever it runs. The limitation is documented in `scripts/schema-rehearse.sh`.
+
+Fixing that also surfaced a race in the harness itself: the postgres image runs
+a temporary server for its init scripts, so `pg_isready` succeeds ~2s in and then
+the server shuts down and restarts. The wait now keys on the image's own
+`PostgreSQL init process complete` marker plus two consecutive real connections.
+
+**App coupling: none.** No column, type or signature changed, nothing in `src/`
+writes `order_items` (`useReorder` only reads it), so no `gen-types`, no OTA and
+no binary.
+
+`platform_health_check` 45/45 PASS, `subscription_flow_check` 11/11 ok, snapshot
+regenerated and in sync.
+
+**Rollback:** commented block at the foot of the SQL file. It re-opens the
+TRUNCATE described above.

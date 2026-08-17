@@ -10167,8 +10167,8 @@ GRANT ALL ON SEQUENCE "public"."order_item_ratings_id_seq" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."order_items" TO "anon";
-GRANT SELECT,REFERENCES,DELETE,TRIGGER,TRUNCATE,MAINTAIN ON TABLE "public"."order_items" TO "authenticated";
+GRANT SELECT,REFERENCES,TRIGGER,MAINTAIN ON TABLE "public"."order_items" TO "anon";
+GRANT SELECT,REFERENCES,TRIGGER,MAINTAIN ON TABLE "public"."order_items" TO "authenticated";
 GRANT ALL ON TABLE "public"."order_items" TO "service_role";
 
 

@@ -30,6 +30,16 @@
 #          touches zero rows here and an assertion like "every staff member has
 #          an employee number" passes trivially.
 #
+# ALSO DOES NOT PROVE: that PRIVILEGES here match production. The Supabase
+#          Postgres image grants ALL on a newly created table through default
+#          privileges, and a pg_dump restore only ever ADDS grants — it carries
+#          no REVOKE for a privilege production simply never granted. So a
+#          rebuilt copy can hold MORE privilege than production does; found
+#          2026-08-17 when `authenticated` had INSERT/UPDATE on order_items here
+#          and not there. For a GRANT/REVOKE change, write the file as the END
+#          STATE rather than a delta, and check the result against production as
+#          well as here.
+#
 #          THE BEGIN … ROLLBACK DRY RUN AGAINST PRODUCTION IS STILL REQUIRED.
 #          This is the step before it, not instead of it. Rehearse to prove the
 #          SQL is sound, then dry-run to prove it does the right thing to the
@@ -106,9 +116,30 @@ fingerprint() {
 
 echo "→ starting a throwaway Postgres 17.6 (no ports published, nothing shared)…"
 docker run -d --name "$CONTAINER" -e POSTGRES_PASSWORD="$PGPW" "$IMAGE" >/dev/null
-for i in $(seq 1 90); do
-  docker exec "$CONTAINER" pg_isready -U postgres >/dev/null 2>&1 && break
-  [ "$i" = "90" ] && { echo "✖ Postgres never became ready" >&2; exit 1; }
+
+# WAITING FOR pg_isready ALONE IS A RACE, and it bit this script on its first
+# real use. The postgres image starts a TEMPORARY server to run its init
+# scripts, logs "database system is ready to accept connections", then SHUTS IT
+# DOWN and starts the real one. `pg_isready` succeeds about two seconds in —
+# during that first phase — so a restore begun there dies mid-file with
+# "connection to server on socket … failed: No such file or directory".
+#
+# So: wait for the image's own end-of-init marker FIRST, then for a real
+# connection, and require two in a row so a momentary window cannot pass.
+for i in $(seq 1 120); do
+  docker logs "$CONTAINER" 2>&1 | grep -q 'PostgreSQL init process complete' && break
+  [ "$i" = "120" ] && { echo "✖ Postgres never finished initialising" >&2; docker logs "$CONTAINER" 2>&1 | tail -20 >&2; exit 1; }
+  sleep 1
+done
+ok=0
+for i in $(seq 1 60); do
+  if docker exec "$CONTAINER" psql -U postgres -d postgres -tAc 'SELECT 1' >/dev/null 2>&1; then
+    ok=$((ok + 1))
+    [ "$ok" -ge 2 ] && break
+  else
+    ok=0
+  fi
+  [ "$i" = "60" ] && { echo "✖ Postgres never accepted a connection" >&2; exit 1; }
   sleep 1
 done
 
