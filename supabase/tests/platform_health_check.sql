@@ -19,6 +19,8 @@
 --   I  hub operator — commission summary
 --   J  subscription manifest — generation, BF-19 zero-money rows, idempotency
 --   K  vendor listing approval — the gate, and the vendor column lockdown
+--   L  privileged-function role gates — refused for a customer, allowed for an admin
+--   M  schema-wide invariants — every definer function pins search_path, every table has RLS
 --
 -- A KNOWN LIMIT, worth reading before trusting a PASS. Sections A–J set
 -- request.jwt.claims but stay on the PRIVILEGED role, so RLS and column
@@ -487,6 +489,133 @@ BEGIN
     PERFORM set_config('role', 'none', true);
     r := r || format('K ... FAIL (%s)%s', SQLERRM, E'\n');
   END;
+
+  -- ══ L. PRIVILEGED-FUNCTION ROLE GATES ══════════════════════════════════
+  --
+  -- Regression guard for the two holes found on 2026-08-17. Both functions are
+  -- SECURITY DEFINER — so they bypass RLS — and both were EXECUTABLE by
+  -- `authenticated` with no role check of their own. A plain customer could
+  -- make themselves the operator of any hub (setting profiles.assigned_hub_id,
+  -- a JWT claim that grants read/write over every order through that hub) and
+  -- could force a write on any other customer's address.
+  --
+  -- D0 and F0 are why the equivalent holes were never opened in
+  -- advance_orders_status and admin_cancel_order_atomic. These are the same two
+  -- lines for the two that were missed.
+  --
+  -- BOTH DIRECTIONS ARE TESTED, and that is the point. A test that only checks
+  -- the refusal would still pass if somebody broke the function outright, or
+  -- tightened the gate until admins could not use it either — so L3/L4 assert
+  -- that an admin still can. A gate is only correct if it refuses the right
+  -- people AND admits the right people.
+  --
+  -- Like D0/F0 this runs on the privileged role with only the claims swapped,
+  -- which is honest here: the rule being tested lives INSIDE the function, not
+  -- in a policy or a grant.
+  BEGIN
+    DECLARE
+      v_hub INT;
+    BEGIN
+      SELECT id INTO v_hub FROM delivery_hubs WHERE is_active ORDER BY id LIMIT 1;
+
+      IF v_hub IS NULL THEN
+        r := r || E'L  privileged-function gates ... SKIPPED (no active hub)\n';
+      ELSE
+        -- ── as a plain customer: both must refuse ──
+        PERFORM set_config('request.jwt.claims',
+          json_build_object('sub', v_cust, 'role','authenticated',
+                            'user_role','customer')::text, true);
+
+        BEGIN
+          PERFORM assign_hub_operator(v_hub::bigint, v_cust, NULL);
+          r := r || E'L1 customer CANNOT make themselves a hub operator ... FAIL (allowed!)\n';
+        EXCEPTION WHEN OTHERS THEN
+          r := r || E'L1 customer CANNOT make themselves a hub operator ... PASS\n';
+        END;
+
+        BEGIN
+          PERFORM assign_hub_to_address_ids(v_hub::integer, ARRAY[v_addr.aid::integer]);
+          r := r || E'L2 customer CANNOT reassign anyone''s address ... FAIL (allowed!)\n';
+        EXCEPTION WHEN OTHERS THEN
+          r := r || E'L2 customer CANNOT reassign anyone''s address ... PASS\n';
+        END;
+
+        -- The escalation left no trace, even though the call was refused.
+        SELECT count(*) INTO v_n
+          FROM profiles WHERE id = v_cust AND assigned_hub_id IS NOT NULL;
+        r := r || format('L2b no assigned_hub_id was granted anyway ... %s%s',
+          CASE WHEN v_n = 0 THEN 'PASS' ELSE 'FAIL (customer now a hub operator!)' END, E'\n');
+
+        -- ── as an admin: both must still work ──
+        --
+        -- A REAL ADMIN'S uuid, not a customer's with an 'admin' claim attached.
+        -- These two gates read `profiles.role` from the table rather than the
+        -- JWT claim — deliberately, so a stale token cannot get through — so a
+        -- forged claim is correctly refused. The first draft of this test
+        -- claimed admin over v_cust and reported a FAIL, which is the gate
+        -- working exactly as intended. Sections that call claim-reading RPCs
+        -- (K's admin_review_listing) can get away with the forgery; these
+        -- cannot, and that difference is the point of reading the table.
+        PERFORM set_config('request.jwt.claims',
+          json_build_object('sub', v_admin, 'role','authenticated',
+                            'user_role','admin')::text, true);
+
+        BEGIN
+          PERFORM assign_hub_operator(v_hub::bigint, NULL, NULL);
+          r := r || E'L3 admin CAN still assign a hub operator ... PASS\n';
+        EXCEPTION WHEN OTHERS THEN
+          r := r || format('L3 admin CAN still assign a hub operator ... FAIL (%s)%s', SQLERRM, E'\n');
+        END;
+
+        BEGIN
+          PERFORM assign_hub_to_address_ids(v_hub::integer, ARRAY[v_addr.aid::integer]);
+          r := r || E'L4 admin CAN still reassign an address ... PASS\n';
+        EXCEPTION WHEN OTHERS THEN
+          r := r || format('L4 admin CAN still reassign an address ... FAIL (%s)%s', SQLERRM, E'\n');
+        END;
+
+        -- And a forged claim is still refused, which is the guarantee that
+        -- makes the table read worth having.
+        PERFORM set_config('request.jwt.claims',
+          json_build_object('sub', v_cust, 'role','authenticated',
+                            'user_role','admin')::text, true);
+        BEGIN
+          PERFORM assign_hub_operator(v_hub::bigint, v_cust, NULL);
+          r := r || E'L5 forged admin claim CANNOT assign a hub operator ... FAIL (allowed!)\n';
+        EXCEPTION WHEN OTHERS THEN
+          r := r || E'L5 forged admin claim CANNOT assign a hub operator ... PASS\n';
+        END;
+      END IF;
+    END;
+  EXCEPTION WHEN OTHERS THEN r := r || format('L ... FAIL (%s)%s', SQLERRM, E'\n'); END;
+
+  -- ══ M. NO DEFINER FUNCTION MAY DRIFT BACK TO A MUTABLE search_path ═════
+  --
+  -- Sixteen SECURITY DEFINER functions were unpinned on 2026-08-17, the money
+  -- path among them (increment_wallet_balance,
+  -- decrement_wallet_balance_if_sufficient, mark_order_paid,
+  -- complete_wallet_topup). Pinning them is one ALTER each; NOT pinning the
+  -- next one somebody writes is the easy mistake, and it is invisible.
+  --
+  -- Also asserts no table has row-level security switched off — the three
+  -- seed_360_* harness tables were the only ones, and they were closed the
+  -- same day.
+  BEGIN
+    SELECT count(*) INTO v_n
+      FROM pg_proc p JOIN pg_namespace ns ON ns.oid = p.pronamespace
+     WHERE ns.nspname = 'public' AND p.prosecdef
+       AND NOT EXISTS (
+         SELECT 1 FROM unnest(COALESCE(p.proconfig, '{}')) c WHERE c LIKE 'search_path=%'
+       );
+    r := r || format('M1 every SECURITY DEFINER function pins search_path ... %s%s',
+      CASE WHEN v_n = 0 THEN 'PASS' ELSE format('FAIL (%s unpinned)', v_n) END, E'\n');
+
+    SELECT count(*) INTO v_n
+      FROM pg_class c JOIN pg_namespace ns ON ns.oid = c.relnamespace
+     WHERE ns.nspname = 'public' AND c.relkind = 'r' AND NOT c.relrowsecurity;
+    r := r || format('M2 every table has row-level security on ... %s%s',
+      CASE WHEN v_n = 0 THEN 'PASS' ELSE format('FAIL (%s without RLS)', v_n) END, E'\n');
+  EXCEPTION WHEN OTHERS THEN r := r || format('M ... FAIL (%s)%s', SQLERRM, E'\n'); END;
 
   r := r || E'\n════ rolled back — nothing kept ════';
   RAISE EXCEPTION '%', r;
